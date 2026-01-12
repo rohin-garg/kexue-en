@@ -50,12 +50,15 @@ def extract_content(html_content):
     return parser.title, parser.get_text()
 
 
-def build_index(translations_dir):
+def build_index(translations_dir, exclude_files=None):
     """Build search index from all translation files."""
     index = []
     translations_path = Path(translations_dir)
+    exclude_files = set(exclude_files or [])
 
     for html_file in sorted(translations_path.glob('translation_*.html')):
+        if html_file.name in exclude_files:
+            continue
         try:
             content = html_file.read_text(encoding='utf-8')
             title, text = extract_content(content)
@@ -81,8 +84,14 @@ def main():
     translations_dir = script_dir / 'translations'
     output_file = script_dir / 'search-index.js'
 
+    # Exclude 2009 and 2014 articles
+    exclude = [
+        'translation_119.html', 'translation_41.html',  # 2009
+        'translation_4170.html', 'translation_3171.html', 'translation_3154.html', 'translation_3150.html',  # 2014
+    ]
+
     print(f"Building search index from {translations_dir}...")
-    index = build_index(translations_dir)
+    index = build_index(translations_dir, exclude_files=exclude)
 
     # Write as a JS file with a variable assignment
     with open(output_file, 'w', encoding='utf-8') as f:
