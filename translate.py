@@ -1028,10 +1028,88 @@ def postprocess_all(path='translations'):
     print(f"Done! Postprocessed {len(files)} files.")
 
 
+def add_new_post(url_or_id: str, force: bool = False):
+    """Add a new blog post: fetch, cache, translate, and update index."""
+    import subprocess
+    import sys
+
+    # Extract article ID from URL or use directly
+    if url_or_id.startswith('http'):
+        article_id = url_or_id.rstrip('/').split('/')[-1]
+        url = url_or_id
+    else:
+        article_id = url_or_id
+        url = f"https://kexue.fm/archives/{article_id}"
+
+    print(f"Adding new post: {url}")
+    print(f"Article ID: {article_id}")
+    print()
+
+    # Step 1: Check if already translated
+    translation_path = f"translations/translation_{article_id}.html"
+    if os.path.exists(translation_path) and not force:
+        print(f"Translation already exists: {translation_path}")
+        print("Use --force to re-translate")
+        return
+
+    # Step 2: Cache content (fetch if needed)
+    print("Step 1/4: Fetching content...")
+    cache_path = f"{RAW_DIR}/{article_id}.txt"
+    if os.path.exists(cache_path) and not force:
+        print(f"  Already cached: {cache_path}")
+    else:
+        try:
+            result = cache_content(url)
+            print(f"  Cached {result['chars']} chars")
+        except Exception as e:
+            print(f"  Exa failed: {e}")
+            print("  Trying Firecrawl...")
+            try:
+                result = cache_content_firecrawl(url)
+                print(f"  Cached {result['chars']} chars via Firecrawl")
+            except Exception as e2:
+                print(f"  Firecrawl also failed: {e2}")
+                return
+
+    # Step 3: Translate
+    print("Step 2/4: Translating...")
+    try:
+        save_translation_from_cache(article_id)
+        print(f"  Saved: {translation_path}")
+    except Exception as e:
+        print(f"  Translation failed: {e}")
+        return
+
+    # Step 4: Regenerate index
+    print("Step 3/4: Updating index...")
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    subprocess.run([sys.executable, os.path.join(script_dir, "generate_contents.py")], check=True)
+    print("  Updated index.html")
+
+    # Step 5: Regenerate search index
+    print("Step 4/4: Updating search index...")
+    subprocess.run([sys.executable, os.path.join(script_dir, "build_search_index.py")], check=True)
+    print("  Updated search-index.js")
+
+    print()
+    print("Done! New post added successfully.")
+    print(f"  Translation: {translation_path}")
+    print(f"  Original: {url}")
+
+
 if __name__ == "__main__":
     import sys
 
-    if len(sys.argv) > 1 and sys.argv[1] == "cache":
+    if len(sys.argv) > 1 and sys.argv[1] == "add":
+        # Add a new post
+        if len(sys.argv) < 3:
+            print("Usage: python translate.py add <url_or_id> [--force]")
+            print("Example: python translate.py add https://kexue.fm/archives/12345")
+            print("Example: python translate.py add 12345")
+            sys.exit(1)
+        force = "--force" in sys.argv
+        add_new_post(sys.argv[2], force=force)
+    elif len(sys.argv) > 1 and sys.argv[1] == "cache":
         # Run caching and estimation
         run_cache_and_estimate()
     elif len(sys.argv) > 1 and sys.argv[1] == "firecrawl":

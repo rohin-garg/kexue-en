@@ -1,0 +1,257 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/11486">Why does DeltaNet need L2 Normalize?</a></h1>
+    <p>By 苏剑林 | Dec 23, 2025</p>
+
+    <p>In the article <a href="translation_11033.html">"A Brief History of Linear Attention: From Imitation and Innovation to Feedforward"</a>, we introduced DeltaNet, which brought the Delta Rule into linear attention, making it a powerful tool and forming the foundation for subsequent works like <a href="https://papers.cool/arxiv/2412.06464">GDN</a> and <a href="https://papers.cool/arxiv/2510.26692">KDA</a>. However, that article focused primarily on the overall idea of DeltaNet and did not delve into many technical details. In this post, we will discuss one of them: Why do DeltaNet and its subsequent works apply L2 Normalize to $\boldsymbol{Q}$ and $\boldsymbol{K}$?</p>
+
+    <p>Of course, explaining this operation directly from the perspective of eigenvalues is not difficult, but I personally feel that explanation is slightly lacking. A few days ago, I learned a new interpretation from the paper <a href="https://papers.cool/arxiv/2512.12602">"Error-Free Linear Attention is a Free Lunch: Exact Solution from Continuous-Time Dynamics"</a>, which I found quite valuable and would like to share.</p>
+
+    <h2>Basic Analysis</h2>
+    <p>The recursive format of DeltaNet is</p>
+
+    \begin{equation}\boldsymbol{S}_t = \boldsymbol{S}_{t-1} - \eta_t (\boldsymbol{S}_{t-1} \boldsymbol{k}_t - \boldsymbol{v}_t)\boldsymbol{k}_t^{\top} = \boldsymbol{S}_{t-1}(\boldsymbol{I} - \eta_t \boldsymbol{k}_t\boldsymbol{k}_t^{\top}) + \eta_t \boldsymbol{v}_t \boldsymbol{k}_t^{\top}\label{eq:delta}\end{equation}
+
+    <p>From the perspective of $t$, this can be seen as using the SGD optimizer with a learning rate of $\eta_t$ to perform online optimization on the loss $\frac{1}{2}\Vert\boldsymbol{S}\boldsymbol{k} - \boldsymbol{v}\Vert^2$ (where the trainable parameter is $\boldsymbol{S}$). We know that optimizers are often sensitive to learning rates, especially non-adaptive optimizers like SGD. In DeltaNet, this manifests as additional requirements for the transition matrix $\boldsymbol{I} - \eta_t \boldsymbol{k}_t\boldsymbol{k}_t^{\top}$.</p>
+
+    <p>Specifically, since transition matrices at different time steps are multiplied together during recursion, the transition matrix must not have eigenvalues greater than 1 or less than -1 to avoid numerical explosion. For the matrix $\boldsymbol{I} - \eta_t \boldsymbol{k}_t\boldsymbol{k}_t^{\top}$, one of its eigenvalues is $1 - \eta_t\Vert\boldsymbol{k}_t\Vert^2$, and the rest are 1 (please prove this). From this, we derive the constraint</p>
+
+    \begin{equation}-1 \leq 1 - \eta_t\Vert\boldsymbol{k}_t\Vert^2 \leq 1\label{eq:cond}\end{equation}
+
+    <p>To satisfy this constraint, a common practice is to apply L2 Normalize to $\boldsymbol{k}_t$ and pass $\eta_t$ through a Sigmoid function, so that all eigenvalues fall within $(0, 1]$. This is the origin of applying L2 Normalize to $\boldsymbol{K}$. As for applying L2 Normalize to $\boldsymbol{Q}$, it is not strictly necessary but is often added for symmetry, similar to the case of Short Conv, where adding it to $\boldsymbol{K}$ is the most critical part [<a href="translation_11320.html">Ref</a>].</p>
+
+    <h2>Supplementary Statement</h2>
+    <p>It's worth mentioning that for a long time, everyone was accustomed to keeping eigenvalues within $(0, 1]$, hence choosing Sigmoid for $\eta_t$. Later, <a href="https://papers.cool/arxiv/2411.12537">"Unlocking State-Tracking in Linear RNNs Through Negative Eigenvalues"</a> pointed out that negative eigenvalues can enhance the state-tracking capability of DeltaNet, proposing to change DeltaNet to</p>
+
+    \begin{equation}\boldsymbol{S}_t = \boldsymbol{S}_{t-1}(\boldsymbol{I} - 2\eta_t \boldsymbol{k}_t\boldsymbol{k}_t^{\top}) + \eta_t \boldsymbol{v}_t \boldsymbol{k}_t^{\top}\end{equation}
+
+    <p>They still applied L2 Normalize to $\boldsymbol{k}_t$ and Sigmoid to $\eta_t$, expanding the eigenvalue range of the transition matrix $\boldsymbol{I} - 2\eta_t \boldsymbol{k}_t\boldsymbol{k}_t^{\top}$ to $(-1, 1]$. However, state-tracking is a capability more oriented toward specific syntaxes (like code). Therefore, if we make this modification and only train and test on natural language, the observable change might not be significant.</p>
+
+    <p>Another detail to note is that when $\eta_t=1$, the transition matrix $\boldsymbol{I} - 2\boldsymbol{k}_t\boldsymbol{k}_t^\top$ is an orthogonal matrix. Theoretically, this is fine, but in practice, it fails because we typically use BF16 for efficiency. BF16 has lower precision, which may cause eigenvalues of $\boldsymbol{I} - 2\boldsymbol{k}_t\boldsymbol{k}_t^\top$ to occasionally be slightly less than -1. Over long-term multiplication, this still poses a risk of explosion, so $\eta_t$ should be controlled to not be too close to 1.</p>
+
+    <p>In fact, the explanation above is quite complete and not complex. My critique of it stems mainly from personal aesthetic: the way to implement condition \eqref{eq:cond} is not unique. For example, one could introduce a Squash operation similar to <a href="translation_4819.html">Capsule</a> networks, as done in <a href="https://papers.cool/arxiv/2407.14207">Longhorn</a>. Thus, we cannot "naturally" derive L2 Normalize; we can only say it is one viable solution.</p>
+
+    <h2>Continuous Perspective</h2>
+    <p>Next, let's introduce the approach from the paper <a href="https://papers.cool/arxiv/2512.12602">"Error-Free Linear Attention is a Free Lunch: Exact Solution from Continuous-Time Dynamics"</a>. I believe this is an elegant derivation path, though this depends on individual taste. It views equation \eqref{eq:delta} as the Euler discretization of the following differential equation over the interval $[t-\eta_t, t]$:</p>
+
+    \begin{equation}\frac{d}{dt}\boldsymbol{S}_t = \boldsymbol{S}_t\underbrace{(-\boldsymbol{k}_t\boldsymbol{k}_t^{\top})}_{\boldsymbol{A}_t} + \underbrace{\boldsymbol{v}_t \boldsymbol{k}_t^{\top}}_{\boldsymbol{B}_t}\label{eq:ode}\end{equation}
+
+    <p>It then points out that numerical explosions occur because the precision of the discretization format is insufficient. Therefore, it proposes constructing the recursion by solving the differential equation directly rather than using approximate discretization. Since $\boldsymbol{A}_t$ and $\boldsymbol{B}_t$ are constants within the interval $[t-\eta_t, t]$, solving the recursion from $t-\eta_t$ to $t$ is equivalent to solving a linear differential equation with constant coefficients. The general result is</p>
+
+    \begin{equation}\boldsymbol{S}_t = \boldsymbol{S}_{t-\eta_t} e^{\eta_t \boldsymbol{A}_t} + \boldsymbol{B}_t \boldsymbol{A}_t^{-1}(e^{\eta_t \boldsymbol{A}_t} - \boldsymbol{I})\label{eq:S-t-eta}\end{equation}
+
+    <p>Relabeling $\boldsymbol{S}_{t-\eta_t}$ back to the notation $\boldsymbol{S}_{t-1}$ and substituting the expressions for $\boldsymbol{A}_t, \boldsymbol{B}_t$, we simplify to obtain</p>
+
+    \begin{equation}\boldsymbol{S}_t = \boldsymbol{S}_{t-1} \left(\boldsymbol{I} - \frac{1 - e^{-\eta_t\Vert\boldsymbol{k}_t\Vert^2}}{\Vert\boldsymbol{k}_t\Vert^2}\boldsymbol{k}_t\boldsymbol{k}_t^{\top}\right) + \frac{1 - e^{-\eta_t\Vert\boldsymbol{k}_t\Vert^2}}{\Vert\boldsymbol{k}_t\Vert^2}\boldsymbol{v}_t \boldsymbol{k}_t^{\top}\label{eq:ode-deltanet}\end{equation}
+
+    <p>This is the final result we wish to derive. The original paper calls this "EFLA (Error-Free Linear Attention)". Essentially, it replaces $\eta_t$ with $\frac{1 - e^{-\eta_t\Vert\boldsymbol{k}_t\Vert^2}}{\Vert\boldsymbol{k}_t\Vert^2}$. The term $\Vert\boldsymbol{k}_t\Vert^2$ naturally appears in the denominator, and when multiplied by $\boldsymbol{k}_t\boldsymbol{k}_t^\top$, it exactly produces the L2 Normalization of $\boldsymbol{K}$.</p>
+
+    <h2>Mathematical Details</h2>
+    <p>In the previous section, we quickly introduced the result of EFLA, omitting many mathematical details. Here, we supplement the discussion. Due to space constraints, I can only briefly mention the key points of the derivation.</p>
+
+    <p>The core result of the previous section is equation \eqref{eq:S-t-eta}, which is the solution to the differential equation $d\boldsymbol{S}_t/dt = \boldsymbol{S}_t \boldsymbol{A} + \boldsymbol{B}$. To avoid confusion, I've omitted the subscripts of $\boldsymbol{A}, \boldsymbol{B}$ here since they are indeed constants within the integration interval. If $\boldsymbol{B}=\boldsymbol{0}$, the solution is simply $\boldsymbol{S}_t = \boldsymbol{S}_0 e^{t\boldsymbol{A}}$, where $e^{t\boldsymbol{A}}$ is the <a href="https://en.wikipedia.org/wiki/Matrix_exponential">matrix exponential</a>. When $\boldsymbol{B} \neq \boldsymbol{0}$, rewrite the equation as $d(\boldsymbol{S}_t + \boldsymbol{B}\boldsymbol{A}^{-1})/dt = (\boldsymbol{S}_t + \boldsymbol{B}\boldsymbol{A}^{-1})\boldsymbol{A}$. Using the solution for the $\boldsymbol{B}=\boldsymbol{0}$ case, we get:</p>
+
+    \begin{equation}\boldsymbol{S}_t = (\boldsymbol{S}_0 + \boldsymbol{B}\boldsymbol{A}^{-1})e^{t\boldsymbol{A}} - \boldsymbol{B}\boldsymbol{A}^{-1} = \boldsymbol{S}_0 e^{t\boldsymbol{A}} + \boldsymbol{B}\boldsymbol{A}^{-1}(e^{t\boldsymbol{A}} - \boldsymbol{I})\end{equation}
+
+    <p>Changing the starting point to $t-\eta_t$, the end point to $t$, and restoring the subscripts for $\boldsymbol{A}, \boldsymbol{B}$ yields equation \eqref{eq:S-t-eta}. Note that the inverse matrix $\boldsymbol{A}^{-1}$ appears in the last term, but $\boldsymbol{A}$ is not actually required to be invertible; it is understood as substituting $x = \boldsymbol{A}$ into the power series expansion of $(e^x-1)/x$. Now focusing again on equation \eqref{eq:S-t-eta}, for DeltaNet, $\boldsymbol{A}_t = -\boldsymbol{k}_t\boldsymbol{k}_t^\top$ is a rank-1 matrix, which allows for further simplification:</p>
+
+    \begin{equation}f(\boldsymbol{x}\boldsymbol{y}^{\top}) = \sum_{n=0}^{\infty} a_n (\boldsymbol{x}\boldsymbol{y}^{\top})^n = a_0\boldsymbol{I} + \sum_{n=1}^{\infty} a_n (\boldsymbol{x}\boldsymbol{y}^{\top})^n = f(0)\boldsymbol{I} + \boldsymbol{x}\underbrace{\left(\sum_{n=1}^{\infty} a_n(\boldsymbol{y}^{\top}\boldsymbol{x})^{n-1}\right)}_{\frac{f(\boldsymbol{y}^{\top}\boldsymbol{x})-f(0)}{\boldsymbol{y}^{\top}\boldsymbol{x}}}\boldsymbol{y}^{\top}\end{equation}
+
+    <p>Note that $\boldsymbol{y}^{\top}\boldsymbol{x}$ is a scalar, so the key to the simplification is converting a matrix function into a scalar function. From this, we obtain:</p>
+
+    \begin{equation}e^{\eta_t \boldsymbol{A}_t} = \boldsymbol{I} - \frac{1 - e^{-\eta_t\Vert\boldsymbol{k}_t\Vert^2}}{\Vert\boldsymbol{k}_t\Vert^2}\boldsymbol{k}_t\boldsymbol{k}_t^{\top},\qquad \boldsymbol{B}_t \boldsymbol{A}_t^{-1}(e^{\eta_t \boldsymbol{A}_t} - \boldsymbol{I})=\frac{1 - e^{-\eta_t\Vert\boldsymbol{k}_t\Vert^2}}{\Vert\boldsymbol{k}_t\Vert^2}\boldsymbol{v}_t \boldsymbol{k}_t^{\top}\end{equation}
+
+    <h2>Personal Thoughts</h2>
+    <p>With this, our introduction to EFLA concludes. The original paper includes experimental content showing that EFLA possesses certain advantages over the original DeltaNet. However, as seen from equation \eqref{eq:ode-deltanet}, EFLA still takes the form of DeltaNet, so one shouldn't expect "revolutionary" leaps. Why is EFLA generally slightly better? While DeltaNet discards the magnitude of $\boldsymbol{K}$ via L2 Normalize, the term $\boldsymbol{v}_t \boldsymbol{k}_t^\top$ in equation \eqref{eq:ode-deltanet} depends on $\Vert\boldsymbol{k}_t\Vert$, giving EFLA an extra degree of freedom and a higher theoretical upper bound.</p>
+
+    <p>Furthermore, the approach of using exact solutions of differential equations to construct recursions is not new. We mentioned it when introducing SSMs in <a href="translation_10137.html">"Revisiting SSM (II): Legacy Issues of HiPPO"</a>. The key result in equation \eqref{eq:S-t-eta} already appeared in <a href="https://papers.cool/arxiv/2008.07669">HiPPO</a>. EFLA essentially carries out the expanded calculations for the specific case of DeltaNet to obtain a simplified, usable result.</p>
+
+    <p>A more profound question is: What are the benefits of using differential equations as a starting point? It is easy to see that the eigenvalues of the transition matrix in equation \eqref{eq:ode-deltanet} are automatically in $(0, 1]$. In other words, the recursive form derived from solving differential equation \eqref{eq:ode} naturally has better stability. Since differential equations come with continuity constraints and the matrix $-\boldsymbol{k}_t\boldsymbol{k}_t^\top$ is negative semi-definite, according to relevant differential equation theories, the solution is stable.</p>
+
+    <p>A classic example in mathematical modeling is the Logistic equation $dx/dt = \alpha x - \beta x^2$. Its solution is simple—the Logistic function. However, the corresponding difference equation $x_{t+1} - x_t = \alpha x_t - \beta x_t^2$ can exhibit chaotic behavior (extreme sensitivity to initial values) under certain settings. Thus, starting from a differential equation can automatically circumvent some anomalous behaviors.</p>
+
+    <h2>Summary</h2>
+    <p>This article discussed the L2 Normalize in DeltaNet and introduced the idea of reparameterizing DeltaNet starting from differential equations. This can also be viewed as an interpretation of the L2 Normalize operation on $\boldsymbol{K}$ in DeltaNet.</p>
+
+    </article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/11486" style="color: #005fcc;">https://kexue.fm/archives/11486</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>
