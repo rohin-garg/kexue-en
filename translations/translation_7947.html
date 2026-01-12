@@ -157,14 +157,14 @@ window.MathJax = {
 
     <p>This article primarily addresses the former cause. Assuming one has sufficient VRAM, how can we simply modify a BERT model with an existing maximum length of 512 so that it can directly process longer texts? The main idea is to hierarchically decompose the pre-trained absolute position encodings, allowing them to extend to longer positions.</p>
 
-    <h2 id="position-encoding">Position Encoding</h2>
+    <h2>Position Encoding</h2>
     <p>BERT uses learned absolute position encodings. This encoding method is simple and effective, but since each position vector is learned by the model itself, we cannot infer encoding vectors for other positions, hence the length limit.</p>
 
     <p>A mainstream approach to solving this is switching to relative position encoding. This is a viable method; for instance, Huawei's <a href="https://github.com/huawei-noah/Pretrained-Language-Model/tree/master/NEZHA-TensorFlow">NEZHA</a> model is a BERT variant that uses relative position encoding. Relative position encoding generally truncates position differences to keep them within a finite range, thus it is not restricted by sequence length. However, relative position encoding is not a perfect solution. First, methods like NEZHA's increase computational overhead (unlike T5's approach). Second, <a href="translation_7546.html">Linear Attention</a> cannot use relative position encoding, making it less universal.</p>
 
     <p>Readers might recall that <a href="translation_4765.html">"Attention is All You Need"</a> proposed a Sinusoidal absolute position encoding using $\sin$ and $\cos$. Wouldn't using that directly remove the length limit? Theoretically, yes, but the problem is that there aren't many open-sourced models using Sinusoidal position encoding. Do we really have to train a model from scratch? That is clearly unrealistic.</p>
 
-    <h2 id="hierarchical-decomposition">Hierarchical Decomposition</h2>
+    <h2>Hierarchical Decomposition</h2>
     <p>Therefore, under limited resources, the most ideal solution is to find a way to extend the pre-trained BERT position encodings without retraining the model. Below, I present a hierarchical decomposition scheme I devised.</p>
 
     <p align="center">
@@ -185,14 +185,14 @@ window.MathJax = {
 
     <p>In this way, our parameters are still $\boldsymbol{p}_1, \boldsymbol{p}_2, \cdots, \boldsymbol{p}_n$, but we can represent $n^2$ position encodings, and the first $n$ position encodings are compatible with the original model.</p>
 
-    <h2 id="analysis">Self-Analysis</h2>
+    <h2>Self-Analysis</h2>
     <p>In fact, after understanding it, readers might feel that this decomposition has little technical depth and is just the result of a "brainstorm"? That is indeed true.</p>
 
     <p>As for why this might be effective? First, due to the strong interpretability of hierarchical decomposition, we can estimate that our results have certain extrapolation capabilities; at the very least, they provide a good initialization for positions greater than $n$. Second, the experiment in the next section validates it, as experimentation is the only standard for proving a trick effective. Essentially, what we have done is simple: we've constructed a position encoding extension scheme that is compatible with the first $n$ encodings and can extrapolate to more positions, leaving the rest for the model to adapt to. There are infinite ways to do this; I chose this one because I found its explainability relatively strong, providing one possibility—not necessarily the optimal or guaranteed solution.</p>
 
     <p>Additionally, let's discuss the selection of $\alpha$. My default choice is $\alpha=0.4$. Theoretically, any $\alpha\in (0, 1)$ where $\alpha\neq 0.5$ holds, but from a practical standpoint, it is recommended to choose a value $0 < \alpha < 0.5$. Because we rarely encounter sequences tens of thousands of tokens long, being able to handle 2048 is already quite "luxurious" for personal GPUs. If $n=512$, this means $i = 1, 2, 3, 4$ and $j=1,2,\cdots,512$. If $\alpha > 0.5$, then according to equation $\eqref{eq:fenjie}$, $\alpha \boldsymbol{u}_i$ would dominate, making the differences between position encodings smaller (since there are only 4 candidates for $i$). This makes it harder for the model to distinguish positions and slows down convergence. If $\alpha < 0.5$, then $(1-\alpha) \boldsymbol{u}_j$ dominates, providing better position discrimination (512 candidates for $j$), which helps the model converge faster.</p>
 
-    <h2 id="practice-test">Practical Testing</h2>
+    <h2>Practical Testing</h2>
     <p>In summary, we can extend BERT's absolute position encoding with almost zero cost, allowing its maximum length to reach $n^2=512^2=262,144 \approx 260,000$ tokens! This should definitely meet our needs. This modification has been integrated into <a href="https://github.com/bojone/bert4keras">bert4keras >= 0.9.5</a>. Users only need to pass the parameter <code>hierarchical_position=True</code> in <code>build_transformer_model</code> to enable it. <code>True</code> can also be replaced with a floating-point number between 0 and 1, representing the value of $\alpha$ mentioned above (defaults to 0.4 when `True`).</p>
 
     <p>Regarding effectiveness, I first tested the MLM task. I directly set the maximum length to 1536 and loaded the pre-trained RoBERTa weights. I found that the MLM accuracy was around 38% (if truncated to 512, it's about 55%). After fine-tuning, the accuracy quickly recovered (around 3000 steps) to over 55%. This result indicates that position encodings extended this way are effective for the MLM task. If you have spare computing power, it's better to continue pre-training on MLM for a while before doing other tasks. At the same time, we experimented with different $\alpha$ values, showing that $\alpha=0.4$ is indeed a good default value, as shown in the figure below.</p>
@@ -219,7 +219,7 @@ window.MathJax = {
 
     <p>From this table, we can see that when the sequence length doubles, the VRAM consumption also doubles (slightly more); it doesn't seem to follow the legendary $\mathcal{O}(n^2)$ complexity. In fact, $\mathcal{O}(n^2)$ is relative to "long enough" sequences—meaning thousands or tens of thousands. For sequences not exceeding 2048, BERT's complexity is still nearly linear. Therefore, in these scenarios, using "BERT + extended position encoding" is much more convenient than designs like "Split sentences + BERT + LSTM".</p>
 
-    <h2 id="summary">Summary</h2>
+    <h2>Summary</h2>
     <p>In this article, I shared a hierarchical decomposition scheme for extending position encodings. Through this extension, BERT can theoretically handle text lengths up to 260,000. As long as VRAM is sufficient, there is no long text that BERT cannot handle.</p>
 
     <p>So, are you ready with your VRAM?</p>

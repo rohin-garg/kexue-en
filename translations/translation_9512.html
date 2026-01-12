@@ -159,7 +159,7 @@ window.MathJax = {
 
     <p>In addition, Tiger incorporates some of our hyperparameter tuning experiences and proposes a simple strategy to prevent models from encountering NaN (especially under mixed-precision training). Our preliminary experiments show that these modifications in Tiger allow for more developer-friendly training of models (especially large models).</p>
 
-    <h2 id="基本形式">Basic Form</h2>
+    <h2>Basic Form</h2>
     <p>The update rule for Tiger is:</p>
 
     \begin{equation}
@@ -214,13 +214,13 @@ window.MathJax = {
 
     <p>Clearly, Tiger is the most minimalist among the three.</p>
 
-    <h2 id="超参设置">Hyperparameter Settings</h2>
+    <h2>Hyperparameter Settings</h2>
     <p>Although Tiger is significantly simplified, there are still several hyperparameters to set: the moving average rate $\beta$, the learning rate $\eta_t$, and the weight decay rate $\lambda_t$. Let us discuss the choices for these parameters separately.</p>
 
-    <h3 id="滑动率">Moving Average Rate</h3>
+    <h3>Moving Average Rate</h3>
     <p>The decay rate $\beta$ for the moving average is relatively straightforward. We know that in its basic form, Tiger is equivalent to Lion when $\beta_1 = \beta_2 = \beta$. An intuitive guess is that Tiger should take $\beta = \frac{1}{2}(\beta_1 + \beta_2)$. In the original Lion paper, for CV tasks, $\beta_1=0.9, \beta_2=0.99$, so we suggest $\beta = 0.945$ for CV tasks. For NLP tasks, the original values are $\beta_1=0.95, \beta_2=0.98$, so we suggest $\beta = 0.965$ for NLP tasks.</p>
 
-    <h3 id="学习率">Learning Rate</h3>
+    <h3>Learning Rate</h3>
     <p>For the learning rate, Tiger draws inspiration from works like <a href="translation_9344.html">Amos</a> and <a href="https://kexue.fm/archives/7094#层自适应">LAMB</a>, setting the learning rate based on two conditions. The first includes bias terms of linear layers and beta/gamma parameters of Normalization. These parameters are characterized by element-wise operations, and we suggest taking the learning rate as half of the global relative learning rate $\alpha_t$. The second mainly includes the kernel matrices of linear layers. These parameters operate via matrix multiplication with vectors; we suggest setting the learning rate to the global relative learning rate $\alpha_t$ multiplied by the parameter's own $\text{RMS}$ (Root Mean Square):</p>
 
     \begin{equation}
@@ -238,7 +238,7 @@ window.MathJax = {
 
     <p>In other words, the $\alpha_t$ we tune on a base version of the model can essentially be applied to the large version without modification. Note that $\alpha_t$ has a subscript $t$, as it includes the entire learning rate schedule, including warmup and decay strategies. My experience is to set $\max(\alpha_t) \in [0.001, 0.002]$. As for how to warmup and decay, that is something users should set according to their specific tasks. The Tiger implementation I provide includes a built-in piecewise linear learning rate strategy, which theoretically can simulate any $\alpha_t$.</p>
 
-    <h3 id="衰减率">Weight Decay Rate</h3>
+    <h3>Weight Decay Rate</h3>
     <p>Finally, regarding the weight decay rate $\lambda_t$, the Lion paper provides some reference settings on its last page. Generally, $\lambda_t$ is set as a constant; I commonly use 0.01. Notably, it is not recommended to apply weight decay to the bias, beta, and gamma parameters mentioned earlier; or if it must be done, $\lambda_t$ should be at least an order of magnitude lower. From a prior distribution perspective, weight decay corresponds to a Gaussian prior on the parameters, where $\lambda_t$ is inversely proportional to the parameter variance. Clearly, the variance of bias, beta, and gamma is larger than that of kernel matrices, so their $\lambda_t$ should be smaller.</p>
 
     \begin{equation}
@@ -248,7 +248,7 @@ window.MathJax = {
     \end{aligned}\right.
     \end{equation}
 
-    <h2 id="梯度累积">Gradient Accumulation</h2>
+    <h2>Gradient Accumulation</h2>
     <p>For many readers with limited computing power, using gradient accumulation to increase the batch size is an unavoidable step when training large models. Standard gradient accumulation requires an additional set of parameters to buffer historical gradients. This means that under gradient accumulation, Adam adds 3 sets of parameters, Lion adds 2 sets, and even <a href="translation_7302.html">AdaFactor</a> (without momentum) has 1.x sets (though AdaFactor converges much slower without momentum, so for speed, adding momentum makes it 2.x sets).</p>
 
     <p>For Tiger, the update amount only uses the momentum and the original parameters. According to <a href="translation_8634.html">"Hidden Gradient Accumulation in Momentum: Better Results with Fewer Updates?"</a>, we can integrate gradient accumulation into Tiger via the following modification:</p>
@@ -269,12 +269,12 @@ window.MathJax = {
 
     <p>It should be noted that although Lion and Tiger are very similar, Lion cannot achieve this because when $\beta_1 \neq \beta_2$, Lion’s update requires both momentum and the current batch gradient. These two quantities need to be buffered with different parameters. Tiger's update only uses momentum, thus satisfying this condition. Similarly, the SGDM optimizer can also achieve this, but it lacks the $\text{sign}$ operation, which means its adaptive capability is not good enough, and its performance on models like Transformer is usually unsatisfactory (refer to <a href="https://papers.cool/arxiv/1912.03194">"Why are Adaptive Methods Good for Attention Models?"</a>).</p>
 
-    <h2 id="全半精度">Full Half-Precision</h2>
+    <h2>Full Half-Precision</h2>
     <p>For large models, mixed-precision training is another commonly used "tool" (refer to <a href="translation_9059.html">"Using Mixed Precision and XLA to Accelerate Training in bert4keras"</a>). Mixed precision, simply put, uses FP16 for the model's computation part while using FP32 for the storage and update of model parameters. The reason parameter updates use FP32 is the concern that the update magnitude during the process may be too small, underflowing the representation range of FP16 (roughly $6 \times 10^{-8} \sim 65504$), leading to some parameters not updating for a long time, causing slow progress or failure in model training.</p>
 
     <p>However, Tiger (and Lion as well) applies the $\text{sign}$ operation to the update magnitude, which theoretically allows us to use half-precision for everything! The analysis is not difficult. First, by appropriately scaling the Loss, we can ensure the gradient $\boldsymbol{g}_t$ does not overflow the FP16 range. Momentum $\boldsymbol{m}_t$ is just a moving average of gradients; if the gradient overflows, it won't overflow either. $\text{sign}(\boldsymbol{m}_t)$ can only be $\pm 1$, which definitely won't overflow. Thereafter, we only need to ensure the learning rate is not smaller than $6 \times 10^{-8}$, and the update magnitude will not underflow. In practice, we would not tune the learning rate to be that small. Therefore, Tiger's entire update process stays within the FP16 representation range, so theoretically we can train directly in full FP16 without worrying about underflow/overflow updates.</p>
 
-    <h2 id="防止NaN">Preventing NaN</h2>
+    <h2>Preventing NaN</h2>
     <p>However, I found that for the same configuration, training might be normal in FP32, but switch to mixed-precision or half-precision and training occasionally fails. Specifically, the loss first decreases, then rises, and finally reaches NaN, a phenomenon we discussed in <a href="translation_9059.html">"Using Mixed Precision and XLA to Accelerate Training in bert4keras."</a> Although there are directions for troubleshooting and improvement (such as adjusting epsilon, infinity values, loss scaling, etc.), sometimes even with all checks done, this still happens.</p>
 
     <p>After debugging, I found that when this occurs, it is mainly because the gradient becomes NaN for certain batches, while the model's parameters and forward calculations are still normal. So, I thought of a simple counterstrategy: when a gradient becomes NaN, skip this update step and perform a slight contraction of the parameters, as follows:</p>
@@ -290,7 +290,7 @@ window.MathJax = {
 
     <p>Of course, this trick is generally used in scenarios where FP32 training is normal under the same configuration, and checks for epsilon and infinity in mixed-precision have already been done—it is a last resort. If the model's hyperparameters themselves are problematic (e.g., the learning rate is too high) such that even FP32 results in NaN, then do not expect this trick to solve the problem. Additionally, interested readers can try to improve this trick, such as adding a bit of noise after contraction to increase parameter diversity.</p>
 
-    <h2 id="实验结果">Experimental Results</h2>
+    <h2>Experimental Results</h2>
     <p>Disregarding the VRAM optimization provided by gradient accumulation, Tiger is a special case of Lion. One can predict that Tiger's best performance will definitely not exceed Lion's best performance. So, is the performance drop within an acceptable range? Synthesizing multiple experimental results so far, the temporary conclusion I have reached is:</p>
 
     $$\begin{aligned}
@@ -329,7 +329,7 @@ window.MathJax = {
 
     <p>As can be seen, Tiger can indeed achieve better performance than LAMB.</p>
 
-    <h2 id="未来工作">Future Work</h2>
+    <h2>Future Work</h2>
     <p>Is there still room for improvement in Tiger? Definitely. There are many ideas, but I haven't had time to verify them one by one; those interested can help carry them forward.</p>
 
     <p>In <a href="translation_9473.html">"Google's Newly Discovered Lion Optimizer: A 'Training Lion' that Achieves Both Efficiency and Effectiveness"</a>, my evaluation of the $\text{sign}$ operation was:</p>
@@ -350,7 +350,7 @@ window.MathJax = {
 
     <p>More divergently, since we sometimes use non-monotonic schedules for learning rates (like cosine annealing with restarts), could we also use a non-monotonic one for $\gamma_t$ (equivalent to repeatedly switching between Tiger and SGDM)? These ideas await verification.</p>
 
-    <h2 id="文章小结">Summary</h2>
+    <h2>Summary</h2>
     <p>In this article, we proposed a new optimizer named Tiger (<strong>Tig</strong>ht-fisted Optimiz<strong>er</strong>), which simplifies Lion and incorporates some of our hyperparameter experiences. Particularly in scenarios requiring gradient accumulation, Tiger can reach the theoretical optimal (stingy) solution for memory usage!</p>
 
     <p><i><strong>Translated from:</strong> <a href="https://kexue.fm/archives/9512">https://kexue.fm/archives/9512</a></i></p>

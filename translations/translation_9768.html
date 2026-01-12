@@ -159,7 +159,7 @@ window.MathJax = {
 
     <p>So the question arises: how to change deterministic tokenization into stochastic tokenization? BytePiece is based on the Unigram model, which uses the Viterbi algorithm to find the tokenization scheme with the maximum probability. Since there are probabilities involved, can we naturally derive a stochastic sampling method? This article discusses this issue and shares my own solution.</p>
 
-    <h2>Key Analysis <a id="analysis" href="#analysis">#</a></h2>
+    <h2>Key Analysis</h2>
 
     <p>At present, Unigram tokenization directly outputs the segmentation scheme with the maximum probability, which is typically a deterministic output. Specifically, suppose $\boldsymbol{w}=(w_1,w_2,\cdots,w_k)$ represents a segmentation scheme, and the corresponding score is $P(\boldsymbol{w})=p(w_1)p(w_2)\cdots p(w_k)$. If $\Omega(S)$ represents the set of all possible segmentation schemes for sentence $S$, then the tokenization algorithm can be described as:</p>
     
@@ -169,7 +169,7 @@ window.MathJax = {
 
     <p>I initially envisioned designing a recursive sampling process mimicking autoregressive language models. However, the most difficult part here is how to maintain the ranking of original candidate segmentation schemes as much as possible, or at least ensure that the maximum probability remains unchanged—meaning the maximum probability path $\boldsymbol{w}^*$ from Viterbi decoding should correspond to the most probable sampling result of the designed recursive sampling algorithm. Since all segmentation schemes $\Omega(S)$ form a Directed Acyclic Graph (DAG), I initially thought a random walk on the DAG might be a viable solution. But upon further thought, I realized it is difficult to design appropriate transition probabilities to ensure the maximum probability path remains unchanged (because different edges from the same starting point are not equally weighted and cannot be sampled simply by their frequency).</p>
 
-    <h2>Existing Solutions <a id="existing-solutions" href="#existing-solutions">#</a></h2>
+    <h2>Existing Solutions</h2>
 
     <p>Since I didn't have any new ideas for a while, I decided to check the "reference answer"—the original Subword Regularization paper: <a href="https://papers.cool/arxiv/1804.10959">"Subword Regularization: Improving Neural Network Translation Models with Multiple Subword Candidates"</a>.</p>
 
@@ -181,7 +181,7 @@ window.MathJax = {
 
     <p>The problem is that "simple and direct" does not necessarily mean "efficient." Although the complexity of searching for the top-$n$ optimal segmentation schemes is also linear (interested readers can look up N-best Viterbi), it is significantly larger than finding only the top-1 Viterbi Decoding (theoretically $n$ times the complexity). Consequently, once stochastic sampling is enabled, it becomes much slower than deterministic tokenization, so this was not my ideal sampling method.</p>
 
-    <h2>My Approach <a id="personal-思路" href="#personal-思路">#</a></h2>
+    <h2>My Approach</h2>
 
     <p>My thoughts hit a dead end again. In my frustration, I decided to re-evaluate the goals: we want to find a stochastic sampling algorithm with complexity similar to Viterbi Decoding. As such, Viterbi Decoding itself should be a good starting point. So, I looked at the tokenization code again. <a href="https://github.com/bojone/bytepiece/blob/b65716b76938b3ac4124661a3367fc1c270373fa/bytepiece/faster.pyx">The tokenization function at that time</a> looked like this:</p>
 
@@ -217,7 +217,7 @@ window.MathJax = {
 
     <p>In this way, based on Viterbi decoding, we have obtained a very natural and lightweight stochastic sampling algorithm, which I call "Viterbi Sampling." Implementing it only requires replacing the <code>if score > routes[e][0]:</code> criterion with a version containing a random number. Due to the monotonicity of the Sigmoid function, when $s_i > s_{i-1}$, it naturally assigns a higher probability to the new scheme. Thus, it is clear that the original maximum probability segmentation under Viterbi Sampling is also the most probable result. Furthermore, as $s_i - s_{i-1}$ increases, $\sigma(\alpha(s_i - s_{i-1}))$ also increases, which means schemes that originally had higher scores have a higher probability of being sampled. This maintains the ranking of segmentation schemes to a certain extent (although it hasn't been proven to be strictly order-preserving, from an application standpoint, approximate order-preservation is sufficient).</p>
 
-    <h2>Simple Test <a id="test" href="#test">#</a></h2>
+    <h2>Simple Test</h2>
 
     <p>Starting from version 0.4.0, Viterbi Sampling is built into BytePiece's tokenization function. You only need to add an <code>alpha</code> parameter greater than 0 when using <code>tokenizer.tokenize</code> or <code>tokenizer.encode</code> to get randomized results:</p>
 
@@ -252,7 +252,7 @@ for i in range(5):
 
     <p>As can be seen, after Subword Regularization (the "SP-Unigram" row) is enabled, the tokenization speed is less than 1/4 of the original, which indicates that the sampling algorithm for Subword Regularization is quite inefficient. In contrast, the Viterbi Sampling proposed in this article only drops by about 30%. The efficiency is clearly higher; the decrease is due to the generation of random numbers and the computation of the Sigmoid function. If these two parts can be further optimized, the speed could be increased even further. As for the BPE model, its stochastic tokenization is called <a href="https://papers.cool/arxiv/1910.13267">BPE Dropout</a>, which is a method specific to the BPE model; interested readers can explore it on their own, and it won't be introduced here.</p>
 
-    <h2>Summary <a id="summary" href="#summary">#</a></h2>
+    <h2>Summary</h2>
 
     <p>This article primarily explores strategies for converting deterministic tokenization in Unigram models into stochastic tokenization. Although an existing method called "Subword Regularization" achieves this goal, its efficiency is relatively low. To this end, I have proposed a more efficient sampling algorithm, Viterbi Sampling, which only requires simple modifications to the deterministic Viterbi Decoding, thereby largely maintaining the original efficiency. Experiments show that the new algorithm's sampling speed significantly exceeds Subword Regularization. The corresponding implementation is already built into the latest version of BytePiece.</p>
 </article>

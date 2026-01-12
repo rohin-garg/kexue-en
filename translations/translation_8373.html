@@ -164,20 +164,20 @@ window.MathJax = {
         <figcaption>GlobalPointer multi-head recognition of nested entities diagram</figcaption>
     </figure>
 
-    <h2 id="GlobalPointer">GlobalPointer</h2>
+    <h2>GlobalPointer</h2>
     <p>Conventional Pointer Network designs for entity recognition or reading comprehension usually use two modules to identify the start and end of an entity separately, which causes inconsistency between training and prediction. GlobalPointer is designed specifically to address this inconsistency. It treats the head and tail as a unified whole for discrimination, thus having a more "global view" (more Global).</p>
 
-    <h3 id="基本思路">Basic Idea</h3>
+    <h3>Basic Idea</h3>
     <p>Specifically, suppose the input text sequence length is $n$. For simplicity, assume there is only one type of entity to be recognized, and assume each entity is a continuous segment of the sequence with no length limit, and they can be nested (overlapping entities). How many "candidate entities" are there in such a sequence? It is not difficult to deduce that the answer is $n(n+1)/2$, which is the number of all possible continuous subsequences. Our task is to pick the true entities from these $n(n+1)/2$ candidates, which is essentially a "k-out-of-$n(n+1)/2$" multi-label classification problem. If there are $m$ entity types, we carry out $m$ such multi-label classification problems. This is the basic idea of GlobalPointer: recognizing entities as the basic unit, as shown in the image at the beginning of this article.</p>
 
     <p>Some readers might ask: Isn't the complexity of this design $\mathcal{O}(n^2)$? Won't it be very slow? In the era of RNNs/CNNs, it might have been perceived as slow. But now, in the era of Transformers, every layer of a Transformer already has $\mathcal{O}(n^2)$ complexity. Adding one layer of GlobalPointer or removing one doesn't make much difference. Crucially, $\mathcal{O}(n^2)$ is only the spatial complexity. If parallel performance is good, the time complexity can even drop to $\mathcal{O}(1)$, so there is no noticeable delay.</p>
 
-    <h3 id="数学形式">Mathematical Form</h3>
+    <h3>Mathematical Form</h3>
     <p>Let the input $t$ of length $n$ be encoded into a vector sequence $[\boldsymbol{h}_1,\boldsymbol{h}_2,\cdots,\boldsymbol{h}_n]$. Through transformations $\boldsymbol{q}_{i,\alpha}=\boldsymbol{W}_{q,\alpha}\boldsymbol{h}_i+\boldsymbol{b}_{q,\alpha}$ and $\boldsymbol{k}_{i,\alpha}=\boldsymbol{W}_{k,\alpha}\boldsymbol{h}_i+\boldsymbol{b}_{k,\alpha}$, we obtain vector sequences $[\boldsymbol{q}_{1,\alpha},\boldsymbol{q}_{2,\alpha},\cdots,\boldsymbol{q}_{n,\alpha}]$ and $[\boldsymbol{k}_{1,\alpha},\boldsymbol{k}_{2,\alpha},\cdots,\boldsymbol{k}_{n,\alpha}]$, which are used to identify entities of type $\alpha$. We can then define:
     \begin{equation}s_{\alpha}(i,j) = \boldsymbol{q}_{i,\alpha}^{\top}\boldsymbol{k}_{j,\alpha}\label{eq:s}\end{equation}
     as the score for the continuous segment from $i$ to $j$ being an entity of type $\alpha$. That is, the inner product of $\boldsymbol{q}_{i,\alpha}$ and $\boldsymbol{k}_{j,\alpha}$ is used as the logit for the segment $t_{[i:j]}$ being type $\alpha$. Under this design, GlobalPointer is actually a simplified version of Multi-Head Attention, where each entity type corresponds to one head, omitting calculations related to $\boldsymbol{V}$.</p>
 
-    <h3 id="相对位置">Relative Position</h3>
+    <h3>Relative Position</h3>
     <p>Theoretically, the design in Eq. $\eqref{eq:s}$ is sufficient. However, in practice, when training data is limited, its performance is often subpar because it does not explicitly contain relative position information. In the experiments later, we will see that the presence or absence of relative position information can make a difference of over 30 percentage points!</p>
 
     <p>For example, if we want to identify place names in weather forecast text like "Beijing: 21 degrees; Shanghai: 22 degrees; Hangzhou: 23 degrees...", there are many entities to identify. Without relative position information, GlobalPointer is not very sensitive to the length and span of entities. Therefore, it easily predicts any combination of a start from one entity and an end from another (e.g., predicting "Beijing: 21 degrees; Shanghai" as an entity). Conversely, with relative position information, GlobalPointer becomes sensitive to entity spans and can better distinguish true entities.</p>
@@ -188,10 +188,10 @@ window.MathJax = {
     \begin{equation}s_{\alpha}(i,j) = (\boldsymbol{\mathcal{R}}_i\boldsymbol{q}_{i,\alpha})^{\top}(\boldsymbol{\mathcal{R}}_j\boldsymbol{k}_{j,\alpha}) = \boldsymbol{q}_{i,\alpha}^{\top} \boldsymbol{\mathcal{R}}_i^{\top}\boldsymbol{\mathcal{R}}_j\boldsymbol{k}_{j,\alpha} = \boldsymbol{q}_{i,\alpha}^{\top} \boldsymbol{\mathcal{R}}_{j-i}\boldsymbol{k}_{j,\alpha}\end{equation}
     This explicitly injects relative position information into the score $s_{\alpha}(i,j)$.</p>
 
-    <h2 id="优化细节">Optimization Details</h2>
+    <h2>Optimization Details</h2>
     <p>In this section, we discuss details during the training of GlobalPointer, including the choice of loss function and the calculation and optimization of evaluation metrics. We can see that GlobalPointer's entity-based design offers many elegant conveniences.</p>
 
-    <h3 id="损失函数">Loss Function</h3>
+    <h3>Loss Function</h3>
     <p>So far, we have designed the score $s_{\alpha}(i,j)$. Identifying entities of a specific category $\alpha$ has become a multi-label classification problem with $n(n+1)/2$ classes. The next key is the design of the loss function. The most naive approach is to treat it as $n(n+1)/2$ binary classifications. However, in practice, $n$ is not small, $n(n+1)/2$ is even larger, while the number of entities in each sentence is small (usually in the single digits). Therefore, treating it as $n(n+1)/2$ binary classifications would lead to an extremely severe class imbalance problem.</p>
 
     <p>This is where our previous research <a href="translation_7359.html">"Generalizing Softmax+CrossEntropy to Multi-label Classification"</a> comes in handy. Simply put, this is a loss function for multi-label classification that is a generalization of single-target multi-class cross-entropy, particularly suitable for scenarios where the total number of categories is large and the number of target categories is small. Its form is not complex; for the GlobalPointer scenario, it is:
@@ -204,7 +204,7 @@ window.MathJax = {
     \end{aligned}\end{equation}
     In the decoding phase, all segments $t_{[i:j]}$ satisfying $s_{\alpha}(i,j) > 0$ are treated as entities of type $\alpha$. As can be seen, the decoding process is extremely simple, and under full parallelism, the decoding efficiency is $\mathcal{O}(1)$!</p>
 
-    <h3 id="评价指标">Evaluation Metrics</h3>
+    <h3>Evaluation Metrics</h3>
     <p>The common evaluation metric for NER is F1. Note that this is entity-level F1, not labeling-tag-level F1. Under traditional Pointer Network or CRF designs, calculating entity-level F1 during training is difficult. However, under the GlobalPointer design, calculating entity-level F1 or accuracy is very easy. For example, the F1 calculation is as follows:</p>
 
 <pre><code>def global_pointer_f1_score(y_true, y_pred):
@@ -216,14 +216,14 @@ window.MathJax = {
 
     <p>It is this simple primarily due to GlobalPointer being "Global". Both <code>y_true</code> and <code>y_pred</code> are already at the entity level. By checking <code>y_pred > 0</code>, we know which entities were extracted, and then by matching them, we can calculate various entity-level metrics, achieving consistency between training, evaluation, and prediction.</p>
 
-    <h3 id="优化F1值">Optimizing F1 Value</h3>
+    <h3>Optimizing F1 Value</h3>
     <p>Another benefit of GlobalPointer's "Global" nature is that if we use it for Machine Reading Comprehension (MRC), it can directly optimize the MRC F1 metric! The F1 for MRC differs from NER F1 as it is a fuzzy match score of the answer. Directly optimizing F1 may be more beneficial for improving the final score. Using GlobalPointer for MRC is equivalent to NER with only one entity type. We define:
     \begin{equation}p(i,j) = \frac{e^{s(i,j)}}{\sum\limits_{i \leq j} e^{s(i,j)}}\end{equation}
     With $p(i,j)$ defined, and following reinforcement learning ideas (refer to <a href="translation_7737.html">"Policy Gradient and Zero-order Optimization Reaching the Same Goal"</a>), optimizing F1 can be done using the following loss:
     \begin{equation}-\sum_{i\leq j} p(i,j) f_1(i,j) + \lambda \sum_{i\leq j}p(i,j)\log p(i,j)\end{equation}
     where $f_1(i,j)$ is the pre-calculated F1 similarity between the segment $t_{[i:j]}$ and the ground truth, and $\lambda$ is a hyperparameter. Calculating all $f_1(i,j)$ might be costly, but it is a one-time operation and can be optimized (e.g., setting to zero if the start and end are too far apart). Overall, it's within an acceptable range. If the goal is to improve the final F1 of MRC, this is a direct scheme to try. (I tried this on the Baidu LIC2021 MRC track this year and it indeed showed some effect.)</p>
 
-    <h2 id="实验结果">Experimental Results</h2>
+    <h2>Experimental Results</h2>
     <p>Now that everything is ready, let's start the experiments. The experiment code is organized as follows:</p>
 
     <blockquote>
@@ -259,7 +259,7 @@ window.MathJax = {
         </tbody>
     </table>
 
-    <h3 id="人民日报">People's Daily</h3>
+    <h3>People's Daily</h3>
     <p>First, we verify whether GlobalPointer can replace CRF in non-nested scenarios using the classic People's Daily corpus. The baseline is the BERT+CRF combination, compared against BERT+GlobalPointer. The results are as follows:</p>
 
     <table border="1" cellpadding="5" cellspacing="0" style="text-align: center; width: 100%;">
@@ -302,7 +302,7 @@ window.MathJax = {
 
     <p>From the table, it is also evident that in classic non-nested NER tasks, GlobalPointer matches CRF in performance and even slightly surpasses it in speed. It can be described as both fast and effective.</p>
 
-    <h3 id="CLUENER">CLUENER</h3>
+    <h3>CLUENER</h3>
     <p>Since the starting point for People's Daily is already quite high, the gap might not be obvious. To further test, we use the newer <a href="https://github.com/CLUEbenchmark/CLUENER2020">CLUENER</a> dataset, which is also non-nested. The current SOTA F1 is around 81%. The comparison between BERT+CRF and BERT+GlobalPointer is as follows:</p>
 
     <table border="1" cellpadding="5" cellspacing="0" style="text-align: center; width: 100%;">
@@ -338,7 +338,7 @@ window.MathJax = {
 
     <p>Regarding speed, since text lengths in this task are generally short, the speed increase for GlobalPointer is not very significant.</p>
 
-    <h3 id="CMeEE">CMeEE</h3>
+    <h3>CMeEE</h3>
     <p>Finally, we test a nested task: CMeEE. It was the "Chinese Medical Named Entity Recognition" competition on biendata last year and is Task 1 of this year's "Chinese Medical Information Processing Challenge (CBLUE)". It is essentially medical NER with nested entities. Again, comparing CRF and GlobalPointer:</p>
 
     <table border="1" cellpadding="5" cellspacing="0" style="text-align: center; width: 100%;">
@@ -374,10 +374,10 @@ window.MathJax = {
 
     <p>Of course, some readers might complain: Using a non-nested CRF for nested NER makes the comparison with GlobalPointer unfair. True, to some extent. But it's not a major issue; on one hand, the F1 for CMeEE is still relatively low, and nested entities are not that numerous. Even ignoring the nested parts and treating them as non-nested wouldn't have a massive impact. On the other hand, for nested NER, I haven't found a simple and clear design that could easily serve as a baseline, so I ran CRF for a benchmark. Readers are welcome to report results from other designs.</p>
 
-    <h2 id="思考拓展">Reflections and Extensions</h2>
+    <h2>Reflections and Extensions</h2>
     <p>In this section, we further compare CRF and GlobalPointer theoretically and introduce some works related to GlobalPointer to help readers better understand its positioning.</p>
 
-    <h3 id="相比CRF">Compared to CRF</h3>
+    <h3>Compared to CRF</h3>
     <p>CRF (Conditional Random Field) is a classic design for sequence labeling. Since most NER can be transformed into sequence labeling, CRF is a classic method for NER. I have written articles like <a href="translation_5542.html">"A Concise Introduction to Conditional Random Field CRF (with Pure Keras Implementation)"</a> and <a href="translation_7196.html">"Your CRF Layer's Learning Rate Might not be Big Enough"</a>. In previous introductions, we noted that if the number of sequence labels is $k$, the difference between frame-wise softmax and CRF is:</p>
 
     <blockquote>
@@ -388,7 +388,7 @@ window.MathJax = {
 
     <p>Therefore, CRF has theoretical aspects that are not entirely reasonable. In contrast, GlobalPointer is more aligned with application and evaluation scenarios: it is entity-based and designed as a "multi-label classification" problem. Consequently, its loss function and evaluation metrics are at the entity granularity, granting reasonable scores even if only some entities are correct. Therefore, it is "within reason" that GlobalPointer can achieve better results than CRF even in non-nested NER scenarios.</p>
 
-    <h3 id="相关工作">Related Work</h3>
+    <h3>Related Work</h3>
     <p>If readers follow progress in entity recognition and information extraction, they might notice that GlobalPointer is very similar to <a href="https://papers.cool/arxiv/2010.13415">TPLinker</a>, a recent design for relation extraction. However, this idea of global normalization can be traced back even further.</p>
 
     <p>I first encountered this idea in the paper <a href="https://papers.cool/arxiv/1709.02828">《Globally Normalized Reader》</a> published by Baidu in 2017, which proposed a Global Normalization Reader (GNR) for MRC. It not only treats (start, end) as a whole but (sentence, start, end) as a whole (following a flow of selecting a sentence first, then start/end), resulting in many combinations. It used ideas from <a href="https://papers.cool/arxiv/1606.02960">《Sequence-to-Sequence Learning as Beam-Search Optimization》</a> to reduce computation.</p>
@@ -399,7 +399,7 @@ window.MathJax = {
 
     <p>Thus, GlobalPointer is a culmination of accumulation over the last two years—a bit "coincidental" but also "water reaching its course." As for TPLinker, it has no direct connection to the origin of GlobalPointer. Formally, GlobalPointer is indeed similar to TPLinker. In fact, TPLinker can be traced back further to <a href="https://www.sciencedirect.com/science/article/abs/pii/S095741741830455X">《Joint entity recognition and relation extraction as a multi-head selection problem》</a>, but those works mainly applied Global ideas to relation extraction and did not optimize specifically for NER.</p>
 
-    <h3 id="加性乘性">Additive vs Multiplicative</h3>
+    <h3>Additive vs Multiplicative</h3>
     <p>In implementation, a major difference between TPLinker and GlobalPointer is that for Multi-Head, TPLinker uses additive Attention:
     \begin{equation}s_{\alpha}(i,j) = \boldsymbol{W}_{o,\alpha}\tanh\left(\boldsymbol{W}_{h,\alpha}[\boldsymbol{h}_{i},\boldsymbol{h}_{j}]+\boldsymbol{b}_{h,\alpha}\right)+\boldsymbol{b}_{o,\alpha}
     \end{equation}
@@ -407,7 +407,7 @@ window.MathJax = {
 
     <p>Therefore, I believe even if additive performance is slightly better, one should optimize based on the multiplicative approach, as additive efficiency is truly lacking. Additionally, papers like TPLinker did not report the importance of relative position information. Is relative position less important in additive Attention? This is currently unknown.</p>
 
-    <h2 id="本文小结">Conclusion</h2>
+    <h2>Conclusion</h2>
     <p>This article introduced GlobalPointer, a new design for NER based on the idea of global pointers. It integrates several of my previous research results to implement an "ideal design" for handling both nested and non-nested NER in a unified manner. Experimental results show that in non-nested scenarios, it achieves results comparable to CRF, and it also performs well in nested scenarios.</p>
 </article>
 <hr>

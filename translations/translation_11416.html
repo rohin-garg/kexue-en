@@ -174,7 +174,7 @@ window.MathJax = {
 
     <p>Nowadays, Muon has been built into training frameworks like <a href="https://docs.pytorch.org/docs/stable/generated/torch.optim.Muon.html">Torch</a> and <a href="https://keras.io/api/optimizers/muon/">Keras</a>, and even large-scale frameworks like <a href="https://github.com/NVIDIA/Megatron-LM/blob/dev/megatron/core/optimizer/muon.py">Megatron</a> are gradually starting to support it, meaning it has gained widespread industry recognition. However, for readers only familiar with Adam, how to quickly and effectively switch to Muon may still be a confusing matter. Therefore, this article attempts to provide a quick-start tutorial.</p>
 
-    <h2>Brief Introduction <a href="#Brief-Introduction">#</a></h2>
+    <h2>Brief Introduction</h2>
     <p>The formal proposer of Muon is <a href="https://x.com/kellerjordan0/status/1842300916864844014">Keller Jordan</a>, who currently works at OpenAI. As mentioned at the beginning, Muon was first published on Twitter, and even now, the author has only written a blog post <a href="https://kellerjordan.github.io/posts/muon/">"Muon: An optimizer for hidden layers in neural networks"</a> rather than a formal paper. The author's view is that "whether it is written as a paper has nothing to do with whether the optimizer is effective [<a href="https://x.com/kellerjordan0/status/1890178773586489716">original text</a>]".</p>
 
     <p>Muon is an optimizer specifically tailored for matrix parameters. There are other related works with similar characteristics, such as <a href="https://papers.cool/arxiv/1802.09568">Shampoo</a> and the earlier <a href="translation_10592.html">Stochastic Spectral Descent</a>, etc. Many works can more or less be associated with Muon, but none completely cover Muon, so in my view, Muon is a brand-new work.</p>
@@ -183,7 +183,7 @@ window.MathJax = {
 
     <p>Consistent with what Jeremy Bernstein, one of the authors of Muon, said in his blog <a href="https://jeremybernste.in/writing/deriving-muon">"Deriving Muon"</a>, the uniqueness of Muon for me lies in the fact that it can be derived from more fundamental optimization principles and is effective in practice. In contrast, while Adam is also very effective, it feels more like a heuristic solution.</p>
 
-    <h2>Four Versions <a href="#Four-Versions">#</a></h2>
+    <h2>Four Versions</h2>
     <p>This article does not intend to introduce the mathematical details of Muon, nor its implementation, but rather focuses on the technical details and precautions for switching from Adam to Muon. As stated, Muon is dedicated to matrix parameter optimization and uses a non-element-wise update rule, which can be confusing for new users.</p>
 
     <p>Furthermore, as far as I know, there are currently at least four slightly different versions of Muon, and this multi-version phenomenon contributes to the confusion. If users do not understand the details, they might achieve poor results due to incorrect hyperparameter tuning (especially the learning rate). Below, I will clarify these contents. First, for a matrix $\boldsymbol{W} \in \mathbb{R}^{d_{in} \times d_{out}}$, where $\boldsymbol{G}$ is its gradient, the four Muon variants are:</p>
@@ -200,7 +200,7 @@ window.MathJax = {
 
     <p>The only difference between the four versions is the scaling factor before $\msign$. The "KellerJordan Version" and "MuP Version" are largely similar, while the "Moonlight Version" is slightly more special. Keras only implements the "KellerJordan Version," while Torch implements both the "KellerJordan Version" and the "Moonlight Version." The Naive version is currently rare, and for me, I often use my own "MuP Version."</p>
 
-    <h2>Two Dimensions <a href="#Two-Dimensions">#</a></h2>
+    <h2>Two Dimensions</h2>
     <p>An important detail to note here is that the "KellerJordan Version" and "MuP Version" are sensitive to the order of $d_{in}, d_{out}$. The first task is to clarify the meaning of $d_{in}, d_{out}$; it is not the case that the first dimension of a matrix is always $d_{in}$ and the second is always $d_{out}$.</p>
 
     <p>The meanings of $d_{in}$ and $d_{out}$ are the input and output dimensions of the linear layer, respectively. Which is $d_{in}$ and which is $d_{out}$ depends on the specific implementation of the linear layer. For example, Keras's Dense layer implementation is $\boldsymbol{x}\boldsymbol{W}$, so the first dimension of the matrix $\boldsymbol{W}$ is $d_{in}$ and the second is $d_{out}$. However, Torch's Linear layer implements $\boldsymbol{x}\boldsymbol{W}^{\top}$, so the second dimension of the matrix $\boldsymbol{W}$ is $d_{in}$ and the first dimension is $d_{out}$.</p>
@@ -209,7 +209,7 @@ window.MathJax = {
 
     <p>If you have written your own model, you need to judge carefully based on your writing style. For instance, it's possible in Torch to mix built-in Linear layers with hand-written <code>x @ W</code>, so one cannot generalize whether it is <code>W.shape[0]/W.shape[1]</code> or <code>W.shape[1]/W.shape[0]</code>. Of course, if you find it too troublesome to figure these out, you can consider using the "Moonlight Version," as its scaling factor is symmetric with respect to $d_{in}$ and $d_{out}$.</p>
 
-    <h2>Hyperparameter Settings <a href="#Hyperparameter-Settings">#</a></h2>
+    <h2>Hyperparameter Settings</h2>
     <p>Once $d_{in}, d_{out}$ are clarified, the remaining questions are how to set the learning rate $\eta_t$ and the weight decay coefficient $\lambda$. The assumption here is that the user already has experience tuning Adam and has obtained good results, and wants to quickly migrate to Muon to experience it.</p>
 
     <p>Let's look at the "Moonlight Version" first. Its scaling factor was obtained by aligning with Adam's Update RMS. For more details, you can refer to <a href="translation_10739.html">"Muon Sequel: Why Do We Choose to Try Muon?"</a>. Regarding the "Magic Number" $0.2$, you can refer to <a href="translation_11267.html">"Why is Adam's Update RMS 0.2?"</a>. In simple terms, the "Moonlight Version" of Muon aligns with Adam's update magnitude, so the simplest approach when migrating from Adam is: <strong>change nothing</strong>, just use Adam's $\eta_t$ and $\lambda$.</p>
@@ -220,7 +220,7 @@ window.MathJax = {
 
     <p>Does this mean the "Moonlight Version" is easier to use? The "Moonlight Version" indeed has good practical results, but saying it's better is evaluating it from the perspective of Adam. The benefit of the "MuP Version" or "KellerJordan Version" is that the learning rate is transferable; that is, after tuning the learning rate on a small model, applying it directly to a large model often yields good results. You can refer to Jeremy Bernstein's blog <a href="https://jeremybernste.in/writing/deriving-muon">"Deriving Muon"</a> or my blog <a href="translation_10795.html">"Higher-order MuP: Simpler but Smarter Spectral Condition Scaling"</a> for more on this.</p>
 
-    <h2>Other Parameters <a href="#Other-Parameters">#</a></h2>
+    <h2>Other Parameters</h2>
     <p>If Muon only handles matrix parameters, what happens to the rest? For example, the Bias terms of linear layers and the gamma terms of RMSNorm are 1D parameters; or perhaps 3D and 4D array parameters in convolutional layers.</p>
 
     <p>First, let me correct this: Muon does not handle all matrix parameters; Muon only handles "<strong>matrix parameters of linear layers with dense inputs</strong>." If this sounds confusing, just remember that the matrix parameters for the Embedding layer and the final classification layer (including GPT's LM Head) cannot use Muon, otherwise, the results will be significantly worse. For these matrix parameters that cannot use Muon, as well as 1D, 3D, and higher-dimensional parameters, if you don't want to overthink it, just use Adam. Basically, all Muon implementations are hybrid with Adam, allowing users to choose Adam for certain layers.</p>
@@ -231,7 +231,7 @@ window.MathJax = {
 
     <p>Life is endless, and so is tinkering~</p>
 
-    <h2>Expected Results <a href="#Expected-Results">#</a></h2>
+    <h2>Expected Results</h2>
     <p>Finally, if the user correctly sets everything according to the instructions above and runs it, they can begin to pray to the goddess of luck.</p>
 
     <p>What kind of result should we expect? In most cases, if there are no anomalies like gradient explosions, Muon will be slightly better than Adam. Of course, it is not ruled out that in some cases Muon might be slightly worse, but in any case, the gap between them will not be very large. If one side performs much better than the other, you may need to reflect on whether there is an issue with the settings on either side.</p>

@@ -166,7 +166,7 @@ window.MathJax = {
 
 <p>According to my reading experience, almost no work has met all three criteria simultaneously. However, a few days ago, an arXiv paper titled <a href="https://papers.cool/arxiv/2505.13447">"Mean Flows for One-step Generative Modeling"</a> (referred to as "MeanFlow") appeared, which seems very promising. Next, we will use this as an opportunity to discuss related ideas and progress.</p>
 
-<h2>Existing Approaches <a href="https://kexue.fm/archives/10958#%E7%8E%B0%E6%9C%89%E6%80%9D%E8%B7%AF">#</a></h2>
+<h2>Existing Approaches</h2>
 
 <p>There have been many works on accelerating diffusion model generation, some of which have been briefly introduced in this blog before. In general, acceleration strategies can be categorized into three types.</p>
 
@@ -176,7 +176,7 @@ window.MathJax = {
 
 <p>Third, approaches based on Consistency Models (CM), including the CM we introduced in <a href="translation_10633.html">"Generative Diffusion Model Chat (28): Understanding Consistency Models Step by Step"</a>, its continuous version <a href="https://papers.cool/arxiv/2410.11081">sCM</a>, and <a href="https://papers.cool/arxiv/2310.02279">CTM</a>, etc. CM is a unique approach that allows for models with very small NFE to be trained from scratch or used for distillation. However, the objective of CM depends on EMA or stop_gradient operations, meaning it is coupled with optimizer dynamics, which often gives a vague and obscure feeling.</p>
 
-<h2>Instantaneous Velocity <a href="https://kexue.fm/archives/10958#%E7%9E%AC%E6%97%B6%E9%80%9F%E5%BA%A6">#</a></h2>
+<h2>Instantaneous Velocity</h2>
 
 <p>So far, diffusion models with the smallest NFE are essentially ODEs, as deterministic models are often easier to analyze and solve. This article also focuses only on ODE-type diffusion, using the framework of ReFlow introduced in <a href="translation_9497.html">"Generative Diffusion Model Chat (17): General Steps for Building ODEs (Part 2)"</a>, which is essentially consistent with <a href="https://papers.cool/arxiv/2210.02747">Flow Matching</a> but more intuitive.</p>
 
@@ -190,7 +190,7 @@ This is an extremely simple ODE, but it does not meet our requirements because $
 \begin{equation}\mathbb{E}_{t,\boldsymbol{x}_0,\boldsymbol{x}_1}\left[\Vert\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t) - (\boldsymbol{x}_1 - \boldsymbol{x}_0)\Vert^2\right]\label{eq:loss-reflow}\end{equation}
 This is the objective function of ReFlow. It is worth noting that: 1) ReFlow theoretically allows any interpolation method for $\boldsymbol{x}_0$ and $\boldsymbol{x}_1$; 2) Although intuitive, ReFlow is theoretically rigorous, and it can be proven that its optimal solution is indeed our desired ODE. For details, please refer to <a href="translation_9497.html">"Generative Diffusion Model Chat (17): General Steps for Building ODEs (Part 2)"</a> and the original paper.</p>
 
-<h2>Average Velocity <a href="https://kexue.fm/archives/10958#%E5%B9%B3%E5%9D%87%E9%80%9F%E5%BA%A6">#</a></h2>
+<h2>Average Velocity</h2>
 
 <p>However, an ODE is merely a pure mathematical form; actual solution requires discretization, such as the simplest Euler method:
 \begin{equation}\boldsymbol{x}_{t - \Delta t} = \boldsymbol{x}_t - \boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t) \Delta t\end{equation}
@@ -202,7 +202,7 @@ If we can model
 \begin{equation} \boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, r, t) \triangleq \frac{1}{t-r}\int_r^t \boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_{\tau},\tau) d\tau\end{equation}
 then we have $\boldsymbol{x}_0 = \boldsymbol{x}_1 - \boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_1, 0, 1)$. Theoretically, this allows us to precisely achieve one-step generation without resorting to approximate relationships. If $\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)$ is the instantaneous velocity at time $t$, then clearly $\boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, r, t)$ is the average velocity over the time interval $[r,t]$. In other words, to accelerate or even achieve one-step generation, our modeling target should be the average velocity rather than the instantaneous velocity of the ODE.</p>
 
-<h2>Identity Transformation <a href="https://kexue.fm/archives/10958#%E6%81%92%E7%AD%89%E5%8F%98%E6%8D%A2">#</a></h2>
+<h2>Identity Transformation</h2>
 
 <p>Of course, the shift from instantaneous to average velocity is not hard to conceive; the truly difficult part is how to construct a loss function for it. ReFlow only tells us how to build a loss function for instantaneous velocity; we know nothing about training the average velocity.</p>
 
@@ -217,7 +217,7 @@ This is the first identity relationship between $\boldsymbol{v}_{\boldsymbol{\th
 \begin{equation}\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t) = \lim_{r\to t}\frac{1}{t-r}\int_r^t \boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_{\tau},\tau) d\tau = \boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t, t)\label{eq:id2}\end{equation}
 Simply put, the average velocity over an infinitesimally small interval equals the instantaneous velocity.</p>
 
-<h2>The First Objective <a href="https://kexue.fm/archives/10958#%E7%AC%AC%E4%B8%80%E7%9B%AE%E6%A0%87">#</a></h2>
+<h2>The First Objective</h2>
 
 <p>Based on $d\boldsymbol{x}_t/dt = \boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)$ and identity $\eqref{eq:id2}$, we can replace $d\boldsymbol{x}_t/dt$ in identity $\eqref{eq:id1}$ with $\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)$ or $\boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t, t)$. The former is an implicit relationship, which we will discuss later; let's look at the latter first. We then have:</p>
 \begin{equation}\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t) = \boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, r, t) + (t-r)\left[\boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t, t)\cdot\frac{\partial}{\partial \boldsymbol{x}_t}\boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, r, t) + \frac{\partial}{\partial t}\boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, r, t)\right]\end{equation}
@@ -233,7 +233,7 @@ Simply put, the average velocity over an infinitesimally small interval equals t
 
 <p>These properties mean that no matter what optimization algorithm we use, as long as we can find the minimum of the above equation, it is our desired average velocity model — a generative model that theoretically enables one-step generation. In other words, it possesses the simplicity of training and theoretical guarantees of diffusion models, while achieving one-step generation like a GAN, without needing to pray to the gods that the model doesn't "lose its way" and collapse during training.</p>
 
-<h2>JVP Operation <a href="https://kexue.fm/archives/10958#JVP%E8%BF%90%E7%AE%97">#</a></h2>
+<h2>JVP Operation</h2>
 
 <p>However, for some readers, implementing objective $\eqref{eq:loss-1}$ might be slightly difficult because it involves the "Jacobian-Vector Product (JVP)," which is relatively uncommon for average users. Specifically, we can write the part inside the square brackets as:</p>
 \begin{equation}\underbrace{\left[\boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t, t),0,1\right] \\[10pt]}_{\text{Vector}}\cdot\underbrace{\left[\frac{\partial}{\partial \boldsymbol{x}_t}\boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, r, t), \frac{\partial}{\partial r}\boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, r, t), \frac{\partial}{\partial t}\boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, r, t)\right] \\[10pt]}_{\text{Jacobian Matrix}}\end{equation}
@@ -245,7 +245,7 @@ urt, durt = jax.jvp(u, (xt, r, t), (u(xt, t, t), r * 0, t * 0 + 1))
 
 <p>Where <code>urt</code> is $\boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, r, t)$, and <code>durt</code> is the corresponding JVP result. Torch usage is similar. After understanding the JVP operation, the implementation of objective $\eqref{eq:loss-1}$ has virtually no difficulty.</p>
 
-<h2>The Second Objective <a href="https://kexue.fm/archives/10958#%E7%AC%AC%E4%BA%8C%E7%9B%AE%E6%A0%87">#</a></h2>
+<h2>The Second Objective</h2>
 
 <p>If there is one disadvantage to objective function $\eqref{eq:loss-1}$, in my opinion, it is the relatively large computational cost. This is because it requires two different forward passes $\boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, r, t)$ and $\boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t, t)$, then a gradient calculation via JVP, and another gradient calculation when using gradient descent for optimization. So it essentially requires second-order gradients, similar to <a href="translation_4439.html">WGAN-GP</a>.</p>
 
@@ -255,7 +255,7 @@ urt, durt = jax.jvp(u, (xt, r, t), (u(xt, t, t), r * 0, t * 0 + 1))
 
 <p>Note that the stop_gradient here is purely for the purpose of reducing computation; the actual optimization direction is still towards minimizing the loss function value. This is different from CM-series models, especially sCM, where their loss functions are just equivalent losses with equivalent gradients and do not necessarily become smaller. In those models, stop_gradient is often mandatory; removing it would almost certainly lead to training collapse.</p>
 
-<h2>The Third Objective <a href="https://kexue.fm/archives/10958#%E7%AC%AC%E4%B8%89%E7%9B%AE%E6%A0%87">#</a></h2>
+<h2>The Third Objective</h2>
 
 <p>As mentioned earlier, the other solution for $d\boldsymbol{x}_t/dt$ in identity $\eqref{eq:id1}$ is to replace it with $\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)$, leading to:</p>
 \begin{equation}\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t) = \boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, r, t) + (t-r)\left[\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\cdot\frac{\partial}{\partial \boldsymbol{x}_t}\boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, r, t) + \frac{\partial}{\partial t}\boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, r, t)\right]\end{equation}
@@ -271,7 +271,7 @@ urt, durt = jax.jvp(u, (xt, r, t), (u(xt, t, t), r * 0, t * 0 + 1))
 \begin{equation}\mathbb{E}_{t,\boldsymbol{x}_0,\boldsymbol{x}_1}\left[\Vert\boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t, t) - (\boldsymbol{x}_1 - \boldsymbol{x}_0)\Vert^2\right]\label{eq:loss-reflow-2}\end{equation}
 <p>In other words, MeanFlow always has ReFlow "backing it up," so it won't perform too poorly. However, removing $\sg{\cdot}$ exacerbates the negative impact of "label leakage," making it inferior to including it.</p>
 
-<h2>A Proof <a href="https://kexue.fm/archives/10958#%E8%AF%81%E6%98%8E%E4%B8%80%E4%B8%8B">#</a></h2>
+<h2>A Proof</h2>
 
 <p>Can we theoretically prove, like ReFlow, that the optimal solution of the third objective $\eqref{eq:loss-3}$ is indeed our expected average velocity model? Let's try. First, we recall two key lemmas used to prove ReFlow:</p>
 
@@ -295,7 +295,7 @@ urt, durt = jax.jvp(u, (xt, r, t), (u(xt, t, t), r * 0, t * 0 + 1))
 
 <p>Of course, I maintain that the introduction of $\sg{\cdot}$ also couples the model training with the gradient optimizer, adding a layer of non-clarity. At this point, the point where the gradient equals zero is merely a stationary point rather than a (local) minimum, so stability is also unclear. This is actually a commonality of all models coupled with $\sg{\cdot}$.</p>
 
-<h2>Related Work <a href="https://kexue.fm/archives/10958#%E7%9B%B8%E5%85%B3%E5%B7%A5%E4%BD%9C">#</a></h2>
+<h2>Related Work</h2>
 
 <p>Interestingly, two acceleration papers we introduced before, <a href="translation_9881.html">"Generative Diffusion Model Chat (21): Accelerating ODE Sampling with Mean Value Theorem"</a> and <a href="translation_10617.html">"Generative Diffusion Model Chat (27): Using Step Size as Conditional Input"</a>, are also centered on average velocity, and their ideas can be considered ancestral. Although there may not be direct communication between authors, their work provides a continuous sense of progression.</p>
 
@@ -309,7 +309,7 @@ where $s = (r+t)/2$. Thus, Shortcut builds a regularization term with it:
 \begin{equation}\left\Vert\boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, r, t) - \frac{1}{2}\sg{\boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, s, t) + \boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_s, r, s)}\right\Vert^2\end{equation}
 trained jointly with the ReFlow target $\eqref{eq:loss-reflow-2}$. In actual training, $\boldsymbol{x}_s = \boldsymbol{x}_t - (t-s)\boldsymbol{u}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, s, t)$. In my view, the introduction of $\sg{\cdot}$ there was also mainly to save computation. The Shortcut model is actually more intuitive than MeanFlow, but because it lacked the identity transformations and the rigorous theoretical support brought by ReFlow, it appeared more like an empirical product of a transition period.</p>
 
-<h2>Consistency Models <a href="https://kexue.fm/archives/10958#%E4%B8%80%E8%87%B4%E6%A8%A1%E5%9E%8B">#</a></h2>
+<h2>Consistency Models</h2>
 
 <p>Finally, let's discuss Consistency Models. Since CM and sCM have paved the way, the success of MeanFlow actually draws on their experience, especially the operation of adding $\sg{\cdot}$ to the JVP, which is mentioned in the original paper. Of course, one of the authors of MeanFlow, Kaiming He, is himself a master of manipulating gradients (e.g., <a href="translation_7980.html">SimSiam</a>), so the emergence of MeanFlow feels very much like a natural progression.</p>
 
@@ -328,7 +328,7 @@ If we replace $\frac{d\boldsymbol{x}_t}{dt}$ with $\boldsymbol{x}_1 - \boldsymbo
 
 <p>Furthermore, the starting point combining average velocity and ReFlow also yields the first objective $\eqref{eq:loss-1}$ and second objective $\eqref{eq:loss-2}$. For someone like me with a "stop_gradient clean habit," these are very comfortable and beautiful results. In my view, for computational reasons, we can consider adding stop_gradient to the loss function, but the first principles of derivation and basic results should not be coupled with stop_gradient; otherwise, it means being strongly coupled with the optimizer and dynamics, which is not what an essential result should look like.</p>
 
-<h2>Article Summary <a href="https://kexue.fm/archives/10958#%E6%96%87%E7%AB%A0%E5%B0%8F%E7%BB%93">#</a></h2>
+<h2>Article Summary</h2>
 
 <p>This article centered around the recently released MeanFlow, discussing ideas for accelerating diffusion model generation from the perspective of "average velocity."</p>
 <hr>

@@ -174,10 +174,10 @@ window.MathJax = {
 
     <p>The changes above all take place outside of the Attention mechanism. In other words, they default to the rationality of the Attention mechanism itself and do not modify it. In this article, we introduce two new results: <strong>they target potential modeling bottlenecks in Multi-Head Attention and propose different solutions to improve Multi-Head Attention. Both papers come from Google and include extensive experiments, making the results quite persuasive.</strong></p>
 
-    <h2 id="再小也不能小key_size">No matter how small, key_size must be large <a href="https://kexue.fm/archives/7325#%E5%86%8D%E5%B0%8F%E4%B9%9F%E4%B8%8D%E8%83%BD%E5%B0%8Fkey_size">#</a></h2>
+    <h2>No matter how small, key_size must be large</h2>
     <p>The first result comes from the article <a href="https://papers.cool/arxiv/2002.07028">"Low-Rank Bottleneck in Multi-head Attention Models"</a>. It explicitly points out the bottleneck in representational capacity within Multi-Head Attention and proposes alleviating this bottleneck by increasing the <code>key_size</code>.</p>
 
-    <h3 id="Multi-Head Attention">Multi-Head Attention <a href="https://kexue.fm/archives/7325#Multi-Head%20Attention">#</a></h3>
+    <h3>Multi-Head Attention</h3>
     <p>First, let's briefly review Multi-Head Attention. Readers can also refer to the previous post <a href="translation_4765.html">"A Brief Reading of 'Attention is All You Need' (Introduction + Code)"</a>. The foundation of Multi-Head Attention is naturally Single-Head Attention, also known as Scaled Dot-Product Attention, defined as follows:</p>
 
 \begin{equation}Attention(\boldsymbol{Q},\boldsymbol{K},\boldsymbol{V}) = softmax\left(\frac{\boldsymbol{Q}\boldsymbol{K}^{\top}}{\sqrt{d_k}}\right)\boldsymbol{V}\end{equation}
@@ -191,7 +191,7 @@ window.MathJax = {
 &\boldsymbol{O}=\left[\boldsymbol{O}^{(1)},\boldsymbol{O}^{(2)},\dots,\boldsymbol{O}^{(h)}\right]
 \end{aligned}\end{equation}
 
-    <h3 id="Attention里有个瓶颈">The Bottleneck in Attention <a href="https://kexue.fm/archives/7325#Attention%E9%87%8C%E6%9C%89%E4%B8%AA%E7%93%B6%E9%A2%88">#</a></h3>
+    <h3>The Bottleneck in Attention</h3>
     <p>In practice, $\boldsymbol{Q}, \boldsymbol{K}, \boldsymbol{V}$ usually have the same feature dimension $d_k=d_v=d$ (i.e., <code>hidden_size</code>), such as 768 in BERT Base. $h$ is typically chosen as 12, 16, 24, etc. After determining $d$ and $h$, the standard choice is to set the projection matrices $\boldsymbol{W}\in\mathbb{R}^{d\times (d/h)}$. This means that in each Attention Head, the original $d$ dimensions are projected down to $d/h$ dimensions, the Attention operation is performed, the output is $d/h$ dimensions, and finally, the outputs of the $h$ heads are concatenated to get a $d$-dimensional output. We usually call $d/h$ the <code>head_size</code>.</p>
 
     <p>The critical step in Attention is:</p>
@@ -202,7 +202,7 @@ window.MathJax = {
 
     <p>However, when we project $\boldsymbol{Q}$ and $\boldsymbol{K}$ into lower dimensions, the parameter count for each is only $n \times (d/h)$. The total parameter count is $2nd/h$. Thus, Equation \eqref{eq:softmax} is equivalent to using $2nd/h$ parameters to approximate a volume that inherently has $n^2$ values. Typically, $2nd/h \ll n^2$, especially when $h$ is large. Therefore, this modeling approach "overburdens the model," which is the meaning of the "Low-Rank Bottleneck" in the original paper.</p>
 
-    <h3 id="不妨试试增大key_size？">How about increasing key_size? <a href="https://kexue.fm/archives/7325#%E4%B8%8D%E5%A6%A8%E8%AF%95%E8%AF%95%E5%A2%9E%E5%A4%A7key_size%EF%BC%9F">#</a></h3>
+    <h3>How about increasing key_size?</h3>
     <p>What is the solution? The direct thought is to increase $2nd/h$, so we either reduce the number of heads $h$ or increase the <code>hidden_size</code> $d$. However, more Attention Heads themselves enhance the representational power of the model, so reducing $h$ to alleviate the low-rank bottleneck might be counterproductive. Increasing $d$ would naturally enhance the overall expressiveness, but the model size and computational cost would grow dramatically, which doesn't seem like a good choice either.</p>
 
     <p>Are there other ways? Yes! When we use projection matrices to map $\boldsymbol{Q}, \boldsymbol{K}, \boldsymbol{V}$ to lower dimensions, they are usually all projected to $d/h$. But in reality, their dimensions don't have to be equal. We only need the dimensions of $\boldsymbol{Q}$ and $\boldsymbol{K}$ to be identical (to perform the dot product). To distinguish them, we usually call the dimension of $\boldsymbol{Q}$ and $\boldsymbol{K}$ the <code>key_size</code>, and only the dimension of $\boldsymbol{V}$ is called the <code>head_size</code>. Changing the <code>key_size</code> without changing the <code>head_size</code> does not affect the model's <code>hidden_size</code>.</p>
@@ -215,7 +215,7 @@ window.MathJax = {
     <p>Furthermore, if both <code>key_size</code> and <code>head_size</code> are increased, computational cost and memory consumption increase significantly. If only <code>key_size</code> is increased, the additional resource consumption is much smaller.</p>
     </blockquote>
 
-    <h3 id="来看看实验结果～">Let's look at the experimental results <a href="https://kexue.fm/archives/7325#%E6%9D%A5%E7%9C%8B%E7%9C%8B%E5%AE%9E%E9%AA%8C%E7%BB%93%E6%9E%9C%EF%BD%9E">#</a></h3>
+    <h3>Let's look at the experimental results</h3>
     <p>The idea of increasing <code>key_size</code> is very simple and easy to implement, but is it really effective? Let's look at the results from the original paper. The experiments used BERT as a baseline. There are many charts in the original paper, so it is best to read it directly, but here is a representative one:</p>
 
     <p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2020/04/46441019.png" alt="Maintaining a larger key_size allows the model to perform better given the same parameter scale" title="Maintaining a larger key_size allows the model to perform better given the same parameter scale" /></p>
@@ -227,10 +227,10 @@ window.MathJax = {
 
     <blockquote><a href="https://github.com/ZhuiyiTechnology/pretrained-models">https://github.com/ZhuiyiTechnology/pretrained-models</a></blockquote>
 
-    <h2 id="再缺也不能缺Talking">No matter what is missing, Talking must stay <a href="https://kexue.fm/archives/7325#%E5%86%8D%E7%BC%BA%E4%B9%9F%E4%B8%8D%E8%83%BD%E7%BC%BATalking">#</a></h2>
+    <h2>No matter what is missing, Talking must stay</h2>
     <p>The second result for improving Multi-Head Attention comes from the paper <a href="https://papers.cool/arxiv/2003.02436">"Talking-Heads Attention"</a>. Although this paper doesn't explicitly mention its connection to the previous one, I believe they are essentially solving the same problem but with different approaches. It points out that in current Multi-Head Attention, the computation of each head is isolated. By linking them ("Talking"), one can achieve a stronger Attention design, hence the title "Talking-Heads Attention."</p>
 
-    <h3 id="从单一分布到混合分布">From Single Distributions to Mixture Distributions <a href="https://kexue.fm/archives/7325#%E4%BB%8E%E5%8D%95%E4%B8%80%E5%88%86%E5%B8%83%E5%88%B0%E6%B7%B7%E5%90%88%E5%88%86%E5%B8%83">#</a></h3>
+    <h3>From Single Distributions to Mixture Distributions</h3>
     <p>In the previous paper, we mentioned the low-rank bottleneck, which means that because <code>key_size</code> is too small, the representational capacity of $\boldsymbol{Q}^{(i)}{\boldsymbol{K}^{(i)}}^{\top}$ is insufficient, making it difficult for the softmax to propose a complete binary distribution. To alleviate this problem, beyond increasing <code>key_size</code>, is there another way? Yes, for example, the mixture distribution approach used in this paper.</p>
 
     <p>A mixture distribution is the superposition (e.g., weighted average) of multiple simple distributions. It can significantly enhance the expressiveness of the original distribution. A typical example is the Gaussian Mixture Model (GMM). We know that a single Gaussian distribution is just a common simple distribution, but a Gaussian Mixture distribution formed by superimposing multiple Gaussians is a much stronger distribution. Theoretically, as long as enough Gaussians are superimposed, a GMM can approximate any probability distribution. This example tells us that if we want to increase the representational power of the distributions in Attention without increasing <code>key_size</code>, we can consider superimposing multiple low-rank distributions.</p>
@@ -257,7 +257,7 @@ window.MathJax = {
     <p>2. A more general version of Talking-Heads Attention allows for up-projection in the step $\boldsymbol{J}=\boldsymbol{\lambda}\hat{\boldsymbol{J}}$, i.e., superimposing more than $h$ mixture distributions, and then using another parameter matrix to project back down. However, this is not a particularly critical improvement, so it is not featured in the main text.</p>
     </blockquote>
 
-    <h3 id="再来看看实验结果～">Let's look at the experimental results <a href="https://kexue.fm/archives/7325#%E5%86%8D%E6%9D%A5%E7%9C%8B%E7%9C%8B%E5%AE%9E%E9%AA%8C%E7%BB%93%E6%9E%9C%EF%BD%9E">#</a></h3>
+    <h3>Let's look at the experimental results</h3>
     <p>Is it really effective? Of course, the experimental results speak for themselves. The experimental lineup of this paper is unprecedentedly strong, including results based on BERT, ALBERT, and T5 clusters! As we all know, BERT, ALBERT, and T5 were all SOTA (State of the Art) models in NLP at certain points in time. T5, in particular, remains at the top of the <a href="https://super.gluebenchmark.com/leaderboard">SuperGLUE</a> leaderboard, far ahead of the second place. Talking-Heads Attention has essentially pushed their glorious achievements to a new height!</p>
 
     <p>Again, you should check the original paper for detailed experimental results. Here is a typical one:</p>
@@ -280,7 +280,7 @@ window.MathJax = {
     <p>"Don't doubt it, we've tuned all the parameters that need to be tuned, and our Talking-Heads Attention is the best~"</p>
     </blockquote>
 
-    <h3 id="插曲：神奇的论文画风">Interlude: Strange Paper Style <a href="https://kexue.fm/archives/7325#%E6%8F%92%E6%9B%B2%EF%BC%9A%E7%A5%9E%E5%A5%87%E7%9A%84%E8%AE%BA%E6%96%87%E7%94%BB%E9%A3%8E">#</a></h3>
+    <h3>Interlude: Strange Paper Style</h3>
     <p>Speaking of which, when I first came across the "Talking-Heads Attention" paper on ArXiv, my first impression was that it was a trashy paper. Why? Because its style looks like this:</p>
 
     <p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2020/04/591585191.png" alt="Pseudo-code in Talking-Heads Attention" title="Pseudo-code in Talking-Heads Attention" /></p>
@@ -290,7 +290,7 @@ window.MathJax = {
 
     <p>However, willfulness comes at a price. This paper, with such a massive experimental lineup and such effective results, has been out for over a month, but it seems to have little traction. This likely has something to do with its willful style~</p>
 
-    <h2 id="来自文末的小结">Summary at the End <a href="https://kexue.fm/archives/7325#%E6%9D%A5%E8%87%AA%E6%96%87%E6%9C%AB%E7%9A%84%E5%B0%8F%E7%BB%93">#</a></h2>
+    <h2>Summary at the End</h2>
     <p>This article introduced two follow-up works on improving Multi-Head Attention. Although the implementation details are different, they both address the "low-rank bottleneck" problem, giving a sense of "converging paths." Both works come from Google and follow-up with rich experiments, so the results are relatively persuasive. Readers working on structural improvements to models can refer to them.</p>
 </article>
 <hr>

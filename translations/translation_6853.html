@@ -165,7 +165,7 @@ window.MathJax = {
 
 <p>Clearly, numerous achievements in NLP & CV have fully affirmed the effectiveness of Attention. In this article, we will introduce some variants of Attention. The common characteristic of these variants is that they are "born for efficiency"—saving both time and video memory.</p>
 
-<h2 id="背景简述">Background Brief</h2>
+<h2>Background Brief</h2>
 
 <p><a href="https://papers.cool/arxiv/1706.03762">"Attention is All You Need"</a> discusses what we call "multiplicative Attention," which is currently the most widely used type of Attention:</p>
 
@@ -175,7 +175,7 @@ window.MathJax = {
 
 <p>However, theoretically speaking, the computation time and video memory usage of Self Attention are both at the $\mathcal{O}(n^2)$ level ($n$ is the sequence length). This means that if the sequence length doubles, the video memory usage and calculation time both become 4 times larger. Of course, assuming there are enough parallel cores, the calculation time might not necessarily increase to 4 times, but the fourfold increase in video memory is real and unavoidable. This is also the reason why OOM (Out of Memory) errors frequently occur when fine-tuning BERT.</p>
 
-<h2 id="稀疏Attention">Sparse Attention</h2>
+<h2>Sparse Attention</h2>
 
 <p>We say Self Attention is $\mathcal{O}(n^2)$ because it needs to calculate the correlation between any two vectors in the sequence, resulting in a correlation matrix of size $n^2$:</p>
 
@@ -189,7 +189,7 @@ window.MathJax = {
 
 <p>In the figure above, the left side shows the attention matrix, and the right side shows the associations. This indicates that every element is associated with all elements in the sequence. Therefore, if we want to save video memory and speed up computation, a basic idea is to reduce the calculation of associations—that is, to assume that each element is only related to a part of the elements in the sequence. This is the basic principle of <b>Sparse Attention</b>. The Sparse Attention introduced in this article originates from OpenAI's paper <a href="https://papers.cool/arxiv/1904.10509">"Generating Long Sequences with Sparse Transformers"</a>, but it is not introduced according to the original paper's style, but rather in a way that I consider more natural.</p>
 
-<h3 id="Atrous Self Attention">Atrous Self Attention</h3>
+<h3>Atrous Self Attention</h3>
 
 <p>The first concept to introduce is Atrous Self Attention, which can be translated as "dilated self-attention," "hollow self-attention," or "self-attention with holes." Like the subsequent Local Self Attention, these names are coined by me based on their characteristics. The original paper <a href="https://papers.cool/arxiv/1904.10509">"Generating Long Sequences with Sparse Transformers"</a> does not use these specific terms, but I believe it is meaningful to introduce them separately.</p>
 
@@ -205,7 +205,7 @@ window.MathJax = {
 
 <p>Since attention is now calculated by "skipping," each element effectively only calculates correlation with approximately $n/k$ elements. Thus, in an ideal case, the operational efficiency and video memory usage become $\mathcal{O}(n^2/k)$, meaning they can be directly reduced to $1/k$ of the original.</p>
 
-<h3 id="Local Self Attention">Local Self Attention</h3>
+<h3>Local Self Attention</h3>
 
 <p>Another transitional concept to introduce is Local Self Attention. Usually, the self-attention mechanism is referred to as "Non-local" in the CV field, and obviously, Local Self Attention abandons global associations to re-introduce local associations. Specifically, it is also very simple: it constrains each element to associate only with the $k$ elements before and after it, as well as itself, as shown below:</p>
 
@@ -221,7 +221,7 @@ window.MathJax = {
 
 <p>In fact, Local Self Attention is very similar to ordinary convolution. Both maintain a window of size $2k+1$ and perform some operations within it. The difference is that ordinary convolution flattens the window and passes it through a fully connected layer to get the output, while here, the output is obtained by weighted averaging within the window via attention. For Local Self Attention, each element only calculates correlation with $2k+1$ elements. Thus, in an ideal case, the operational efficiency and video memory usage become $\mathcal{O}((2k+1)n) \sim \mathcal{O}(kn)$, meaning they grow linearly with $n$. This is a very ideal property—though it directly sacrifices long-range associations.</p>
 
-<h3 id="Sparse Self Attention">Sparse Self Attention</h3>
+<h3>Sparse Self Attention</h3>
 
 <p>At this point, we can naturally introduce OpenAI's Sparse Self Attention. We notice that Atrous Self Attention has some "holes," and Local Self Attention fortunately fills these holes. Therefore, a simple way is to use Local Self Attention and Atrous Self Attention alternately. By accumulating both, global associations can theoretically be learned while saving video memory.</p>
 
@@ -239,11 +239,11 @@ window.MathJax = {
 
 <p>It's easy to understand from the attention matrix: attention is set to 0 except for relative distances not exceeding $k$, and relative distances that are $k, 2k, 3k, \dots$. This gives the Attention the characteristic of being "locally dense and remotely sparse," which might be a good prior for many tasks, as tasks truly requiring dense long-range associations are actually quite rare.</p>
 
-<h2 id="代码实现">Code Implementation</h2>
+<h2>Code Implementation</h2>
 
 <p>The Atrous Self Attention, Local Self Attention, and Sparse Self Attention mentioned above are all considered types of Sparse Attention. Visually, the attention matrices become very sparse. So how do we implement them? If we simply mask the zero parts in the attention matrix, it is mathematically (functionally) sound, but it won't speed up the calculation or save video memory.</p>
 
-<h3 id="官方实现">Official Implementation</h3>
+<h3>Official Implementation</h3>
 
 <p>OpenAI has open-sourced its own implementation, located at: <a href="https://github.com/openai/sparse_attention">https://github.com/openai/sparse_attention</a></p>
 
@@ -251,7 +251,7 @@ window.MathJax = {
 
 <p>Another issue is that OpenAI's original paper mainly uses Sparse Attention to generate ultra-long sequences, so in both the paper and the code, they masked all upper triangular parts of the attention matrix (to avoid using future information). However, not all scenarios using Sparse Attention are generative, and for an introduction to basic concepts, this is unnecessary. This is one of the reasons why I did not introduce it following the original paper's logic.</p>
 
-<h3 id="Keras实现">Keras Implementation</h3>
+<h3>Keras Implementation</h3>
 
 <p>For Keras, I have implemented these three types of Sparse Attention based on my own logic and standardized them with the Attention code I wrote previously. It is still placed in the same location:</p>
 
@@ -259,7 +259,7 @@ window.MathJax = {
 
 <p>Based on experiments, I found that in my implementation, these three types of Sparse Attention do indeed save some memory compared to full Attention. Unfortunately, except for Atrous Self Attention, the implementations of the other two cannot speed up the process—instead, they slow down slightly. This is because the implementation does not fully exploit sparsity. OpenAI's blocksparse, however, is highly optimized and written directly in CUDA code, which is incomparable. But regardless of speed, these three types of Sparse Attention should be functionally correct.</p>
 
-<h2 id="文章小结">Article Summary</h2>
+<h2>Article Summary</h2>
 
 <p>There's not much left to summarize; the article introduced and implemented three types of Sparse Attention. Besides saving video memory, Sparse Attention should be better suited for certain tasks, as associations in most tasks are primarily local and follow a "local to global" form. Especially the "locally dense and remotely sparse" nature reflected in the last Sparse Self Attention should meet the characteristics of most tasks. Readers who have relevant tasks might want to give it a try.</p>
 <hr>

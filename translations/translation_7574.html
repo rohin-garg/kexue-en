@@ -182,7 +182,7 @@ window.MathJax = {
 
 <p>So, what exactly is special about NVAE that allows it to achieve such a leap in VAE generation quality?</p>
 
-<h2>VAE Review <a href="https://kexue.fm/archives/7574#VAE%E5%9B%9E%E9%A1%BE">#</a></h2>
+<h2>VAE Review</h2>
 
 <p>A careful reader might observe:</p>
 
@@ -197,7 +197,7 @@ window.MathJax = {
 
 <p>What limited the expressive power of (previous) VAEs? And where exactly did this breakthrough improve? Let's keep reading.</p>
 
-<h3>Basic Introduction <a href="https://kexue.fm/archives/7574#%E5%9F%BA%E6%9C%AC%E4%BB%8B%E7%BB%8D">#</a></h3>
+<h3>Basic Introduction</h3>
 
 <p>VAE, or Variational Auto-Encoder, has been introduced in many articles on this site. You can search for "<a href="https://kexue.fm/search/%E5%8F%98%E5%88%86%E8%87%AA%E7%BC%96%E7%A0%81%E5%99%A8/">Variational Autoencoder</a>" in the search bar on the right to find many related blog posts. Here is a brief review and analysis.</p>
 
@@ -212,25 +212,25 @@ KL\big(p(x,z)\big\Vert q(x,z)\big)=&\iint p(x,z)\log \frac{p(x,z)}{q(x,z)} dzdx\
 
 <p>This is the optimization objective of the VAE.</p>
 
-<h3>Difficulty Analysis <a href="https://kexue.fm/archives/7574#%E5%9B%B0%E9%9A%BE%E5%88%86%E6%9E%90">#</a></h3>
+<h3>Difficulty Analysis</h3>
 
 <p>The requirements for $p(z|x), q(z), q(x|z)$ are: 1. They must have an analytical expression; 2. They must be easy to sample from. However, there aren't many such distributions in the continuous world. The most commonly used is the Gaussian distribution, particularly the "decoupled Gaussian" (independent components). Therefore, in standard VAEs, $p(z|x), q(z), q(x|z)$ are all set as independent Gaussian distributions: $p(z|x)=\mathcal{N}(z;\mu_1(x),\sigma_1^2(x))$, $q(z)=\mathcal{N}(z;0,1)$, and $q(x|z)=\mathcal{N}(x;\mu_2(z),\sigma_2^2(z))$.</p>
 
 <p>The problem is that "independent Gaussian distributions" cannot fit arbitrarily complex distributions. When we choose the form of $p(z|x)$, it's possible that no matter how we tune its parameters, $\int \tilde{p}(x)p(z|x)dx$ and $\frac{\tilde{p}(x)p(z|x)}{\int \tilde{p}(x)p(z|x)dx}$ can never become Gaussian. This means that $KL\big(p(x,z)\big\Vert q(x,z)\big)$ theoretically cannot reach zero. Thus, forcing $p(x,z)$ and $q(x,z)$ to approximate each other only yields a rough, averaged result, which is why conventional VAE images are blurry.</p>
 
-<h3>Related Improvements <a href="https://kexue.fm/archives/7574#%E7%9B%B8%E5%85%B3%E6%94%B9%E8%BF%9B">#</a></h3>
+<h3>Related Improvements</h3>
 
 <p>One classic direction for improving VAE is to combine it with GANs, such as <a href="https://papers.cool/arxiv/1703.10155">CVAE-GAN</a> and <a href="https://papers.cool/arxiv/1704.02304">AGE</a>. The state-of-the-art result in this direction is probably <a href="https://papers.cool/arxiv/1807.06358">IntroVAE</a>. Theoretically, this type of work implicitly abandons the assumption that $q(x|z)$ is a Gaussian distribution, replacing it with a more general distribution, thereby improving generation. However, I feel that introducing GANs into VAE is bit like "playing with fire"—you gain performance but also inherit GAN's weaknesses (training instability, etc.), and even then, VAE generation remains inferior to pure GANs. Another direction is to combine VAE with <a href="https://kexue.fm/search/%E7%BB%86%E6%B0%B4%E9%95%BFflow/">flow models</a>, such as <a href="https://papers.cool/arxiv/1606.04934">IAF-VAE</a> or the <a href="translation_5977.html">f-VAE</a> I did previously. This work enhances the expressive power of $p(z|x)$ or $q(x|z)$ via flow models.</p>
 
 <p>Another direction is introducing discrete latent variables, typically represented by VQ-VAE (see my <a href="translation_6760.html">"Brief Introduction to VQ-VAE: Quantized Autoencoder"</a>). VQ-VAE encodes images into a discrete sequence and then uses PixelCNN to model the corresponding prior distribution $q(z)$. As mentioned, when $z$ is continuous, the choices for $p(z|x)$ and $q(z)$ are limited, leading to restricted approximation accuracy. But if $z$ is a discrete sequence, $p(z|x)$ and $q(z)$ correspond to discrete distributions. Using autoregressive models (language models in NLP, PixelRNN/PixelCNN in CV), we can approximate any discrete distribution, thus allowing for a more accurate approximation and improved generation. The subsequent <a href="https://papers.cool/arxiv/1906.00446">VQ-VAE-2</a> further confirmed the effectiveness of this path, though VQ-VAE's workflow differs significantly from conventional VAE, making it sometimes hard to view as a pure VAE variant.</p>
 
-<h2>NVAE Breakdown <a href="https://kexue.fm/archives/7574#NVAE%E6%A2%B3%E7%90%86">#</a></h2>
+<h2>NVAE Breakdown</h2>
 
 <p>After all that buildup, we finally talk about NVAE. NVAE stands for <strong>Nouveau VAE</strong> (isn't it Nvidia VAE?). it incorporates many recent advancements in the CV field, including multi-scale architectures, depthwise separable convolutions, the Swish activation function, and flow models. It integrates the best of multiple worlds, becoming the current strongest VAE.</p>
 
 <p>(Note: The notation in this article differs from the original paper and common VAE introductions but is consistent with other related articles on this blog. Readers are encouraged to understand the concepts rather than memorize symbols.)</p>
 
-<h3>Autoregressive Distribution <a href="https://kexue.fm/archives/7574#%E8%87%AA%E5%9B%9E%E5%BD%92%E5%88%86%E5%B8%83">#</a></h3>
+<h3>Autoregressive Distribution</h3>
 
 <p>As previously analyzed, the difficulty of VAE stems from $p(z|x), q(z), q(x|z)$ not being strong enough. Therefore, the improvement strategy is to enhance them. First, NVAE does not change $q(x|z)$, mainly to maintain parallel generation. Instead, it enhances the prior distribution $q(z)$ and posterior distribution $p(z|x)$ through an autoregressive model. Specifically, it partitions the latent variables into groups $z=\{z_1,z_2,\dots,z_L\}$, where each $z_l$ is still a vector, and sets:</p>
 
@@ -252,7 +252,7 @@ KL\big(p(x,z)\big\Vert q(x,z)\big)=&\iint p(x,z)\log \frac{p(x,z)}{q(x,z)} dzdx\
 
 <p>The original paper notes that this makes training more stable.</p>
 
-<h3>Multi-scale Design <a href="https://kexue.fm/archives/7574#%E5%A4%9A%E5%B0%BA%E5%BA%A6%E8%AE%BE%E8%AE%A1">#</a></h3>
+<h3>Multi-scale Design</h3>
 
 <p>Now that latent variables are split into $L$ groups $z=\{z_1,z_2,\dots,z_L\}$, the questions arise: 1. How does the encoder generate $z_1,z_2,\dots,z_L$ one by one? 2. How does the decoder use $z_1,z_2,\dots,z_L$ one by one? How should the encoder and decoder be designed?</p>
 
@@ -266,7 +266,7 @@ KL\big(p(x,z)\big\Vert q(x,z)\big)=&\iint p(x,z)\log \frac{p(x,z)}{q(x,z)} dzdx\
 <p><img src="https://kexue.fm/usr/uploads/2020/07/3579044243.png" alt="Residual Module in NVAE"></p>
 <p><em>Residual module in NVAE</em></p>
 
-<h3>Other Enhancement Tricks <a href="https://kexue.fm/archives/7574#%E5%85%B6%E4%BB%96%E6%8F%90%E5%8D%87%E6%8A%80%E5%B7%A7">#</a></h3>
+<h3>Other Enhancement Tricks</h3>
 
 <p>In addition to the two major features above, NVAE includes several other performance-enhancing tricks. Here are a few:</p>
 
@@ -278,7 +278,7 @@ KL\big(p(x,z)\big\Vert q(x,z)\big)=&\iint p(x,z)\log \frac{p(x,z)}{q(x,z)} dzdx\
 
 <p><strong>Memory Saving Tricks:</strong> Although NVIDIA has no shortage of GPUs, NVAE makes efforts to save memory. It uses mixed-precision training and promotes NVIDIA's own <a href="https://github.com/NVIDIA/apex">APEX library</a>. Furthermore, it employs <a href="https://papers.cool/arxiv/1604.06174">gradient checkpointing</a> (recomputation) in the BN layers, reportedly saving 18% memory with almost no impact on speed. In short, teams with more GPUs also know how to save memory better than you.</p>
 
-<h3>More Results <a href="https://kexue.fm/archives/7574#%E6%9B%B4%E5%A4%9A%E6%95%88%E6%9E%9C%E5%9B%BE">#</a></h3>
+<h3>More Results</h3>
 
 <p>At this point, the primary technical points of NVAE have been introduced. If you're still craving more, here are a few more result images to appreciate the stunning quality of NVAE.</p>
 
@@ -291,7 +291,7 @@ KL\big(p(x,z)\big\Vert q(x,z)\big)=&\iint p(x,z)\log \frac{p(x,z)}{q(x,z)} dzdx\
 <p><img src="https://kexue.fm/usr/uploads/2020/07/264771285.png" alt="More CelebA HQ Results"></p>
 <p><em>More CelebA HQ generation results.</em></p>
 
-<h2>Personal Takeaways <a href="https://kexue.fm/archives/7574#%E4%B8%AA%E4%BA%BA%E6%94%B6%E8%8E%B7">#</a></h2>
+<h2>Personal Takeaways</h2>
 
 <p>Looking at the training table below, we can see the training cost is quite high—higher than a StyleGAN of the same resolution. Throughout the paper, numerous small training tricks are mentioned (and likely many unmentioned). StyleGAN and BigGAN also used many similar tricks, so this isn't necessarily a unique drawback of NVAE. But for a "commoner" who is just a generative model hobbyist like myself, what can we take away from NVAE?</p>
 
@@ -308,7 +308,7 @@ KL\big(p(x,z)\big\Vert q(x,z)\big)=&\iint p(x,z)\log \frac{p(x,z)}{q(x,z)} dzdx\
 
 <p>(Note: Correction based on text - 600,576 dimensions). That is to say, one samples a 600,000-dimensional vector to generate an image that is $256 \times 256 \times 3 = 196,608$ (less than 200,000) dimensions. This is very different from traditional VAEs, which usually encode images into a single vector of a few hundred dimensions. Here, the encoding vector is much larger, resembling a fully convolutional autoencoder, so the clarity improvement is within reason.</p>
 
-<h2>What is "Nouveau"? <a href="https://kexue.fm/archives/7574#Nouveau%E6%98%AF%E5%95%A5%EF%BC%9F">#</a></h2>
+<h2>What is "Nouveau"?</h2>
 
 <p>Finally, I curiously searched for the meaning of "Nouveau." Here is the explanation from <a href="https://en.wikipedia.org/wiki/Nouveau_(software)">Wikipedia</a>:</p>
 
@@ -317,7 +317,7 @@ The project's goal is to create an open-source driver by reverse-engineering Nvi
 
 <p>Does this mean Nouveau VAE and Nvidia VAE are essentially synonyms? It turns out our initial hunch wasn't wrong!</p>
 
-<h2>Summary <a href="https://kexue.fm/archives/7574#%E6%96%87%E7%AB%A0%E5%B0%8F%E7%BB%93">#</a></h2>
+<h2>Summary</h2>
 
 <p>This article introduced NVAE, an upgraded VAE recently published by NVIDIA, which pushes VAE generation quality to a new height. As seen, NVAE raises the theoretical upper bound through autoregressive latent distributions, designs a clever encoder-decoder structure, and integrates almost all the latest techniques from current generative models to create the strongest VAE to date.</p>
 <hr>

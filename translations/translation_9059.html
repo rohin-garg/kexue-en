@@ -157,14 +157,14 @@ window.MathJax = {
 
   <p>Most of the empirical conclusions in this article are not limited to use within bert4keras. The reason bert4keras is emphasized in the title is simply that the model implementations in bert4keras are relatively structured, making the modifications required to enable these acceleration techniques relatively minimal.</p>
 
-  <h2 id="experimental-environment">Experimental Environment</h2>
+  <h2>Experimental Environment</h2>
   <p>The graphics card used for the experiments in this article is an RTX 3090, and the Docker image used is <code>nvcr.io/nvidia/tensorflow:21.09-tf1-py3</code>, which comes with TensorFlow version 1.15.5. Additionally, the version of bert4keras used in the experiments is 0.11.3. Other environments can also be set up by referring to this, but be sure to maintain a spirit of experimentation and don't expect brainless calls to work perfectly.</p>
 
   <p>As a side note, cards like the 3090 and A100 can only use CUDA 11, and the official version 1.15 of TensorFlow from Google does not support CUDA 11. If you still want to use TensorFlow 1.x, your only options are to use <a href="https://github.com/NVIDIA/tensorflow">nvidia-tensorflow</a> maintained by NVIDIA itself, or use the <a href="https://docs.nvidia.com/deeplearning/frameworks/tensorflow-release-notes/running.html">Docker images</a> they build. Using TensorFlow maintained by NVIDIA instead of Google not only allows you to use version 1.x on the latest graphics cards but also includes specific additional optimizations by NVIDIA. For specific documentation, refer <a href="https://docs.nvidia.com/deeplearning/frameworks/tensorflow-user-guide/index.html">here</a>.</p>
 
   <p>Don't say things like "TensorFlow is already at 2.8, why are you still using 1.15?". Your graphics card is produced by NVIDIA, so who says which version of TensorFlow is best to use? Not you or me, and even Google doesn't have the final word—NVIDIA does. Since NVIDIA is still maintaining 1.15, that indicates 1.15 is still the GOAT (always the best).</p>
 
-  <h2 id="mixed-precision">Mixed Precision</h2>
+  <h2>Mixed Precision</h2>
   <p>First, let's look at mixed precision training. Simply put, model calculations use FP16, while parameter updates and storage use FP32. The representation range of FP16 is roughly $6 \times 10^{-8} \sim 65504$. Both its upper and lower bounds are limits we might hit when implementing a model. Therefore, the biggest problems introduced by FP16 are overflow and precision loss. For a more detailed introduction to the principles, you can search for them yourself; this article focuses on how to use it.</p>
 
   <p>NVIDIA-TensorFlow's help documentation provides an introduction to mixed precision training <a href="https://docs.nvidia.com/deeplearning/frameworks/tensorflow-user-guide/index.html#tfamp">here</a>. The simplest way to start mixed precision training is to add an environment variable at the beginning of the script:</p>
@@ -184,7 +184,7 @@ K.set_epsilon(1e-4)</code></pre>
 
   <p>In fact, I've found that the "Loss Scaling" trick is effective not just in mixed precision training scenarios, but even in full FP32 training: in full FP32 training, if loss scaling is not performed, the model might stay at a certain loss value for a while before starting to drop; if loss scaling is applied, the model maintains a slow downward trend from the beginning, resulting in relatively faster convergence.</p>
 
-  <h2 id="algebraic-acceleration">Algebraic Acceleration</h2>
+  <h2>Algebraic Acceleration</h2>
   <p>Now let's look at XLA, which stands for "Accelerated Linear Algebra," specifically designed to speed up linear algebra operations. Simply put, XLA performs ahead-of-time compilation optimization on the computation graph, merging operators that can be merged (reducing intermediate variables to save memory) and parallelizing operators that can be parallelized (increasing calculation speed).</p>
 
   <p>In NVIDIA-TensorFlow, the simplest way to enable XLA is still by adding an environment variable:</p>
@@ -201,14 +201,14 @@ K.set_epsilon(1e-4)</code></pre>
 
   <p>If even XLA Lite doesn't solve the issue, then it basically means XLA is not suitable for your model.</p>
 
-  <h2 id="performance-comparison">Performance Comparison</h2>
+  <h2>Performance Comparison</h2>
   <p>On a 3090, the speedup brought by enabling mixed precision training is a bit over 10%. This improvement might not be as fast as everyone imagines. I suspect this is because, on newer cards like the 3090 and A100, the default FP32 format actually uses a format called TF32 (refer <a href="https://developer.nvidia.com/blog/accelerating-tensorflow-on-a100-gpus/">here</a>). TF32 is, in a sense, a "half-precision format" itself and is faster than FP32. In other words, FP32 on the 3090 is already equivalent to having some half-precision optimization, making it naturally faster, so the boost after switching to mixed precision is relatively smaller.</p>
 
   <p>As for the boost from XLA, it is roughly around 15%. In my training script, directly setting the environment variable <code>TF_XLA_FLAGS</code> to <code>--tf_xla_auto_jit=1</code> resulted in OOM; supplementing with <code>--tf_xla_enable_lazy_compilation=false</code> did as well. However, changing it to <code>--tf_xla_auto_jit=fusible</code> allowed for normal training.</p>
 
   <p>Finally, the most crucial point is that mixed precision and XLA can be used together! Using both together brings a total speedup of about 30%, and the addition of mixed precision training basically offsets the increased memory consumption brought by XLA. The two truly complement each other perfectly.</p>
 
-  <h2 id="summary">Summary</h2>
+  <h2>Summary</h2>
   <p>This article introduced an attempt to use mixed precision and XLA to accelerate training in bert4keras. Enabling both simultaneously can achieve a speedup of about 30% on an RTX 3090.</p>
 </article>
 <hr>

@@ -158,7 +158,7 @@ window.MathJax = {
 
     <p>At this point, one usually needs to focus on the optimization process—for example, using mixed-precision training (on TensorFlow, you can also use a new floating-point format called bfloat16), which saves memory and accelerates training; or using more memory-efficient optimizers, such as RMSProp, which is more memory-efficient than Adam. This article introduces <strong>AdaFactor</strong>, a new optimizer proposed by Google, first appearing in the paper <a href="https://papers.cool/arxiv/1804.04235">"Adafactor: Adaptive Learning Rates with Sublinear Memory Cost"</a>. AdaFactor has the characteristics of an adaptive learning rate but is even more memory-efficient than RMSProp, and it specifically addresses some of Adam's shortcomings.</p>
 
-    <h2 id="Adam">Adam</h2>
+    <h2>Adam</h2>
 
     <p>First, let's review the update process of the commonly used Adam optimizer. Let $t$ be the iteration step, $\alpha_t$ be the current learning rate, $L(\theta)$ be the loss function, $\theta$ be the parameters to be optimized, and $\epsilon$ be a small positive number to prevent overflow. Then the update process for Adam is:</p>
 
@@ -172,11 +172,11 @@ window.MathJax = {
 
     <p>To save memory, one must first know where the memory is being spent. First, the bulk of both computation and memory is definitely $\nabla_{\theta} L(\theta_{t-1})$. That is to say, calculating the gradient is very resource-intensive, which is also why "even though ALBERT has much fewer parameters than BERT, the training speed is not significantly faster." Besides that, the memory consumption mainly comes from $m$ and $v$. We need to maintain two sets of buffer variables to calculate the moving averages of the first and second moments of the gradients (i.e., $m$ and $v$). Each of these two sets of variables is as large as the training parameters themselves. Therefore, for models with many parameters, the memory consumed by these two sets of buffer variables is also substantial.</p>
 
-    <h2 id="AdaFactor">AdaFactor</h2>
+    <h2>AdaFactor</h2>
 
     <p>In this section, we will introduce the AdaFactor optimizer in relatively more detail. The introduction will involve several formulas and derivations. Readers who only seek a general understanding can skip some of the mathematical content.</p>
 
-    <h3 id="抛弃动量">1. Abandoning Momentum</h3>
+    <h3>1. Abandoning Momentum</h3>
 
     <p>We know that CV models often rely on "SGD + Momentum" to achieve optimal results, as adaptive learning rate optimizers usually don't train to the best effect. However, for NLP models, the situation is somewhat reversed: adaptive learning rates are more important, and it is rare to hear of cases where an NLP model is trained purely on SGD. Therefore, as the first step to save memory, we can discard the momentum in Adam, which eliminates one set of buffer parameters and naturally saves memory:</p>
 
@@ -188,7 +188,7 @@ window.MathJax = {
 
     <p>This is actually a variant of RMSProp, with the added step of $\hat{v}_t = v_t\left/\left(1 - \beta_2^t\right)\right.$.</p>
 
-    <h3 id="低秩分解">2. Low-Rank Decomposition</h3>
+    <h3>2. Low-Rank Decomposition</h3>
 
     <p>After removing $m$, the buffer variables are directly halved, but AdaFactor is not satisfied. It hopes to retain the adaptive learning rate function while further compressing the parameter size of the buffer variable $v$. This time, it uses low-rank matrix decomposition.</p>
 
@@ -266,7 +266,7 @@ window.MathJax = {
 
     <p>(Adding $\epsilon$ to $g_t^2$ instead of $\hat{v}_t$ is the form AdaFactor used, not the author's mistake!)</p>
 
-    <h3 id="滑动权重">3. Moving Weights</h3>
+    <h3>3. Moving Weights</h3>
 
     <p>In Adam and the AdaFactor prototype mentioned above, the moving average weight $\beta_2$ is always constant. AdaFactor points out that this is unscientific and proposes a new strategy.</p>
 
@@ -301,11 +301,11 @@ window.MathJax = {
 
     <p>So this is equivalent to letting $\hat{\beta}_{2,t} = 1 - \frac{1}{t}$. One shortcoming of this scheme is that every gradient step is weighted equally, which is counter-intuitive; normally, older gradients should be less important. Thus, the weight of historical parts should be appropriately reduced. When $c < 1$, $1 - \frac{1}{t^c} < 1 - \frac{1}{t}$; therefore, a concise solution is to take $c < 1$ in equation $\eqref{eq:beta2}$. The default $c$ in AdaFactor is $0.8$.</p>
 
-    <h3 id="层自适应">4. Layer Adaptation</h3>
+    <h3>4. Layer Adaptation</h3>
 
     <p>Finally, we can further correct the update amount based on the norm of the parameters. This idea comes from the <a href="https://papers.cool/arxiv/1904.00962">LAMB optimizer</a>, which was also introduced in the previous article <a href="https://kexue.fm/archives/7094#层自适应">"Simple Introduction to 6 Derived Optimizers and Their Implementation"</a>. Simply put, it normalizes the final update volume and then multiplies it by the norm of the parameters. Essentially, no matter how you tweak it, for the final update amount, I only want your direction, and the size is determined by the parameter's own norm and a pre-set learning rate, ensuring that the relative changes of all parameters in all layers remain consistent.</p>
 
-    <h3 id="AdaFactor完整版">AdaFactor Full Version</h3>
+    <h3>AdaFactor Full Version</h3>
 
     <p>At this point, we can finally write the update process for the full version of AdaFactor:</p>
 
@@ -330,7 +330,7 @@ window.MathJax = {
 
     <p>If the parameter is a 1D vector rather than a matrix, then $\hat{v}_t$ just uses the normal update formula $\hat{v}_t = \hat{\beta}_{2,t} v_{t-1} + (1 - \hat{\beta}_{2,t})(g_t^2 + \epsilon_1)$. Additionally, the paper suggests that if no learning rate is passed, one can use $a_t = \min(10^{-2}, 1/\sqrt{t})$ as the default learning rate, but when I looked at the source code, this default is rarely used; basically, you still need to pass in a learning rate yourself.</p>
 
-    <h2 id="开源实现">Open Source Implementation</h2>
+    <h2>Open Source Implementation</h2>
 
     <p>For convenience, I have open-sourced my implementation of AdaFactor:</p>
 
@@ -340,7 +340,7 @@ window.MathJax = {
 
     <p>I should remind you that when using AdaFactor, it's best to have a larger batch_size, because low-rank decomposition itself introduces errors. If the batch_size is too small, the gradient estimation itself also brings large errors, and the superposition of the two might prevent the optimization process from converging. For pre-trained models, the batch_size is usually very large, so many pre-trained models have started using the AdaFactor optimizer. For ordinary downstream tasks, AdaFactor can be tried, but it may require more "alchemy" (fine-tuning) to achieve results superior to standard Adam. Oh, and one more thing: when using AdaFactor, the learning rate should be set a bit higher, around the $10^{-3}$ level, even during the fine-tuning phase.</p>
 
-    <h2 id="文章小结">Summary</h2>
+    <h2>Summary</h2>
 
     <p>This article introduced the AdaFactor optimizer proposed by Google, an optimizer aimed at reducing memory footprint, and specifically analyzed and solved some of Adam's shortcomings. I believe the analysis provided by AdaFactor regarding Adam is quite classic and worth serious study; for readers interested in optimization problems, it is a rare and valuable analysis case.</p>
 

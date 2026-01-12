@@ -1080,14 +1080,19 @@ def add_new_post(url_or_id: str, force: bool = False):
         print(f"  Translation failed: {e}")
         return
 
-    # Step 4: Regenerate index
-    print("Step 3/4: Updating index...")
+    # Step 4: Clean up articles (remove quirks like hashtag links, etc.)
+    print("Step 3/5: Cleaning up articles...")
     script_dir = os.path.dirname(os.path.abspath(__file__))
+    subprocess.run([sys.executable, os.path.join(script_dir, "cleanup_articles.py")], check=True)
+    print("  Cleaned up translations")
+
+    # Step 5: Regenerate index
+    print("Step 4/5: Updating index...")
     subprocess.run([sys.executable, os.path.join(script_dir, "generate_contents.py")], check=True)
     print("  Updated index.html")
 
-    # Step 5: Regenerate search index
-    print("Step 4/4: Updating search index...")
+    # Step 6: Regenerate search index
+    print("Step 5/5: Updating search index...")
     subprocess.run([sys.executable, os.path.join(script_dir, "build_search_index.py")], check=True)
     print("  Updated search-index.js")
 

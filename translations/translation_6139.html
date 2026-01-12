@@ -159,15 +159,15 @@ window.MathJax = {
 
     <p>If readers need an introduction to WGAN-related knowledge, please feel free to read my humble work <a href="translation_4439.html">"The Art of Mutual Confrontation: WGAN-GP from Scratch"</a>.</p>
 
-    <h2 id="WGAN">WGAN</h2>
+    <h2>WGAN</h2>
     <p>We know that the original GAN (SGAN) may suffer from the problem of vanishing gradients, which is why WGAN was introduced.</p>
 
-    <h3 id="W-distance">W-Distance</h3>
+    <h3>W-Distance</h3>
     <p>WGAN introduces the W-distance from optimal transport to measure the distance between two distributions:</p>
     \begin{equation}W_c[\tilde{p}(x), q(x)] = \inf_{\gamma\in \Pi(\tilde{p}(x), q(x))} \mathbb{E}_{(x,y)\sim \gamma}[c(x,y)] \end{equation}
     <p>Here $\tilde{p}(x)$ is the distribution of real samples, $q(x)$ is the forged distribution, and $c(x,y)$ is the transport cost. The paper uses $c(x,y)=\Vert x-y\Vert$. The term $\gamma\in \Pi(\tilde{p}(x), q(x))$ means that $\gamma$ is any joint distribution of $x$ and $y$ whose marginal distributions are $\tilde{p}(x)$ and $q(y)$. Intuitively, $\gamma$ describes a transport plan, $c(x,y)$ is the transport cost, and $W_c[\tilde{p}(x), q(x)]$ is about finding the cost associated with the transport plan that has the minimum total cost as the distribution metric.</p>
 
-    <h3 id="Dual-Problem">Dual Problem</h3>
+    <h3>Dual Problem</h3>
     <p>The W-distance is indeed a very good metric, but it is obviously difficult to calculate. When $c(x,y)=\Vert x-y\Vert$, we can transform it into a dual problem:</p>
     \begin{equation}W(\tilde{p}(x), q(x)) = \sup_{\Vert T\Vert_L\leq 1} \mathbb{E}_{x\sim \tilde{p}(x)}[T(x)] - \mathbb{E}_{x\sim q(x)}[T(x)]\label{eq:wgan-d}\end{equation}
     <p>where $T(x)$ is a scalar function, and $\Vert T\Vert_L$ is the Lipschitz norm:</p>
@@ -175,45 +175,45 @@ window.MathJax = {
     <p>Simply put, $T(x)$ must satisfy:</p>
     \begin{equation}|T(x)-T(y)| \leq \Vert x - y\Vert\end{equation}
 
-    <h3 id="Generative-Model">Generative Model</h3>
+    <h3>Generative Model</h3>
     <p>Thus, the training of the generative model can be framed as a min-max problem under the W-distance:</p>
     \begin{equation}\mathop{\text{argmin}}_{G}\mathop{\text{argmax}}_{T,\Vert T\Vert_L\leq 1} \mathbb{E}_{x\sim \tilde{p}(x)}[T(x)] - \mathbb{E}_{x\sim q(z)}[T(G(z))]\end{equation}
     <p>The first $\text{argmax}$ attempts to obtain an approximate expression for the W-distance, while the second $\text{argmin}$ attempts to minimize that W-distance.</p>
     <p>However, $T$ is not arbitrary; it must satisfy $\Vert T\Vert_L\leq 1$, which is known as the Lipschitz constraint (L-constraint). How should this constraint be applied? On one hand, WGAN pioneered a new school of thought in GANs, raising GAN theory to new heights; on the other hand, WGAN dug a massive pit regarding the L-constraint, which many researchers have subsequently rushed to... (jump into?)</p>
 
-    <h2 id="L-constraint">L-Constraint</h2>
+    <h2>L-Constraint</h2>
     <p>Currently, there are three main schemes for adding the L-constraint to a model.</p>
 
-    <h3 id="Weight-Clipping">Weight Clipping</h3>
+    <h3>Weight Clipping</h3>
     <p>This was the scheme proposed in the original WGAN paper: after each gradient descent step of the discriminator, the absolute values of the discriminator's parameters are clipped so they do not exceed a fixed constant.</p>
     <p>This is a very primitive approach and is basically no longer used today. Its logic is that the L-constraint essentially requires the network's fluctuations not to exceed a linear function. Since activation functions usually satisfy this condition, one only needs to consider the network weights. The simplest solution is to directly restrict the range of weights so that fluctuations aren't too severe.</p>
 
-    <h3 id="Gradient-Penalty">Gradient Penalty</h3>
+    <h3>Gradient Penalty</h3>
     <p>This logic is very direct: $\Vert T\Vert_L\leq 1$ can be guaranteed by $\Vert \nabla T\Vert \leq 1$. Therefore, the gradient of the discriminator is added directly as a penalty term to the discriminator's loss:</p>
     \begin{equation}T=\mathop{\text{argmin}}_{T} -\mathbb{E}_{x\sim \tilde{p}(x)}[T(x)] + \mathbb{E}_{x\sim q(x)}[T(x)] + \lambda \mathbb{E}_{x\sim r(x)}\Big[\big(\Vert \nabla T\Vert - 1\big)^2\Big]\end{equation}
     <p>But the problem is that we require $\Vert T\Vert_L\leq 1$ to hold everywhere, which would mean $r(x)$ should be a uniform distribution across the entire space—obviously difficult to achieve. The authors adopted a very clever (albeit somewhat "rogue") approach: penalize via random interpolation between real and fake samples, ensuring that the transition region between them satisfies the L-constraint.</p>
     <p>This scheme is WGAN-GP. Clearly, it is more sophisticated than weight clipping and usually works quite well. However, this is an empirical scheme lacking more complete theoretical support.</p>
 
-    <h3 id="Spectral-Normalization">Spectral Normalization</h3>
+    <h3>Spectral Normalization</h3>
     <p>Another scheme for implementing the L-constraint is Spectral Normalization (SN), which you can refer to in my previous article <a href="translation_6051.html">"Lipschitz Constraint in Deep Learning: Generalization and Generative Models"</a>.</p>
     <p>Essentially, Spectral Normalization and Weight Clipping belong to the same category of solutions, but Spectral Normalization has a more complete theoretical basis and produces more relaxed results. Another difference is that Weight Clipping is a "post-hoc" processing scheme—clipping parameters directly after each gradient descent—which may lead to optimization instability. Spectral Normalization is an "a priori" processing scheme; it spectrally normalizes the weights of each layer before computation, making it a more reasonable part of the model itself.</p>
     <p>Despite being more sophisticated, Spectral Normalization shares a problem with Weight Clipping: it restricts the discriminator to a very small family of functions. That is, $T$ with Spectral Normalization is only a small subset of all functions satisfying the L-constraint. Because Spectral Normalization effectively requires every single layer of the network to satisfy the L-constraint, which is too rigid—perhaps one layer could fail the L-constraint while the next satisfies a stronger L-constraint so that the composition as a whole satisfies it. Spectral Normalization cannot adapt to such situations.</p>
 
-    <h2 id="WGAN-div">WGAN-div</h2>
+    <h2>WGAN-div</h2>
     <p>In this context, <a href="https://papers.cool/arxiv/1712.01026">"Wasserstein Divergence for GANs"</a> introduced W-divergence. it claims: we can now remove the L-constraint while still retaining the good properties of W-distance.</p>
 
-    <h3 id="Paper-Review">Paper Review</h3>
+    <h3>Paper Review</h3>
     <p>Could there be such a good thing? Let's look at what W-divergence is. At the start, the authors review classic GAN training schemes and then casually cite a paper called <a href="https://math.berkeley.edu/~evans/Monge-Kantorovich.survey.pdf">"Partial differential equations and monge-kantorovich mass transfer"</a>, which provides a scheme (the order of appearance here differs slightly from the paper) that can solve for $T$ directly. The objective is (written slightly differently than the original):</p>
     \begin{equation}T^* = \mathop{\text{argmax}}_{T} \mathbb{E}_{x\sim \tilde{p}(x)}[T(x)] - \mathbb{E}_{x\sim q(x)}[T(x)] - \frac{1}{2}\mathbb{E}_{x\sim r(x)}[\Vert \nabla T\Vert^2]\label{eq:wgan-div-d1}\end{equation}
     <p>Here $r(x)$ is a very loose distribution, which we will discuss in detail later. The meaning of the entire loss is: as long as you train $T$ according to this formula, it is the optimal solution for $T$ in equation $\eqref{eq:wgan-d}$. This means that next, you just need to substitute it into equation $\eqref{eq:wgan-d}$ to get the W-distance, and minimizing that will yield the generator.</p>
     \begin{equation}\mathop{\text{argmin}}_{G}\mathbb{E}_{x\sim \tilde{p}(x)}[T^*(x)] - \mathbb{E}_{x\sim q(z)}[T^*(G(z))]\label{eq:wgan-div-g1}\end{equation}
 
-    <h3 id="Some-Notes">Some Notes</h3>
+    <h3>Some Notes</h3>
     <p>First, why do I say the authors "casually" threw out a paper? Because it really was casual...</p>
     <p>The authors simply state "According to [19]" and then give the result. [19] is that paper—a 59-page document on optimal transport and partial differential equations... I flipped through it and finally realized the authors were likely citing results from pages 36 and 40 (though even after finding them, I couldn't understand them further and gave up). They don't provide much extra reference material, which is awkward~~ As for some later lemmas, the authors also say "refer directly to the discussion in [19]".....</p>
     <p>Furthermore, many readers might wonder: what's the difference between this and the gradient penalty scheme? Isn't adding a negative sign to turn it into minimization basically the same? There might not be much difference in experiments, but theoretical differences are significant. WGAN-GP's gradient penalty is merely an empirical scheme, whereas equation $\eqref{eq:wgan-div-d1}$ is theoretically guaranteed. We will continue explaining this below.</p>
 
-    <h3 id="W-Divergence">W-Divergence</h3>
+    <h3>W-Divergence</h3>
     <p>Equation $\eqref{eq:wgan-div-d1}$ is a theoretical result. Regardless, deep learning is a discipline combining theory and engineering, so the authors considered a generalized objective:</p>
     \begin{equation}W_{k,p}[\tilde{p}(x), q(x)] = \max_{T} \mathbb{E}_{x\sim \tilde{p}(x)}[T(x)] - \mathbb{E}_{x\sim q(x)}[T(x)] - k\mathbb{E}_{x\sim r(x)}[\Vert \nabla T\Vert^p]\label{eq:wdiv}\end{equation}
     <p>where $k > 0, p > 1$. Based on this, the authors proved that $W_{k,p}$ has excellent properties:</p>
@@ -228,18 +228,18 @@ window.MathJax = {
         </ol>
     </blockquote>
 
-    <h3 id="WGAN-div-training">WGAN-div</h3>
+    <h3>WGAN-div</h3>
     <p>Finally, having said all that, we can introduce WGAN-div, which is simply the WGAN training mode based on $\eqref{eq:wdiv}$:</p>
     \begin{equation}\begin{aligned}T &= \mathop{\text{argmax}}_{T} \mathbb{E}_{x\sim \tilde{p}(x)}[T(x)] - \mathbb{E}_{x\sim q(x)}[T(x)] - k\mathbb{E}_{x\sim r(x)}[\Vert \nabla T\Vert^p]\\ G &= \mathop{\text{argmin}}_{G} \mathbb{E}_{x\sim \tilde{p}(x)}[T(x)] - \mathbb{E}_{x\sim q(z)}[T(G(z))]\end{aligned}\end{equation}
     <p>The former serves to find the optimal $T$ within the W-distance via W-divergence $W_{k,p}$, and the latter serves to minimize the W-distance. Thus, the role of W-divergence is that of an obscure gap-filler for the W-distance. Combined with the lukewarm reception of the paper itself, this feeling is even stronger.</p>
 
-    <h2 id="Experiments">Experiments</h2>
+    <h2>Experiments</h2>
 
-    <h3 id="Choice-of-k-p">Choice of $k, p$</h3>
+    <h3>Choice of $k, p$</h3>
     <p>The authors conducted a series of search experiments and found that $k=2, p=6$ gave the best results (using FID as the metric). This further deviates from WGAN-GP's approach: the second power of the norm is not necessarily the best choice.</p>
     <p><img src="https://img.kexue.fm/2018/11/736186835.png" alt="Impact of different k,p on FID"></p>
 
-    <h3 id="Choice-of-r-x">Choice of $r(x)$</h3>
+    <h3>Choice of $r(x)$</h3>
     <p>As mentioned earlier, the requirement for $r(x)$ in W-divergence is very loose. The paper also conducted a set of comparative experiments, contrasting common practices:</p>
     <blockquote>
         <ol>
@@ -255,7 +255,7 @@ window.MathJax = {
     <p><img src="https://img.kexue.fm/2018/11/3509930903.png" alt="FID differences of different models under different sampling methods"></p>
     <p>The difference is not hard to explain. WGAN-GP adds gradient penalty based on experience, and "interpolation between real and fake samples" is just a compromise because it cannot sample the entire space. However, W-divergence and WGAN-div, starting from the theory, do not have strict restrictions on $r(x)$. In fact, the original construction of W-divergence (refer to the referenced paper) basically only requires $r(x)$ to be a distribution in the same sample space as $\tilde{p}(x)$ and $q(x)$—a very weak requirement. We generally choose a distribution derived from both $\tilde{p}(x)$ and $q(x)$ for relatively faster convergence.</p>
 
-    <h3 id="Reference-Code">Reference Code</h3>
+    <h3>Reference Code</h3>
     <p>Written in Keras, of course~ Life is short, I use Keras: <br>
     <a href="https://github.com/bojone/gan/blob/master/keras/wgan_div_celeba.py">https://github.com/bojone/gan/blob/master/keras/wgan_div_celeba.py</a></p>
     <p>Random samples (from my own experiment):</p>
@@ -263,7 +263,7 @@ window.MathJax = {
     <p>Of course, experimental results from the original paper also show that WGAN-div is excellent:</p>
     <p><img src="https://img.kexue.fm/2018/11/2479532549.png" alt="Comparison of WGAN-div with other models on different datasets"></p>
 
-    <h2 id="Conclusion">Conclusion</h2>
+    <h2>Conclusion</h2>
     <p>I am not sure how the industry views WGAN-div; perhaps they feel it is too similar to WGAN-GP and therefore uninteresting. However, I greatly admire these gurus who derive and improve upon original results from theory. Although it feels like they casually threw out a paper and said "figure it out yourself," such results that combine theory and practice possess great beauty.</p>
     <p>I originally had some reservations about WGAN-GP, always feeling it was a bit "ugly" and not wanting to use it. But with WGAN-div, it has replaced WGAN-GP in my heart, and it is no longer ugly~</p>
 </article>

@@ -175,7 +175,7 @@ window.MathJax = {
 
 <p>I searched for related literature and found few works discussing this problem. The mainstream approach seems to be directly flattening all inputs and treating them as a one-dimensional input to apply RoPE-1D; consequently, even RoPE-2D is rarely seen. Not to mention whether this practice will become a performance bottleneck when image resolution increases further, it ultimately feels somewhat "inelegant." Therefore, in the following, we attempt to explore a natural integration of the two.</p>
 
-<h2>Rotary Position <a id="旋转位置" href="#旋转位置">#</a></h2>
+<h2>Rotary Position</h2>
 
 <p>The term "Rotary" in RoPE comes from the rotation matrix $\boldsymbol{\mathcal{R}}_n = \begin{pmatrix} \cos n\theta & -\sin n\theta \\ \sin n\theta & \cos n\theta \end{pmatrix}$, which satisfies:
 \begin{equation}\boldsymbol{\mathcal{R}}_m^{\top}\boldsymbol{\mathcal{R}}_n = \boldsymbol{\mathcal{R}}_{n-m}\end{equation}
@@ -195,7 +195,7 @@ In the leftmost part of the equation, $\boldsymbol{\mathcal{R}}_m\boldsymbol{q}$
 \end{pmatrix}}\end{equation}
 Implementation-wise, this means grouping $\boldsymbol{q}$ and $\boldsymbol{k}$ in pairs, applying a 2D rotary transformation to each pair with a different $\theta$. This is existing RoPE content and will not be expanded upon further. In principle, we only need to find a solution for the lowest dimension, and it can then be extended to general dimensions via block diagonal formation. Therefore, the following analysis considers only the minimum dimension.</p>
 
-<h2>2D Position <a id="二维位置" href="#二维位置">#</a></h2>
+<h2>2D Position</h2>
 
 <p>When we talk about the concept of "dimension," it can have multiple meanings. For example, we just said $\boldsymbol{q}, \boldsymbol{k} \in \mathbb{R}^d$, meaning $\boldsymbol{q}$ and $\boldsymbol{k}$ are $d$-dimensional vectors. However, RoPE-1D and RoPE-2D focused on here do not refer to this dimension, but rather the number of dimensions required to record a <i>position</i>.</p>
 
@@ -218,7 +218,7 @@ Clearly, this is simply $\boldsymbol{\mathcal{R}}_x$ and $\boldsymbol{\mathcal{R
 
 <p>It should be noted that for considerations of symmetry and simplicity, in the construction of $\boldsymbol{\mathcal{R}}_{x,y}$ above, we used the same $\theta$ for both $x$ and $y$. In principle, this is not mandatory; in appropriate circumstances, we can configure slightly different $\theta$ values for $x$ and $y$.</p>
 
-<h2>Forced Dimensionality Reduction <a id="强行降维" href="#强行降维">#</a></h2>
+<h2>Forced Dimensionality Reduction</h2>
 
 <p>As we can see, a text position is a scalar $n$, while an image position is a vector $(x, y)$. Since the two are inconsistent, some techniques are needed to reconcile this inconsistency when processing mixed text-image inputs.</p>
 
@@ -230,7 +230,7 @@ Clearly, this is simply $\boldsymbol{\mathcal{R}}_x$ and $\boldsymbol{\mathcal{R
 
 <p>However, from my perspective, the concept of position encoding should not be tied to the usage of Attention; it should be universal to Decoders, Encoders, and any Attention Mask. On the other hand, maintaining the two-dimensional nature of positions is crucial to preserving our priors about spatial proximity as much as possible. For example, we believe positions $(x+1, y)$ and $(x, y+1)$ should have similar distances to $(x, y)$. But if flattened (horizontal then vertical), $(x, y)$ becomes $xw + y$, while $(x+1, y)$ and $(x, y+1)$ become $xw + y + w$ and $xw + y + 1$ respectively. The distance of the former from $xw + y$ depends on $w$, while the latter is a fixed $1$. Of course, we could specify other ordering sequences, but regardless of the order, it's impossible to fully capture the proximity of all neighboring locations. After all, losing a dimension means many expressible similarities are lost.</p>
 
-<h2>Unified Dimensionality Increase <a id="统一升维" href="#统一升维">#</a></h2>
+<h2>Unified Dimensionality Increase</h2>
 
 <p>From the perspective of vector spaces, a 1D scalar can be seen as a special case of a 2D vector. Therefore, compared to flattening into 1D, we have more room for operation if we unified all input positions into 2D.</p>
 
@@ -240,7 +240,7 @@ Clearly, this is simply $\boldsymbol{\mathcal{R}}_x$ and $\boldsymbol{\mathcal{R
 
 <p>Clearly, the main advantage of this scheme is its intuitiveness; it directly corresponds to the actual visual layout, making it easy to understand and extend. However, it also has a significant drawback: for pure text input, it cannot degrade back to RoPE-1D; instead, it becomes a version of RoPE-2D where $x$ is always 1. Whether a text LLM pre-trained this way can be successfully used to train a multimodal LLM is questionable. Furthermore, using images as split points might cause text to become excessively "fragmented" when there are many images, resulting in large fluctuations in the length of each text segment or unnaturally forced line breaks in otherwise continuous text, all of which could become bottlenecks for performance.</p>
 
-<h2>Combining into One <a id="合二为一" href="#合二为一">#</a></h2>
+<h2>Combining into One</h2>
 
 <p>To preserve image patch position information losslessly, unifying to 2D and using RoPE-2D (or other 2D encodings) appears to be an inevitable choice. Thus, the previous section was on the right track; we just need to think further about how to allow it to degrade to RoPE-1D for pure text to maintain compatibility with existing text LLMs.</p>
 
@@ -278,7 +278,7 @@ Considering the arbitrariness of $h, w$, and wanting to ensure position IDs rema
 
 <p><b>Two-dimensional positions supporting degradation to RoPE-1D</b></p>
 
-<h2>Extended Reflection <a id="延伸思考" href="#延伸思考">#</a></h2>
+<h2>Extended Reflection</h2>
 
 <p>The last token of the left sentence is at $L$, and the first token of the right sentence is at $K = L + (w+1)(h+1)$. If the middle part were also a sentence, it would imply that the sentence has $(w+1)(h+1)-1$ tokens. This is equivalent to saying that if a $w \times h$ image is sandwiched between two sentences, then for their relative distance, it's as if they are separated by $(w+1)(h+1)-1$ tokens. This number seems a bit unnatural, as $wh$ would appear to be the perfect answer, but unfortunately, this is the simplest solution that ensures all position IDs are integers. If non-integer position IDs were allowed, one could agree that a $w \times h$ image is equivalent to $wh$ tokens, deriving:
 \begin{equation}s = \frac{wh + 1}{h+1}, \quad t = \frac{wh + 1}{w+1}\end{equation}</p>
@@ -287,7 +287,7 @@ Considering the arbitrariness of $h, w$, and wanting to ensure position IDs rema
 
 <p>At this point, our derivation for extending RoPE to mixed text-image input is complete. If a name is needed, the final scheme can be called "RoPE-Tie (RoPE for Text-image)." It must be admitted that the final RoPE-Tie isn't overly elegant, to the extent that it gives a feeling of "over-engineering." In terms of effectiveness, compared to directly flattening into 1D and using RoPE-1D, switching to RoPE-Tie might not yield a significant improvement; it's more of a product of my perfectionism. Therefore, for multimodal models that have already scaled to a certain size, there's no need to make changes. However, if you haven't started yet or are just beginning, you might as well try RoPE-Tie.</p>
 
-<h2>Article Summary <a id="文章小结" href="#文章小结">#</a></h2>
+<h2>Article Summary</h2>
 
 <p>This article discussed how to combine RoPE-1D and RoPE-2D to better handle mixed text-image input formats. The main idea is to use RoPE-2D to support the two-dimensional position indices of images and, through appropriate constraints, allow it to degrade to standard RoPE-1D in pure text scenarios.</p>
 <hr>

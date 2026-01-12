@@ -178,13 +178,13 @@ window.MathJax = {
 
     <p>For more details on the logic, please read on.</p>
 
-    <h2 id="albert-是什么">What is ALBERT?</h2>
+    <h2>What is ALBERT?</h2>
     <p>This modification is specifically designed for ALBERT. To understand it, you first need to know what ALBERT is. I will spend some space on a brief introduction to ALBERT here. I assume readers already have some understanding of BERT, so the focus will be on comparing ALBERT with BERT.</p>
 
-    <h3 id="低秩分解">Low-rank Decomposition</h3>
+    <h3>Low-rank Decomposition</h3>
     <p>First is the Embedding layer. Taking the Chinese version of BERT-base as an example, the total number of tokens is approximately 20,000, and the embedding dimension is 768. Therefore, the total number of parameters in the Embedding layer is about 15 million, accounting for about 1/6 of the total parameters. The first part ALBERT targets is the Embedding layer. it reduces the Embedding dimension to 128 and then uses a \(128 \times 768\) transformation matrix to project it back to 768 dimensions. This way, the number of Embedding layer parameters is reduced to about 1/6 of the original. This is the so-called low-rank decomposition.</p>
 
-    <h3 id="参数共享">Parameter Sharing</h3>
+    <h3>Parameter Sharing</h3>
     <p>Next is the Transformer section. In Transformer-based models like BERT, the core consists of modules composed of self-attention, layer normalization, and fully connected layers (1D convolution with a kernel size of 1), which we call a "transformer block." The BERT model is a stack of multiple transformer blocks. For example, the left figure below is a schematic of BERT-base, which stacks 12 transformer blocks:</p>
 
     <p style="text-align:center;">
@@ -196,7 +196,7 @@ window.MathJax = {
 
     <p>Note that in BERT's design, the input and output shapes of each transformer block are the same. This means it is reasonable to use the output of a block as the input for the same block again. This tells us that the same block can be reused for iterations instead of using a new block for every layer. ALBERT uses the simplest and most direct approach: all layers share the same transformer block (as shown in the right figure above)! Consequently, in ALBERT-base, the parameters for the transformer blocks are reduced to 1/12 of the original BERT-base.</p>
 
-    <h3 id="简单评述">Brief Review</h3>
+    <h3>Brief Review</h3>
     <p>Beyond the two points above, one significant difference between ALBERT and BERT is that during the pre-training stage, the NSP (Next Sentence Prediction) task was changed to the SOP (Sentence-Order Prediction) task. However, this is not related to the model architecture itself, so it is not the focus of this article. Readers can find relevant information on their own.</p>
 
     <p>Overall, ALBERT is a model designed to reduce parameter counts, with the hope that this reduction will act as a form of regularization, thereby lowering the risk of overfitting and improving final performance. But were the results what the authors hoped for? Judging by its "track record," ALBERT's largest version broke the GLUE leaderboard when it was released, so it seems to have met the authors' expectations. However, ALBERT is not always ideal, and it is not the "small model" we might imagine.</p>
@@ -209,7 +209,7 @@ window.MathJax = {
 
     <p>What about the training stage? One point not mentioned earlier is that ALBERT's parameter-sharing design has a strong regularizing effect, so dropout was removed in ALBERT. Parameter sharing and the removal of dropout do indeed save some VRAM and increase training speed, but my benchmarks show the improvement is only around 10% to 20%. That is, even if ALBERT's parameters are reduced to 1/10th or less of BERT's, it does not mean its VRAM usage drops to 1/10th, nor does it mean training speed increases 10x. On the contrary, the improvements are only marginal.</p>
 
-    <h2 id="抛开共享约束">Dropping the Sharing Constraint</h2>
+    <h2>Dropping the Sharing Constraint</h2>
     <p>From the previous discussion, we can understand a few facts:</p>
     <blockquote>
         1. Regarding prediction only, ALBERT and BERT are basically identical;<br>
@@ -218,7 +218,7 @@ window.MathJax = {
 
     <p>Since that is the case, we can try a fresh approach: when fine-tuning for downstream tasks, what if we remove the parameter-sharing constraint? In other words, during fine-tuning, treat ALBERT like BERT. This is equivalent to a BERT model where every transformer block is initialized with the same weights.</p>
 
-    <h3 id="效果评测">Performance Evaluation</h3>
+    <h3>Performance Evaluation</h3>
     <p>Let's let the results speak for themselves. I selected four tasks for testing. To ensure reproducibility, each experiment below was run three times, and the table displays the average of the three results. The "unshared" version refers to the model after removing the parameter sharing. The "Training Speed" column refers to the training time per epoch on a single TITAN RTX card, provided only for relative comparison.</p>
 
     <p>The experiments were conducted using <a href="https://github.com/bojone/bert4keras">bert4keras</a>. For the unshared version, one only needs to load the ALBERT weights during <code>build_transformer_model</code> and set <code>model='albert_unshared'</code>. This is the "one line of code" mentioned in the title.</p>
@@ -279,7 +279,7 @@ window.MathJax = {
     \end{array}\]
     <p>The main purpose of this task is to test the model's text generation capability. It can be seen that on this task, the unshared versions have significantly outperformed the original models; the tiny unshared model even approaches the performance of the original small model.</p>
 
-    <h3 id="分析思考">Analysis and Reflection</h3>
+    <h3>Analysis and Reflection</h3>
     <p>The experiments above were conducted on ALBERT-tiny/small. In fact, I have also experimented with the "base" version, and the conclusion matches those of tiny and small. However, experiments on the base version (and naturally large/xlarge versions) take too long, so I haven't completed a full set (nor repeated them three times), which is why they aren't listed. But overall, it feels like the results from tiny/small are already quite representative.</p>
 
     <p>The results show that removing parameter sharing from ALBERT during downstream tasks results in performance that is basically equal to or better than the original ALBERT. This suggests that for many NLP tasks, parameter sharing might not be a good constraint. One might wonder: "Why does ALBERT with parameter sharing start to outperform BERT without sharing only when the model scale reaches xlarge or even xxlarge?" I will try to offer an explanation.</p>
@@ -288,7 +288,7 @@ window.MathJax = {
 
     <p>Conversely, for ALBERT's parameter sharing to yield better performance, the condition is that it must be sufficiently large and deep. Thus, if we are using "base," "small," or especially "tiny" versions, we probably shouldn't use parameter sharing because, for small models, it acts as an unnecessary restriction on model representation capacity. In these cases, removing the sharing constraint leads to better performance.</p>
 
-    <h2 id="文章的小结">Conclusion</h2>
+    <h2>Conclusion</h2>
     <p>This article explored a fresh approach: removing the parameter-sharing constraint of ALBERT during the fine-tuning stage and treating ALBERT like BERT. In several tasks, it was found that this approach yields performance that is equal to or better than the original ALBERT. Finally, I provided my personal interpretation of ALBERT and this phenomenon.</p>
 </article>
 <hr>

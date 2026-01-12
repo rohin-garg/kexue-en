@@ -157,7 +157,7 @@ window.MathJax = {
 
 <p>However, it is observable that currently, almost all relative position encodings operate on the Attention matrix before the Softmax. This method of application actually possesses a theoretical defect that prevents the Transformer from becoming a "universal approximator." This article will analyze this problem and explore some solutions.</p>
 
-<h2 id="simple-probe">Simple Probe</h2>
+<h2>Simple Probe</h2>
 <p>As the name suggests, position encoding is used to supplement the model with positional information. So, how do we determine if a model has sufficient capability to recognize positions? I previously conceived a simple probe experiment:</p>
 
 <blockquote>
@@ -173,7 +173,7 @@ window.MathJax = {
 
 <p>That is, given $n$ zeros as input, it should be able to output position indices $1 \sim n$ in order. The idea behind this probe experiment is simple: if a model can do this, it indicates that identifying positions is an inherent capability of the model itself, independent of external input, which is exactly what we want. It's not hard to see that since absolute position is directly applied to the input, it can easily pass this probe test.</p>
 
-<h2 id="unable-to-perform">Unable to Perform</h2>
+<h2>Unable to Perform</h2>
 <p>However, when I considered Transformer models with relative position encodings using this simple probe experiment, I found that almost all of them fail this task.</p>
 
 <p>Specifically, except for the design proposed in <a href="https://papers.cool/arxiv/1803.02155">"Self-Attention with Relative Position Representations"</a>, all other relative position encodings (including <a href="translation_8265.html">RoPE</a> proposed by me) only modify the Attention matrix before the Softmax. Consequently, the Attention matrix with relative position information remains a stochastic matrix (i.e., each row sums to 1).</p>
@@ -184,14 +184,14 @@ This means every $\boldsymbol{o}_i$ is also the same. In other words, every posi
 
 <p>Similar findings also appeared in the recent paper <a href="https://papers.cool/arxiv/2205.13401">"Your Transformer May Not be as Powerful as You Expect"</a>, where the authors constructed slightly different examples to demonstrate the fitting capability defect of relative position encoding Transformers. The two ideas coincide perfectly. Furthermore, the beginning of this article mentions "universal approximation"; if this counterexample is resolved, can "universal approximation" be achieved? That paper also provides corresponding theoretical analysis to affirm this fact, which won't be detailed here.</p>
 
-<h2 id="preliminary-solution">Preliminary Solution</h2>
+<h2>Preliminary Solution</h2>
 <p>A little thought reveals that the problem mainly stems from the fact that each row of the Attention matrix sums to 1. To solve this, one needs to find a way to break this constraint. To this end, <a href="https://papers.cool/arxiv/2205.13401">"Your Transformer May Not be as Powerful as You Expect"</a> further proposed the following design based on their findings:
 \begin{equation}\boldsymbol{O} = (\boldsymbol{A}\odot \boldsymbol{C})\boldsymbol{V}\quad \text{or equivalently}\quad\boldsymbol{o}_i = \sum_j a_{i,j}c_{i,j}\boldsymbol{v}_j\end{equation}
 where $\boldsymbol{C}$ is a trainable parameter matrix, and $\odot$ is the element-wise product (<a href="https://en.wikipedia.org/wiki/Hadamard_product_(matrices)">Hadamard product</a>). To ensure the entire model still only contains relative position information (as this article discusses the defects of relative position encoding Transformers), we must constrain $\boldsymbol{C}$ to be a <a href="https://en.wikipedia.org/wiki/Toeplitz_matrix">Toeplitz matrix</a>, i.e., $c_{i,j}=g(i-j)$.</p>
 
 <p>With the addition of $\boldsymbol{C}$, the collective $\boldsymbol{A}\odot \boldsymbol{C}$ clearly does not necessarily have rows summing to 1, thereby breaking the restriction and solving the problem (for more experimental results, please refer to the original paper). However, this introduces a new parameter matrix, and since $\boldsymbol{C}$ itself is of finite size, it does not support variable-length inputs well (or the matrix $\boldsymbol{C}$ would need to take the form of $c_{i,j}=g(\text{clip}(i-j, p_{\min}, p_{\max}))$). Overall, it feels insufficiently concise and elegant.</p>
 
-<h2 id="removing-denominator">Removing the Denominator</h2>
+<h2>Removing the Denominator</h2>
 <p>Returning again to the source of the problem: the sum of each row in the Attention matrix equals 1. What operation leads to this phenomenon? The answer is obvious: Softmax.
 \begin{equation}a_{i,j} = \frac{e^{b_{i,j}}}{\sum\limits_j e^{b_{i,j}}}\end{equation}
 Here $\boldsymbol{B}=(b_{i,j})$ is the matrix before Softmax. Clearly, it is the step of "dividing by $\sum\limits_j e^{b_{i,j}}$" that results in $\sum\limits_j a_{i,j}=1$. So, a very direct thought is:</p>
@@ -202,7 +202,7 @@ Here $\boldsymbol{B}=(b_{i,j})$ is the matrix before Softmax. Clearly, it is the
 
 <p>In fact, it works! Experimental results show that a Transformer that does not divide by this denominator can successfully complete the aforementioned probe test. At this point, one cannot help but admire the "foresight" of <a href="translation_8934.html">GAU</a>. The new attention it proposed directly uses $\text{relu}^2$ activation and then simply divides by $n$ for normalization, avoiding $\sum\limits_j a_{i,j}=1$ and thereby enhancing the model's theoretical capability (though perhaps the authors didn't think that far; it might be more of my imagination).</p>
 
-<h2 id="new-normalization">New Normalization</h2>
+<h2>New Normalization</h2>
 <p>However, we found in <a href="translation_9019.html">"It seems Attention and Softmax go better together..."</a> that attention designs without probability normalization, like those in GAU, might suffer from poor extrapolation capabilities. In other words, performing probability normalization leads to the theoretical defect mentioned earlier, while simply dividing by $n$ for normalization might result in poor extrapolation. Is there a scheme that can balance both?</p>
 
 <p>Let's brainstorm further. From the perspective of norms, $\sum\limits_j e^{b_{i,j}}$ is actually the $l_1$ norm of the vector $e^{b_{i,:}}$. Thus, Softmax is essentially an $l_1$ normalization operation on the vector $e^{b_{i,:}}$. To avoid $\sum\limits_j a_{i,j}=1$ while retaining normalization, would switching to other normalization operations work? For example, $l_2$ normalization:
@@ -217,7 +217,7 @@ Here $\boldsymbol{B}=(b_{i,j})$ is the matrix before Softmax. Clearly, it is the
 
 <p>The difference likely originates from their inherent initialization methods. In the standard Attention + FFN combination, the initial Attention matrix is close to a uniform matrix (all numbers the same), whereas in <a href="translation_8990.html">"Does Gated Attention Unit (GAU) still need Warmup?"</a>, we analyzed that the initial Attention matrix of GAU is closer to an identity matrix (times some constant).</p>
 
-<h2 id="turn-of-events">A Turn of Events</h2>
+<h2>A Turn of Events</h2>
 <p>Looking back at the whole text, we found that because "every $\boldsymbol{v}_j$ is the same," a "model where $\sum\limits_j a_{i,j}=1$ cannot complete the probe experiment." But what if not all $\boldsymbol{v}_j$ are the same?</p>
 
 <p>We know that starting from BERT, mainstream Transformer models have designed inputs like "[CLS] SENT [SEP]". That is, some marker tokens are attached before and after the input. If we consider these marker tokens as part of the model rather than the input (meaning the input is "[CLS] 0 0 ... 0 0 [SEP]" instead of all zeros), is it possible to complete the probe?</p>
@@ -226,7 +226,7 @@ Here $\boldsymbol{B}=(b_{i,j})$ is the matrix before Softmax. Clearly, it is the
 
 <p>Of course, this doesn't mean our previous reflections were meaningless. For example, for the GAU model, switching Attention to $l_2$ normalization definitely has the effect of accelerating convergence and slightly improving performance. Furthermore, since $l_2$ normalization is acceptable, can $e^{b_{i,j}}$ be replaced by general activation functions (such as removing the non-negativity constraint)? I also briefly experimented with "$\text{swish}(b_{i,j})$ + $l_2$ normalization" and found it has some feasibility. From this perspective, Attention under $l_2$ normalization actually has more room for expansion.</p>
 
-<h2 id="closing">Closing</h2>
+<h2>Closing</h2>
 <p>This article analyzed an implicit defect of the relative position encoding Transformer and explored corresponding countermeasures, leading to reflections on the non-negativity and normalization methods of the Attention matrix.</p>
 </article>
 <hr>

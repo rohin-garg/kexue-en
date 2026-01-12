@@ -168,14 +168,14 @@ window.MathJax = {
     <h1><a href="https://kexue.fm/archives/4564">School Starts! Let's do Cloze Tests ~ (iFLYTEK Cup)</a></h1>
     <p>By 苏剑林 | September 03, 2017</p>
 
-    <h2 id="preface">Preface <a href="https://kexue.fm/archives/4564#%E5%89%8D%E8%A8%80">#</a></h2>
+    <h2>Preface</h2>
     <p>Starting this year, the CCL conference (Chinese Computational Linguistics) plans to hold evaluation activities concurrently. I have been interning at a startup recently, and the company signed up for this evaluation. The implementation task ended up falling on me. This year's task is reading comprehension, titled "The First 'iFLYTEK Cup' Chinese Machine Reading Comprehension Evaluation." Although it is called reading comprehension, the task is actually quite simple—it belongs to the <strong>Cloze Test</strong> type. Specifically, a blank is dug out of a passage, and you must select a word from the context to fill in this blank. Ultimately, our model ranked 6th among single systems, with an accuracy of 73.55% on the validation set and 75.77% on the test set. You can <a href="http://www.hfl-tek.com/cmrc2017/leaderboard.html">view the leaderboard here</a>. ("Guangzhou Flame Information Technology Co., Ltd." is the model described in this article.)</p>
     
     <p>In fact, this dataset and task format were proposed by the Harbin Institute of Technology (HIT) last year, so this evaluation was jointly organized by HIT and iFLYTEK. HIT's paper from last year, <a href="https://papers.cool/arxiv/1607.02250">"Consensus Attention-based Neural Networks for Chinese Reading Comprehension"</a>, studied another dataset with the same format but different content using common reading comprehension models (Common reading comprehension refers to finding the answer to a question from a passage; a cloze test can be considered a very small subset of general reading comprehension).</p>
     
     <p>Although the evaluation organizers tended to guide us toward understanding this as a reading comprehension problem, I feel that reading comprehension itself is much more difficult. This is just a cloze test, so we can treat it as such. Therefore, this article merely adopts a language model-like approach. The advantage of this approach is that the thinking is simple and direct, the computational cost is low (it can run with a batch size of 160 on my GTX1060), and it is easy to experiment with.</p>
 
-    <h2 id="model">Model <a href="https://kexue.fm/archives/4564#%E6%A8%A1%E5%9E%8B">#</a></h2>
+    <h2>Model</h2>
     <p>Returning to the model, our design is relatively simple and closely follows the idea of "selecting a word from the context to fill in the blank," as shown in the schematic diagram below.</p>
     
     <p align="center">
@@ -186,7 +186,7 @@ window.MathJax = {
         <span>Cloze Model</span>
     </p>
 
-    <h3 id="preliminary-analysis">Preliminary Analysis <a href="https://kexue.fm/archives/4564#%E5%88%9D%E6%AD%A5%E5%88%86%E6%9E%90">#</a></h3>
+    <h3>Preliminary Analysis</h3>
     <p>First, it should be noted that this task involves selecting a word from the context to fill a missing position. For example:</p>
     
     <blockquote>
@@ -204,7 +204,7 @@ window.MathJax = {
     
     <p>Friends familiar with Natural Language Processing (NLP) will associate this task with language modeling. In fact, the task itself is similar to a language model but perhaps even simpler. A language model predicts the next word from the previous $n$ words, requiring an iteration over all words in the vocabulary. In contrast, this cloze task only requires picking from the context, which significantly narrows the search range. Of course, the focus of the two is different: language models are concerned with probability distribution, while cloze tests are concerned with prediction accuracy.</p>
 
-    <h3 id="context-encoding">Context Encoding <a href="https://kexue.fm/archives/4564#%E4%B8%8A%E4%B8%8B%E6%96%87%E7%BC%96%E7%A0%81">#</a></h3>
+    <h3>Context Encoding</h3>
     <p>Based on experience, LSTM works best for language modeling; therefore, we also use LSTM here. To better capture global semantic information, we stacked multiple layers of bidirectional LSTMs—this is standard procedure in NLP.</p>
     
     <p>First, we split the material using "XXXXX" into a prefix and a suffix. The prefix and suffix are sequentially input into the same bidirectional LSTM (calculated twice rather than concatenated once) to obtain their respective features. In other words, the prefix and suffix LSTMs share parameters. Why? Because when we read context ourselves, we use the same brain; there is no need to treat them differently. Once there is one layer of LSTM, multiple layers can be stacked. As for how many layers are suitable, it depends on the specific dataset. For this competition task, two layers showed significant improvement over a single layer, while three layers showed no improvement or even a slight decline.</p>
@@ -213,7 +213,7 @@ window.MathJax = {
     
     <p>(It is worth noting that if we switch to the <a href="https://github.com/ymcui/Chinese-RC-Dataset">dataset</a> from the paper <a href="https://papers.cool/arxiv/1607.02250">"Consensus Attention-based Neural Networks for Chinese Reading Comprehension"</a>—which has the same format but content from the People's Daily—and use the same model, the number of LSTM layers needs to be 3, and the final accuracy is 0.5% higher than the best result in that paper.)</p>
 
-    <h3 id="predicting-probabilities">Predicting Probabilities <a href="https://kexue.fm/archives/4564#%E9%A2%84%E6%B5%8B%E6%A6%82%E7%8E%87">#</a></h3>
+    <h3>Predicting Probabilities</h3>
     <p>The next question is: how to implement "searching within the context" instead of searching through the entire vocabulary?</p>
     
     <p>Recalling when we build language models, if we want to search the entire vocabulary, we build a fully connected layer where the number of nodes is the number of words in the vocabulary, and then use softmax to predict probability. We can view the fully connected layer this way: we assign a vector with the same dimension as the output feature to every word in the vocabulary, calculate the <strong>inner product</strong>, and apply softmax. That is, the pairing of features and words is achieved through the inner product. This provides a reference idea: if we make the feature output by the LSTM have the same dimension as the word vectors, and then perform an inner product between this feature and each input word vector in the context, we can then apply softmax. This achieves searching only within the context.</p>
@@ -222,7 +222,7 @@ window.MathJax = {
     
     <p>Experiments confirmed my suspicion. With the improved model, the accuracy reached about 73%–74% on the official validation set and 75%–76% on the test set. After a further period of experimentation, there was no significant improvement, so this model was submitted.</p>
 
-    <h3 id="implementation-details">Implementation Details <a href="https://kexue.fm/archives/4564#%E5%AE%9E%E7%8E%B0%E7%BB%86%E8%8A%82">#</a></h3>
+    <h3>Implementation Details</h3>
     <p>In fact, I am not very good at parameter tuning, so the parameters in the code below are not necessarily optimal. I look forward to tuning experts optimizing various parameters to yield even better results. I believe that even for the model described in this article, the results we provided were not yet optimal.</p>
     
     <p>Below are some important details in the implementation of the model:</p>
@@ -235,13 +235,13 @@ window.MathJax = {
         <li>5. If the target word appears multiple times in the context, the probability is spread across every occurrence. That is, the cross-entropy target is not necessarily in one-hot format. During final prediction, the probabilities of repeated words are summed up before sorting for the maximum.</li>
     </ul>
 
-    <h2 id="code">Code <a href="https://kexue.fm/archives/4564#%E4%BB%A3%E7%A0%81">#</a></h2>
+    <h2>Code</h2>
 
-    <h3 id="dataset">Dataset <a href="https://kexue.fm/archives/4564#%E6%95%B0%E6%8D%AE%E9%9B%86">#</a></h3>
+    <h3>Dataset</h3>
     <p>Dataset download: <a href="https://github.com/ymcui/cmrc2017">https://github.com/ymcui/cmrc2017</a></p>
     <p>The following code can also be viewed on my Github: <a href="https://github.com/bojone/CCL_CMRC2017">https://github.com/bojone/CCL_CMRC2017</a></p>
 
-    <h3 id="training-script">Training Script <a href="https://kexue.fm/archives/4564#%E8%AE%AD%E7%BB%83%E8%84%9A%E6%9C%AC">#</a></h3>
+    <h3>Training Script</h3>
 
 <pre><code>#! -*- coding:utf-8 -*-
 # Experimental environment: tensorflow 1.2

@@ -173,7 +173,7 @@ window.MathJax = {
 
 <p>After analysis, I found that similar phenomena do not occur with Adam. This is a specific issue for optimizers like Tiger or Lion that use the \(\text{sign}\) function. This article provides two reference solutions for this issue at the end. I will record the analysis process here for everyone's reference.</p>
 
-<h2 id="phenomenon">Phenomenon</h2>
+<h2>Phenomenon</h2>
 
 <p>Next, we will use the Tiger optimizer as an example for our analysis, but the process and conclusions apply equally to Lion.</p>
 
@@ -192,7 +192,7 @@ window.MathJax = {
 
 <p>Of course, regardless of the optimizer, it is always possible for the training to collapse, which is not surprising and often difficult to investigate deeply. However, the most intriguing thing here is how "regularly" it collapsed—it reached exactly \(\pm 100\). This compelled me to further investigate the underlying cause.</p>
 
-<h2 id="thinking">Thinking</h2>
+<h2>Thinking</h2>
 
 <p>Based on the observations above, we can initially conclude that these outliers only appear in the "Embeddings of low-frequency tokens." This reminded me of the problem discussed in <a href="https://kexue.fm/archives/6869#LazyOptimizer"><i>"Implementing Two Optimizers in Keras: Lookahead and LazyOptimizer"</i></a>, where optimizers with momentum can lead to the over-optimization of the Embedding layer.</p>
 
@@ -200,7 +200,7 @@ window.MathJax = {
 
 <p>However, the situation is different in Tiger. The update amount in Tiger is proportional to the sign of the momentum, \(\text{sign}(m_t)\). Although the momentum \(m_t\) decays exponentially, the sign function does not. Until \(m_t\) becomes zero due to rounding errors, \(\text{sign}(m_t)\) maintains a value of \(\pm 1\), meaning the update amount remains constant. Thus, the over-updating problem for Embeddings is much more severe in Tiger. To make matters worse, after a token's Embedding has biased in a certain direction due to over-updating, its gradient might adapt to and reinforce this change. That is, the gradient the next time the token appears might be in the same direction rather than the opposite. This leads to long-term over-updating in the same direction, eventually resulting in the outliers.</p>
 
-<h2 id="calculation">Calculation</h2>
+<h2>Calculation</h2>
 
 <p>So, why is the outlier value exactly \(\pm 100\)? This is where weight decay comes into play. The total update formula for Tiger is:</p>
 
@@ -220,7 +220,7 @@ window.MathJax = {
 
 <p>This corresponds exactly to a vector with elements of \(\pm 100\), which explains why the outliers are \(\pm 100\). If interested, readers can also assume \(\eta_t\) is constant and directly solve for the analytical form of \(\theta_t\) to further analyze the convergence speed, etc. I will not expand further on that here.</p>
 
-<h2 id="countermeasures">Countermeasures</h2>
+<h2>Countermeasures</h2>
 
 <p>Since the problem arises from the over-updating of low-frequency token Embeddings, a natural solution is to "Lazy-ify" the Embedding updates, as suggested in <a href="https://kexue.fm/archives/6869#LazyOptimizer"><i>"Implementing Two Optimizers in Keras: Lookahead and LazyOptimizer"</i></a>. That is, only update the corresponding Embedding when the Token actually appears. If we can access the set of all input Token IDs, we can update only those Embeddings. If not, we can determine whether an Embedding needs to be updated by checking if the gradient norm of the Embedding is non-zero.</p>
 
@@ -228,7 +228,7 @@ window.MathJax = {
 
 <p>Finally, I also consulted the authors of the Lion optimizer regarding this issue. Their reply was that they had noticed this problem before. Their solution was a hybrid optimizer; for example, using Adam for the Embedding layer and Lion/Tiger for the other layers. Uh, this solution was one I hadn't thought of. It feels not particularly elegant, but it certainly solves the problem. Readers can choose for themselves.</p>
 
-<h2 id="summary">Summary</h2>
+<h2>Summary</h2>
 
 <p>This article introduced the phenomenon of Embedding abnormalities during training with the Lion/Tiger optimizers, analyzed the underlying causes, and provided reference solutions.</p>
 

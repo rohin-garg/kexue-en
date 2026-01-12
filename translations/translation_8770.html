@@ -158,10 +158,10 @@ window.MathJax = {
 
     <p>A similar analysis can be applied to the <a href="https://papers.cool/arxiv/2111.06377">MAE (Masked Autoencoder)</a> model recently proposed by Kaiming He. The results show that MAE indeed possesses better consistency compared to MLM, from which we can derive a regularization technique that may accelerate training speed.</p>
 
-    <h2 id="Dropout">Dropout</h2>
+    <h2>Dropout</h2>
     <p>First, let's revisit Dropout. From a mathematical standpoint, Dropout is an operation that introduces random noise into a model via a Bernoulli distribution. Let's briefly review the Bernoulli distribution.</p>
 
-    <h3 id="BernoulliDistribution">Bernoulli Distribution</h3>
+    <h3>Bernoulli Distribution</h3>
     <p>The Bernoulli distribution is perhaps the simplest probability distribution. it is a binary distribution with a value space of $\{0,1\}$, where the probability of $\varepsilon$ taking 1 is $p$, and the probability of taking 0 is $1-p$, denoted as:
     \begin{equation}\varepsilon\sim \text{Bernoulli}(p)\end{equation}
     An interesting property of the Bernoulli distribution is that all its moments are $p$, i.e.,
@@ -170,7 +170,7 @@ window.MathJax = {
     \begin{equation}\mathbb{V}ar_{\varepsilon}[\varepsilon] = \mathbb{E}_{\varepsilon}[\varepsilon^2] - \mathbb{E}_{\varepsilon}[\varepsilon]^2 = p(1-p)\end{equation}
     </p>
 
-    <h3 id="TrainingAndPrediction">Training and Prediction</h3>
+    <h3>Training and Prediction</h3>
     <p>During the training phase, Dropout sets certain values to zero with probability $1-p$ and divides the remaining values by $p$. Thus, Dropout effectively introduces a random variable $\varepsilon\sim \text{Bernoulli}(p)$, transforming the model from $f(x)$ to $f(x\varepsilon/p)$. While $\varepsilon$ can have multiple components corresponding to independent Bernoulli distributions, in most cases, the result is fundamentally no different from when $\varepsilon$ is a scalar, so we only need to derive for the scalar case.</p>
 
     <p>In <a href="translation_8496.html">"Dropout Twice Again! This Time It Achieved SOTA in Supervised Tasks"</a>, we proved that if the loss function is MSE, then the optimal prediction model after training is completed should be:
@@ -179,17 +179,17 @@ window.MathJax = {
     \begin{equation}f(x)=f(x\,\mathbb{E}_{\varepsilon}[\varepsilon]/p)\end{equation}
     turning off Dropout is effectively a "weight averaging" approach (viewing $\varepsilon$ as the model's random weights). In other words, while the theoretical optimal solution is "model averaging," due to computational constraints, we usually approximate it with "weight averaging," which can be seen as a first-order approximation of "model averaging."</p>
 
-    <h2 id="MLMModel">MLM Model</h2>
+    <h2>MLM Model</h2>
     <p>In this section, we treat the MLM model as a special type of Dropout. This allow us to clearly describe the inconsistency between pre-training and fine-tuning and derive a simple correction strategy to better alleviate this inconsistency.</p>
 
-    <h3 id="DropoutPerspectiveMLM">Dropout Perspective</h3>
+    <h3>Dropout Perspective</h3>
     <p>For simplicity, let's first analyze a simplified version of MLM: assume that during the pre-training phase, each token remains unchanged with probability $p$ and is replaced by <code>[MASK]</code> with probability $1-p$. Let the embedding of the $i$-th token be $x_i$ and the embedding of <code>[MASK]</code> be $m$. We can similarly introduce a random variable $\varepsilon\sim \text{Bernoulli}(p)$ and denote the MLM model as:
     \begin{equation}f(\cdots,x_i,\cdots)\quad\rightarrow\quad f(\cdots,x_i \varepsilon + m(1-\varepsilon),\cdots)\end{equation}
     In this way, MLM is essentially the same as Dropout; both introduce random perturbations to the model through a Bernoulli distribution. Now, following the standard usage of Dropout, the prediction model should use "weight averaging," namely:
     \begin{equation}f(\cdots,\mathbb{E}_{\varepsilon}[x_i \varepsilon + m(1-\varepsilon)],\cdots) = f(\cdots,x_i p + m (1-p),\cdots)\end{equation}
     At this point, the inconsistency of MLM during the fine-tuning phase becomes apparent: if we treat pre-trained MLM as a special Dropout, fine-tuning corresponds to "disabling Dropout." According to standard practice, we should change each token's embedding to $x_i p + m (1-p)$, but in reality, we do not; we retain the original $x_i$.</p>
 
-    <h3 id="CorrectingEmbedding">Correcting Embedding</h3>
+    <h3>Correcting Embedding</h3>
     <p>According to BERT's default settings, during MLM training, 15% of tokens are selected for prediction. Among these 15%, there is an 80% chance of being replaced by <code>[MASK]</code>, a 10% chance of remaining unchanged, and a 10% chance of being replaced by a random token. Based on the previous analysis, after MLM pre-training is complete, we should adjust the Embedding as follows:
     \begin{equation}\text{Embedding[i]} \leftarrow 0.85\times \text{Embedding[i]} + 0.15\times\left(\begin{array}{l}0.8\times \text{Embedding[m]} \,+\\ 0.1 \times \text{Embedding[i]} \,+ \\ 0.1\times \text{Avg[Embedding]}\end{array}\right)
     \end{equation}
@@ -206,10 +206,10 @@ K.set_value(model.weights[0], embeddings) # Re-assign
 
     <p>Reading this, you might feel disappointed: Does this mean everything said earlier was in vain? I believe that human intervention can indeed alleviate the inconsistency (otherwise, wouldn't we be negating Dropout?). The fact that the results showed no improvement suggests that the inconsistency problem might not be as severe as we imagined, at least for CLUE tasks. A similar result appeared in MacBERT, which uses synonyms to replace <code>[MASK]</code> to correct this inconsistency, but I tested MacBERT using the same baseline code, and it showed no significant difference from RoBERTa. Therefore, it may be that only in specific tasks or with larger mask ratios will the necessity of correcting this inconsistency be demonstrated.</p>
 
-    <h2 id="MAEModel">MAE Model</h2>
+    <h2>MAE Model</h2>
     <p>Many readers may have heard of the <a href="https://papers.cool/arxiv/2111.06377">MAE (Masked Autoencoder) model</a> recently proposed by Kaiming He. It introduces the MLM task into image pre-training in a simple and efficient way and has achieved effective improvements. In this section, we will see that MAE can also be understood as a special kind of Dropout, which leads to a new method for preventing overfitting.</p>
 
-    <h3 id="DropoutPerspectiveMAE">Dropout Perspective</h3>
+    <h3>Dropout Perspective</h3>
     <p>As shown in the figure below, MAE divides the model into an encoder and a decoder, characterized by a "deep encoder, shallow decoder." It places <code>[MASK]</code> only in the decoder, while the encoder does not process <code>[MASK]</code>. Consequently, the sequence the encoder processes becomes shorter. Crucially, MAE uses a 75% mask ratio, meaning the encoder's sequence length is only 1/4 of the usual length. Combined with the "deep encoder, shallow decoder" characteristic, the overall pre-training speed of the model is increased by more than three times!</p>
 
     <p style="text-align:center;"><img src="https://img.kexue.fm/2021/11/20211129153358.png" alt="MAE model schematic" style="max-width:100%;"></p>
@@ -233,7 +233,7 @@ K.set_value(model.weights[0], embeddings) # Re-assign
 
     <p>From this result, we see that for MAE, "disabling Dropout" results in the same model as the original. This indicates that MAE, compared to the original MLM model, offers not only a speed improvement but also better consistency between pre-training and fine-tuning.</p>
 
-    <h3 id="PreventingOverfitting">Preventing Overfitting</h3>
+    <h3>Preventing Overfitting</h3>
     <p>Conversely, since MAE can also be viewed as a type of Dropout, and Dropout helps prevent overfitting, can we use the MAE approach as a regularization method to prevent overfitting? As shown in the figure below, during the training phase, we can randomly drop some tokens while maintaining the original positions of the remaining tokens. We will tentatively call this "DropToken":</p>
 
     <p style="text-align:center;"><img src="https://img.kexue.fm/2021/11/20211129154941.png" alt="DropToken schematic" style="max-width:100%;"></p>
@@ -259,7 +259,7 @@ K.set_value(model.weights[0], embeddings) # Re-assign
     \end{array}
     </div>
 
-    <h2 id="Summary">Conclusion</h2>
+    <h2>Conclusion</h2>
     <p>This article explored the MLM and MAE models from a Dropout perspective. Both can be viewed as special forms of Dropout. From this viewpoint, we obtained a technique to correct MLM inconsistency and a DropToken technique similar to MAE for preventing overfitting.</p>
 </article>
 <hr>

@@ -156,14 +156,14 @@ window.MathJax = {
 
     <p>I have previously written about schemes using LSTM for word segmentation. Today, I'm presenting another one using CNNs—specifically, an FCN (Fully Convolutional Network). The primary goal of this model isn't actually to research Chinese word segmentation itself, but rather to practice using TensorFlow. I've been using Keras for two years now, and I'm quite familiar with it, but I've gradually discovered some of its limitations—such as the inconvenience of handling variable-length inputs and the difficulty of adding custom constraints. Thus, I decided to try native TensorFlow. After trying it, I found it's not actually that complex; after all, it's all Python, how complex can it be? This article serves as an exercise in using TensorFlow to handle variable-length sequences, using Chinese word segmentation as an example. Finally, I have incorporated <strong>Hard Decoding</strong>, which <strong>combines deep learning with dictionary-based segmentation</strong>.</p>
 
-    <h2 id="CNN">CNN</h2>
+    <h2>CNN</h2>
     <p>Regarding FCNs: interpreted in the context of language tasks, a (one-dimensional) convolution is essentially an n-gram model. From this perspective, CNNs are actually far more natural than RNNs. RNNs seem to be meticulously designed specifically for sequence tasks, whereas CNNs are an extension of the traditional n-gram model. Furthermore, both CNNs and RNNs utilize weight sharing, which might seem like a compromise chosen just to reduce computation, but there is deep reasoning behind it. <strong>Weight sharing in CNNs is an inevitable result of translation invariance</strong>, not just a choice to reduce computational load. Imagine shifting an image slightly, or inserting a meaningless space at the beginning of a sentence (causing all subsequent characters to shift back by one position). This should yield a similar or even identical result, which requires the convolution to be weight-shared—meaning the weights cannot be tied to specific positions.</p>
     
     <p>RNN-type models, especially LSTMs, have long been the kings of language tasks. However, recent GCNNs (Gated Convolutional Neural Networks) are said to have slightly surpassed LSTMs in language modeling. This demonstrates that even in language tasks, CNNs have significant potential. The advantage of LSTMs is their ability to capture long-distance dependencies, but in fact, there aren't many truly long-distance tasks in language. Even in language modeling, the probability of the next character depends mostly on the preceding few characters, rather than the entire preceding text. As long as a CNN has enough layers and large enough kernels, it can achieve this effect. But CNNs have another distinct advantage: they are much faster than RNNs. When using GPU acceleration, GPUs are best at performing convolutions (since they were originally designed for image processing), so the acceleration of CNNs is far more pronounced than that of RNNs...</p>
     
     <p>These points make me prefer CNNs, much like the Facebook team (who developed GCNN). A Fully Convolutional Network uses convolutions from start to finish and can handle variable-length inputs. It is particularly suitable for tasks where the input length is variable but the input and output lengths are equal.</p>
 
-    <h2 id="语料">Corpus</h2>
+    <h2>Corpus</h2>
     <p>The task in this article is to build a Chinese word segmentation system using an FCN. The approach follows the "sbme" character tagging method (if you're unsure, refer to previous articles). Since it's supervised training, a corpus is required. Two good corpora are: first, the 2014 People's Daily corpus; second, the corpus from the <a href="http://sighan.cs.uchicago.edu/bakeoff2005/">backoff2005</a> competition, which also comes with an evaluation system. I have experimented with both.</p>
 
     <p>If using the 2014 People's Daily corpus, the preprocessing code is:</p>
@@ -182,7 +182,7 @@ window.MathJax = {
 <pre><code class="language-python"># Batch generator code
 </code></pre>
 
-    <h2 id="模型">Model</h2>
+    <h2>Model</h2>
     <p>Now for building the model. It's actually quite simple: three layers of stacked convolutions. The input length is not specified (set to <code>None</code>), and <code>padding='SAME'</code> is used to ensure the output length matches the input length (for this reason, no pooling is used). ReLU is used for intermediate activation, and Softmax is used at the end, with cross-entropy as the loss function. When using TensorFlow, you have to write out each process yourself, but it's not actually that complicated.</p>
 
 <pre><code class="language-python">import tensorflow as tf
@@ -251,7 +251,7 @@ accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
         ...
     </blockquote>
 
-    <h2 id="硬解码">Hard Decoding</h2>
+    <h2>Hard Decoding</h2>
     <p>After training, what remains is prediction, tagging, and segmentation—these are basic and don't require much explanation. <strong>Finally, it can reach 93% accuracy on the backoff2005 evaluation set (calculated using the score script provided by backoff2005). This isn't the absolute best, but it's sufficient, especially considering the adjustments below.</strong></p>
 
     <p>As is well known, word segmentation based on character tagging requires a tagged corpus for training. Once trained, it adapts to that specific corpus; it's difficult to extend to new domains. Or, if errors are discovered, they cannot be quickly corrected. In contrast, dictionary-based methods are easy to adjust by simply adding/removing words or adjusting word frequencies. We can consider how to combine deep learning with a dictionary. Here, I've simply added <strong>Hard Decoding</strong> (manual intervention decoding) during the final decoding stage.</p>

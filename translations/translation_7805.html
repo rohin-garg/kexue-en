@@ -173,12 +173,12 @@ window.MathJax = {
 
     <p>Whether in competitions, experiments, or engineering, we often encounter situations where the distribution of the training set and the test set is inconsistent. Generally, we split a validation set from the training set to tune hyperparameters (refer to <a href="translation_4638.html">"The Significance of Training, Validation, and Test Sets"</a>), such as controlling the number of training epochs to prevent overfitting. However, if the validation set itself is quite different from the test set, a model that performs well on the validation set does not necessarily perform well on the test set. Therefore, how to make the distribution of the split validation set closer to the test set is a topic worth researching.</p>
 
-    <h2 id="two-cases">Two Cases</h2>
+    <h2>Two Cases</h2>
     <p>First, clarify that what this article considers is a scenario where we can obtain the test set data itself but do not know the test set labels. If it is a scenario where models are submitted for closed evaluation and we cannot see the test set at all, there is not much we can do. Why does the phenomenon of inconsistent training and test set distributions occur? There are mainly two situations.</p>
     <p>The first is the inconsistency of <strong>label</strong> distributions. This means that if we only look at the input $x$, the distribution is basically the same, but the corresponding $y$ distribution is different. A typical example is the information extraction task, where training sets are often constructed using "distant supervision + coarse manual labeling," resulting in large volumes but possibly many errors and omissions. Meanwhile, the test set might be constructed through "repeated manual refined labeling," with very few errors. In this case, it is impossible to construct a better validation set simply by splitting the data.</p>
     <p>The second is the inconsistency of <strong>input</strong> distributions. Simply put, the distribution of $x$ is inconsistent, but the annotation of $y$ is basically correct. For example, in classification problems, the category distribution of the training set may differ from that of the test set; or in reading comprehension problems, the proportion of factual vs. non-factual question types in the training set may differ from that in the test set, and so on. In this case, we can appropriately adjust the sampling strategy to make the validation set distribution more consistent with the test set, so that the results on the validation set better reflect the results on the test set.</p>
 
-    <h2 id="discriminator">Discriminator</h2>
+    <h2>Discriminator</h2>
     <p>To achieve our goal, we let the labels of the training set be 0 and the labels of the test set be 1, and train a binary classifier discriminator $D(x)$:</p>
     \[-\mathbb{E}_{x\sim p(x)}[\log (1 - D(x))] - \mathbb{E}_{x\sim q(x)}[\log D(x)]\]
     <p>where $p(x)$ represents the distribution of the training set and $q(x)$ represents the distribution of the test set. Note that we are not directly mixing the training and test sets for random sampling training; instead, we sample an equal number of samples from the training and test sets to form each batch, meaning we need to oversample to achieve class balance.</p>
@@ -187,7 +187,7 @@ window.MathJax = {
     \begin{equation}D(x) = \frac{q(x)}{p(x)+q(x)}\label{eq:d}\end{equation}
     <p>In other words, after the discriminator is trained, it can be considered equivalent to the relative density of the test set distribution.</p>
 
-    <h2 id="importance-sampling">Importance Sampling</h2>
+    <h2>Importance Sampling</h2>
     <p>Whether optimizing a model or calculating metrics, we actually hope to perform these actions on the test set. That is, for a given objective $f(x)$ (such as the model's loss), we hope to calculate:</p>
     \[\mathbb{E}_{x\sim q(x)}[f(x)] = \int q(x) f(x) dx\]
     <p>However, calculating the objective $f(x)$ usually requires knowing the true label of $x$, which we do not know for the test set, so we cannot calculate it directly. However, we do know the labels for the training set, so we can use importance sampling to solve this:</p>
@@ -196,14 +196,14 @@ window.MathJax = {
     \begin{equation}\mathbb{E}_{x\sim q(x)}[f(x)] = \mathbb{E}_{x\sim p(x)}\left[\frac{D(x)}{1-D(x)} f(x)\right]\label{eq:w}\end{equation}
     <p>Simply put, the idea of importance sampling is to "pick out" those samples from the training set that are similar to the test set and assign them higher weights.</p>
 
-    <h2 id="final-strategy">Final Strategy</h2>
+    <h2>Final Strategy</h2>
     <p>From formula $\eqref{eq:w}$, we can obtain two strategies:</p>
     <p>The first is to weight directly according to the formula. That is, still divide the training and validation sets using random shuffling, but assign a weight $w(x)=\frac{D(x)}{1-D(x)}$ to each sample. It is worth noting that a similar approach has already been used by some contestants in competitions, except the weight circulated was $D(x)$. Of course, I cannot assert which one is better, but from the perspective of theoretical derivation, $\frac{D(x)}{1-D(x)}$ should be more reasonable.</p>
     <p>The second strategy is to actually sample the corresponding validation set. This is not difficult. Suppose all samples in the training set are $x_1, x_2, \dots, x_N$. We normalize the weights:</p>
     \begin{equation}p_i = \frac{w(x_i)}{\sum\limits_{i=1}^N w(x_i)}\end{equation}
     <p>Then perform independent repeated sampling according to the distribution $p_1, p_2, \dots, p_N$ until the designated number of samples is reached. Note that independent repeated sampling with replacement is required, so the same sample may be sampled multiple times and should be kept multiple times in the validation set; you cannot remove duplicates, as deduplication would result in inconsistent distributions.</p>
 
-    <h2 id="summary">Summary</h2>
+    <h2>Summary</h2>
     <p>This article compares the differences between the training set and the test set from the perspective of training a discriminator. Combined with importance sampling, we can obtain a validation set that is closer to the test set, or weight the training samples so that the training set optimization process has less discrepancy with the test set.</p>
 </article>
 <hr>

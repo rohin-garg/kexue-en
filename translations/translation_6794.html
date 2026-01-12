@@ -160,13 +160,13 @@ window.MathJax = {
 
     <p>Github Address: <a href="https://github.com/bojone/accum_optimizer_for_keras">https://github.com/bojone/accum_optimizer_for_keras</a></p>
 
-    <h2 id="扯淡">Digression</h2>
+    <h2>Digression</h2>
     <p>A year or two ago, you didn't really have to worry about OOM (Out of Memory) issues when doing NLP tasks because, compared to models in the CV field, most NLP models were quite shallow and rarely ran out of video memory. Fortunately or unfortunately, Bert was released and then became famous. Bert and its successors (GPT-2, XLNET, etc.) are all based on sufficiently massive Transformer models, pre-trained on large enough corpora, and then completed for specific NLP tasks through fine-tuning.</p>
     <p>Even if you really don't want to use Bert, the reality today is: the complex model you meticulously designed might not perform as well as simply <a href="translation_6736.html">fine-tuning Bert</a>. So no matter what, to keep up with the times, you need to learn Bert's fine-tuning. The problem is "you don't know until you try, and it's a shock when you do"—as long as the task is slightly complex or the sentence length is slightly longer, the VRAM isn't enough, and the batch size drops sharply—32? 16? 8? It's possible for it to keep falling.</p>
     <p>This isn't hard to understand. Transformers are based on Attention, and theoretically, the space and time complexity of Attention is $\mathcal{O}(n^2)$. Although Attention can still perform fast enough due to its parallelism when computing power is strong, the VRAM consumption cannot be saved. $\mathcal{O}(n^2)$ means that when your sentence length doubles, the VRAM consumption basically requires 4 times the original, and this growth rate certainly makes it easy to OOM~</p>
     <p>And the even more unfortunate news is that when everyone is fine-tuning pre-trained Bert, your <code>batch_size=8</code> might be several tenths of a percent or even several percentage points lower than someone else's <code>batch_size=80</code>. This is clearly difficult for readers who want to climb the leaderboards. Is there really no way other than adding more graphics cards?</p>
 
-    <h2 id="正事">The Real Business</h2>
+    <h2>The Real Business</h2>
     <p>Yes! By using gradient caching and accumulation, you can trade time for space. The final training effect is equivalent to using a larger batch size. Therefore, as long as you can run <code>batch_size=1</code>, and you are willing to spend $n$ times the time, you can run $n$ times the batch size.</p>
     <p>The idea of gradient accumulation was introduced in the previous article <a href="translation_5879.html">"Making Keras Cooooler!": Niche Custom Optimizers</a>, where it was called "soft batch." In this article, I will follow the mainstream terminology and call it "accumulate gradients." The so-called gradient accumulation is actually very simple: the gradient we use for gradient descent is actually the average value of gradients calculated from multiple samples. Taking <code>batch_size=128</code> as an example, you can calculate the gradients for 128 samples at once and then average them; I can also calculate the average gradient for 16 samples each time, cache it and accumulate it, and after doing this 8 times, divide the total gradient by 8 and then execute the parameter update. Of course, the parameters must not be updated until 8 accumulations have occurred using the 8-time average gradient; you cannot update every time you calculate 16, otherwise, it would just be <code>batch_size=16</code>.</p>
     <p>As mentioned earlier, the coding method in that previous article was incorrect because it used:</p>
@@ -183,7 +183,7 @@ window.MathJax = {
     <p>The specific coding is nothing more than some programming tricks of "grafting." There isn't much high-tech content. I won't go into detail about the code itself; if you have questions, feel free to discuss them in the discussion section.</p>
     <p><strong>(Note: This optimizer modification allows a small batch size to function as a large batch size, provided the model does not contain Batch Normalization, because Batch Normalization must use the mean and variance of the entire batch during gradient descent. So if your network uses Batch Normalization and you want to accurately achieve the effect of a large batch size, the only current method is to add VRAM/graphics cards.)</strong></p>
 
-    <h2 id="实验">Experiment</h2>
+    <h2>Experiment</h2>
     <p>The usage is very simple:</p>
 <pre><code class="language-python">from accum_optimizer import AccumOptimizer
 from keras.optimizers import Adam
@@ -203,7 +203,7 @@ model.fit(x_train, y_train, batch_size=10) # Original batch size is 10
     </ul>
     <p>This result is enough to show that the code is effective and has achieved the expected purpose. If this is not convincing enough, I can provide another training result for reference: in a certain Bert fine-tuning experiment, using direct <code>Adam()</code> plus <code>batch_size=12</code>, I reached 70.33% accuracy; using <code>AccumOptimizer(Adam(), 10)</code> plus <code>batch_size=12</code> (expected equivalent batch size is 120), I reached 71.00% accuracy, an increase of 0.7%. If you are climbing a leaderboard, then this 0.7% might be decisive.</p>
 
-    <h2 id="结论">Conclusion</h2>
+    <h2>Conclusion</h2>
     <p>I have finally formally implemented gradient accumulation (soft batch). In the future when using Bert, we can also consider using large batch sizes~</p>
 
     <p><i><b>Reprint address: </b> <a href="https://kexue.fm/archives/6794">https://kexue.fm/archives/6794</a></i></p>

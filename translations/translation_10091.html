@@ -157,7 +157,7 @@ window.MathJax = {
 
     <p>In this article, we will trace the evolution from MHA, MQA, and GQA to MLA, with a particular focus on the design philosophy behind MLA.</p>
 
-    <h2 id="MHA">MHA</h2>
+    <h2>MHA</h2>
     <p>MHA (<strong>M</strong>ulti-<strong>H</strong>ead <strong>A</strong>ttention), or Multi-Head Attention, is the attention mechanism proposed in the pioneering work <a href="translation_4765.html">"Attention is all you need"</a>. It can be said that it is the fundamental building block of current mainstream LLMs. Mathematically, MHA is equivalent to the concatenation of multiple independent single-head attention mechanisms. Assuming the input sequence of (row) vectors is $\boldsymbol{x}_1, \boldsymbol{x}_2, \cdots, \boldsymbol{x}_l$, where $\boldsymbol{x}_i \in \mathbb{R}^d$, MHA can be formally expressed as:</p>
 
     \begin{equation}
@@ -176,7 +176,7 @@ window.MathJax = {
 
     <p>The subsequent MQA, GQA, and MLA are all products evolved around the theme of "how to reduce KV Cache while ensuring performance as much as possible."</p>
 
-    <h2 id="bottleneck">Bottlenecks</h2>
+    <h2>Bottlenecks</h2>
     <p>A natural question is: why is reducing the size of the KV Cache so important?</p>
 
     <p>As is well known, LLM inference generally takes place on GPUs. The video memory (VRAM) of a single GPU is limited. One part is used to store model parameters and activation values during forward computation; this part depends on the size of the model and is a constant once the model is chosen. Another part is used to store the KV Cache, which depends not only on the model size but also on the input sequence length. That is, it grows dynamically during inference. When the context length is long enough, the KV Cache size dominated the memory usage, potentially exceeding the total memory of a single card or even a single machine (8 cards).</p>
@@ -187,7 +187,7 @@ window.MathJax = {
 
     <p>To understand this issue in more detail, readers can further read <a href="https://papers.cool/arxiv/2205.14135">"FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness"</a>, <a href="https://www.baseten.co/blog/llm-transformer-inference-guide/">"A guide to LLM inference and performance"</a>, and <a href="https://zeux.io/2024/03/15/llm-inference-sol/">"LLM inference speed of light"</a>. I won't expand further here (mainly because my own level is limited, and I feat saying too much might lead to errors).</p>
 
-    <h2 id="MQA">MQA</h2>
+    <h2>MQA</h2>
     <p>MQA, or "<strong>M</strong>ulti-<strong>Q</strong>uery <strong>A</strong>ttention," is a very naive attempt to reduce KV Cache, first proposed in <a href="https://papers.cool/arxiv/1911.02150">"Fast Transformer Decoding: One Write-Head is All You Need"</a>. This paper is already from 2019, which means that long before the LLM craze, reducing KV Cache was already a topic of great concern to researchers.</p>
 
     <p>The idea of MQA is simple: directly let all attention heads share the same K and V. In formula terms, this means removing the superscript ${}^{(s)}$ from all $\boldsymbol{k}$ and $\boldsymbol{v}$ in MHA:</p>
@@ -206,7 +206,7 @@ window.MathJax = {
 
     <p>Regarding performance, currently, the loss on most tasks appears limited, and supporters of MQA believe this loss can be compensated through further training. Additionally, it is worth noting that since MQA shares K and V, the parameter count for the Attention mechanism is nearly halved. To keep the total model parameter count unchanged, the scale of FFN/GLU is usually increased accordingly, which also helps mitigate performance loss.</p>
 
-    <h2 id="GQA">GQA</h2>
+    <h2>GQA</h2>
     <p>However, there are concerns that the compression of KV Cache in MQA is too severe, potentially affecting the model's learning efficiency and final performance. To address this, GQA (<strong>G</strong>rouped-<strong>Q</strong>uery <strong>A</strong>ttention), which acts as a transition version between MHA and MQA, was introduced. It comes from the paper <a href="https://papers.cool/arxiv/2305.13245">"GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints"</a>, a piece of work from last year.</p>
 
     <p>In hindsight, the idea of GQA is also very simple. It divides all heads into $g$ groups ($g$ must divide $h$), and each group shares the same pair of K and V. Represented mathematically:</p>
@@ -225,7 +225,7 @@ window.MathJax = {
 
     <p>In Llama2/3-70B, $g=8$, and other GQA models of similar size basically maintain this setting. This is not accidental but is also for inference efficiency. We know that a model of the 70B size, unless extremely quantized, cannot be deployed on a single card (A100/H100 80G). If a single card won't work, then a single machine must suffice; generally, a single machine can be equipped with 8 cards. As we just said, each head of the attention mechanism is actually computed independently and then concatenated. When $g=8$, each card can exactly take charge of the Attention Head calculations corresponding to one pair of K and V. This way, the diversity of K and V is preserved as much as possible while minimizing inter-card communication.</p>
 
-    <h2 id="MLA">MLA</h2>
+    <h2>MLA</h2>
     <p>With the foundations of MHA, MQA, and GQA, understanding MLA (<strong>M</strong>ulti-head <strong>L</strong>atent <strong>A</strong>ttention) becomes relatively easier. DeepSeek-V2's technical report introduces MLA from the perspective of low-rank projection, which led some readers to ask, "Why did it take until MLA to use low-rank decomposition for KV Cache if LoRA has been around for so long?"</p>
 
     <p>However, I believe the perspective of low-rank projection is not the closest to the essence. If we speak of low-rank projection, in fact, as long as we stack all Ks and Vs of GQA together, we will find that GQA is also equivalent to performing a low-rank projection:</p>
@@ -234,7 +234,7 @@ window.MathJax = {
 
     <p>Here we concatenate all $\boldsymbol{k}_i^{(s)}, \boldsymbol{v}_i^{(s)}$ together and denote them as $\boldsymbol{c}_i$. The corresponding projection matrices are also concatenated and denoted as $\boldsymbol{W}_c$. Note that generally $d_c = g(d_k+d_v) < d$, so the transformation from $\boldsymbol{x}_i$ to $\boldsymbol{c}_i$ is indeed a low-rank projection. Thus, the essential improvement of MLA is not the low-rank projection itself, but the work done after the low-rank projection.</p>
 
-    <h3 id="Part 1">Part 1</h3>
+    <h3>Part 1</h3>
     <p>What did GQA do after the projection? First, it split the vector in half to serve as K and V respectively. Then, each half was further divided into $g$ parts, and each part was duplicated $h/g$ times to "make up" enough K and V for $h$ Attention Heads. We know that splitting and duplicating are simple linear transformations. MLA's first idea is to replace these simple linear transformations with generic linear transformations to enhance the model's capacity:</p>
 
     \begin{equation}
@@ -264,7 +264,7 @@ window.MathJax = {
     2. In practice, we generally do not calculate Q according to $\boldsymbol{x}_t\left(\boldsymbol{W}_q^{(s)}\boldsymbol{W}_k^{(s)}{}^{\top}\right)$, but rather calculate it as $\left(\boldsymbol{x}_t\boldsymbol{W}_q^{(s)}\right)\boldsymbol{W}_k^{(s)}{}^{\top}$. Although this is serial, under the low-rank assumption, the computation is smaller and the theoretical precision loss is also smaller. However, for the purpose of this article, we still describe it as merging $\boldsymbol{W}_q^{(s)}\boldsymbol{W}_k^{(s)}{}^{\top}$ into one matrix.
     </blockquote>
 
-    <h3 id="Part 2">Part 2</h3>
+    <h3>Part 2</h3>
     <p>Everything seems perfect, and it looks like an ideal design—both efficient and effective—is about to emerge. But wait; upon further reflection, we find that the MLA described so far has an unavoidable flaw—it is incompatible with <a href="translation_8265.html">RoPE (Rotary Positional Embedding)</a>.</p>
 
     <p>As we just said, the key step for MLA to maintain the same KV Cache size as GQA is "merging $\boldsymbol{W}_q^{(s)}\boldsymbol{W}_k^{(s)}{}^{\top}$ into one (position-independent) matrix to serve as the projection matrix for Q." But if RoPE is added, this step cannot be achieved. This is because RoPE is a position-dependent $d_k\times d_k$ block-diagonal matrix $\boldsymbol{\mathcal{R}}_m$, satisfying $\boldsymbol{\mathcal{R}}_m\boldsymbol{\mathcal{R}}_n^{\top}=\boldsymbol{\mathcal{R}}_{m-n}$. Adding RoPE to MLA inserts an extra term $\boldsymbol{\mathcal{R}}_{t-i}$ between $\boldsymbol{W}_q^{(s)}\boldsymbol{W}_k^{(s)}{}^{\top}$:</p>
@@ -296,7 +296,7 @@ window.MathJax = {
 
     <p>In this way, the dimensions without RoPE can repeat the operations of "Part 1". During inference, the KV Cache only needs to store $\boldsymbol{c}_i$. The new dimensions with RoPE are used to provide positional information, and since they are shared among all heads, they only add $d_r$ dimensions to the K Cache. The original paper took $d_r = d_k / 2 = 64$, which is not a large increase compared to the original $d_c = 512$.</p>
 
-    <h3 id="Part 3">Part 3</h3>
+    <h3>Part 3</h3>
     <p>Finally, there is a detail: the final version of MLA also changes the input of Q to a low-rank projection form. This is unrelated to reducing KV Cache; it is primarily used to reduce the memory occupied by parameters and their gradients (the original paper said activation values, which I personally don't quite understand) during training:</p>
 
     \begin{equation}
@@ -345,7 +345,7 @@ window.MathJax = {
 
     <p>There is another detail that fully reflects this characteristic. General LLM architecture parameters satisfy $h \times d_k = d$, i.e., num_heads * head_size = hidden_size. But DeepSeek-V2 is different: $d_k=128, d=5120$, but $h=128$, which is three times the usual setting! This is because the KV Cache size of MLA is independent of $h$. Increasing $h$ only increases computation and improves model capability, but does not increase KV Cache, and thus does not bring about speed bottlenecks.</p>
 
-    <h2 id="summary">Summary</h2>
+    <h2>Summary</h2>
     <p>This article briefly summarized the evolution of Multi-Head Attention, especially the shift in concepts from MHA to MQA, GQA, and finally to MLA. In this article, MLA is regarded as a generalization of GQA, replacing GQA's splitting and repeating with projection matrices, and introducing an identity transformation trick that can further compress the KV Cache while using a hybrid method to remain compatible with RoPE. Overall, MLA is a very practical variant of Attention.</p>
 </article>
 <hr>

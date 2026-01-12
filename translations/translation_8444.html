@@ -159,7 +159,7 @@ window.MathJax = {
 
     <p>So, can a small model be losslessly enlarged into a large model? This article will analyze this problem from a theoretical perspective.</p>
 
-    <h2 id="meaning">Meaning</h2>
+    <h2>Meaning</h2>
     <p>Some readers might think: "Of course this is possible, the fitting capacity of a large model is definitely greater than that of a small model." Indeed, from the perspective of fitting capacity, this is certainly achievable, but that's not the full meaning of the "lossless enlargement" we are concerned with here.</p>
 
     <p>Taking BERT as an example, the pre-training stage is mainly an MLM (Masked Language Model). The meaning of "lossless enlargement" is:</p>
@@ -172,10 +172,10 @@ window.MathJax = {
 
     <p>Intuitively, this kind of enlargement doesn't seem difficult. For example, operations like "repetition" or "zero-padding" can achieve a natural enlargement of model weights. In fact, these are the directions one would try, but the difficulty lies in carefully analyzing the consequences of enlarging each module of the model to ensure the final result is truly lossless.</p>
 
-    <h2 id="attempt">Attempt</h2>
+    <h2>Attempt</h2>
     <p>Below, we analyze and attempt to "enlarge a BERT by a factor of 2" as an example to determine the final form of the transformation. Here, "enlargement" refers only to expanding the dimension of the hidden vectors, without changing the number of model layers or the number of heads in the multi-head attention mechanism.</p>
 
-    <h3 id="Embedding">Embedding</h3>
+    <h3>Embedding</h3>
     <p>First, the input layer is the Embedding layer, so we must first solve the enlargement problem there. This is one of the simplest parts: just enlarge the vector dimension of each token to 2 times. The main operations are "repetition" and "zero-padding":</p>
 
     \[ \text{Repetition: } [x_1, x_2, x_3, x_4] \to [x_1, x_1, x_2, x_2, x_3, x_3, x_4, x_4] \]
@@ -191,7 +191,7 @@ window.MathJax = {
 
     <p>Or simplified as $\tilde{x}_i = x_{\lceil i/2 \rceil} / \sqrt{2}$, where $\lceil \cdot \rceil$ is the ceiling operation. We call this "<strong>repeat and divide by $\sqrt{2}$</strong>".</p>
 
-    <h3 id="LayerNorm">LayerNorm</h3>
+    <h3>LayerNorm</h3>
     <p>The layer following the Embedding is LayerNorm. Before the transformation, the computation for LayerNorm is:</p>
 
     \begin{align}
@@ -210,7 +210,7 @@ window.MathJax = {
 
     <p>This means that the "subtract mean and divide by standard deviation" step automatically cancels out the factor $1/\sqrt{2}$, and the result is a direct repetition of the result before enlargement. If we also transform the parameter vectors $\beta, \gamma$ according to Formula \eqref{eq:repeat-sqrt2}, the result will be $\tilde{y}_i = y_{\lceil i/2 \rceil} / \sqrt{2}$, which is consistent with the transformation result of the Embedding layer. Our goal is to ensure that the "net transformation" of each layer is the same simple transformation: "repeat and divide by $\sqrt{2}$".</p>
 
-    <h3 id="FeedForward">FeedForward</h3>
+    <h3>FeedForward</h3>
     <p>According to the order, we should analyze the Attention layer next, but the FeedForward layer is relatively simpler, and its analysis helps in understanding the transformation of the Attention layer. So, let's consider the FeedForward layer first.</p>
 
     <p>The FeedForward layer is just a composition of two fully connected layers, so we only need to analyze a single fully connected layer:</p>
@@ -275,7 +275,7 @@ window.MathJax = {
 
     <p>Thus, the effect of the entire FeedForward layer is equivalent to "repeat and divide by $\sqrt{2}$".</p>
 
-    <h3 id="Attention">Attention</h3>
+    <h3>Attention</h3>
     <p>Now we come to the hardest "tough nut to crack"—the transformation of the Attention layer. The Attention layer first transforms each input vector into $q, k, v$ through three linear layers:</p>
 
     \begin{equation}
@@ -309,7 +309,7 @@ window.MathJax = {
 
     <p>Note that the result before enlargement and reshaping was $(x_1, x_2; x_3, x_4; x_5, x_6)$. Comparing the reshape results of the two different repetition methods, we find that the result of the second method is completely scrambled after reshaping and is not equivalent to repeating each head individually. Therefore, we must choose the first repetition method.</p>
 
-    <h3 id="distribution">Output Probability Distribution</h3>
+    <h3>Output Probability Distribution</h3>
     <p>Through the above analysis, we can make the entire Encoder achieve the "repeat and divide by $\sqrt{2}$" effect after being enlarged by a factor of 2. Finally, what remains is the output part, which transforms the Encoder's output vector into a probability distribution over tokens. There are several cases here.</p>
 
     <p>Models like GPT and T5 directly multiply the Encoder output by the transpose of the Embedding matrix as the logits for the probability distribution (possibly with an added bias). Since the Embedding matrix itself already contains the "repeat and divide by $\sqrt{2}$" operation and the Encoder's output is also "repeat and divide by $\sqrt{2}$", the two factors combined cancel out exactly. Therefore, from the perspective of the probability distribution, the output is completely unchanged.</p>
@@ -318,7 +318,7 @@ window.MathJax = {
 
     <p>Of course, if the activation is ReLU, then transforming according to Formula \eqref{eq:matrix-trans} allows for a completely unchanged result. Additionally, if, like mT5, the transformation matrix for the logits is not shared with the Embedding layer, then the output can also be kept completely unchanged by adjusting the final transformation matrix.</p>
 
-    <h3 id="rope">RoPE Position Encoding</h3>
+    <h3>RoPE Position Encoding</h3>
     <p>The previous analysis applies only to cases where each neuron is independent, meaning there is no inherent correlation between any two components $x_i, x_j$ of the vector. However, if we use "<a href="translation_8265.html">Rotary Positional Embedding (RoPE)</a>" in the model, this assumption no longer holds because RoPE transforms in groups of two components, i.e., $[x_1, x_2]$ is a group, $[x_3, x_4]$ is a group, and so on.</p>
 
     <p>If we still follow the repetition transformation of \eqref{eq:repeat-sqrt2}, it becomes $[x_1, x_1]$ as a group, $[x_2, x_2]$ as a group, etc., which is inconsistent with the original grouping and will bring significant bias. In this case, the repetition should also be done in groups of two:</p>
@@ -329,7 +329,7 @@ window.MathJax = {
 
     <p>Of course, since the default RoPE has no trainable weights and changes in a fixed gradual manner, even if repeated in this way, consistency cannot be fully guaranteed. In other words, if RoPE is used, it is basically impossible to achieve a truly lossless enlargement. However, actual test results show that after repeating and enlarging in this way, the performance loss of the corresponding RoFormer is small and can be quickly recovered through continued training.</p>
 
-    <h2 id="conclusion">Conclusion</h2>
+    <h2>Conclusion</h2>
     <p>We can now confirm that for BERT, if the non-linear activation function is ReLU, then BERT can be directly losslessly enlarged. If the non-linear activation function is not ReLU, a transformation can achieve an enlargement with lossless MLM accuracy (in fact, through more delicate adjustments, completely lossless enlargement can also be achieved, but the transformation for each layer would be inconsistent and less elegant). For models like GPT and T5, regardless of the activation function used (including the GLU activation used by mT5, which can be appropriately customized), lossless enlargement is achievable.</p>
 
     <p>Among these, the transformations to enlarge BERT weights by a factor of 2 are summarized as follows:</p>
@@ -367,7 +367,7 @@ window.MathJax = {
 
     <p>If it is another slightly different model, just follow the same logic as the previous analysis. If it is RoPE, change the repetition scheme to Formula \eqref{eq:rope-repeat}. If enlarging by $k$ times, replace the number 2 in most parts of the table with $k$. Simply put, if the Attention has no scaling (division by $\sqrt{d'}$) and the FeedForward activation is ReLU (or LeakyReLU), then the transformation for enlarging by $k$ times is the simplest: apply "repeat $k$ times and divide by $\sqrt{k}$" to every dimension of the weights.</p>
 
-    <h2 id="summary">Summary</h2>
+    <h2>Summary</h2>
     <p>This article analyzed the possibility of directly enlarging a Transformer model mathematically. Ultimately, several usable transformations were obtained, confirming the feasibility of lossless enlargement for Transformer models, providing a reference for weight-progressive training of large models.</p>
 </article>
 <hr>
