@@ -1,0 +1,297 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']],
+      tags: 'ams',
+      processEscapes: true,
+      packages: {'[+]': ['ams']}
+    }
+  };
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/6409">O-GAN: A Simple Modification That Turns a GAN Discriminator into an Encoder!</a></h1>
+    <p>By 苏剑林 | March 06, 2019</p>
+
+    <p>In this post, I would like to share a recent work: by simply modifying the original GAN model, we can turn the discriminator into an encoder. This allows the GAN to simultaneously possess generation and encoding capabilities with almost no increase in training cost. This new model is called <strong>O-GAN</strong> (Orthogonal GAN) because it is based on the orthogonal decomposition of the discriminator's degrees of freedom, representing the most thorough utilization of the discriminator's capacity.</p>
+
+    <blockquote>
+        <strong>Arxiv Link:</strong> <a href="https://papers.cool/arxiv/1903.01931">https://papers.cool/arxiv/1903.01931</a><br>
+        <strong>Open Source Code:</strong> <a href="https://github.com/bojone/o-gan">https://github.com/bojone/o-gan</a>
+    </blockquote>
+
+    <h2>Background</h2>
+    <p>I have been immersed in the field of generative models for a long time now. Not only have I written several blog posts about generative models, but I have also submitted a few small papers related to generative models to Arxiv. Since diving into this "pit," although my understanding of generative models—especially GANs—has deepened, and sometimes I felt I made some incremental improvements (hence the Arxiv submissions), in reality, those were minor adjustments of little significance.</p>
+
+    <p>However, the model I am introducing today is one that I consider more valuable than the sum of all my previous GAN-related work: it provides the simplest solution currently available to train a GAN model with encoding capabilities.</p>
+
+    <p>Nowadays, GANs have become increasingly mature and massive. State-of-the-art models like BigGAN and StyleGAN are well-known and widely used. However, these advanced GAN models currently only function as generators; they lack an encoder function. This means they can continuously generate new images but cannot extract features from existing ones.</p>
+
+    <p>Of course, there has been research on GANs with encoders, and I have even worked on this blog before (refer to <a href="translation_6214.html">"BiGAN-QP: A Simple and Clear Encoding & Generation Model"</a>). But regardless of whether they have encoding capabilities, most GANs share a common trait: once training is complete, the discriminator becomes useless. Theoretically, as training progresses, the discriminator degrades (e.g., tending towards a constant).</p>
+
+    <p>Anyone who has worked with GANs knows that the complexity of the discriminator and generator networks is comparable (and if there is an encoder, its complexity is similar as well). Discarding the discriminator after training is a serious waste of a large network! Generally, the architecture of a discriminator is very similar to an encoder. A natural idea is: can the discriminator and encoder share most of their weights? To my knowledge, among all past GAN-related models, only <a href="https://papers.cool/arxiv/1807.06358">IntroVAE</a> achieved this. However, IntroVAE's approach is relatively complex, and there is currently no publicly available code that successfully reproduces IntroVAE (I tried to reproduce it myself but failed).</p>
+
+    <p>The solution proposed in this article is extremely simple—by slightly modifying the original GAN model, the discriminator can be transformed into an encoder, with almost no increase in complexity or computational volume.</p>
+
+    <h2>Model</h2>
+    <p>Without further ado, let's introduce the model. First, let's write the general GAN formulation:</p>
+    \begin{equation}\begin{aligned}D =& \mathop{\text{argmin}}_{D} \mathbb{E}_{x\sim p(x), z\sim q(z)}\Big[f(D(x)) + g(D(G(z)))\Big]\\
+    G =& \mathop{\text{argmin}}_{G} \mathbb{E}_{z\sim q(z)}\Big[h(D(G(z)))\Big]
+    \end{aligned}\end{equation}
+    <p>To avoid confusion, I will describe the symbols here. Here $x\in \mathbb{R}^{n_x}, z\in \mathbb{R}^{n_z}$, $p(x)$ is the "evidence distribution" of the real image set, and $q(z)$ is the distribution of noise (in this article, it is an $n_z$-dimensional standard normal distribution). $G: \mathbb{R}^{n_z} \to \mathbb{R}^{n_x}$ and $D: \mathbb{R}^{n_x} \to \mathbb{R}$ are the generator and discriminator, respectively. $f, g, h$ are certain deterministic functions; different GANs correspond to different $f, g, h$. Sometimes we add normalization or regularization methods, such as spectral normalization or gradient penalties; for simplicity, these are not explicitly written out.</p>
+
+    <p>Next, we define several vector operators:</p>
+    \begin{equation}\text{avg}(z)=\frac{1}{n_z}\sum_{i=1}^{n_z} z_i,\quad \text{std}(z)=\sqrt{\frac{1}{n_z}\sum_{i=1}^{n_z} (z_i-\text{avg}(z))^2}, \quad \mathcal{N}(z)=\frac{z - \text{avg}(z)}{\text{std}(z)}\end{equation}
+    <p>This may look sophisticated, but it's simply the mean and standard deviation of the vector's elements, and the standardized vector. Specifically, when $n_z \geq 3$ (which is true for all valuable GANs), $[\text{avg}(z), \text{std}(z), \mathcal{N}(z)]$ are functionally independent, meaning this is essentially an "orthogonal decomposition" of the original vector $z$.</p>
+
+    <p>As mentioned, the discriminator's structure is similar to an encoder, except that an encoder outputs a vector while a discriminator outputs a scalar. Thus, I can write the discriminator as a composite function:</p>
+    \begin{equation}D(x)\triangleq T(E(x))\end{equation}
+    <p>Here $E$ is a mapping from $\mathbb{R}^{n_x} \to \mathbb{R}^{n_z}$, and $T$ is a mapping from $\mathbb{R}^{n_z} \to \mathbb{R}$. It is easy to imagine that the number of parameters in $E$ will far exceed those in $T$. We want $E(x)$ to have encoding capabilities.</p>
+
+    <p>How do we achieve this? We just need to add a loss: the Pearson correlation coefficient!</p>
+    \begin{equation}\begin{aligned}T,E =& \mathop{\text{argmin}}_{T,E} \mathbb{E}_{x\sim p(x), z\sim q(z)}\Big[f(T(E(x))) + g(T(E(G(z)))) - \lambda \rho(z, E(G(z)))\Big]\\
+    G =& \mathop{\text{argmin}}_{G} \mathbb{E}_{z\sim q(z)}\Big[h(T(E(G(z)))) - \lambda \rho(z, E(G(z)))\Big]
+    \end{aligned}\end{equation}
+    <p>Where</p>
+    \begin{equation}\rho(z, \hat{z})=\frac{\sum\limits_{i=1}^{n_z} (z_i - \text{avg}(z))(\hat{z}_i - \text{avg}(\hat{z}))/n_z}{\text{std}(z)\times \text{std}(\hat{z})}=\cos(\mathcal{N}(z), \mathcal{N}(E(G(z))))\end{equation}
+
+    <p>If $\lambda=0$, it is just an ordinary GAN (with the discriminator decomposed into $E$ and $T$). By adding this correlation coefficient, intuitively, we hope that $z$ and $E(G(z))$ are as linearly correlated as possible. Why add it this way? We will discuss this at the end.</p>
+
+    <p>Clearly, this correlation coefficient can be embedded into any existing GAN. The modifications are minimal (split the discriminator, add a loss). I have experimented with various GANs and found that they can all be trained successfully.</p>
+
+    <p>In this way, the GAN discriminator $D$ is split into $E$ and $T$, and $E$ becomes an encoder. Most of the discriminator's parameters are now utilized. However, $T$ remains. After training, $T$ is still useless. Although the number of parameters in $T$ is relatively small and the waste is minimal, for a "perfectionist" like me, it is still unsettling.</p>
+
+    <p>Can we eliminate $T$ as well? After multiple trials, the conclusion is: we can! Because we can directly use $\text{avg}(E(x))$ as the discriminator:</p>
+    \begin{equation}\begin{aligned}E =& \mathop{\text{argmin}}_{E} \mathbb{E}_{x\sim p(x), z\sim q(z)}\Big[f(\text{avg}(E(x))) + g(\text{avg}(E(G(z)))) - \lambda \rho(z, E(G(z)))\Big]\\
+    G =& \mathop{\text{argmin}}_{G} \mathbb{E}_{z\sim q(z)}\Big[h(\text{avg}(E(G(z)))) - \lambda \rho(z, E(G(z)))\Big]
+    \end{aligned}\label{eq:simplest}\end{equation}
+    <p>By doing this, the entire model no longer has $T$, only the pure generator $G$ and encoder $E$. There is no redundancy in the entire model at all!</p>
+
+    <h2>Experiments</h2>
+    <p>Why does this work? We will discuss that at the end. First, let's look at the experimental results. After all, if the experiments aren't good, no matter how beautiful the theory is, it has no meaning.</p>
+
+    <p>Note that theoretically, the correlation coefficient term introduced here cannot improve the quality of the generative model. Therefore, there are two main goals for the experiment: 1. Will this extra loss damage the quality of the original generative model? 2. Can this extra loss truly turn $E$ into an effective encoder?</p>
+
+    <p>I mentioned that this method can be embedded into any GAN. In this experiment, the GAN used is a variant of my previous <a href="translation_6163.html">GAN-QP</a>:</p>
+    \begin{equation}\begin{aligned}E =& \mathop{\text{argmin}}_{E} \mathbb{E}_{x\sim p(x), z\sim q(z)}\Big[\text{avg}(E(x)) - \text{avg}(E(G(z))) + \lambda_1 R_{x,z} - \lambda_2 \rho(z, E(G(z)))\Big]\\
+    G =& \mathop{\text{argmin}}_{G} \mathbb{E}_{z\sim q(z)}\Big[\text{avg}(E(G(z))) - \lambda_2 \rho(z, E(G(z)))\Big]
+    \end{aligned}\label{eq:simplest-2}\end{equation}
+    <p>Where</p>
+    \begin{equation}R_{x,z} = \frac{[\text{avg}(E(x)) - \text{avg}(E(G(z)))]^2}{\Vert x - G(z)\Vert^2}\end{equation}
+
+    <p>Regarding the datasets, this experiment was quite comprehensive, covering four datasets: CelebA HQ, FFHQ, LSUN-churchoutdoor, and LSUN-bedroom, all at $128\times 128$ resolution (I also did some $256\times 256$ experiments with good results, but didn't include them in the paper). The model architecture used was DCGAN as usual. For other details, please refer directly to the paper or code.</p>
+
+    <p>Images below:</p>
+    <p><strong>CelebA HQ Random Generation</strong></p>
+    <p><strong>CelebA HQ Reconstruction Results</strong></p>
+    <p><strong>CelebA HQ Linear Interpolation</strong></p>
+    <p><strong>FFHQ Random Generation</strong></p>
+    <p><strong>FFHQ Reconstruction Results</strong></p>
+    <p><strong>FFHQ Linear Interpolation</strong></p>
+    <p><strong>LSUN-church Random Generation</strong></p>
+    <p><strong>LSUN-church Reconstruction Results</strong></p>
+    <p><strong>LSUN-church Linear Interpolation</strong></p>
+    <p><strong>LSUN-bedroom Random Generation</strong></p>
+    <p><strong>LSUN-bedroom Reconstruction Results</strong></p>
+    <p><strong>LSUN-bedroom Linear Interpolation</strong></p>
+
+    <p>Regardless of what you think, I think it's quite good~</p>
+
+    <blockquote>
+        1. The <strong>Random Generation</strong> results are quite good, indicating that the newly introduced correlation coefficient term did not degrade the generation quality;<br>
+        2. The <strong>Reconstruction</strong> results are quite good, indicating that $E(x)$ indeed extracts the main features of $x$;<br>
+        3. The <strong>Linear Interpolation</strong> results are quite good, indicating that $E(x)$ has indeed learned features that are close to being linearly separable.
+    </blockquote>
+
+    <h2>Theory</h2>
+    <p>Now that we've checked the results, let's discuss the theory.</p>
+
+    <p>Obviously, the role of this extra reconstruction term is to make $z$ as "correlated" as possible with $E(G(z))$. For this, I believe most readers' first thought would be the MSE loss $\Vert z - E(G(z))\Vert^2$ rather than the $\rho(z, E(G(z)))$ used in this article. But in fact, if we add $\Vert z - E(G(z))\Vert^2$, the training will almost always fail. Why does $\rho(z, E(G(z)))$ succeed then?</p>
+
+    <p>According to the previous definition, $E(x)$ outputs an $n_z$-dimensional vector, but $T(E(x))$ only outputs a scalar. That is to say, $E(x)$ provides $n_z$ degrees of freedom, and as a discriminator, $T(E(x))$ must occupy at least one degree of freedom (theoretically, it only needs one). If we minimize $\Vert z - E(G(z))\Vert^2$, the training process will force $E(G(z))$ to be exactly equal to $z$, meaning all $n_z$ degrees of freedom are occupied by it. No degrees of freedom remain for the discriminator to distinguish between real and fake. Therefore, adding $\Vert z - E(G(z))\Vert^2$ will likely lead to failure. But $\rho(z, E(G(z)))$ is different; $\rho(z, E(G(z)))$ has nothing to do with $\text{avg}(E(G(z)))$ and $\text{std}(E(G(z)))$ (changing only the $\text{avg}$ and $\text{std}$ of vector $E(G(z))$ won't change the value of $\rho(z, E(G(z)))$ because $\rho$ itself subtracts the mean and divides by the standard deviation first). This means that even if we maximize $\rho(z, E(G(z)))$, we still leave at least two degrees of freedom for the discriminator.</p>
+
+    <p>This is why in $\eqref{eq:simplest}$, we can directly use $\text{avg}(E(x))$ as the discriminator, as it is not affected by $\rho(z, E(G(z)))$.</p>
+
+    <p>A similar example is InfoGAN. InfoGAN also includes a module that reconstructs input information, and this module shares most weights with the discriminator (encoder). Since InfoGAN actually only reconstructs part of the input information, the reconstruction term does not occupy all the degrees of freedom of the encoder. Thus, what InfoGAN does is reasonable—as long as at least one degree of freedom is left for the discriminator.</p>
+
+    <p>There is another fact that helps us understand. During adversarial training, the noise is $z \sim \mathcal{N}(0, I_{n_z})$. When the generator is well-trained, theoretically for all $z \sim \mathcal{N}(0, I_{n_z})$, $G(z)$ will be a realistic image. In fact, the converse is also true: if $G(z)$ is a realistic image, then $z$ should be $z \sim \mathcal{N}(0, I_{n_z})$ (i.e., located in the high-probability region of $\mathcal{N}(0, I_{n_z})$). Further inferring, for $z \sim \mathcal{N}(0, I_{n_z})$, we have $\text{avg}(z) \approx 0$ and $\text{std}(z) \approx 1$. Thus, if $G(z)$ is a realistic image, a necessary condition is $\text{avg}(z) \approx 0$ and $\text{std}(z) \approx 1$.</p>
+
+    <p>Applying this conclusion, if we want the reconstruction to be good, meaning we want $G(E(x))$ to be a realistic image, a necessary condition is $\text{avg}(E(x)) \approx 0$ and $\text{std}(E(x)) \approx 1$. This indicates that for a good $E(x)$, we can assume $\text{avg}(E(x))$ and $\text{std}(E(x))$ are known (equal to 0 and 1, respectively). Since they are known, there is no need to fit them. In other words, they can be excluded from the reconstruction term. In fact:</p>
+    \begin{equation}-\rho(z, E(G(z)))\sim \left\Vert \mathcal{N}(z) - \mathcal{N}(E(G(z)))\right\Vert^2\end{equation}
+    <p>That is to say, if we exclude $\text{avg}(E(x))$ and $\text{std}(E(x))$ from the MSE loss and then omit the constants, it is actually $-\rho(z, E(G(z)))$. This further explains the rationality of $\rho(z, E(G(z)))$. Furthermore, based on this derivation, the reconstruction process is not $G(E(x))$ but rather:</p>
+    \begin{equation}\hat{x}=G(\mathcal{N}(E(x)))\end{equation}
+
+    <p>Finally, this extra reconstruction term can theoretically prevent the occurrence of mode collapse. It is quite obvious: since the reconstruction quality is good, the generation quality cannot be that bad, so mode collapse won't happen easily. If we must find a mathematical basis, we can view $\rho(z, E(G(z)))$ as a lower bound on the mutual information between $Z$ and $G(Z)$. Thus, minimizing $-\rho(z, E(G(z)))$ is effectively maximizing the mutual information between $Z$ and $G(Z)$, which is equivalent to maximizing the entropy of $G(Z)$. A larger entropy for $G(Z)$ indicates increased diversity, moving away from mode collapse. For similar derivations, refer to <a href="translation_6331.html">"GAN from the Perspective of Energy (Part 2): GAN = 'Analysis' + 'Sampling'"</a>.</p>
+
+    <h2>Conclusion</h2>
+    <p>This article introduced a scheme that requires only simple modifications to the original GAN to transform the original GAN discriminator into an effective encoder. Multiple experiments show that such a scheme is feasible. Deep reflection on the theory reveals that this is essentially an orthogonal decomposition of the original discriminator (encoder) and full utilization of the degrees of freedom after decomposition. Therefore, the model is called "Orthogonal GAN (O-GAN)."</p>
+
+    <p>A small change for an encoder—why not give it a try? I welcome everyone to test it out~</p>
+
+    <blockquote>
+        <strong>Afterword:</strong><br>
+        In hindsight, the thinking behind this model is essentially the decomposition of "diameter and direction," which is not hard to understand, but achieving it was not so easy.<br><br>
+        Initially, I was also stuck in the trap of $\Vert z - E(G(z))\Vert^2$ and couldn't pull myself out. Later, I thought of many tricks and finally stabilized the model under the $\Vert z - E(G(z))\Vert^2$ reconstruction loss (which took several months), but the model became very ugly (introducing a triple-adversarial GAN). So I set about simplifying the model. Later, I tried using the $\cos$ value as the reconstruction loss and found that it could converge simply. I then reflected on the principles behind this, which might involve degrees of freedom.<br><br>
+        Then, I tried to decompose $E(x)$ into norm and direction, using the norm $\Vert E(x)\Vert$ as the discriminator and the $\cos$ as the reconstruction loss, with a hinge loss for the discriminator. This actually has clear geometric meaning and sounds more elegant. It worked on some datasets, but the generalizability was poor (CelebA was fine, LSUN was not). Another issue was that $\Vert E(x)\Vert$ is non-negative, making it hard to embed into general GANs, and many techniques for stabilizing GANs couldn't be used.<br><br>
+        Then I thought about how to make the norm positive or negative. I initially thought about taking the logarithm of the norm so that norms less than 1 become negative and norms greater than 1 become positive, thus achieving the goal. Unfortunately, the results were still not good. Later, many other schemes failed until I finally realized I could give up using the norm (corresponding to variance) for the discriminator loss and just use the mean. So it later converted to $\text{avg}(E(x))$; this transition took a long time.<br><br>
+        Also, reconstruction loss is generally thought to measure the difference between $x$ and $G(E(x))$, but I discovered that just measuring the difference between $z$ and $E(G(z))$ is the lowest-cost solution because reconstruction takes extra time. Finally, I performed many experiments; many ideas succeeded on CelebA but failed on LSUN. So, the finally simple-looking model is actually the result of difficult sedimentation.<br><br>
+        The entire model stems from an obsession: since the discriminator has the structure of an encoder, it should not be wasted. Given the previous success of IntroVAE, I believed there must be a simpler solution. I experimented for several months, ran hundreds of models, and finally solved this problem completely recently.<br><br>
+        Besides IntroVAE, I was also greatly inspired by the paper <u>Deep Infomax</u>. The appendix of Deep Infomax provided a new way to approach GANs, and I began thinking about the new model from the methods there.
+    </blockquote>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6409.html" style="color: #005fcc;">https://kexue.fm/archives/6409</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

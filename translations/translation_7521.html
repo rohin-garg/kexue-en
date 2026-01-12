@@ -1,0 +1,324 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/7521">Optimization via Sampling: A Unified Perspective on Differentiable and Non-Differentiable Optimization</a></h1>
+
+<p>By 苏剑林 | June 23, 2020</p>
+
+<p>Many readers are likely aware that the inconsistency between loss functions and evaluation metrics is a classic phenomenon in machine learning. For instance, in classification problems, the loss function uses cross-entropy while the evaluation metric is accuracy or F1 score. Similarly, in text generation, the loss function is cross-entropy in a teacher-forcing format, while the evaluation metrics are BLEU, ROUGE, etc. Ideally, we would want to optimize whatever metric we are evaluating. However, evaluation metrics are usually non-differentiable, whereas most of our optimizers are gradient-based, which requires the target to be differentiable. This is the source of the inconsistency.</p>
+
+<p>A few days ago, I came across a paper on arXiv titled <a href="https://papers.cool/arxiv/2006.03158">"MLE-guided parameter search for task loss minimization in neural sequence modeling."</a> As the name suggests, it investigates how to directly optimize evaluation metrics for text generation. Upon reading it, I found this paper highly valuable. In fact, it provides a new way of thinking about optimizing evaluation metrics, and its scope of application is not limited to text generation. Moreover, it even contains a unified perspective for understanding both differentiable and non-differentiable optimization.</p>
+
+<h2>Sampling Perspective</h2>
+
+<p>First, we can re-examine optimization through the lens of sampling: Suppose the current parameters of the model are $\theta$, and the optimization objective is $l(\theta)$. We wish to determine the next update amount $\Delta\theta$. To do this, we first construct a distribution:</p>
+
+\begin{equation}p(\Delta\theta|\theta)=\frac{e^{-[l(\theta + \Delta\theta) - l(\theta)]/\alpha}}{Z(\theta)},\quad Z(\theta) = \int e^{-[l(\theta + \Delta\theta) - l(\theta)]/\alpha} d(\Delta\theta)\end{equation}
+
+<p>where $\alpha > 0$ is a hyperparameter. The meaning of this distribution is clear: we treat $\Delta\theta$ as a random variable, and the smaller $l(\theta + \Delta\theta)$ is, the higher the probability of that $\Delta\theta$ occurring. With this distribution, we define the next update step as its expectation:</p>
+
+\begin{equation}\Delta\theta_* = \int p(\Delta\theta|\theta)\Delta\theta d(\Delta\theta) = \mathbb{E}_{\Delta\theta\sim p(\Delta\theta|\theta)}[\Delta\theta]\label{eq:delta}\end{equation}
+
+<p>In this perspective, we make no assumptions about the differentiability of $l(\theta)$, making this definition universal for both differentiable and non-differentiable optimization. Additionally, we can control the stability of the update by adjusting $\alpha$. When $\alpha \to 0$, according to the definition of $p(\Delta\theta|\theta)$, only the $\Delta\theta$ that minimizes $l(\theta + \Delta\theta)$ has a non-zero probability, meaning $\Delta\theta_*$ is the direction of steepest descent. When $\alpha \to +\infty$, $p(\Delta\theta|\theta)$ tends toward a uniform distribution, so $\Delta\theta_*$ tends toward 0, which is the most stable. By choosing an appropriate $\alpha$, it is theoretically possible to achieve a good balance between "speed" and "stability" in the optimization process, which intuitively leads to results with better generalization performance.</p>
+
+<p>Of course, the definition so far is purely theoretical. We do not know the analytical form of $p(\Delta\theta|\theta)$, nor do we know how to sample from it, let alone calculate its expectation. Below, we will see how this theoretical form is progressively applied to differentiable and non-differentiable scenarios.</p>
+
+<h2>Differentiable Objectives</h2>
+
+<p>For a differentiable $l(\theta)$, although we cannot precisely solve for $p(\Delta\theta|\theta)$, we can obtain an approximate distribution through Taylor expansion and then estimate $\Delta\theta_*$. The results show that by expanding to first-order and second-order approximations, we obtain Gradient Descent and Newton's Method, respectively. In other words, Gradient Descent and Newton's Method are, in a sense, just special cases within this perspective.</p>
+
+<h3>Gradient Descent</h3>
+
+<p>As a first attempt, we assume $l(\theta)$ is first-order differentiable. Using the Taylor expansion, we have:</p>
+
+\begin{equation}l(\theta + \Delta\theta) - l(\theta)\approx \Delta\theta^{\top}\nabla_{\theta}l(\theta)\end{equation}
+
+<p>This means $p(\Delta\theta|\theta)\sim e^{-\Delta\theta^{\top}\nabla_{\theta}l(\theta)/\alpha}$. If $\Delta\theta$ is unconstrained, normalization is impossible. Let's constrain $\Vert\Delta\theta\Vert\leq \epsilon$ and denote $\nabla_{\theta}l(\theta)=g$, then:</p>
+
+\begin{equation}p(\Delta\theta|\theta) = \frac{e^{-\Delta\theta^{\top}g/\alpha}}{Z(g)},\quad Z(g)=\int_{\Vert\Delta\theta\Vert\leq\epsilon}e^{-\Delta\theta^{\top}g/\alpha}d(\Delta\theta)\end{equation}
+
+<p>Clearly, $\Delta\theta_* = -\nabla_g \ln Z(g)$, so the key is to solve for $Z(g)$. Let $\eta$ be the angle between $\Delta\theta$ and $g$, then:</p>
+
+\begin{equation}Z(g)=\int_{\Vert\Delta\theta\Vert\leq\epsilon}e^{-\Vert\Delta\theta\Vert\times\Vert g\Vert \times (\cos\eta) / \alpha}d(\Delta\theta)\end{equation}
+
+<p>This is an integral over a high-dimensional hypersphere. Due to isotropy, once the magnitude $\Vert g\Vert$ is fixed, the entire integral result is fixed. That is, $Z(g)$ only depends on the magnitude of $\Vert g\Vert$ and not its direction, so it can be written as $Z(\Vert g\Vert)$. We don't need to know the specific form of $Z(\Vert g\Vert)$; knowing that it is solely a function of the magnitude $\Vert g\Vert$ is sufficient. At this point:</p>
+
+\begin{equation}\Delta\theta_* = -\nabla_g \ln Z(g)= - \frac{Z'(\Vert g\Vert)}{Z(\Vert g\Vert)}\nabla_g\Vert g\Vert = - \frac{Z'(\Vert g\Vert)}{Z(\Vert g\Vert)}\frac{g}{\Vert g\Vert}\end{equation}
+
+<p>Thus, the direction of $\Delta\theta_*$ is the direction of $-g$, which is the opposite direction of the gradient. In this way, we have derived <strong>Gradient Descent</strong>; it can be said to be the first-order approximation of Equation \eqref{eq:delta}. Additionally, it is possible to calculate $Z(g)$ explicitly, though it is not an elementary function; the process can refer to the discussion on Stack Exchange: <a href="https://math.stackexchange.com/questions/3310890/integral-of-exp-over-the-unit-ball">Integral of exp over the unit ball</a>.</p>
+
+<h3>Newton's Method</h3>
+
+<p>If $l(\theta)$ is second-order differentiable, we can expand to the second order:</p>
+
+\begin{equation}l(\theta + \Delta\theta) - l(\theta)\approx \Delta\theta^{\top}\nabla_{\theta}l(\theta) + \frac{1}{2}\Delta\theta^{\top}\nabla_{\theta}^2 l(\theta) \Delta\theta\end{equation}
+
+<p>Denoting $g=\nabla_{\theta}l(\theta), \mathcal{H}=\nabla_{\theta}^2 l(\theta)$, we have:</p>
+
+\begin{align}
+p(\Delta\theta|\theta)\sim&\, -\Delta\theta^{\top}g - \frac{1}{2}\Delta\theta^{\top} \mathcal{H} \Delta\theta \nonumber\\
+=&\, - \frac{1}{2}\left(\Delta\theta+\mathcal{H}^{-1}g\right)^{\top}\mathcal{H}\left(\Delta\theta+\mathcal{H}^{-1}g\right)+ \frac{1}{2}g^{\top} \mathcal{H} g
+\end{align}
+
+<p>Clearly, since the exponent of $p(\Delta\theta|\theta)$ is quadratic with respect to $\Delta\theta$, $p(\Delta\theta|\theta)$ is a Gaussian distribution. The expression above implies that the mean of this Gaussian distribution is $-\mathcal{H}^{-1}g$ and the covariance matrix is $\mathcal{H}^{-1}$. Thus, $\Delta\theta_* = -\mathcal{H}^{-1}g$. This result corresponds to <strong>Newton's Method</strong>. Therefore, Newton's Method can be seen as the second-order approximation of Equation \eqref{eq:delta}.</p>
+
+<h2>Non-Differentiable Objectives</h2>
+
+<p>For a non-differentiable $l(\theta)$, the Taylor expansion approximation mentioned above is no longer possible. Theoretically, we can only estimate $\Delta\theta_*$ through direct sampling. The original paper proposes that we can use Importance Sampling to improve sampling efficiency and estimation accuracy. This is the core idea and main contribution of the paper.</p>
+
+<h3>Importance Sampling</h3>
+
+<p>First, here is a general introduction to the concept of Importance Sampling. Suppose we have a probability distribution $p(x)$ and a function $f(x)$, and we want to estimate:</p>
+
+\begin{equation}\int p(x)f(x)dx = \mathbb{E}_{x\sim p(x)}[f(x)]\end{equation}
+
+<p>This requires us to sample several points $x_1, x_2, \dots, x_n$ from $p(x)$ and then calculate $\frac{1}{n}\sum_{i=1}^n f(x_i)$. However, two difficulties may arise here:</p>
+
+<blockquote>
+<p>1. We might not know how to sample from $p(x)$ at all;<br>
+2. Even if we know how to sample from $p(x)$, for scenarios like <a href="translation_5253.html">Variational Autoencoders</a>, $p(x)$ contains parameters and needs to maintain gradients, which direct sampling might not allow.</p>
+</blockquote>
+
+<p>In such cases, Importance Sampling might help. It requires us to find a distribution $q(x)$ whose probability density expression we know and from which it is easy to sample. We then rewrite the expression as follows:</p>
+
+\begin{equation}\int p(x)f(x)dx = \int q(x)\left[\frac{p(x)}{q(x)}f(x)\right]dx = \mathbb{E}_{x\sim q(x)}\left[\frac{p(x)}{q(x)}f(x)\right]\label{eq:is}\end{equation}
+
+<p>Now, the sampling shift to $q(x)$. According to our assumption, sampling from $q(x)$ is easy, and since the analytical expression of $q(x)$ is known, $\frac{p(x)}{q(x)}f(x)$ is also computable. If $p(x)$ has parameters that require gradient calculation, those gradients are preserved. Clearly, the closer $q(x)$ is to $p(x)$, the higher the estimation efficiency. $q(x)$ represents a prior estimate of the "importance" of each sample in $p(x)$, which is why this approach is called Importance Sampling.</p>
+
+<p>Thus, assuming $x_1, x_2, \dots, x_n \sim q(x)$, we have:</p>
+
+\begin{equation}\mathbb{E}_{x\sim p(x)}[f(x)]\approx \frac{1}{n}\sum_{i=1}^n \frac{p(x_i)}{q(x_i)}f(x_i)\label{eq:is-2}\end{equation}
+
+<p>However, there is a small problem: Equation \eqref{eq:is} or \eqref{eq:is-2} requires us to know the exact expression of $p(x)$. Sometimes we cannot even do that. For example, regarding $p(\Delta\theta|\theta)$ earlier, we only know it is proportional to $e^{-[l(\theta + \Delta\theta) - l(\theta)]/\alpha}$, but its normalization factor cannot be calculated directly. In this case, we can use the following relationship:</p>
+
+\begin{equation}1=\int p(x)dx=\int q(x)\left[\frac{p(x)}{q(x)}\right]dx=\mathbb{E}_{x\sim q(x)}\left[\frac{p(x)}{q(x)}\right]\approx\frac{1}{n}\sum_{i=1}^n \frac{p(x_i)}{q(x_i)}\end{equation}
+
+<p>This means that $\left[\frac{1}{n}\frac{p(x_1)}{q(x_1)}, \frac{1}{n}\frac{p(x_2)}{q(x_2)}, \dots, \frac{1}{n}\frac{p(x_n)}{q(x_n)}\right]$ should be approximately normalized. If we only know $p(x) \sim \rho(x)$ but not the normalization factor, we can manually normalize it. In this case, Equation \eqref{eq:is-2} becomes:</p>
+
+\begin{equation}\mathbb{E}_{x\sim p(x)}[f(x)]\approx \sum_{i=1}^n \frac{\rho(x_i)\big/q(x_i)}{\sum_{i=1}^n \rho(x_i)\big/q(x_i)}f(x_i)\label{eq:is-3}\end{equation}
+
+<p>This skips the calculation of the normalization factor.</p>
+
+<h3>Leveraging Differentiability</h3>
+
+<p>By now, the mathematical tools we need are ready, and we can formally face our non-differentiable objective. Suppose $l(\theta)$ is an evaluation metric, such as average accuracy or average BLEU. This is our final target for optimization, but it is non-differentiable. However, in most scenarios, we can find a differentiable (approximate) optimization objective $\tilde{l}(\theta)$. Usually, we optimize $\tilde{l}(\theta)$ directly using gradient descent, which leads to the inconsistency between the optimization objective and the evaluation metric.</p>
+
+<p>Yet, it must be said that many times $\tilde{l}(\theta)$ is indeed a good approximation of $l(\theta)$. In other words, $-\nabla_{\theta}\tilde{l}(\theta)$ does indeed point toward a relatively reliable (though not optimal) update direction. At this point, we can leverage Importance Sampling. We construct $q(\Delta\theta|\theta)$ as a normal distribution $\mathcal{N}(\Delta\theta; -\nabla_{\theta}\tilde{l}(\theta), \sigma^2)$. According to Importance Sampling's Equation \eqref{eq:is-3}, we have:</p>
+
+\begin{equation}
+\Delta\theta_*=\mathbb{E}_{\Delta\theta\sim q(\Delta\theta|\theta)}\left[\frac{p(\Delta\theta|\theta)}{q(\Delta\theta|\theta)}\Delta\theta\right]\approx\sum_{i=1}^n \frac{e^{-[l(\theta + \Delta\theta_i) - l(\theta)]/\alpha}\big/\mathcal{N}(\Delta\theta_i; -\nabla_{\theta}\tilde{l}(\theta), \sigma^2)}{\sum_{i=1}^n e^{-[l(\theta + \Delta\theta_i) - l(\theta)]/\alpha}\big/\mathcal{N}(\Delta\theta_i; -\nabla_{\theta}\tilde{l}(\theta), \sigma^2)}\Delta\theta_i
+\label{eq:sg}\end{equation}
+
+<p>where $\Delta\theta_1, \Delta\theta_2, \dots, \Delta\theta_n \sim \mathcal{N}(\Delta\theta; -\nabla_{\theta}\tilde{l}(\theta), \sigma^2)$. Furthermore, $q(\Delta\theta|\theta)$ can also use a mixture model. The original paper uses:</p>
+
+\begin{equation}q(\Delta\theta|\theta)=\lambda \mathcal{N}(\Delta\theta; 0, \sigma^2) + (1-\lambda)\mathcal{N}(\Delta\theta; -\nabla_{\theta}\tilde{l}(\theta), \sigma^2)\end{equation}
+
+<p>Readers might be concerned about the number of samples. The original paper chose $n=4$ for text generation tasks, and the results showed significant improvement. This indicates that with the "guidance" of $q(\Delta\theta|\theta)$, $n$ does not need to be very large.</p>
+
+<h3>Policy Gradient</h3>
+
+<p>Typically, if one needs to directly optimize an evaluation metric, a common method is "Policy Gradient" from reinforcement learning. Seeing this, readers might wonder: What is the difference between the above method and Policy Gradient? Which is superior?</p>
+
+<p>Suppose the evaluation metric for a single sample is $l(y_t, y_p)$, where $y_t$ is the true label and $y_p$ is the prediction. Then the total average metric is:</p>
+
+\begin{equation}l(\theta)=\mathbb{E}_{(x_t,y_t)\sim\mathcal{D}}\left[l\left(y_t, \mathop{\arg\max}_y p_{\theta}(y|x_t)\right)\right]\end{equation}
+
+<p>The non-differentiability stems from the $\mathop{\arg\max}$ operation. Policy Gradient changes this to:</p>
+
+\begin{equation}\tilde{l}(\theta)=\mathbb{E}_{(x_t,y_t)\sim\mathcal{D}}\left[\mathbb{E}_{y\sim p_{\theta}(y|x_t)}\left[l\left(y_t,y\right)\right]\right]\end{equation}
+
+<p>Then, utilizing the property (refer to <a href="https://kexue.fm/archives/6705#%E8%83%8C%E5%90%8E%E7%9A%84%E6%95%85%E4%BA%8B">"Talking about Reparameterization: From Normal Distribution to Gumbel Softmax"</a>):</p>
+
+\begin{equation}\nabla_{\theta}\int p_{\theta}(x)f(x)dx = \int f(x)\nabla_{\theta}p_{\theta}(x)dx =\int p_{\theta}(x)f(x)\nabla_{\theta}\log p_{\theta}(x)dx\end{equation}
+
+<p>We obtain:</p>
+
+\begin{equation}\nabla_{\theta}\tilde{l}(\theta)=\mathbb{E}_{(x_t,y_t)\sim\mathcal{D}}\left[\mathbb{E}_{y\sim p_{\theta}(y|x_t)}\left[l\left(y_t,y\right)\nabla_{\theta}\log p_{\theta}(y|x_t)\right]\right]\label{eq:pg}\end{equation}
+
+<p>This is the general form of Policy Gradient, also known as the REINFORCE estimator.</p>
+
+<p>Equations \eqref{eq:sg} and \eqref{eq:pg} represent two update directions derived from different perspectives. What is the difference between them? As we can see, the core difference lies in the object being sampled. In Equation \eqref{eq:sg}, the sampling is $\mathbb{E}_{\Delta\theta\sim q(\Delta\theta|\theta)}$, while in Equation \eqref{eq:pg}, the sampling is $\mathbb{E}_{y\sim p_{\theta}(y|x_t)}$. Thus, the method in Equation \eqref{eq:sg} effectively "samples multiple sets of parameters, with each set outputting one sample" to calculate the update, whereas the Policy Gradient in Equation \eqref{eq:pg} "requires only one set of parameters, but samples multiple output sequences" to calculate the update.</p>
+
+<p>From a computational standpoint, Policy Gradient should be less demanding because the $\mathbb{E}_{y\sim p_{\theta}(y|x_t)}$ step can be parallelized by sampling multiple sequences. Theoretically, $\mathbb{E}_{\Delta\theta\sim q(\Delta\theta|\theta)}$ could also be parallelized by sampling multiple sets of parameters to predict their respective samples, but it is harder to implement. However, Policy Gradient also has many problems, typically high variance in gradient estimation. Therefore, standard likelihood targets are usually needed to pre-train the model to a reasonable state before fine-tuning with Policy Gradient. In contrast, Equation \eqref{eq:sg} from the original paper attempts to directly optimize the evaluation metric from start to finish and leverages a differentiable objective for importance sampling, combining the advantages of both differentiable and non-differentiable optimization.</p>
+
+<h2>Article Summary</h2>
+
+<p>This article introduced a new perspective for understanding optimization algorithms. Under this perspective, the optimization of differentiable and non-differentiable targets is unified. For differentiable target functions, by taking first-order and second-order expansions within this framework, we obtain Gradient Descent and Newton's Method, respectively. For non-differentiable target functions, we use differentiable approximations for importance sampling, which also allows for non-differentiable objective optimization.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7521.html" style="color: #005fcc;">https://kexue.fm/archives/7521</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,279 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/8770">MLM and MAE from a Dropout Perspective: Some New Insights</a></h1>
+    
+    <p>By 苏剑林 | November 29, 2021</p>
+
+    <p>As everyone knows, the inconsistency of BERT's MLM (Masked Language Model) task between pre-training and fine-tuning—specifically, the appearance of <code>[MASK]</code> during pre-training and its absence during downstream fine-tuning—is a frequently criticized issue. Many works believe this is a significant factor affecting BERT's fine-tuning performance and have proposed improvements such as <a href="https://papers.cool/arxiv/1906.08237">XL-NET</a>, <a href="https://papers.cool/arxiv/2003.10555">ELECTRA</a>, and <a href="https://papers.cool/arxiv/2004.13922">MacBERT</a>. In this article, we will analyze this inconsistency of MLM from the perspective of Dropout and propose a simple operation to correct it.</p>
+
+    <p>A similar analysis can be applied to the <a href="https://papers.cool/arxiv/2111.06377">MAE (Masked Autoencoder)</a> model recently proposed by Kaiming He. The results show that MAE indeed possesses better consistency compared to MLM, from which we can derive a regularization technique that may accelerate training speed.</p>
+
+    <h2 id="Dropout">Dropout</h2>
+    <p>First, let's revisit Dropout. From a mathematical standpoint, Dropout is an operation that introduces random noise into a model via a Bernoulli distribution. Let's briefly review the Bernoulli distribution.</p>
+
+    <h3 id="BernoulliDistribution">Bernoulli Distribution</h3>
+    <p>The Bernoulli distribution is perhaps the simplest probability distribution. it is a binary distribution with a value space of $\{0,1\}$, where the probability of $\varepsilon$ taking 1 is $p$, and the probability of taking 0 is $1-p$, denoted as:
+    \begin{equation}\varepsilon\sim \text{Bernoulli}(p)\end{equation}
+    An interesting property of the Bernoulli distribution is that all its moments are $p$, i.e.,
+    \begin{equation}\mathbb{E}_{\varepsilon}[\varepsilon^n] = p\times 1^n + (1-p)\times 0^n = p\end{equation}
+    Thus, we know its mean is $p$ and its variance is:
+    \begin{equation}\mathbb{V}ar_{\varepsilon}[\varepsilon] = \mathbb{E}_{\varepsilon}[\varepsilon^2] - \mathbb{E}_{\varepsilon}[\varepsilon]^2 = p(1-p)\end{equation}
+    </p>
+
+    <h3 id="TrainingAndPrediction">Training and Prediction</h3>
+    <p>During the training phase, Dropout sets certain values to zero with probability $1-p$ and divides the remaining values by $p$. Thus, Dropout effectively introduces a random variable $\varepsilon\sim \text{Bernoulli}(p)$, transforming the model from $f(x)$ to $f(x\varepsilon/p)$. While $\varepsilon$ can have multiple components corresponding to independent Bernoulli distributions, in most cases, the result is fundamentally no different from when $\varepsilon$ is a scalar, so we only need to derive for the scalar case.</p>
+
+    <p>In <a href="translation_8496.html">"Dropout Twice Again! This Time It Achieved SOTA in Supervised Tasks"</a>, we proved that if the loss function is MSE, then the optimal prediction model after training is completed should be:
+    \begin{equation}\mathbb{E}_{\varepsilon}[f(x\varepsilon/p)]\end{equation}
+    This means we should make multiple predictions without turning off Dropout and then average the results to serve as the final prediction, i.e., "model averaging." However, this is computationally expensive. In practice, we rarely do this; instead, we usually turn off Dropout, which means changing $\varepsilon/p$ to 1. Since we know:
+    \begin{equation}f(x)=f(x\,\mathbb{E}_{\varepsilon}[\varepsilon]/p)\end{equation}
+    turning off Dropout is effectively a "weight averaging" approach (viewing $\varepsilon$ as the model's random weights). In other words, while the theoretical optimal solution is "model averaging," due to computational constraints, we usually approximate it with "weight averaging," which can be seen as a first-order approximation of "model averaging."</p>
+
+    <h2 id="MLMModel">MLM Model</h2>
+    <p>In this section, we treat the MLM model as a special type of Dropout. This allow us to clearly describe the inconsistency between pre-training and fine-tuning and derive a simple correction strategy to better alleviate this inconsistency.</p>
+
+    <h3 id="DropoutPerspectiveMLM">Dropout Perspective</h3>
+    <p>For simplicity, let's first analyze a simplified version of MLM: assume that during the pre-training phase, each token remains unchanged with probability $p$ and is replaced by <code>[MASK]</code> with probability $1-p$. Let the embedding of the $i$-th token be $x_i$ and the embedding of <code>[MASK]</code> be $m$. We can similarly introduce a random variable $\varepsilon\sim \text{Bernoulli}(p)$ and denote the MLM model as:
+    \begin{equation}f(\cdots,x_i,\cdots)\quad\rightarrow\quad f(\cdots,x_i \varepsilon + m(1-\varepsilon),\cdots)\end{equation}
+    In this way, MLM is essentially the same as Dropout; both introduce random perturbations to the model through a Bernoulli distribution. Now, following the standard usage of Dropout, the prediction model should use "weight averaging," namely:
+    \begin{equation}f(\cdots,\mathbb{E}_{\varepsilon}[x_i \varepsilon + m(1-\varepsilon)],\cdots) = f(\cdots,x_i p + m (1-p),\cdots)\end{equation}
+    At this point, the inconsistency of MLM during the fine-tuning phase becomes apparent: if we treat pre-trained MLM as a special Dropout, fine-tuning corresponds to "disabling Dropout." According to standard practice, we should change each token's embedding to $x_i p + m (1-p)$, but in reality, we do not; we retain the original $x_i$.</p>
+
+    <h3 id="CorrectingEmbedding">Correcting Embedding</h3>
+    <p>According to BERT's default settings, during MLM training, 15% of tokens are selected for prediction. Among these 15%, there is an 80% chance of being replaced by <code>[MASK]</code>, a 10% chance of remaining unchanged, and a 10% chance of being replaced by a random token. Based on the previous analysis, after MLM pre-training is complete, we should adjust the Embedding as follows:
+    \begin{equation}\text{Embedding[i]} \leftarrow 0.85\times \text{Embedding[i]} + 0.15\times\left(\begin{array}{l}0.8\times \text{Embedding[m]} \,+\\ 0.1 \times \text{Embedding[i]} \,+ \\ 0.1\times \text{Avg[Embedding]}\end{array}\right)
+    \end{equation}
+    Where $\text{Embedding[m]}$ is the embedding of <code>[MASK]</code>, and $\text{Avg[Embedding]}$ is the average embedding of all tokens. In bert4keras, the reference code is as follows:</p>
+
+<pre><code>embeddings = model.get_weights()[0] # Generally, the first weight is the Token Embedding
+v1 = embeddings[tokenizer._token_mask_id][None] # Embedding of [MASK]
+v2 = embeddings.mean(0)[None] # Average Embedding
+embeddings = 0.85 * embeddings + 0.15 * (0.8 * v1 + 0.1 * embeddings + 0.1 * v2) # Weighted average
+K.set_value(model.weights[0], embeddings) # Re-assign
+</code></pre>
+
+    <p>Does this modification provide the expected improvement? I compared the experimental results of BERT and RoBERTa on CLUE before and after the modification (baseline code refers to <a href="translation_8739.html">"bert4keras in hand, baseline I have: CLUE Benchmark Code"</a>). The conclusion is: "No significant change."</p>
+
+    <p>Reading this, you might feel disappointed: Does this mean everything said earlier was in vain? I believe that human intervention can indeed alleviate the inconsistency (otherwise, wouldn't we be negating Dropout?). The fact that the results showed no improvement suggests that the inconsistency problem might not be as severe as we imagined, at least for CLUE tasks. A similar result appeared in MacBERT, which uses synonyms to replace <code>[MASK]</code> to correct this inconsistency, but I tested MacBERT using the same baseline code, and it showed no significant difference from RoBERTa. Therefore, it may be that only in specific tasks or with larger mask ratios will the necessity of correcting this inconsistency be demonstrated.</p>
+
+    <h2 id="MAEModel">MAE Model</h2>
+    <p>Many readers may have heard of the <a href="https://papers.cool/arxiv/2111.06377">MAE (Masked Autoencoder) model</a> recently proposed by Kaiming He. It introduces the MLM task into image pre-training in a simple and efficient way and has achieved effective improvements. In this section, we will see that MAE can also be understood as a special kind of Dropout, which leads to a new method for preventing overfitting.</p>
+
+    <h3 id="DropoutPerspectiveMAE">Dropout Perspective</h3>
+    <p>As shown in the figure below, MAE divides the model into an encoder and a decoder, characterized by a "deep encoder, shallow decoder." It places <code>[MASK]</code> only in the decoder, while the encoder does not process <code>[MASK]</code>. Consequently, the sequence the encoder processes becomes shorter. Crucially, MAE uses a 75% mask ratio, meaning the encoder's sequence length is only 1/4 of the usual length. Combined with the "deep encoder, shallow decoder" characteristic, the overall pre-training speed of the model is increased by more than three times!</p>
+
+    <p style="text-align:center;"><img src="https://img.kexue.fm/2021/11/20211129153358.png" alt="MAE model schematic" style="max-width:100%;"></p>
+
+    <p>We can also implement the MAE model from another perspective: MAE's removal of <code>[MASK]</code> from the encoder is equivalent to the remaining tokens not interacting with the masked tokens. For a Transformer model, token interaction comes from Self Attention. Thus, we can still maintain the original input but mask the corresponding columns in the Attention matrix. As shown in the figure, if the $i$-th token is masked, it is essentially equivalent to forcing all elements in the $i$-th column of the Attention matrix to 0:</p>
+
+    <p style="text-align:center;"><img src="https://img.kexue.fm/2021/11/20211129153831.png" alt="MAE equivalent Attention Dropout schematic" style="max-width:100%;"></p>
+
+    <p>Of course, from a practical standpoint, this approach is a waste of computation, but it helps us derive an interesting theoretical result. Let us have $n$ input tokens and the original Attention matrix be $A$ (after softmax). Define $M_i$ as an $n\times n$ matrix where the $i$-th column is 0 and the rest are 1. Then define a random matrix $\tilde{M}_i$, which is an all-ones matrix with probability $p$ and $M_i$ with probability $1-p$. The MAE model can then be written as:
+    \begin{equation}f(\cdots,A,\cdots)\quad\rightarrow\quad f(\cdots,\text{Norm}(A\otimes \tilde{M}_1\otimes \tilde{M}_2\otimes \cdots\otimes \tilde{M}_n),\cdots)\end{equation}
+    Here $\text{Norm}$ refers to re-normalizing the matrix by row; $\otimes$ represents element-wise multiplication; when there are multiple Attention layers, all layers share the same $\tilde{M}_1, \tilde{M}_2, \cdots, \tilde{M}_n$.</p>
+
+    <p>In this way, we have converted MAE into a special kind of Attention Dropout. Then, following the standard practice of "disabling Dropout" during fine-tuning, the corresponding model should be:
+    \begin{align}
+    &\,f(\cdots,\text{Norm}(A\otimes \mathbb{E}[\tilde{M}_1\otimes \tilde{M}_2\otimes \cdots\otimes \tilde{M}_n]),\cdots)\nonumber\\
+    =&\,f(\cdots,\text{Norm}(A\otimes \mathbb{E}[\tilde{M}_1]\otimes \mathbb{E}[\tilde{M}_2]\otimes \cdots\otimes \mathbb{E}[\tilde{M}_n]),\cdots)\nonumber\\
+    =&\,f(\cdots,\text{Norm}(Ap),\cdots)\nonumber\\
+    =&\,f(\cdots,A,\cdots)
+    \end{align}
+    The second equality is because $\mathbb{E}[\tilde{M}_i]$ is a matrix where the $i$-th column is $p$ and the rest are 1, so $\mathbb{E}[\tilde{M}_1]\otimes \mathbb{E}[\tilde{M}_2]\otimes \cdots\otimes \mathbb{E}[\tilde{M}_n]$ is effectively an all-$p$ matrix. Multiplying $A$ by this is equivalent to multiplying $A$ directly by the constant $p$. The third equality holds because multiplying all elements by the same constant does not affect the row-wise normalization results.</p>
+
+    <p>From this result, we see that for MAE, "disabling Dropout" results in the same model as the original. This indicates that MAE, compared to the original MLM model, offers not only a speed improvement but also better consistency between pre-training and fine-tuning.</p>
+
+    <h3 id="PreventingOverfitting">Preventing Overfitting</h3>
+    <p>Conversely, since MAE can also be viewed as a type of Dropout, and Dropout helps prevent overfitting, can we use the MAE approach as a regularization method to prevent overfitting? As shown in the figure below, during the training phase, we can randomly drop some tokens while maintaining the original positions of the remaining tokens. We will tentatively call this "DropToken":</p>
+
+    <p style="text-align:center;"><img src="https://img.kexue.fm/2021/11/20211129154941.png" alt="DropToken schematic" style="max-width:100%;"></p>
+
+    <p>The reasoning behind this is that while conventional Dropout is often intuitively understood as sampling a sub-network for training, that is purely conceptual; in reality, Dropout increases training time. DropToken, by explicitly shortening sequence lengths, can increase training speed. If effective, it would be a very practical technique. Furthermore, some readers may have tried data augmentation by deleting certain words; the difference with DropToken is that although some tokens are deleted, the original positions of the remaining tokens are preserved, an implementation made possible by the Transformer architecture itself.</p>
+
+    <p>Several comparative experiments conducted on CLUE using BERT-base as the baseline model (subscripts indicate the drop ratio) showed mixed results. Except for IFLYTEK which showed clear benefits, the others were hit-or-miss (as is often the case with many regularization methods). The optimal drop ratio was found to be between 0.1 and 0.15:</p>
+    
+    <div style="text-align:center;">
+    \begin{array}{c}
+    \text{CLUE Classification Task Comparison Experiments (Validation Set)} \\
+    {\begin{array}{|c|cccccc|}
+    \hline
+    & \text{IFLYTEK} & \text{TNEWS} & \text{AFQMC} & \text{OCNLI} & \text{WSC} & \text{CSL} \\
+    \hline
+    \text{BERT}_{0.00} & 60.06 & 56.80 & 72.41 & 73.93 & 78.62 & 83.93 \\
+    \text{BERT}_{0.10} & 60.56 & 57.00 & 72.61 & 73.76 & 77.30 & 83.33\\
+    \text{BERT}_{0.15} & 60.10 & 56.68 & 72.50 & 74.54 & 77.30 & 83.30\\
+    \text{BERT}_{0.25} & 61.29 & 56.88 & 72.34 & 73.09 & 73.68 & 83.37\\
+    \text{BERT}_{0.50} & 61.45 & 57.02 & 69.76 & 70.68 & 69.41 & 82.56\\
+    \hline
+    \end{array}}
+    \end{array}
+    </div>
+
+    <h2 id="Summary">Conclusion</h2>
+    <p>This article explored the MLM and MAE models from a Dropout perspective. Both can be viewed as special forms of Dropout. From this viewpoint, we obtained a technique to correct MLM inconsistency and a DropToken technique similar to MAE for preventing overfitting.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8770.html" style="color: #005fcc;">https://kexue.fm/archives/8770</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

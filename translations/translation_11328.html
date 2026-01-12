@@ -1,0 +1,253 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/11328">DiVeQ: A Very Concise VQ Training Scheme</a></h1>
+<p>By 苏剑林 | October 08, 2025</p>
+
+<p>For researchers who insist on the discretization route, VQ (Vector Quantization) is a key component of visual understanding and generation, acting as the "Tokenizer" for vision. It was introduced in the 2017 paper <a href="https://papers.cool/arxiv/1711.00937">"Neural Discrete Representation Learning"</a>, and I also introduced it in a 2019 blog post <a href="translation_6760.html">"A Simple Introduction to VQ-VAE: Quantized Autoencoder"</a>.</p>
+
+<p>However, after all these years, the training techniques for VQ have remained almost unchanged, relying on STE (Straight-Through Estimator) plus additional Aux Loss. While STE is fine—it's essentially the standard way to design gradients for discrete operations—the presence of Aux Loss often feels less than fully end-to-end and introduces extra hyperparameters that need tuning.</p>
+
+<p>Fortunately, this situation may be coming to an end. Last week's paper <a href="https://papers.cool/arxiv/2509.26469">"DiVeQ: Differentiable Vector Quantization Using the Reparameterization Trick"</a> proposed a new STE trick. Its highlight is that it requires no Aux Loss, making it particularly concise and elegant!</p>
+
+<h2>Discrete Encoding</h2>
+<p>As usual, let's first review existing VQ training schemes. First, it should be noted that <a href="https://en.wikipedia.org/wiki/Vector_quantization">VQ (Vector Quantization)</a> itself is actually a very old concept dating back to the 1980s, originally intended to cluster vectors and replace them with corresponding cluster centers to achieve data compression.</p>
+
+<p>But the VQ we discuss here mainly refers to the VQ proposed in the VQ-VAE paper <a href="https://papers.cool/arxiv/1711.00937">"Neural Discrete Representation Learning"</a>. Of course, the definition of VQ itself hasn't changed; it's a mapping from a vector to a cluster center. The core of the VQ-VAE paper was providing an end-to-end training scheme that performs VQ on latent variables and then decodes them for reconstruction. The challenge is that the VQ step is a discrete operation with no ready-made gradient, requiring a custom gradient design.</p>
+
+<p>Mathematically, a standard AE (AutoEncoder) is:
+\begin{equation}z = encoder(x),\quad \hat{x}=decoder(z),\quad \mathcal{L}=\Vert x - \hat{x}\Vert^2 \end{equation}
+where $x$ is the original input, $z$ is the encoding vector, and $\hat{x}$ is the reconstruction result. VQ-VAE aims to use the idea of VQ to turn $z$ into one of the entries in a codebook $E=\{e_1, e_2, \cdots, e_K\}$:
+\begin{equation}q = \newcommand{argmin}{\mathop{\text{argmin}}}\argmin_{e\in E} \Vert z - e\Vert\end{equation}
+Then the $decoder$ take $q$ as input for reconstruction. Since $q$ corresponds one-to-one with an index in the codebook, $q$ is effectively an integer encoding of $x$. Of course, to ensure reconstruction quality, more than one vector is usually encoded in practice; after VQ, these become a sequence of integers. Thus, what VQ-VAE aims to do is encode the input into an integer sequence, much like a text Tokenizer.</p>
+
+<h2>Gradient Design</h2>
+<p>The modules we need to train include the $encoder$, $decoder$, and the codebook $E$. Because the VQ operation involves an $\argmin$ operation, the gradient stops at $q$ and cannot pass back to the $encoder$.</p>
+
+<p>VQ-VAE uses a trick called STE. It says that while $q$ after VQ is sent to the $decoder$, during backpropagation to calculate gradients, we use $z$ from before VQ. This allows the gradient to pass back to the $encoder$. It can be implemented using the stop_gradient operator ($\newcommand{sg}{\mathop{\text{sg}}}\sg$):
+\begin{equation}z = encoder(x),\quad q = \argmin_{e\in E} \Vert z - e\Vert,\quad z_q = z + \sg[q - z],\quad \hat{x} = decoder(z_q)\end{equation}
+Simply put, the effect of STE is $z_q=q$ but $\nabla z_q = \nabla z$. This way, the $encoder$ gets a gradient, but $q$ does not, so the codebook cannot be optimized. To solve this, VQ-VAE adds two items of Aux Loss:
+\begin{equation}\mathcal{L} = \Vert x - \hat{x}\Vert^2 + \beta\Vert q - \sg[z]\Vert^2 + \gamma\Vert z - \sg[q]\Vert^2 \end{equation}
+These two Loss terms represent $q$ moving toward $z$ and $z$ moving toward $q$, consistent with the original idea of VQ. The combination of STE and these two Aux Losses constitutes the standard VQ-VAE. There is also a simple variant where $\beta=0$ is set, but the codebook is updated using an exponential moving average of $z$, which is equivalent to using SGD to update the Aux Loss for $q$.</p>
+
+<p>As a side note, although VQ-VAE was titled "<a href="https://kexue.fm/tag/vae/">VAE</a>" by the original paper, it is actually an AE, so "VQ-AE" would technically be more accurate. However, since the name has already stuck, we follow it. The later <a href="https://papers.cool/arxiv/2012.09841">VQGAN</a> layered GAN Loss and other tricks on top of VQ-VAE to improve reconstruction clarity.</p>
+
+<h2>Alternative Works</h2>
+<p>For me, these two extra Aux Losses are quite annoying. I suspect many in the industry feel the same, so related improvement works pop up from time to time.</p>
+
+<p>The most "radical" approach is to replace VQ with a different discretization scheme. For example, <a href="translation_9826.html">"Embarrassingly Simple FSQ: 'Rounding' Surpasses VQ-VAE"</a> introduced FSQ, which does not require Aux Loss. If VQ is clustering high-dimensional vectors, FSQ is "rounding" low-dimensional vectors to achieve discretization. However, as I evaluated in <a href="translation_9844.html">this article</a>, FSQ cannot replace VQ in every scenario, so improving VQ itself remains valuable.</p>
+
+<p>Before proposing DiVeQ, the authors also proposed a scheme called "<a href="https://ieeexplore.ieee.org/abstract/document/9696322">NSVQ</a>," which took a small step toward "abolishing" Aux Loss. It changed $z_q$ to:
+\begin{equation}z_q = z + \Vert q - z\Vert \times \frac{\varepsilon}{\Vert \varepsilon\Vert},\qquad \varepsilon\sim\mathcal{N}(0, I)\label{eq:nsvq}\end{equation}
+Here $\varepsilon$ is a vector of the same size as $z, q$, with components following a standard normal distribution. After replacing $z_q$ with this, due to the differentiability of $\Vert q - z\Vert$, $q$ also has a gradient, so in principle, the codebook can be trained without Aux Loss. The geometric meaning of NSVQ is intuitive: it is uniform sampling on a "circle centered at $z$ with radius $\Vert q-z\Vert$." The disadvantage is that what is sent to the $decoder$ is not $q$, and since we care about the reconstruction effect of $q$ during inference, NSVQ has an inconsistency between training and inference.</p>
+
+<h2>The Main Act</h2>
+<p>Starting from NSVQ, if one wants to maintain $q$ in the forward pass while retaining the gradient brought by $\Vert q - z\Vert$, it is easy to propose an improved version:
+\begin{equation}z_q = z + \Vert q - z\Vert \times \sg\left[\frac{q - z}{\Vert q - z\Vert}\right]\label{eq:diveq0}\end{equation}
+In the forward pass, it strictly has $z_q = q$, but in the backward pass, it retains the gradients of $z$ and $\Vert q - z\Vert$. This is "DiVeQ-detach" in the paper's appendix. The actual DiVeQ in the main text is a kind of interpolation between Equation $\eqref{eq:diveq0}$ and $\eqref{eq:nsvq}$:
+\begin{equation}z_q = z + \Vert q - z\Vert \times \sg\left[\frac{q - z + \varepsilon}{\Vert q - z + \varepsilon\Vert}\right],\qquad \varepsilon\sim\mathcal{N}(0, \sigma^2 I)\label{eq:diveq}\end{equation}
+Clearly, when $\sigma=0$, the result is "DiVeQ-detach," and as $\sigma\to\infty$, the result is "NSVQ." The paper's appendix performed a search for $\sigma$ and concluded that $\sigma^2 = 10^{-3}$ is generally a better choice tipically.</p>
+
+<p>The experimental results in the paper show that although Equation $\eqref{eq:diveq}$ introduces randomness and a certain level of training-inference inconsistency, it performs better than Equation $\eqref{eq:diveq0}$. However, for my aesthetic sense, performance should not come at the cost of elegance, so Equation $\eqref{eq:diveq0}$ "DiVeQ-detach" is the ideal scheme in my heart. In the following analysis, DiVeQ refers to "DiVeQ-detach."</p>
+
+<h2>Theoretical Analysis</h2>
+<p>Unfortunately, the original paper does not provide much theoretical analysis, so in this section, I will attempt a basic analysis of DiVeQ's effectiveness and its relationship to the original VQ training scheme. First, consider the general form of Equation $\eqref{eq:diveq0}$:
+\begin{equation}z_q = z + r(q, z) \times \sg\left[\frac{q - z}{r(q, z)}\right]\end{equation}
+where $r(q,z)$ is any differentiable scalar function of $q,z$; it can be seen as any distance function between $q,z$. Let the loss function be $\mathcal{L}(z_q)$, then its differential is:
+\begin{equation}d\mathcal{L} = \langle\nabla_{z_q} \mathcal{L},d z_q\rangle = \left\langle\nabla_{z_q} \mathcal{L},dz + dr \times\frac{q-z}{r}\right\rangle = \langle\nabla_{z_q} \mathcal{L},d z\rangle + \langle\nabla_{z_q} \mathcal{L}, q-z\rangle d(\ln r)\end{equation}
+The term $\langle\nabla_{z_q} \mathcal{L},d z\rangle$ is what original VQ already has. DiVeQ brings an extra $\langle\nabla_{z_q} \mathcal{L}, q-z\rangle d(\ln r)$, or in other words, it effectively introduces an Aux Loss $\sg[\langle\nabla_{z_q} \mathcal{L}, q-z\rangle] \ln r$. If $r$ represents some distance function between $q,z$, then it is pulling the distance between $q,z$ closer, which is similar to the Aux Loss introduced in VQ. This successfully explains DiVeQ from a theoretical standpoint.</p>
+
+<p>But don't celebrate too early. This explanation holds only if the coefficient $\langle\nabla_{z_q} \mathcal{L}, q-z\rangle > 0$; otherwise, it would be increasing the distance. To prove this, we consider the first-order approximation of the loss function $\mathcal{L}(z)$ at $z_q$:
+\begin{equation}\mathcal{L}(z) \approx \mathcal{L}(z_q) + \langle\nabla_{z_q} \mathcal{L}, z - z_q\rangle = \mathcal{L}(z_q) + \langle\nabla_{z_q} \mathcal{L}, z - q\rangle\end{equation}
+That is, $\langle\nabla_{z_q} \mathcal{L}, q-z\rangle \approx \mathcal{L}(z_q) - \mathcal{L}(z)$. Note that $z$ and $z_q$ are the features before and after VQ, respectively. VQ is an information-losing process, so using $z$ for the target task (like reconstruction) will be easier than using $z_q$. Therefore, as long as convergence begins, it can be expected that the loss function for $z$ is lower, i.e., $\mathcal{L}(z_q) - \mathcal{L}(z) > 0$. Thus, we have proved that $\langle\nabla_{z_q} \mathcal{L}, q-z\rangle > 0$ is likely to hold.</p>
+
+<h2>Future Directions</h2>
+<p>Strictly speaking, $\langle\nabla_{z_q} \mathcal{L}, q-z\rangle > 0$ is only a necessary condition for DiVeQ's effectiveness. To fully demonstrate its effectiveness, one would need to prove that this coefficient is "just right." Due to the arbitrariness of $r(q,z)$, we can only analyze specific functions. If we consider $r(q,z)=\Vert q-z\Vert^{\alpha}$, it is equivalent to introducing the following Aux Loss:
+\begin{equation}\sg[\langle\nabla_{z_q} \mathcal{L}, q-z\rangle] \ln \Vert q-z\Vert^{\alpha} \approx \sg[\mathcal{L}(z_q) - \mathcal{L}(z)]\times \alpha\ln \Vert q-z\Vert\end{equation}
+The coefficient $\mathcal{L}(z_q) - \mathcal{L}(z)$ is homogeneous with the main loss $\mathcal{L}(z_q)$, which means it can adapt well to the scale of the main loss and adjust the Aux Loss weight based on the performance gap before and after VQ. As for what value $\alpha$ should take, I believe it depends on experiments; personally, I tried tuning it and found that $\alpha=1$ indeed performs well generally. Interested readers can try adjusting $\alpha$ themselves or even try switching to a different $r(q, z)$.</p>
+
+<p>It should be noted that DiVeQ only provides a new VQ training scheme free of Aux Loss. In principle, it does not solve other problems of VQ, such as low codebook utilization or codebook collapse. Any enhancement techniques that were effective in the "STE + Aux Loss" scenario can be considered for stacking with DiVeQ. The original paper combined DiVeQ with <a href="https://papers.cool/arxiv/2410.20573">SFVQ</a> to propose SF-DiVeQ to mitigate codebook collapse.</p>
+
+<p>However, personally, I find SFVQ a bit cumbersome, so I don't plan to elaborate on it here. Moreover, the author's choice to stack SFVQ is more likely because SFVQ was his previous work, belonging to the same lineage. I prefer the linear transformation trick introduced in <a href="translation_10519.html">"Another VQ Trick: Adding a Linear Transformation to the Codebook,"</a> which adds a linear transformation after the codebook. Experimental results show this can also significantly enhance the effect of DiVeQ.</p>
+
+<h2>Summary</h2>
+<p>This article introduced a new training scheme for VQ (Vector Quantization). It only requires implementation via STE and does not need additional Aux Losses, making it particularly concise and elegant.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_11328.html" style="color: #005fcc;">https://kexue.fm/archives/11328</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

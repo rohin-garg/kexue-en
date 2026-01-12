@@ -1,0 +1,354 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    processEnvironments: true,
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/10567">Diffusion Models Talk (26): Identity-based Distillation (Part 2)</a></h1>
+
+<p>By 苏剑林 | November 22, 2024</p>
+
+<p>Continuing our diffusion series. In <a href="translation_10085.html">"Diffusion Models Talk (25): Identity-based Distillation (Part 1)"</a>, we introduced SiD (Score identity Distillation), a diffusion model distillation scheme that requires no real data and no sampling from a teacher model. Its form is similar to a GAN but possesses better training stability.</p>
+
+<p>The core of SiD is to construct a better loss function for the student model through identity transforms. This point is pioneering, but it also left some questions. For example, SiD's identity transform of the loss function is incomplete; what would happen if it were completely transformed? How can the necessity of the parameter $\lambda$ introduced by SiD be explained theoretically? The paper <a href="https://papers.cool/arxiv/2410.19310">"Flow Generator Matching"</a> (FGM for short), released last month, successfully explained the choice of $\lambda=0.5$ from a more fundamental gradient perspective. Inspired by FGM, I further discovered an explanation for $\lambda = 1$.</p>
+
+<p>Next, we will introduce these theoretical advances in SiD in detail.</p>
+
+<h2>Review of Ideas <a href="https://kexue.fm/archives/10567#思想回顾">#</a></h2>
+
+<p>According to the introduction in the previous article, we know that the idea of SiD for distillation is that "similar distributions lead to similar denoising models trained on them." Expressed as formulas, this is:</p>
+
+\begin{align}
+&\text{Teacher Diffusion Model:}\quad\boldsymbol{\varphi}^* = \mathop{\text{argmin}}_{\boldsymbol{\varphi}} \mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0),\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\varphi}}(\boldsymbol{x}_t,t) - \boldsymbol{\varepsilon}\Vert^2\right]\label{eq:tloss} \\[8pt]
+&\text{Student Diffusion Model:}\quad\boldsymbol{\psi}^* = \mathop{\text{argmin}}_{\boldsymbol{\psi}} \mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\psi}}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\varepsilon}\Vert^2\right]\label{eq:dloss}\\[8pt]
+&\text{Student Generator Model:}\quad\boldsymbol{\theta}^* = \mathop{\text{argmin}}_{\boldsymbol{\theta}} \underbrace{\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\Vert^2\right]}_{\mathcal{L}_1}\label{eq:gloss-1}
+\end{align}
+
+<p>There are many notations here; let's explain them one by one. The first loss function is the training objective of the diffusion model we want to distill, where $\boldsymbol{x}_t = \bar{\alpha}_t\boldsymbol{x}_0 + \bar{\beta}_t\boldsymbol{\varepsilon}$ represents the noisy samples, $\bar{\alpha}_t, \bar{\beta}_t$ are the noise schedule, and $\boldsymbol{x}_0$ are training samples. The second loss function is a diffusion model trained using data generated by the student model, where $\boldsymbol{x}_t^{(g)}=\bar{\alpha}_t\boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z}) + \bar{\beta}_t\boldsymbol{\varepsilon}$, and $\boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z})$ represents the sample generated by the student model, also denoted as $\boldsymbol{x}_0^{(g)}$. The third loss function attempts to train the student generator (generator) by narrowing the gap between the diffusion models trained on real data and student data.</p>
+
+<p>The teacher model can be pre-trained, and the training of the two student models only requires the teacher model itself, without needing the data used to train the teacher model. Thus, as a distillation method, SiD is data-free. The two student models are trained alternately, similar to a GAN, to gradually improve the quality of the generator.</p>
+
+<p>However, although it looks fine, in practice, the alternate training of Eq. $\eqref{eq:dloss}$ and Eq. $\eqref{eq:gloss-1}$ collapses very easily, to the point where it almost yields no results. This is due to two gaps between theory and practice:</p>
+
+<blockquote>
+1. Theoretically, it is required to first find the optimal solution for Eq. $\eqref{eq:dloss}$ and then optimize Eq. $\eqref{eq:gloss-1}$. But in practice, considering training costs, we optimize Eq. $\eqref{eq:gloss-1}$ before Eq. $\eqref{eq:dloss}$ has reached optimality.<br><br>
+2. Theoretically, $\boldsymbol{\psi}^*$ changes with $\boldsymbol{\theta}$, i.e., it should be written as $\boldsymbol{\psi}^*(\boldsymbol{\theta})$. Thus, when optimizing Eq. $\eqref{eq:gloss-1}$, there should be an additional term for the gradient of $\boldsymbol{\psi}^*(\boldsymbol{\theta})$ with respect to $\boldsymbol{\theta}$. But in practice, we treat $\boldsymbol{\psi}^*$ as a constant when optimizing Eq. $\eqref{eq:gloss-1}$.
+</blockquote>
+
+<p>The first problem is actually manageable because, as training progresses, $\boldsymbol{\psi}$ can slowly approach the theoretical optimum $\boldsymbol{\psi}^*$. However, the second problem is very difficult and fundamental; it can be said that the training instability of GANs also stems from this issue. The core contribution of SiD and FGM is precisely the attempt to solve the second problem.</p>
+
+<h2>Identity Transform <a href="https://kexue.fm/archives/10567#恒等变换">#</a></h2>
+
+<p>SiD's idea is to reduce the dependency of the generator loss function $\eqref{eq:gloss-1}$ on $\boldsymbol{\psi}^*$ through an identity transform, thereby weakening the second problem. This idea is indeed pioneering, and many works have since centered around SiD, including FGM described below.</p>
+
+<p>The core of the identity transform is the following identity:</p>
+
+\begin{equation}\mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0),\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\left\langle\boldsymbol{f}(\boldsymbol{x}_t,t), \boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t,t)\right\rangle\right] = \mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0),\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\left\langle\boldsymbol{f}(\boldsymbol{x}_t,t), \boldsymbol{\varepsilon}\right\rangle\right]\label{eq:id}\end{equation}
+
+<p>Simply put, $\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t,t)$ can be replaced with $\boldsymbol{\varepsilon}$. Here $\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t,t)$ is the theoretical optimal solution of Eq. $\eqref{eq:tloss}$, and $\boldsymbol{f}(\boldsymbol{x}_t,t)$ is any vector function that depends only on $\boldsymbol{x}_t$ and $t$. Note that "depending only on $\boldsymbol{x}_t$ and $t$" is a necessary condition for the identity to hold. Once $\boldsymbol{f}$ is mixed with an independent $\boldsymbol{x}_0$ or $\boldsymbol{\varepsilon}$, the identity might not hold, so it is necessary to check this condition carefully before applying it.</p>
+
+<p>In the previous article, we gave a proof of this identity, though it now seems somewhat roundabout. Here is a more direct proof:</p>
+
+<blockquote>
+<p><strong>Proof:</strong> Rewrite the objective $\eqref{eq:tloss}$ equivalently as:</p>
+\begin{equation}\boldsymbol{\varphi}^* = \mathop{\text{argmin}}_{\boldsymbol{\varphi}} \mathbb{E}_{\boldsymbol{x}_t\sim p(\boldsymbol{x}_t)}\Big[\mathbb{E}_{\boldsymbol{\varepsilon}\sim p(\boldsymbol{\varepsilon}|\boldsymbol{x}_t)}\left[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\varphi}}(\boldsymbol{x}_t,t) - \boldsymbol{\varepsilon}\Vert^2\right]\Big]\end{equation}
+<p>Based on $\mathbb{E}[\boldsymbol{x}] = \mathop{\text{argmin}}\limits_{\boldsymbol{\mu}}\mathbb{E}_{\boldsymbol{x}}\left[\Vert \boldsymbol{\mu} - \boldsymbol{x}\Vert^2\right]$ (if unfamiliar, you can prove it by taking the derivative), we can conclude that the theoretical optimal solution for the above equation is:</p>
+\begin{equation}\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t,t) = \mathbb{E}_{\boldsymbol{\varepsilon}\sim p(\boldsymbol{\varepsilon}|\boldsymbol{x}_t)}[\boldsymbol{\varepsilon}]\end{equation}
+<p>Therefore:</p>
+\begin{equation}\begin{aligned}
+\mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0),\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\left\langle\boldsymbol{f}(\boldsymbol{x}_t,t), \boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t,t)\right\rangle\right]=&\, \mathbb{E}_{\boldsymbol{x}_t\sim p(\boldsymbol{x}_t)}\left[\left\langle\boldsymbol{f}(\boldsymbol{x}_t,t), \boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t,t)\right\rangle\right] \\
+=&\, \mathbb{E}_{\boldsymbol{x}_t\sim p(\boldsymbol{x}_t)}\left[\left\langle\boldsymbol{f}(\boldsymbol{x}_t,t), \mathbb{E}_{\boldsymbol{\varepsilon}\sim p(\boldsymbol{\varepsilon}|\boldsymbol{x}_t)}[\boldsymbol{\varepsilon}]\right\rangle\right] \\
+=&\, \mathbb{E}_{\boldsymbol{x}_t\sim p(\boldsymbol{x}_t),\boldsymbol{\varepsilon}\sim p(\boldsymbol{\varepsilon}|\boldsymbol{x}_t)}\left[\left\langle\boldsymbol{f}(\boldsymbol{x}_t,t), \boldsymbol{\varepsilon}\right\rangle\right] \\
+=&\, \mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0),\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\left\langle\boldsymbol{f}(\boldsymbol{x}_t,t), \boldsymbol{\varepsilon}\right\rangle\right]
+\end{aligned}\end{equation}
+<p>Q.E.D. The "essential path" of the proof is the first equality, which requires the condition that "$\boldsymbol{f}(\boldsymbol{x}_t,t)$ depends only on $\boldsymbol{x}_t$ and $t$."</p>
+</blockquote>
+
+<p>The key to the identity $\eqref{eq:id}$ is the optimality of $\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t,t)$. Since the forms of targets $\eqref{eq:tloss}$ and $\eqref{eq:dloss}$ are identical, the same conclusion applies to $\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t,t)$. Using this, we can transform $\eqref{eq:gloss-1}$ into:</p>
+
+\begin{equation}\begin{aligned}
+&\,\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\Vert^2\right] \\[8pt]
+=&\,\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\bigg[\Big\langle\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t),\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \underbrace{\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)}_{\text{can be replaced by }\boldsymbol{\varepsilon}}\Big\rangle\bigg] \\[5pt]
+=&\,\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\left\langle\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t),\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\varepsilon}\right\rangle\right]\triangleq \mathcal{L}_2
+\end{aligned}\label{eq:gloss-2}\end{equation}
+
+<p>The final form is the generator loss function $\mathcal{L}_2$ proposed by SiD. It is the key to SiD's successful training. We can understand it as pre-estimating the value of $\boldsymbol{\psi}^*$ through identity transformation while weakening the dependence on $\boldsymbol{\psi}^*$. Consequently, training the generator with it as the loss function yields better results than $\mathcal{L}_1$.</p>
+
+<p>The remaining questions about SiD are:</p>
+
+<blockquote>
+1. The identity transformation of $\mathcal{L}_2$ is not exhaustive. Expanding $\mathcal{L}_2$, we find a term $\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\langle\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t),\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\rangle]$, where the $\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)$ can also be replaced with $\boldsymbol{\varepsilon}$. So the question is: would the complete transformation, namely the following expression, be a better choice than $\mathcal{L}_2$?
+\begin{equation}\mathcal{L}_3 = \mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}\Vert^2 - 2\langle\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t),\boldsymbol{\varepsilon}\rangle + \langle \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t),\boldsymbol{\varepsilon}\rangle\right]\label{eq:gloss-3}\end{equation}
+
+2. Actually, the loss SiD eventually uses is neither $\mathcal{L}_2$ nor $\mathcal{L}_1$, but $\mathcal{L}_2 - \lambda\mathcal{L}_1$, where $\lambda > 0$. Experiments found that the optimal value of $\lambda$ is around $1$, and in some tasks, $\lambda=1.2$ performs best. This is very puzzling because $\mathcal{L}_1$ and $\mathcal{L}_2$ are theoretically equal, so $\lambda > 1$ seems to be optimizing $\mathcal{L}_1$ in reverse? Doesn't this contradict the starting point? This clearly calls for a theoretical explanation.
+</blockquote>
+
+<h2>Facing the Gradient Directly <a href="https://kexue.fm/archives/10567#直面梯度">#</a></h2>
+
+<p>To recap, the fundamental difficulty we face is: theoretically $\boldsymbol{\psi}^*$ is a function of $\boldsymbol{\theta}$, so when we calculate $\nabla_{\boldsymbol{\theta}} \mathcal{L}_1$ or $\nabla_{\boldsymbol{\theta}} \mathcal{L}_2$, we need to find a way to calculate $\nabla_{\boldsymbol{\theta}}\boldsymbol{\psi}^*$. However, in practice, we can at most obtain $\mathcal{L}_i^{(\text{sg})} \triangleq \mathcal{L}_i|_{\boldsymbol{\psi}^* \to \text{sg}[\boldsymbol{\psi}^*]}$, where $\text{sg}$ stands for stop gradient, meaning we cannot obtain the gradient of $\boldsymbol{\psi}^*$ with respect to $\boldsymbol{\theta}$. Therefore, regardless of $\mathcal{L}_1, \mathcal{L}_2, \mathcal{L}_3$, their gradients are biased in practice.</p>
+
+<p>At this point, FGM arrives. Its idea is closer to the essence: the losses $\mathcal{L}_1, \mathcal{L}_2, \mathcal{L}_3$ only focus on the equality at the loss level, but for the optimizer, what we need is equality at the gradient level. Therefore, we need to find a new loss function $\mathcal{L}_4$ that satisfies:</p>
+
+\begin{equation}\nabla_{\boldsymbol{\theta}}\mathcal{L}_4(\boldsymbol{\theta}, \text{sg}[\boldsymbol{\psi}^*])= \nabla_{\boldsymbol{\theta}}\mathcal{L}_{1/2/3}(\boldsymbol{\theta}, \boldsymbol{\psi}^*)\end{equation}
+
+<p>That is, $\nabla_{\boldsymbol{\theta}}\mathcal{L}_4^{(\text{sg})} = \nabla_{\boldsymbol{\theta}}\mathcal{L}_{1/2/3}$. Then, using $\mathcal{L}_4$ as the loss function, an unbiased optimization effect can be achieved.</p>
+
+<p>FGM's derivation is also based on the identity $\eqref{eq:id}$, but its original derivation is a bit tedious. For our purposes, we can start directly from $\mathcal{L}_3$, i.e., Eq. $\eqref{eq:gloss-3}$. The only term related to $\boldsymbol{\psi}^*$ is $\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\langle \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t),\boldsymbol{\varepsilon}\rangle]$. We calculate its gradient directly by applying "identity transform then gradient" and "gradient then identity transform" respectively to $\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\Vert^2]$ and comparing the results.</p>
+
+<p>Identity transform then gradient:</p>
+\begin{align}
+&\,\nabla_{\boldsymbol{\theta}}\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\Vert^2] \\[5pt]
+=&\, \nabla_{\boldsymbol{\theta}}\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\langle \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t),\boldsymbol{\varepsilon}\rangle] = \mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\langle \nabla_{\boldsymbol{\theta}}\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t),\boldsymbol{\varepsilon}\rangle] \\[5pt]
+=&\, \mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\langle \nabla_{\boldsymbol{\theta}}\boldsymbol{\epsilon}_{\text{sg}[\boldsymbol{\psi}^*]}(\boldsymbol{x}_t^{(g)},t),\boldsymbol{\varepsilon}\rangle] + \mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\langle \nabla_{\boldsymbol{\theta}}\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\text{sg}[\boldsymbol{x}_t^{(g)}],t),\boldsymbol{\varepsilon}\rangle]
+\label{eq:g-grad-1}\end{align}
+
+<p>Gradient then identity transform:</p>
+\begin{align}
+&\,\nabla_{\boldsymbol{\theta}}\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\Vert^2] \\[8pt]
+=&\, \mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\nabla_{\boldsymbol{\theta}}\Vert\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\Vert^2] = 2\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\langle \nabla_{\boldsymbol{\theta}}\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t), \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\rangle] \\[8pt]
+=&\, 2\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\langle \nabla_{\boldsymbol{\theta}}\boldsymbol{\epsilon}_{\text{sg}[\boldsymbol{\psi}^*]}(\boldsymbol{x}_t^{(g)},t), \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\rangle] + \underbrace{2\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\langle \nabla_{\boldsymbol{\theta}}\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\text{sg}[\boldsymbol{x}_t^{(g)}],t), \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\rangle]}_{\text{can apply Eq. } \eqref{eq:id}} \\[5pt]
+=&\, 2\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\langle \nabla_{\boldsymbol{\theta}}\boldsymbol{\epsilon}_{\text{sg}[\boldsymbol{\psi}^*]}(\boldsymbol{x}_t^{(g)},t), \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\rangle] + 2\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\langle \nabla_{\boldsymbol{\theta}}\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\text{sg}[\boldsymbol{x}_t^{(g)}],t), \boldsymbol{\varepsilon}\rangle]
+\label{eq:g-grad-2}\end{align}
+
+<p>Note here that in the third equality, only the term $\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\text{sg}[\boldsymbol{x}_t^{(g)}],t)$ can use the identity $\eqref{eq:id}$. This is because in $\nabla_{\boldsymbol{\theta}}\boldsymbol{\epsilon}_{\text{sg}[\boldsymbol{\psi}^*]}(\boldsymbol{x}_t^{(g)},t)$, $\boldsymbol{x}_t^{(g)}$ needs to be differentiated with respect to $\boldsymbol{\theta}$. After differentiation, it is no longer necessarily a function of $\boldsymbol{x}_t^{(g)}$, so it does not satisfy the conditions for applying Eq. $\eqref{eq:id}$.</p>
+
+<p>Now, for $\nabla_{\boldsymbol{\theta}}\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\Vert^2]$, we have two results. Multiply Eq. $\eqref{eq:g-grad-1}$ by 2 and subtract Eq. $\eqref{eq:g-grad-2}$ to get:</p>
+
+\begin{equation}\begin{aligned}
+&\,\nabla_{\boldsymbol{\theta}}\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\langle \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t),\boldsymbol{\varepsilon}\rangle] = \nabla_{\boldsymbol{\theta}}\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\Vert^2] = \eqref{eq:g-grad-1}\times 2 - \eqref{eq:g-grad-2} \\[5pt]
+=&\,2 \mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\langle \nabla_{\boldsymbol{\theta}}\boldsymbol{\epsilon}_{\text{sg}[\boldsymbol{\psi}^*]}(\boldsymbol{x}_t^{(g)},t),\boldsymbol{\varepsilon}\rangle] - 2\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\langle\nabla_{\boldsymbol{\theta}}\boldsymbol{\epsilon}_{\text{sg}[\boldsymbol{\psi}^*]}(\boldsymbol{x}_t^{(g)},t), \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\rangle] \\[5pt]
+=&\,2 \nabla_{\boldsymbol{\theta}}\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\langle \boldsymbol{\epsilon}_{\text{sg}[\boldsymbol{\psi}^*]}(\boldsymbol{x}_t^{(g)},t),\boldsymbol{\varepsilon}\rangle] - \nabla_{\boldsymbol{\theta}}\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\Vert\boldsymbol{\epsilon}_{\text{sg}[\boldsymbol{\psi}^*]}(\boldsymbol{x}_t^{(g)},t)\Vert^2] \\[5pt]
+=&\,\nabla_{\boldsymbol{\theta}}\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[2\langle \boldsymbol{\epsilon}_{\text{sg}[\boldsymbol{\psi}^*]}(\boldsymbol{x}_t^{(g)},t),\boldsymbol{\varepsilon}\rangle - \Vert\boldsymbol{\epsilon}_{\text{sg}[\boldsymbol{\psi}^*]}(\boldsymbol{x}_t^{(g)},t)\Vert^2]
+\end{aligned}\end{equation}
+
+<p>Pay attention to the final expression being differentiated; all of its $\boldsymbol{\psi}^*$ are tagged with $\text{sg}$, indicating that we don't need to try to find its gradient with respect to $\boldsymbol{\theta}$. However, its gradient is exactly equal to the accurate gradient of $\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}[\langle \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t),\boldsymbol{\varepsilon}\rangle]$. Thus, by using it to replace the corresponding term in $\mathcal{L}_3$, we obtain $\mathcal{L}_4$:</p>
+
+\begin{equation}\mathcal{L}_4^{\text{sg}} = \mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}\Vert^2 - 2\langle\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t),\boldsymbol{\varepsilon}\rangle + 2\langle \boldsymbol{\epsilon}_{\text{sg}[\boldsymbol{\psi}^*]}(\boldsymbol{x}_t^{(g)},t),\boldsymbol{\varepsilon}\rangle - \Vert\boldsymbol{\epsilon}_{\text{sg}[\boldsymbol{\psi}^*]}(\boldsymbol{x}_t^{(g)},t)\Vert^2\right]\end{equation}
+
+<p>This is the final result of FGM. It only depends on $\text{sg}[\boldsymbol{\psi}^*]$, but it holds that $\nabla_{\boldsymbol{\theta}}\mathcal{L}_4^{\text{sg}}=\nabla_{\boldsymbol{\theta}}\mathcal{L}_{1/2/3}$. Upon further inspection, one finds that $\mathcal{L}_4^{\text{sg}}=2\mathcal{L}_2^{\text{sg}}-\mathcal{L}_1^{\text{sg}}=2(\mathcal{L}_2^{\text{sg}}-0.5\times \mathcal{L}_1^{\text{sg}})$. Thus, FGM essentially validates SiD's choice of $\lambda=0.5$ from a gradient perspective.</p>
+
+<p>By the way, the description in the original FGM paper is carried out within an ODE-style diffusion framework (flow matching), but as I said in the previous article, whether it's SiD or FGM, it doesn't actually use the iterative generation process of diffusion models. Instead, it only uses the denoising model trained as a diffusion model. Thus, whether it is ODE, SDE, or the DDPM framework is just the surface; the denoising model is the essence. Therefore, this article can use the notation from the previous SiD article to introduce FGM.</p>
+
+<h2>Generalized Divergence <a href="https://kexue.fm/archives/10567#广义散度">#</a></h2>
+
+<p>FGM has successfully calculated the most essential gradient, but this can only explain SiD's $\lambda=0.5$. This means that if we want to explain the feasibility of other $\lambda$ values, we must modify the starting point. To this end, let's return to the origin and reflect on the generator's objective $\eqref{eq:gloss-1}$.</p>
+
+<p>Readers familiar with diffusion models should know that the theoretical optimal solution for Eq. $\eqref{eq:tloss}$ can also be written as $\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t,t)=-\bar{\beta}_t\nabla_{\boldsymbol{x}_t}\log p(\boldsymbol{x}_t)$. Similarly, the optimal solution for Eq. $\eqref{eq:dloss}$ is $\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)=-\bar{\beta}_t\nabla_{\boldsymbol{x}_t^{(g)}}\log p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)})$. Here $p(\boldsymbol{x}_t)$ and $p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)})$ are the distributions of real data and generator data with added noise, respectively. If you are unfamiliar with this result, you can refer to <a href="translation_9209.html">"Diffusion Models Talk (5): SDE Perspective"</a> and <a href="translation_9509.html">"Diffusion Models Talk (18): Score Matching = Conditional Score Matching"</a>.</p>
+
+<p>Substituting these two theoretical optimal solutions back into Eq. $\eqref{eq:gloss-1}$, we find that the generator is actually trying to minimize the Fisher Divergence:</p>
+
+\begin{equation}\begin{aligned}
+\mathcal{F}(p, p_{\boldsymbol{\theta}}) =&\, \mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})} \left[\Vert \nabla_{\boldsymbol{x}_t^{(g)}}\log p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)}) - \nabla_{\boldsymbol{x}_t^{(g)}}\log p(\boldsymbol{x}_t^{(g)})\Vert^2\right] \\
+=&\, \int p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)}) \left\Vert \nabla_{\boldsymbol{x}_t^{(g)}}\log p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)}) - \nabla_{\boldsymbol{x}_t^{(g)}}\log p(\boldsymbol{x}_t^{(g)})\right\Vert^2 d\boldsymbol{x}_t^{(g)}
+\end{aligned}\end{equation}
+
+<p>What we need to reflect on is the rationality and potential improvements of Fisher Divergence. As seen, $p_{\boldsymbol{\theta}}$ appears twice in the Fisher Divergence. Now I ask the reader to think about one question: <strong>Which of these two occurrences of $p_{\boldsymbol{\theta}}$ is more important?</strong></p>
+
+<p>The answer is the <strong>second one</strong>. To understand this fact, let's consider two cases: 1. Fix the first $p_{\boldsymbol{\theta}}$ and only optimize the second $p_{\boldsymbol{\theta}}$; 2. Fix the second $p_{\boldsymbol{\theta}}$ and only optimize the first $p_{\boldsymbol{\theta}}$. What is the difference between their outcomes? In the first case, there probably won't be much change; it can still learn $p_{\boldsymbol{\theta}}=p$. In fact, since Fisher Divergence contains $\Vert\Vert^2$, the following more general conclusion is almost obviously true:</p>
+
+<blockquote>
+<p>As long as $r(\boldsymbol{x})$ is a distribution that is nowhere zero, then $p(\boldsymbol{x})=q(\boldsymbol{x})$ remains the theoretical optimal solution for the following generalized Fisher Divergence:</p>
+\begin{equation}\mathcal{F}(p,q|r) = \int r(\boldsymbol{x}) \Vert \nabla_{\boldsymbol{x}} \log p(\boldsymbol{x}) - \nabla_{\boldsymbol{x}} \log q(\boldsymbol{x})\Vert^2 d\boldsymbol{x}\end{equation}
+</blockquote>
+
+<p>Simply put, the first $p_{\boldsymbol{\theta}}$ is not important at all; it could be replaced with any other distribution. The $\Vert\Vert^2$ alone ensures the equality of the two distributions. But the second case is different. Theoretical optimal solution for fixing the second $p_{\boldsymbol{\theta}}$ and only optimizing the first $p_{\boldsymbol{\theta}}$ is:</p>
+
+\begin{equation}p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)}) = \delta(\boldsymbol{x}_t^{(g)} - \boldsymbol{x}_t^*),\quad \boldsymbol{x}_t^* = \mathop{\text{argmin}}_{\boldsymbol{x}_t^{(g)}} \,\left\Vert \nabla_{\boldsymbol{x}_t^{(g)}}\log p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)}) - \nabla_{\boldsymbol{x}_t^{(g)}}\log p(\boldsymbol{x}_t^{(g)})\right\Vert^2\end{equation}
+
+<p>Where $\delta$ is the Dirac delta distribution. This means the model only needs to generate the single sample that minimizes $\Vert\Vert^2$ to minimize the loss, which is precisely Mode Collapse! Thus, the role of the first $p_{\boldsymbol{\theta}}$ in Fisher Divergence is not only secondary but might even be negative.</p>
+
+<p>This inspires us that when using gradient-based optimizers to train models, it might be better to simply remove the gradient from the first $p_{\boldsymbol{\theta}}$. That is, the following form of Fisher Divergence is a better choice:</p>
+
+\begin{equation}\begin{aligned}
+\mathcal{F}^+(p, p_{\boldsymbol{\theta}}) =&\, \int p_{\text{sg}[\boldsymbol{\theta}]}(\boldsymbol{x}_t^{(g)}) \left\Vert \nabla_{\boldsymbol{x}_t^{(g)}}\log p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)}) - \nabla_{\boldsymbol{x}_t^{(g)}}\log p(\boldsymbol{x}_t^{(g)})\right\Vert^2 d\boldsymbol{x}_t^{(g)} \\[5pt]
+=&\, \mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})} \left[\Vert \nabla_{\boldsymbol{x}_t^{(g)}}\log p_{\boldsymbol{\theta}}(\text{sg}[\boldsymbol{x}_t^{(g)}]) - \nabla_{\boldsymbol{x}_t^{(g)}}\log p(\text{sg}[\boldsymbol{x}_t^{(g)}])\Vert^2\right] \\[5pt]
+\propto&\, \underbrace{\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})} \left[\Vert \boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\text{sg}[\boldsymbol{x}_t^{(g)}],t) - \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\text{sg}[\boldsymbol{x}_t^{(g)}],t)\Vert^2\right]}_{\mathcal{L}_5}
+\end{aligned}\end{equation}
+
+<p>In other words, $\mathcal{L}_5$ here is likely to be a better starting point than $\mathcal{L}_1$. It is numerically equal to $\mathcal{L}_1$, but with a part of the gradient missing:</p>
+
+\begin{equation}\nabla_{\boldsymbol{\theta}}\mathcal{L}_5 = \nabla_{\boldsymbol{\theta}}\mathcal{L}_1 - \nabla_{\boldsymbol{\theta}}\underbrace{\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})} \left[\Vert \boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\epsilon}_{\text{sg}[\boldsymbol{\psi}^*]}(\boldsymbol{x}_t^{(g)},t)\Vert^2\right]}_{\text{exactly }\mathcal{L}_1^{\text{sg}}}\end{equation}
+
+<p>Where $\nabla_{\boldsymbol{\theta}}\mathcal{L}_1$ has already been calculated by FGM as $\nabla_{\boldsymbol{\theta}}(2\mathcal{L}_2^{\text{sg}}-\mathcal{L}_1^{\text{sg}})$. Therefore, taking $\mathcal{L}_5$ as the starting point, our loss function in practice is $2\mathcal{L}_2^{\text{sg}}-\mathcal{L}_1^{\text{sg}}-\mathcal{L}_1^{\text{sg}}=2(\mathcal{L}_2^{\text{sg}}-\mathcal{L}_1^{\text{sg}})$, which explains the choice of $\lambda=1$. As for choices where $\lambda$ is slightly larger than 1, they are more extreme. They correspond to treating $-\mathcal{L}_1^{\text{sg}}$ as an additional penalty term on top of $\mathcal{L}_5$ to further reduce the risk of mode collapse. Of course, this is just a pure penalty term, so its weight cannot be too large. According to SiD's experimental results, the training starts to collapse when $\lambda=1.5$.</p>
+
+<p>By the way, before FGM, the authors had another work, <a href="https://papers.cool/arxiv/2410.16794">"One-Step Diffusion Distillation through Score Implicit Matching"</a>, which also proposed a similar practice of changing the first $p_{\boldsymbol{\theta}}$ to $p_{\text{sg}[\boldsymbol{\theta}]}$. However, it did not explicitly discuss the rationality of this operation starting from the original form of Fisher Divergence, so it was slightly less complete.</p>
+
+<h2>Summary <a href="https://kexue.fm/archives/10567#文章小结">#</a></h2>
+
+<p>This article introduced the subsequent theoretical developments of SiD (Score identity Distillation). The main content is explaining the $\lambda$ parameter setting in SiD from a gradient perspective. The core part is the clever idea of accurately estimating the SiD gradient discovered by FGM (Flow Generator Matching), which validates the choice of $\lambda=0.5$. On this basis, I expanded the concept of Fisher Divergence, thereby explaining the value of $\lambda=1$.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10567.html" style="color: #005fcc;">https://kexue.fm/archives/10567</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

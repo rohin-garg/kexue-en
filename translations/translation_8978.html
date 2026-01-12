@@ -1,0 +1,347 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    tags: 'ams',
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/8978">What are the difficulties in training a 1000-layer Transformer?</a></h1>
+
+    <p>By 苏剑林 | March 09, 2022</p>
+
+
+<p>As is well known, current Transformers are growing larger, but this "largeness" is usually in "width" rather than "depth." For example, although GPT-3 has hundreds of billions of parameters, it is only a 96-layer Transformer, which is far from the depth we can imagine. What limits the development of Transformers toward greater "depth"? Some readers might think it's computational power, but a "wide and shallow" model doesn't require significantly less computational power than a "narrow and deep" model. Therefore, computational power is not the main constraint; ultimately, it boils down to the inherent training difficulties of Transformers. The general view is that the training difficulty of deep models stems from gradient vanishing or exploding. However, practice shows that even when gradients are improved through various means, deep models are still not easy to train.</p>
+
+<p>Recent work (such as <a href="https://arxiv.org/abs/2110.03848">Admin</a>) points out that the fundamental difficulty in training deep models lies in "increment explosion"—the deeper the model, the greater the perturbation to the output. Last week's paper, <a href="https://arxiv.org/abs/2203.00555">"DeepNet: Scaling Transformers to 1,000 Layers,"</a> follows this line of thought with a magnitude analysis and adjusts the model's normalization and initialization schemes accordingly. Ultimately, they successfully trained a 1,000-layer Transformer model. The entire analysis process is of significant reference value, so let's learn about it.</p>
+
+<h2>Increment Explosion</h2>
+
+<p>The full analysis in the original paper is quite long, and some assumptions or descriptions are not entirely reasonable upon closer inspection. In this post, I will try to correct these issues and attempt to derive similar results in a more logical manner.</p>
+
+<p>Suppose the loss function is $\mathcal{L}(\boldsymbol{\theta})$, where $\boldsymbol{\theta}$ represents its parameters. Consider the increment of the loss function when the parameters change from $\boldsymbol{\theta}$ to $\boldsymbol{\theta}+\Delta\boldsymbol{\theta}$:</p>
+
+\begin{equation}\Delta\mathcal{L} = \mathcal{L}(\boldsymbol{\theta}+\Delta\boldsymbol{\theta}) - \mathcal{L}(\boldsymbol{\theta}) \approx \langle\nabla_{\boldsymbol{\theta}}\mathcal{L}(\boldsymbol{\theta}),\Delta\boldsymbol{\theta}\rangle\end{equation}
+
+<p>For SGD, we have $\Delta\boldsymbol{\theta}=-\eta \nabla_{\boldsymbol{\theta}}\mathcal{L}(\boldsymbol{\theta})$, so $\Delta\mathcal{L} \approx -\eta\Vert\nabla_{\boldsymbol{\theta}}\mathcal{L}(\boldsymbol{\theta})\Vert^2$. Suppose the model has $N$ layers, and each layer has $K$ parameter matrices (where $K$ is roughly constant). Combined with Xavier initialization and various normalization techniques, we can ensure that the gradient norm of each parameter matrix is of the order $\mathcal{O}(1)$. Thus, we have $\Delta\mathcal{L}=\mathcal{O}(\eta NK)$. Therefore, the update amount per step of the model is proportional to the model depth $N$. If the model is deeper, the update amount is larger, which means that in the initial stage, the model is more likely to enter a poor local optimum, leading to training stagnation or even collapse. This is the "increment explosion" problem.</p>
+
+<p>There are two solutions at this point. One is to use a smaller learning rate in the initial stage (no more than the order of $\eta/N$) and then gradually increase it; this is the Warmup technique. The second is to adjust the initialization scheme so that the gradient of the parameters is of the order $\mathcal{O}(1/\sqrt{N})$, which automatically offsets the impact of the model depth.</p>
+
+<h2>Magnitude Analysis</h2>
+
+<p>How do we achieve the second solution? We can try to analyze the gradient of the Transformer. However, calculating the exact gradient is tedious, and in fact, we don't need the exact gradient—we just need to perform a magnitude analysis. Therefore, we can use the following "magnitude decomposition" trick to convert the problem into scalar derivatives.</p>
+
+<p>For a matrix $\boldsymbol{W}$, we decompose it into the form $\boldsymbol{W}=\lambda \boldsymbol{U}$, where</p>
+
+\begin{equation}\lambda = \mathop{\text{argmin}}_{\kappa > 0} \Vert \boldsymbol{W}\boldsymbol{W}^{\top}/\kappa^2 - \boldsymbol{I}\Vert,\quad \end{equation}
+
+<p>In simple terms, we want to decompose a matrix into the product of a scalar $\lambda$ and a matrix $\boldsymbol{U}$ that is as orthogonal as possible. Since $\boldsymbol{U}$ is close to an orthogonal matrix, it serves as a standard reference frame, while the corresponding $\lambda$ represents the magnitude of the matrix $\boldsymbol{W}$. If $\boldsymbol{W}$ uses Xavier initialization, then $\lambda$ corresponds to the "gain" parameter; that is, on top of Xavier initialization, one must multiply by $\lambda$. This is because the result of Xavier initialization is close to an orthogonal matrix, which can be referenced in <a href="translation_7180.html">"Understanding Model Parameter Initialization Strategy from a Geometric Perspective"</a>.</p>
+
+<p>Under this decomposition, we have</p>
+
+\begin{equation}\frac{\partial \mathcal{L}(\lambda \boldsymbol{U})}{\partial \lambda} = \left\langle\frac{\partial \mathcal{L}(\lambda \boldsymbol{U})}{\partial (\lambda \boldsymbol{U})}, \boldsymbol{U}\right\rangle = \left\langle\frac{\partial \mathcal{L}(\boldsymbol{W})}{\partial \boldsymbol{W}}, \boldsymbol{U}\right\rangle\end{equation}
+
+<p>This means that $\frac{\partial \mathcal{L}}{\partial \lambda}$ is proportional to $\frac{\partial \mathcal{L}}{\partial \boldsymbol{W}}$ in terms of magnitude. Therefore, performing a magnitude analysis on $\frac{\partial \mathcal{L}}{\partial \lambda}$ is equivalent to performing a magnitude analysis on $\frac{\partial \mathcal{L}}{\partial \boldsymbol{W}}$. In this way, $\frac{\partial \mathcal{L}}{\partial \lambda}$ acts as a simple "probe" for the magnitude of $\frac{\partial \mathcal{L}}{\partial \boldsymbol{W}}$, converting matrix differentiation into scalar differentiation and reducing the difficulty of the analysis.</p>
+
+<h2>Feedforward Gradient</h2>
+
+<p>Many experimental results show that although Pre Norm is easier to train than Post Norm, the final performance of Post Norm is often better. Therefore, the original paper retains the Post Norm structure and considers a more general form (DeepNorm):</p>
+
+\begin{equation}\boldsymbol{x}_{l+1} = \text{LN}(\alpha\boldsymbol{x}_l + F(\boldsymbol{x}_l)) = \text{LN}(\boldsymbol{x}_l + F(\boldsymbol{x}_l)/\alpha)\end{equation}
+
+<p>where $\alpha > 0$ is a constant. For simplicity, let's first consider the FFN layer, in which case:</p>
+
+\begin{equation}\boldsymbol{x}_{l+1} = \text{LN}(\boldsymbol{x}_l + \phi(\boldsymbol{x}_l \boldsymbol{W}_1)\boldsymbol{W}_2/\alpha)\end{equation}
+
+<p>Here $\phi$ is the activation function, usually ReLU or its variants (Swish, GeLU, etc.), which (approximately) satisfy $\phi(\lambda x) = \lambda \phi(x), \forall \lambda > 0$. Using the magnitude decomposition probe from the previous section, we get:</p>
+
+\begin{equation}\boldsymbol{x}_{l+1} = \text{LN}(\underbrace{\boldsymbol{x}_l + \lambda_1 \lambda_2 \phi(\boldsymbol{x}_l \boldsymbol{U}_1)\boldsymbol{U}_2/\alpha}_{\text{denoted as } \boldsymbol{z}_{l+1}})\label{eq:ffn}\end{equation}
+
+<p>Calculating the gradients of $\lambda$:</p>
+
+\begin{equation}\begin{aligned} 
+\frac{\partial \mathcal{L}}{\partial \lambda_1} = \frac{\partial \mathcal{L}}{\partial \boldsymbol{x}_{l+1}}\frac{\partial \boldsymbol{x}_{l+1}}{\partial \boldsymbol{z}_{l+1}}\frac{\partial \boldsymbol{z}_{l+1}}{\partial \lambda_1} = \frac{\partial \mathcal{L}}{\partial \boldsymbol{x}_{l+1}}\frac{\partial \boldsymbol{x}_{l+1}}{\partial \boldsymbol{z}_{l+1}}\frac{\lambda_2 \phi(\boldsymbol{x}_l \boldsymbol{U}_1)\boldsymbol{U}_2}{\alpha} \\ 
+\frac{\partial \mathcal{L}}{\partial \lambda_2} = \frac{\partial \mathcal{L}}{\partial \boldsymbol{x}_{l+1}}\frac{\partial \boldsymbol{x}_{l+1}}{\partial \boldsymbol{z}_{l+1}}\frac{\partial \boldsymbol{z}_{l+1}}{\partial \lambda_2} = \frac{\partial \mathcal{L}}{\partial \boldsymbol{x}_{l+1}}\frac{\partial \boldsymbol{x}_{l+1}}{\partial \boldsymbol{z}_{l+1}}\frac{\lambda_1 \phi(\boldsymbol{x}_l \boldsymbol{U}_1)\boldsymbol{U}_2}{\alpha} \end{aligned}\end{equation}
+
+<p>We assert that $\frac{\partial \mathcal{L}}{\partial \boldsymbol{x}_{l+1}}$ and $\frac{\partial \boldsymbol{x}_{l+1}}{\partial \boldsymbol{z}_{l+1}}$ are both $\mathcal{O}(1)$, and since $\boldsymbol{U}_1$ and $\boldsymbol{U}_2$ are both close to orthogonal matrices, $\phi(\boldsymbol{x}_l \boldsymbol{U}_1)\boldsymbol{U}_2$ is also $\mathcal{O}(1)$. Therefore, we ultimately have:</p>
+
+\begin{equation}\frac{\partial \mathcal{L}}{\partial \lambda_1} = \mathcal{O}\left(\frac{\lambda_2}{\alpha}\right),\quad \frac{\partial \mathcal{L}}{\partial \lambda_2} = \mathcal{O}\left(\frac{\lambda_1}{\alpha}\right)\end{equation}
+
+<h2>Self-Attention</h2>
+
+<p>Now consider Self-Attention. For magnitude analysis, we consider single-head attention, which takes the form:</p>
+
+\begin{equation}\boldsymbol{x}_{l+1} = \text{LN}(\boldsymbol{x}_l + \sigma(\boldsymbol{x}_l \boldsymbol{W}_q\boldsymbol{W}_k^{\top}\boldsymbol{x}_l^{\top})\boldsymbol{x}_l\boldsymbol{W}_v\boldsymbol{W}_o/\alpha)\end{equation}
+
+<p>where $\sigma(\cdot)$ is shorthand for the softmax operation; the Attention scale operation is omitted here. The magnitude decomposition form of the above equation is:</p>
+
+\begin{equation}\boldsymbol{x}_{l+1} = \text{LN}(\underbrace{\boldsymbol{x}_l + \lambda_v\lambda_o \sigma (\lambda_q\lambda_k\boldsymbol{x}_l \boldsymbol{U}_q\boldsymbol{U}_k^{\top}\boldsymbol{x}_l^{\top})\boldsymbol{x}_l\boldsymbol{U}_v\boldsymbol{U}_o/\alpha}_{\text{denoted as } \boldsymbol{z}_{l+1}})\label{eq:sa}\end{equation}
+
+<p>Now we can find the gradients for each $\lambda$. Due to the existence of softmax, the gradients of $\lambda_q, \lambda_k$ will themselves be very small and will not significantly affect the final update volume. Therefore, considering the updates of $\lambda_v, \lambda_o$ is sufficient:</p>
+
+\begin{equation}\begin{aligned} 
+\frac{\partial \mathcal{L}}{\partial \lambda_v} = \frac{\partial \mathcal{L}}{\partial \boldsymbol{x}_{l+1}}\frac{\partial \boldsymbol{x}_{l+1}}{\partial \boldsymbol{z}_{l+1}}\frac{\partial \boldsymbol{z}_{l+1}}{\partial \lambda_v} = \frac{\partial \mathcal{L}}{\partial \boldsymbol{x}_{l+1}}\frac{\partial \boldsymbol{x}_{l+1}}{\partial \boldsymbol{z}_{l+1}}\frac{\lambda_o \sigma (\lambda_q\lambda_k\boldsymbol{x}_l \boldsymbol{U}_q\boldsymbol{U}_k^{\top}\boldsymbol{x}_l^{\top})\boldsymbol{x}_l\boldsymbol{U}_v\boldsymbol{U}_o}{\alpha} \\ 
+\frac{\partial \mathcal{L}}{\partial \lambda_o} = \frac{\partial \mathcal{L}}{\partial \boldsymbol{x}_{l+1}}\frac{\partial \boldsymbol{x}_{l+1}}{\partial \boldsymbol{z}_{l+1}}\frac{\partial \boldsymbol{z}_{l+1}}{\partial \lambda_o} = \frac{\partial \mathcal{L}}{\partial \boldsymbol{x}_{l+1}}\frac{\partial \boldsymbol{x}_{l+1}}{\partial \boldsymbol{z}_{l+1}}\frac{\lambda_v \sigma (\lambda_q\lambda_k\boldsymbol{x}_l \boldsymbol{U}_q\boldsymbol{U}_k^{\top}\boldsymbol{x}_l^{\top})\boldsymbol{x}_l\boldsymbol{U}_v\boldsymbol{U}_o}{\alpha} \end{aligned}\end{equation}
+
+<p>Similarly, we assert that $\frac{\partial \mathcal{L}}{\partial \boldsymbol{x}_{l+1}}$ and $\frac{\partial \boldsymbol{x}_{l+1}}{\partial \boldsymbol{z}_{l+1}}$ are both $\mathcal{O}(1)$. Note that the softmax output is a probability distribution that performs a weighted average of the tokens in $\boldsymbol{x}_l$. Generally speaking, the vector before and after averaging will be in the same order of magnitude, so we assume $\sigma (\lambda_q\lambda_k\boldsymbol{x}_l \boldsymbol{U}_q\boldsymbol{U}_k^{\top}\boldsymbol{x}_l^{\top})\boldsymbol{x}_l\boldsymbol{U}_v\boldsymbol{U}_o$ is also $\mathcal{O}(1)$. Therefore, the results are similar to those of the FFN layer:</p>
+
+\begin{equation}\frac{\partial \mathcal{L}}{\partial \lambda_v} = \mathcal{O}\left(\frac{\lambda_o}{\alpha}\right),\quad \frac{\partial \mathcal{L}}{\partial \lambda_o} = \mathcal{O}\left(\frac{\lambda_v}{\alpha}\right)\end{equation}
+
+<h2>Preliminary Conclusion</h2>
+
+<p>Whether it is FFN or Self-Attention, we have obtained similar conclusions. For simplicity, assume the magnitude of each parameter (at least during the initialization stage) is consistent—that is, all $\lambda$ take the same value. The overall conclusion is then:</p>
+
+\begin{equation}\frac{\partial \mathcal{L}}{\partial \lambda} = \mathcal{O}\left(\frac{\lambda}{\alpha}\right)\end{equation}
+
+<p>Thus, the magnitude of the gradient is $\mathcal{O}(\lambda/\alpha)$. On the other hand, for an $N$-layer Transformer model, there are generally $N$ Self-Attention layers plus $N$ FFN layers, so strictly speaking, the number of layers is $2N$. Therefore, according to the analysis in the "Increment Explosion" section, we need to adjust the gradient to $\mathcal{O}(1/\sqrt{2N})$. The above equation tells us we can achieve this by setting $\lambda/\alpha=1/\sqrt{2N}$. The original paper's derivation is slightly looser, yielding the result $\lambda/\alpha = 1/\sqrt{4N}$, which is equivalent in magnitude.</p>
+
+<p>Now we have a proportional relationship between $\lambda$ and $\alpha$, but we cannot directly obtain specific values for $\lambda$ and $\alpha$. According to the paper, starting from a symmetry perspective, setting $\lambda=1/\alpha$ leads to the solution:</p>
+
+\begin{equation}\alpha = (2N)^{1/4},\quad \lambda = (2N)^{-1/4}\label{eq:result}\end{equation}
+
+<p>However, a purely symmetrical explanation is obviously not convincing enough. We need to figure out what different results different choices would produce. For this, we can compare two other sets of solutions:</p>
+
+<p><strong>Alternative 1:</strong> $\alpha=1, \lambda=(2N)^{-1/2}$. In this case, the initialization of the parameters is reduced to $(2N)^{-1/2}$ times the original value, and the gradient is also reduced to $(2N)^{-1/2}$ times. According to SGD's $\Delta\boldsymbol{\theta}=-\eta \nabla_{\boldsymbol{\theta}}\mathcal{L}(\boldsymbol{\theta})$, the update volume per step is also $(2N)^{-1/2}$ times the original. This means that the relative magnitude of learning before and after the adjustment has not changed. Therefore, it is possible that while at the start $\lambda=\mathcal{O}((2N)^{-1/2})$, after a few steps on the dataset, it deviates from this magnitude.</p>
+
+<p><strong>Alternative 2:</strong> $\alpha=(2N)^{1/2}, \lambda=1$. In this case, parameter initialization is not scaled, but the gradient is reduced to $(2N)^{-1/2}$ times. According to SGD's update rule, the update volume per step is $(2N)^{-1/2}$ times the original. The relative magnitude of learning after the adjustment is significantly reduced, so it is possible that learning will be very slow.</p>
+
+<p>Both cases seem to have their drawbacks. Therefore, Equation $\eqref{eq:result}$, which lies between them, seems justifiable. It maintains the gradient scaling to $(2N)^{-1/2}$ while keeping the initial learning pace slightly slower but not too slow, effectively acting as an implicit Warmup.</p>
+
+<h2>Multiple Optimizers</h2>
+
+<p>The previous derivation was based on SGD, but in fact, we rarely use SGD directly to train NLP models. We mostly use adaptive learning rate optimizers, which fall into two main categories: one uses the second moment to calibrate the learning rate (Adam, AdamW, etc.), and the other further calibrates the learning rate based on parameter norms, such as <a href="https://arxiv.org/abs/1904.00962">LAMB</a> and <a href="https://arxiv.org/abs/1804.04235">AdaFactor</a>. The original paper says "we derived on SGD and verified on Adam and found it also works," but theoretically speaking, they are not completely universal. In this section, we will perform a targeted analysis.</p>
+
+<p>For Adam-type optimizers, the update per step is approximately $\Delta\boldsymbol{\theta}=-\eta\,\text{sign}(\nabla_{\boldsymbol{\theta}}\mathcal{L}(\boldsymbol{\theta}))$, so $\Delta\mathcal{L} \approx -\eta\Vert\nabla_{\boldsymbol{\theta}}\mathcal{L}(\boldsymbol{\theta})\Vert_1$. This is proportional to the 1st power of the gradient rather than the 2nd power. Therefore, for the update amount to be independent of the number of layers, the gradient should be scaled to $1/(2N)$ times the original. This implies $\lambda/\alpha=1/(2N)$. If we also let $\lambda=1/\alpha$, then we have:</p>
+
+\begin{equation}\alpha = (2N)^{1/2},\quad \lambda = (2N)^{-1/2}\end{equation}
+
+<p>For LAMB-type optimizers, the update per step is approximately $\Delta\boldsymbol{\theta}=-\eta\Vert\theta\Vert\,\text{sign}(\nabla_{\boldsymbol{\theta}}\mathcal{L}(\boldsymbol{\theta}))$, so $\Delta\mathcal{L} \approx -\eta\Vert\theta\Vert\Vert\nabla_{\boldsymbol{\theta}}\mathcal{L}(\boldsymbol{\theta})\Vert_1$. Note that the scaling factor for parameters is $\lambda$ and for gradients is $\lambda/\alpha$, so $\Delta\mathcal{L}=\mathcal{O}(2N\lambda^2/\alpha)$. Thus, $\lambda^2/\alpha=1/(2N)$. Since for this type of optimizer, the relative update size per step is the same (equal to the learning rate $\eta$) regardless of how $\alpha, \lambda$ are adjusted, we can directly set $\alpha=1, \lambda=(2N)^{-1/2}$.</p>
+
+<p>The summary of the results is as follows:</p>
+
+<table border="1" style="width:100%; text-align:center; border-collapse: collapse;">
+<thead>
+<tr>
+<th>Optimizer</th>
+<th>$\Delta\boldsymbol{\theta}$</th>
+<th>$\Delta\mathcal{L}$</th>
+<th>$\alpha$</th>
+<th>$\lambda$</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SGD</td>
+<td>$-\eta \nabla_{\boldsymbol{\theta}}\mathcal{L}(\boldsymbol{\theta})$</td>
+<td>$-\eta\Vert\nabla_{\boldsymbol{\theta}}\mathcal{L}(\boldsymbol{\theta})\Vert^2$</td>
+<td>$(2N)^{1/4}$</td>
+<td>$(2N)^{-1/4}$</td>
+</tr>
+<tr>
+<td>Adam</td>
+<td>$-\eta\,\text{sign}(\nabla_{\boldsymbol{\theta}}\mathcal{L}(\boldsymbol{\theta}))$</td>
+<td>$-\eta\Vert\nabla_{\boldsymbol{\theta}}\mathcal{L}(\boldsymbol{\theta})\Vert_1$</td>
+<td>$(2N)^{1/2}$</td>
+<td>$(2N)^{-1/2}$</td>
+</tr>
+<tr>
+<td>LAMB</td>
+<td>$-\eta\Vert\theta\Vert\,\text{sign}(\nabla_{\boldsymbol{\theta}}\mathcal{L}(\boldsymbol{\theta}))$</td>
+<td>$-\eta\Vert\theta\Vert\Vert\nabla_{\boldsymbol{\theta}}\mathcal{L}(\boldsymbol{\theta})\Vert_1$</td>
+<td>$1$</td>
+<td>$(2N)^{-1/2}$</td>
+</tr>
+</tbody>
+</table>
+
+<h2>Hindsight Analysis</h2>
+
+<p>The previous two sections of derivation used the assertion that "$\frac{\partial \mathcal{L}}{\partial \boldsymbol{x}_{l+1}}$ and $\frac{\partial \boldsymbol{x}_{l+1}}{\partial \boldsymbol{z}_{l+1}}$ are both $\mathcal{O}(1)$." Does it hold? Let's perform a hindsight analysis here.</p>
+
+<p>It's actually quite simple. After the aforementioned adjustments, whether in the FFN layer $\eqref{eq:ffn}$ or the Self-Attention layer $\eqref{eq:sa}$, the weight of each residual branch in the initial stage is scaled to $\lambda^2/\alpha$ times the original. regardless of the results for any optimizer, $\lambda^2/\alpha$ is a relatively small number. This means that in the initial stage, the entire model is actually close to an identity function. Thus, $\frac{\partial \mathcal{L}}{\partial \boldsymbol{x}_{l+1}}$ and $\frac{\partial \boldsymbol{x}_{l+1}}{\partial \boldsymbol{z}_{l+1}}$ are naturally both $\mathcal{O}(1)$, so the conclusion and the assertion are self-consistent.</p>
+
+<p>Additionally, some readers might wonder if the same analysis can be applied to the Pre Norm structure. The answer is yes, and the conclusion is basically consistent. Only because the Norm is placed before the residual branch, there is no need to set the $\alpha$ parameter. Therefore, the conclusion is that for all the Post Norm results mentioned above, $\alpha$ is set to 1, and the corresponding $\lambda$ is recalculated.</p>
+
+<p>Finally, readers might question whether spending so much effort discussing making models deeper is actually important. Yes, the original paper provides a beautiful experimental result: a 200-layer "deep and narrow" model (3.2 billion parameters) beats a previous 48-layer "shallow and wide" SOTA model (12 billion parameters):</p>
+
+<div style="text-align:center;">
+<p><strong>The "Deep and Narrow" model outperforms the "Shallow and Wide" model</strong></p>
+</div>
+
+<h2>Summary</h2>
+
+<p>This article analyzes the bottlenecks in making Transformers "deep" and provides corresponding solutions. The main ideas of the article originate from Microsoft's new DeepNet and simplify and improve the original paper's analysis process.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8978.html" style="color: #005fcc;">https://kexue.fm/archives/8978</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

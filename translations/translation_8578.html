@@ -1,0 +1,390 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<div>
+    <h1><a href="https://kexue.fm/archives/8578">Linear Models from a Probabilistic Perspective: Does Logistic Regression Have an Analytical Solution?</a></h1>
+
+    <p>By 苏剑林 | July 22, 2021</p>
+
+    <p>We know that linear regression is a relatively simple problem because it has an analytical solution. Its variant, Logistic Regression (LR), however, does not have an analytical solution, which is somewhat of a pity. Although it is called "regression," it is actually used for classification problems, and for many readers, classification is more common than regression. To be precise, when we say logistic regression has no analytical solution, we are referring to the fact that "logistic regression has no analytical solution under Maximum Likelihood Estimation (MLE)." Does this mean that if we don't use Maximum Likelihood Estimation, we could find a usable analytical solution?</p>
+    
+    <p>This article will derive an analytical solution for logistic regression from a non-MLE perspective. Simple experiments show that its performance is not inferior to the MLE solution obtained via gradient descent. Furthermore, this analytical solution is easily generalized to the single-layer Softmax multi-class model.</p>
+
+    <h2>Linear Regression</h2>
+    <p>Let's first review linear regression. Suppose the training data is $\{(\boldsymbol{x}_i,\boldsymbol{y}_i)\}_{i=1}^N$, where $\boldsymbol{x}\in\mathbb{R}^n,\boldsymbol{y}\in\mathbb{R}^m$. To align with code implementations, we default to using <strong>row vectors</strong> for all vectors here. Linear regression assumes that $\boldsymbol{x}$ and $\boldsymbol{y}$ satisfy a linear relationship $\boldsymbol{y}=\boldsymbol{x}\boldsymbol{W}+\boldsymbol{b}$, where $\boldsymbol{W}\in\mathbb{R}^{n\times m},\boldsymbol{b}\in\mathbb{R}^m$. We then estimate them by minimizing the following Mean Squared Error (MSE):</p>
+    
+    \begin{equation}\frac{1}{N}\sum_{i=1}^N \Vert\boldsymbol{y}_i-\boldsymbol{x}_i\boldsymbol{W}-\boldsymbol{b}\Vert^2\label{eq:loss}\end{equation}
+
+    <p>This objective can be solved by directly expanding it and taking derivatives; since it is a quadratic minimization problem, it has an analytical solution.</p>
+
+    <h2>Probabilistic Perspective</h2>
+    <p>From the perspective of probability distributions, the Mean Squared Error implies that we assume $p(\boldsymbol{y}|\boldsymbol{x})$ is a normal distribution with mean $\boldsymbol{\mu}_{y|x}=\boldsymbol{x}\boldsymbol{W}+\boldsymbol{b}$. Now, let's make a stronger assumption:</p>
+    <p>Assume the joint distribution $p(\boldsymbol{x},\boldsymbol{y})$ is a normal distribution.</p>
+    <p>Under this assumption, we can directly write the corresponding conditional distribution:</p>
+    
+    \begin{equation}\begin{aligned} 
+    p(\boldsymbol{y}|\boldsymbol{x}) =&\, \mathcal{N}(\boldsymbol{y};\boldsymbol{\mu}_{y|x},\boldsymbol{\Sigma}_{y|x})\\ 
+    \boldsymbol{\mu}_{y|x} =&\, \boldsymbol{\mu}_y + (\boldsymbol{x}-\boldsymbol{\mu}_x)\boldsymbol{\Sigma}_{xx}^{-1}\boldsymbol{\Sigma}_{xy}\\ 
+    \boldsymbol{\Sigma}_{y|x} =&\, \boldsymbol{\Sigma}_{yy} - \boldsymbol{\Sigma}_{yx}\boldsymbol{\Sigma}_{xx}^{-1}\boldsymbol{\Sigma}_{xy} 
+    \end{aligned}\end{equation}
+
+    <p>Here, $\boldsymbol{\mu}_x, \boldsymbol{\mu}_y$ are the mean vectors of $\boldsymbol{x}, \boldsymbol{y}$, and $\begin{pmatrix}\boldsymbol{\Sigma}_{xx} & \boldsymbol{\Sigma}_{xy} \\ \boldsymbol{\Sigma}_{yx} & \boldsymbol{\Sigma}_{yy}\end{pmatrix}$ is the covariance matrix of $\boldsymbol{x}, \boldsymbol{y}$. The form of the conditional distribution for a normal distribution can be found directly on <a href="https://en.wikipedia.org/wiki/Multivariate_normal_distribution#Conditional_distributions">Wikipedia</a>, and its proof can be found on <a href="https://stats.stackexchange.com/questions/30588/deriving-the-conditional-distributions-of-a-multivariate-normal-distribution">StackExchange</a> or in related probability and statistics textbooks.</p>
+    
+    <p>Comparing this with $\boldsymbol{\mu}_{y|x}=\boldsymbol{x}\boldsymbol{W}+\boldsymbol{b}$, we obtain:</p>
+    
+    \begin{equation}\boldsymbol{W} = \boldsymbol{\Sigma}_{xx}^{-1}\boldsymbol{\Sigma}_{xy}, \quad \boldsymbol{b} = \boldsymbol{\mu}_y - \boldsymbol{\mu}_x\boldsymbol{\Sigma}_{xx}^{-1}\boldsymbol{\Sigma}_{xy}\end{equation}
+    
+    <p>This is, in fact, the analytical solution for linear regression.</p>
+
+    <h2>Analysis and Reflection</h2>
+    <p>Let's clarify the above process. First, by default, linear regression only assumes the conditional distribution $p(\boldsymbol{y}|\boldsymbol{x})$, and we obtain the analytical solution via the least squares method; this is the conventional introduction to linear regression. Then, above, we made a much stronger assumption—that the "joint distribution $p(\boldsymbol{x},\boldsymbol{y})$ is a normal distribution"—yet we still ended up with the same analytical solution.</p>
+    
+    <p>Why did a stronger assumption lead to the same result? In fact, from the loss function $\eqref{eq:loss}$, we can see it is quadratic with respect to $\boldsymbol{y}$ and also quadratic with respect to $\boldsymbol{x}$. This means it uses at most information regarding the second-order moments of $\boldsymbol{x}$ and $\boldsymbol{y}$. Therefore, assuming the joint distribution is normal does not change the final result because the normal distribution already preserves all moment information up to the second order (mean and covariance).</p>
+    
+    <p>Furthermore, we can imagine that any linear model (linear regression, logistic regression, single-layer neural networks, etc.) primarily utilizes data statistics that do not exceed second-order moments. Therefore, when dealing with linear models, we can appropriately make a normal distribution assumption based on the specific circumstances. Theoretically, this can yield an equivalent result or a sufficiently good approximation.</p>
+
+    <h2>Logistic Regression</h2>
+    <p>Using the logic above, we can provide an analytical solution for logistic regression. I first saw this result in <a href="https://ieeexplore.ieee.org/document/7508493">"Easy Logistic Regression with an Analytical Solution"</a> and found it quite enlightening.</p>
+    
+    <p>Assume the training data is $\{(\boldsymbol{x}_i,y_i)\}_{i=1}^N$, where $\boldsymbol{x}\in\mathbb{R}^n, y\in\{0,1\}$. This means it is a binary classification dataset. We establish the probability model:</p>
+    
+    \begin{equation}p(y|\boldsymbol{x}) = \left\{\begin{aligned}\sigma\left(\boldsymbol{x}\boldsymbol{w}^{\top}+b\right),\quad (y = 1)\\ 1 - \sigma\left(\boldsymbol{x}\boldsymbol{w}^{\top}+b\right),\quad (y = 0)\end{aligned}\right.\end{equation}
+    
+    <p>where $\sigma(t)=1/(1+e^{-t})$. The conventional estimation method for $\boldsymbol{w},b$ is maximum likelihood, which involves minimizing the following loss:</p>
+    
+    \begin{equation}-\frac{1}{N}\sum_{i=1}^N \ln p(y_i|\boldsymbol{x}_i)\end{equation}
+    
+    <p>We cannot calculate its analytical solution. However, if we do not take the maximum likelihood route and design a different solution path, it is possible to obtain an analytical solution.</p>
+
+    <h2>An Ingenious Approach</h2>
+    <p>First, it is easy to verify that for the logistic regression model, we have:</p>
+    
+    \begin{equation}\frac{p(1|\boldsymbol{x})}{p(0|\boldsymbol{x})} = \exp\left(\boldsymbol{x}\boldsymbol{w}^{\top}+b\right) \quad\Leftrightarrow\quad \ln \frac{p(1|\boldsymbol{x})}{p(0|\boldsymbol{x})} = \boldsymbol{x}\boldsymbol{w}^{\top}+b\label{eq:log}\end{equation}
+    
+    <p>This means that logistic regression is equivalent to a linear regression model with $\ln \frac{p(1|\boldsymbol{x})}{p(0|\boldsymbol{x})}$ as the output. However, estimating $\ln \frac{p(1|\boldsymbol{x})}{p(0|\boldsymbol{x})}$ directly is not easy, so we use Bayes' rule:</p>
+    
+    \begin{equation}p(y|\boldsymbol{x}) = \frac{p(\boldsymbol{x}|y)p(y)}{p(\boldsymbol{x})} \quad\Leftrightarrow\quad \frac{p(1|\boldsymbol{x})}{p(0|\boldsymbol{x})} = \frac{p(\boldsymbol{x}|1)p_1}{p(\boldsymbol{x}|0)p_0}\label{eq:bys}\end{equation}
+    
+    <p>Here $p_1, p_0$ are the probabilities of the positive and negative categories respectively, which are easy to estimate. $p(\boldsymbol{x}|1)$ and $p(\boldsymbol{x}|0)$ are the distributions satisfied by the positive and negative samples. Now we assume they follow normal distributions:</p>
+    <p>Assume $p(\boldsymbol{x}|1)$ and $p(\boldsymbol{x}|0)$ are normal distributions with the same covariance matrix.</p>
+    <p>The reader might find the assumption of the "same covariance matrix" a bit mysterious; we will discuss this later. Under this assumption, let:</p>
+    
+    \begin{equation}p(\boldsymbol{x}|1) = \mathcal{N}(\boldsymbol{x};\boldsymbol{\mu}_1,\boldsymbol{\Sigma}),\quad p(\boldsymbol{x}|0) = \mathcal{N}(\boldsymbol{x};\boldsymbol{\mu}_0,\boldsymbol{\Sigma})\end{equation}
+    
+    <p>where $\boldsymbol{\mu}_1, \boldsymbol{\mu}_0$ are the mean vectors of the positive and negative samples, and $\boldsymbol{\Sigma}$ can be estimated using the covariance matrix of the entire sample set. Recalling the probability density expression for a normal distribution:</p>
+    
+    \begin{equation}\frac{1}{\sqrt{(2\pi)^n \det(\boldsymbol{\Sigma})}}\exp\left\{-\frac{1}{2}(\boldsymbol{x}-\boldsymbol{\mu})\boldsymbol{\Sigma}^{-1}(\boldsymbol{x}-\boldsymbol{\mu})^{\top}\right\}\end{equation}
+    
+    <p>Substituting this into Equation $\eqref{eq:bys}$ and expanding, we find that the <strong>quadratic terms cancel out exactly</strong>. Thus:</p>
+    
+    \begin{equation}\ln\frac{p(1|\boldsymbol{x})}{p(0|\boldsymbol{x})} = \ln\frac{p(\boldsymbol{x}|1)p_1}{p(\boldsymbol{x}|0)p_0} = \boldsymbol{x}\boldsymbol{\Sigma}^{-1}(\boldsymbol{\mu}_1 - \boldsymbol{\mu}_0)^{\top} + \frac{1}{2}\left(\boldsymbol{\mu}_0\boldsymbol{\Sigma}^{-1}\boldsymbol{\mu}_0^{\top} - \boldsymbol{\mu}_1\boldsymbol{\Sigma}^{-1}\boldsymbol{\mu}_1^{\top}\right) + \ln\frac{p_1}{p_0}\label{eq:rate}\end{equation}
+    
+    <p>Comparing this with Equation $\eqref{eq:log}$, we get:</p>
+    
+    \begin{equation}\begin{aligned} 
+    \boldsymbol{w} =&\, (\boldsymbol{\mu}_1 - \boldsymbol{\mu}_0)\boldsymbol{\Sigma}^{-1}\\ 
+    b =&\, \frac{1}{2}\left(\boldsymbol{\mu}_0\boldsymbol{\Sigma}^{-1}\boldsymbol{\mu}_0^{\top} - \boldsymbol{\mu}_1\boldsymbol{\Sigma}^{-1}\boldsymbol{\mu}_1^{\top}\right) + \ln\frac{p_1}{p_0} 
+    \end{aligned}\label{eq:sol}\end{equation}
+    
+    <p>This is an analytical solution for logistic regression. Of course, this is not entirely new; its logic is highly consistent with <a href="https://en.wikipedia.org/wiki/Linear_discriminant_analysis">"Linear Discriminant Analysis (LDA)"</a>.</p>
+
+    <h2>Analysis and Reflection</h2>
+    <p>Currently, the reader's biggest doubt about this solution might be whether the "same covariance matrix" assumption is too strong. From a technical viewpoint, this assumption allows the quadratic terms in $\ln\frac{p(\boldsymbol{x}|1)}{p(\boldsymbol{x}|0)}$ to cancel exactly, leaving only linear terms to directly obtain the analytical solution. But from a theoretical perspective, is there any necessity for this assumption? In fact, we can argue that logistic regression itself (approximately) implies the assumption of the "same covariance matrix."</p>
+    
+    <p>How do we understand this? First, for the logistic regression model, Equation $\eqref{eq:log}$ holds naturally, and Bayes' rule is always true. Thus, the conclusion is that $\ln\frac{p(\boldsymbol{x}|1)}{p(\boldsymbol{x}|0)}$ must consist only of linear and constant terms. As the linear regression example showed us, making a normal assumption for data distributions in linear models generally doesn't lose much information. So, assuming $p(\boldsymbol{x}|1)$ and $p(\boldsymbol{x}|0)$ are normal distributions is (to some extent) reasonable. Once assumed to be normal, if the result is to have no quadratic terms, the covariance matrices must be identical.</p>
+    
+    <p>In other words, the moment you decide to use a <strong>logistic regression model</strong> and <strong>accept the normality assumption</strong>, you have effectively made the assumption that "positive and negative samples have the same covariance matrix"~</p>
+
+    <h2>Multi-class Classifier</h2>
+    <p>The analytical solution for logistic regression can also be easily generalized to the "Fully Connected + Softmax" multi-class scenario, which assumes the probability of class $i$ is:</p>
+    
+    \begin{equation}p(i|\boldsymbol{x}) = \frac{\exp\left(\boldsymbol{x}\boldsymbol{w}_i^{\top}+b_i\right)}{\sum\limits_{i=1}^k \exp\left(\boldsymbol{x}\boldsymbol{w}_i^{\top}+b_i\right)}\end{equation}
+    
+    <p>Based on the same reasoning and assumptions, we can obtain a result similar to Equation $\eqref{eq:log}$:</p>
+    
+    \begin{equation}\ln \frac{p(j|\boldsymbol{x})}{p(i|\boldsymbol{x})} = \boldsymbol{x}(\boldsymbol{w}_j - \boldsymbol{w}_i)^{\top}+(b_j - b_i)\end{equation}
+    
+    <p>And a result similar to Equation $\eqref{eq:rate}$:</p>
+    
+    \begin{equation}\ln\frac{p(j|\boldsymbol{x})}{p(i|\boldsymbol{x})} = \boldsymbol{x}\boldsymbol{\Sigma}^{-1}(\boldsymbol{\mu}_j - \boldsymbol{\mu}_i)^{\top} + \frac{1}{2}\left(\boldsymbol{\mu}_i\boldsymbol{\Sigma}^{-1}\boldsymbol{\mu}_i^{\top} - \boldsymbol{\mu}_j\boldsymbol{\Sigma}^{-1}\boldsymbol{\mu}_j^{\top}\right) + \ln\frac{p_j}{p_i}\end{equation}
+    
+    <p>By comparison, we find a set of solutions as follows:</p>
+    
+    \begin{equation}\begin{aligned} 
+    \boldsymbol{w}_i =&\, \boldsymbol{\mu}_i\boldsymbol{\Sigma}^{-1}\\ 
+    b_i =&\, \ln p_i - \frac{1}{2}\boldsymbol{\mu}_i\boldsymbol{\Sigma}^{-1}\boldsymbol{\mu}_i^{\top} 
+    \end{aligned}\end{equation}
+
+    <h2>Parameter Estimation</h2>
+    <p>Finally, let's discuss how to estimate the model parameters. We can see that $\boldsymbol{w}_i, b_i$ are functions of $p_i$, $\boldsymbol{\mu}_i$, and $\boldsymbol{\Sigma}$, so it essentially comes down to estimating these three. As mentioned, $p_i$ is simple—just use the frequency of each class. $\boldsymbol{\mu}_i$ is also straightforward—it's the mean vector of each class. The difficulty lies in estimating $\boldsymbol{\Sigma}$. According to our assumptions, the distribution of the entire data set is:</p>
+    
+    \begin{equation}\tilde{p}(\boldsymbol{x}) = \sum_{i=1}^k p_i \mathcal{N}(\boldsymbol{x};\boldsymbol{\mu}_i,\boldsymbol{\Sigma})\end{equation}
+    
+    <p>Multiplying both sides by $\boldsymbol{x}^{\top}\boldsymbol{x}$ and integrating, we get:</p>
+    
+    \begin{equation}\tilde{\boldsymbol{\Sigma}}+\tilde{\boldsymbol{\mu}}^{\top} \tilde{\boldsymbol{\mu}} = \sum_{i=1}^k p_i \left(\boldsymbol{\Sigma}+\boldsymbol{\mu}_i^{\top} \boldsymbol{\mu}_i\right) = \boldsymbol{\Sigma} + \sum_{i=1}^k p_i\, \boldsymbol{\mu}_i^{\top} \boldsymbol{\mu}_i\end{equation}
+    
+    <p>where $\tilde{\boldsymbol{\mu}}, \tilde{\boldsymbol{\Sigma}}$ are the mean vector and covariance matrix of all data. Therefore, we have the estimation:</p>
+    
+    \begin{equation}\boldsymbol{\Sigma} = \tilde{\boldsymbol{\Sigma}}+\tilde{\boldsymbol{\mu}}^{\top} \tilde{\boldsymbol{\mu}} - \sum_{i=1}^k p_i\, \boldsymbol{\mu}_i^{\top} \boldsymbol{\mu}_i\end{equation}
+    
+    <p>Specifically, it is recommended that before estimation, we perform <strong>whitening</strong> on the original data (refer to <a href="translation_8069.html">"You Might Not Need BERT-flow: A Linear Transformation Comparable to BERT-flow"</a>), so that the entire dataset has a mean of 0 and a covariance equal to the identity matrix. In this case:</p>
+    
+    \begin{equation}\boldsymbol{\Sigma} = \boldsymbol{I} - \sum_{i=1}^k p_i\, \boldsymbol{\mu}_i^{\top} \boldsymbol{\mu}_i\end{equation}
+    
+    <p>Theoretically, the result of estimating after whitening is exactly the same as direct estimation. However, <strong>for high-dimensional data, whitening makes the numerical calculations much more stable</strong>, so performing whitening before estimation is recommended in practice.</p>
+
+    <h2>Experimental Evaluation</h2>
+    <p>How usable is the analytical solution derived above? Can it compare to the solution found via gradient descent? I conducted several text-related experiments using <a href="https://github.com/ZhuiyiTechnology/roformer-sim">RoFormer-Sim-FT</a> to extract fixed sentence vector features, followed by a fully connected layer for classification, comparing the differences between the gradient descent solution and the analytical solution. The experimental code is open-sourced as follows: [Link omitted per guidelines].</p>
+
+    <h3>Full Sample Experiments</h3>
+    <p>The evaluation includes four classification tasks: Sentiment classification (SENTIMENT), long text classification (IFLYTEK), short news classification (TNEWS), and e-commerce topic classification (SHOPPING). The details are as follows:</p>
+    
+    <div style="overflow-x: auto;">
+    \begin{array}{c|cccc} 
+    \hline 
+    &amp; \text{Total Classes} &amp; \text{Train Samples} &amp; \text{Val Samples} &amp; \text{Test Samples} \\ 
+    \hline 
+    \text{SENTIMENT} &amp; 2 &amp; 16883 &amp; 2111 &amp; 2111 \\ 
+    \text{IFLYTEK} &amp; 119 &amp; 12133 &amp; 2599 &amp; \text{-}\\ 
+    \text{TNEWS} &amp; 15 &amp; 53360 &amp; 10000 &amp; \text{-}\\ 
+    \text{SHOPPING} &amp; 10 &amp; 47079 &amp; 15694 &amp; \text{-}\\ 
+    \hline 
+    \end{array}
+    </div>
+
+    <p>The evaluation metric for the experiment is accuracy. The results using the full training set are as follows:</p>
+    
+    <div style="overflow-x: auto;">
+    \begin{array}{c|ccc} 
+    \hline 
+    &amp; \text{Train Acc} &amp; \text{Val Acc} &amp; \text{Test Acc} \\ 
+    \hline 
+    \text{SENTIMENT-GD} &amp; 92.26\% &amp; 91.14\% &amp; 91.14\% \\ 
+    \text{SENTIMENT-Analytical} &amp; 91.79\% &amp; 90.81\% &amp; 91.57\% \\ 
+    \hline 
+    \text{IFLYTEK-GD} &amp; 93.43\% &amp; 51.14\% &amp; \text{-} \\ 
+    \text{IFLYTEK-Analytical} &amp; 71.70\% &amp; 56.44\% &amp; \text{-} \\ 
+    \hline 
+    \text{TNEWS-GD} &amp; 59.62\% &amp; 53.35\% &amp; \text{-} \\ 
+    \text{TNEWS-Analytical} &amp; 56.12\% &amp; 54.20\% &amp; \text{-} \\ 
+    \hline 
+    \text{SHOPPING-GD} &amp; 91.63\% &amp; 86.98\% &amp; \text{-} \\ 
+    \text{SHOPPING-Analytical} &amp; 87.89\% &amp; 86.38\% &amp; \text{-} \\ 
+    \hline 
+    \end{array}
+    </div>
+
+    <h3>Small Sample Experiments</h3>
+    <p>From the tables above, it can be observed that in terms of training set performance, the analytical solution is usually inferior to gradient descent (GD). However, its performance on the validation and test sets is close to or even exceeds that of GD. Overall, the gap between the analytical solution's training and validation performance is smaller, which means the analytical solution might have better generalization capability. It might be more suitable for scenarios with small amounts of data or distribution inconsistencies between training and validation sets.</p>
+    
+    <p>To verify this hypothesis, we kept only 1000 training samples for each dataset and continued the experiment:</p>
+    
+    <div style="overflow-x: auto;">
+    \begin{array}{c|ccc} 
+    \hline 
+    &amp; \text{Train Acc} &amp; \text{Val Acc} &amp; \text{Test Acc} \\ 
+    \hline 
+    \text{SENTIMENT-1K-GD} &amp; 99.90\% &amp; 66.08\% &amp; 66.79\% \\ 
+    \text{SENTIMENT-1K-Analytical} &amp; 100.00\% &amp; 72.67\% &amp; 73.24\% \\ 
+    \hline 
+    \text{IFLYTEK-1K-GD} &amp; 99.47\% &amp; 15.43\% &amp; \text{-} \\ 
+    \text{IFLYTEK-1K-Analytical} &amp; 99.47\% &amp; 15.70\% &amp; \text{-} \\ 
+    \hline 
+    \text{TNEWS-1K-GD} &amp; 100.00\% &amp; 22.47\% &amp; \text{-} \\ 
+    \text{TNEWS-1K-Analytical} &amp; 100.00\% &amp; 26.74\% &amp; \text{-} \\ 
+    \hline 
+    \text{SHOPPING-1K-GD} &amp; 100.00\% &amp; 49.82\% &amp; \text{-} \\ 
+    \text{SHOPPING-1K-Analytical} &amp; 100.00\% &amp; 65.49\% &amp; \text{-} \\ 
+    \hline 
+    \end{array}
+    </div>
+    
+    <p>It can be seen that when training data is reduced, the training accuracy gap narrows, but the analytical solution's validation performance surpasses gradient descent across the board. This further highlights the excellent generalization performance of the analytical solution in few-shot scenarios.</p>
+
+    <h2>Comprehensive Review</h2>
+    <p>This conclusion is not difficult to understand. Given the same linear model, the analytical solution adds the assumption that "the samples of each class follow a normal distribution with the same covariance matrix" compared to gradient descent. When there is plenty of data, our estimation of each class's distribution becomes more accurate, making any deviation from this assumption more severe than adaptive training via gradient descent. Conversely, when data is scarce, estimating the distribution of each class itself is difficult; in this case, the assumption acts as useful prior information that helps the model generalize "from points to surfaces," whereas gradient descent may fail to generalize due to a lack of priors.</p>
+    
+    <p>In other words, with little data, gradient descent merely memorizes a few samples and stops, lacking "analogical reasoning." The analytical solution, by contrast, effectively "creates" more samples for the model to memorize through its additional assumptions, thus learning more. When data is abundant, gradient descent memorizes many actual samples and becomes "practice-perfect," whereas the analytical solution is still "creating" samples based on its own assumptions—and at that point, the created samples are inferior to the real ones, leading to potential performance drops.</p>
+    
+    <p>Is there room for improvement in the analytical solution? A direct idea is to find ways to make more precise estimations of $\ln \frac{p(j|\boldsymbol{x})}{p(i|\boldsymbol{x})}$ and then convert it into a linear regression problem for parameter estimation. There are quite a few ideas for better estimation of $\ln \frac{p(j|\boldsymbol{x})}{p(i|\boldsymbol{x})}$, such as assuming normal distributions with inconsistent covariances or even using kernel density estimation. I leave these for readers to explore.</p>
+
+    <h2>Summary</h2>
+    <p>This article introduced an analytical solution for logistic regression and generalized it to the single-layer Softmax classification scenario. Experiments show that this analytical solution has better generalization capability than gradient descent, particularly producing better results in few-shot scenarios.</p>
+</div>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8578.html" style="color: #005fcc;">https://kexue.fm/archives/8578</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,213 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/8213">Short-Text Matching Baseline: An Attempt at Using Pre-trained Models on Anonymized Data</a></h1>
+
+<p>By 苏剑林 | March 05, 2021</p>
+
+<p>Recently, I decided to join the fun and participate in the "<a href="https://tianchi.aliyun.com/competition/entrance/531851/introduction">Xiao Bu Assistant Dialogue Short-Text Semantic Matching</a>" track of the Global AI Technology Innovation Competition. The task is a standard short-text sentence pair binary classification task. In this era where various pre-trained Transformers are "running wild," this task doesn't pose much of a special challenge. However, what makes it interesting is that the data for this competition is anonymized—meaning every character has been mapped to a numeric ID, so we cannot access the original text.</p>
+
+<p>Under these circumstances, can we still use pre-trained models like BERT? Certainly, they can be used, but it requires some techniques, and you might need to perform further pre-training. This article shares a baseline that combines classification, pre-training, and semi-supervised learning, which can be applied to anonymized data tasks.</p>
+
+<h2 id="模型概览">Model Overview <a href="https://kexue.fm/archives/8213#%E6%A8%A1%E5%9E%8B%E6%A6%82%E8%A7%88">#</a></h2>
+
+<p>The core idea of the entire model is actually a variant of PET (Pattern-Exploiting Training) introduced in the previous article <a href="translation_7764.html">"Is GPT3 Necessary? No, BERT's MLM Model Can Also Do Few-Shot Learning"</a>. It uses an MLM (Masked Language Model) model to accomplish everything, as shown in the diagram below:</p>
+
+<p>
+  <a href="https://kexue.fm/usr/uploads/2021/03/3949869211.png" title="Click to view original image">
+    <img src="https://kexue.fm/usr/uploads/2021/03/3949869211.png" alt="Schematic diagram of the model in this article" />
+  </a>
+  <br />
+  Schematic diagram of the model in this article
+</p>
+
+<p>As can be seen, the entire model is just an MLM model. Specifically, we added two tags, $[YES]$ and $[NO]$, to the vocabulary to represent the similarity between sentences. We use the output vector corresponding to $[CLS]$ to predict the label of the sentence pair ($[YES]$ or $[NO]$). The corpus is constructed by conventionally concatenating sentence pairs, randomly masking some tokens in both sentences, and then predicting those tokens at the corresponding output positions.</p>
+
+<p>In this way, we simultaneously perform the sentence pair classification task (via the prediction results of $[CLS]$) and the MLM pre-training task (for other masked tokens). Moreover, unlabeled samples (such as the test set) can also be thrown in for training, as long as we don't predict the $[CLS]$ for them. Thus, through the MLM model, we integrate classification, pre-training, and semi-supervised learning together.</p>
+
+<h2 id="重用BERT">Reusing BERT <a href="https://kexue.fm/archives/8213#%E9%87%8D%E7%94%A8BERT">#</a></h2>
+
+<p>Can BERT still be used with anonymized data? Of course. For BERT, anonymized data only means the Embedding layer is different; the other layers are still very valuable. Therefore, reusing BERT primarily involves re-aligning the Embedding layer through pre-training.</p>
+
+<p>During this process, initialization is crucial. First, we take out special tokens like $[UNK]$, $[CLS]$, and $[SEP]$ from BERT's Embedding layer; these parts remain unchanged. Then, we separately count the character frequencies of the encrypted (anonymized) data and the plain-text data. Plain-text data refers to any open-source general corpus, not necessarily the actual plain-text corresponding to the encrypted data. Next, we align the plain-text vocabulary with the encrypted vocabulary based on frequency. In this way, we can use the plain-text character to extract the corresponding BERT Embedding as the initialization for the anonymized character.</p>
+
+<p>Simply put, I use the BERT Embedding of the most frequent plain-text character to initialize the most frequent anonymized character, and so on, to perform a basic vocabulary alignment. My personal comparative experiments show that this operation can significantly speed up the model's convergence.</p>
+
+<h2 id="代码分享">Code Sharing <a href="https://kexue.fm/archives/8213#%E4%BB%A3%E7%A0%81%E5%88%86%E4%BA%AB">#</a></h2>
+
+<p>Having said this, the model introduction is basically complete. Using this operation with the BERT-base version, the score on the leaderboard is 0.866, while the offline score is already 0.952 (single model, no K-fold ensemble; everyone seems to have a large gap between online and offline). Here I share my bert4keras implementation:</p>
+
+<blockquote>
+  <p><strong>Github Address: <a href="https://github.com/bojone/oppo-text-match">https://github.com/bojone/oppo-text-match</a></strong></p>
+</blockquote>
+
+<p>Regarding the character frequency of the plain-text data, I have already pre-calculated a copy and synchronized it to Github; you can use it directly. It is recommended to train for 100 epochs, which takes about 6 hours on a 3090.</p>
+
+<p>By the way, if you want to use the BERT-large version, I do not recommend using the <a href="https://github.com/ymcui/Chinese-BERT-wwm">RoBERTa-wwm-ext-large</a> released by the Harbin Institute of Technology. The reason has already been mentioned in <a href="translation_7764.html">"Is GPT3 Necessary? No, BERT's MLM Model Can Also Do Few-Shot Learning"</a>: for some reason, that version has randomly initialized weights for the MLM part, and we need to use the MLM weights. If you need a Large version, I recommend using the <a href="https://share.weiyun.com/5G90sMJ">BERT Large</a> released by Tencent UER.</p>
+
+<h2 id="文本小结">Summary <a href="https://kexue.fm/archives/8213#%E6%96%87%E6%9C%AC%E5%B0%8F%E7%BB%93">#</a></h2>
+
+<p>There isn't much else to say; I've just shared a simple baseline for the competition and put together a blog post along the way. I hope it is helpful to everyone~</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8213.html" style="color: #005fcc;">https://kexue.fm/archives/8213</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

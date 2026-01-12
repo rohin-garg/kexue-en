@@ -1,0 +1,310 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    processEnvironments: true,
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        document.querySelectorAll('script[type^="math/tex"]').forEach(function(node) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        });
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/6620">Miscellaneous Talk on Function Smoothing: Differentiable Approximations of Non-differentiable Functions</a></h1>
+
+<p>By 苏剑林 | May 20, 2019</p>
+
+<p>Generally speaking, neural networks deal with continuous floating-point numbers, and standard outputs are also continuous values. However, in practical problems, we often need discrete results. For example, in classification problems, we want to output a correct category—the "category" is discrete, while the "category probability" is continuous. Similarly, the evaluation metrics for many tasks are actually discrete, such as accuracy and F1 score for classification, BLEU for machine translation, and so on.</p>
+
+<p>Taking classification as an example again: the common evaluation metric is accuracy, while the common loss function is cross-entropy. Although a decrease in cross-entropy is indeed correlated with an increase in accuracy, they do not have an absolutely monotonic relationship. In other words, if cross-entropy decreases, accuracy does not necessarily increase. Obviously, it would be ideal to use the negative of the accuracy as the loss function, but accuracy is non-differentiable (involving operations like $\text{argmax}$), so it cannot be used directly.</p>
+
+<p>In such cases, there are generally two solutions: one is to use reinforcement learning, treating accuracy as the reward function—this is a "sledgehammer to crack a nut" approach. The other is to try to find a smooth, differentiable approximation formula for accuracy. This article explores common smooth approximations of non-differentiable functions, sometimes referred to as "smoothing" and sometimes as "softening."</p>
+
+<h2 id="max">max</h2>
+
+<p>The foundation for most of the content discussed later is the smooth approximation of the $\max$ operation. We have:</p>
+
+\begin{equation}\max(x_1,x_2,\dots,x_n) = \lim_{K\to +\infty}\frac{1}{K}\log\left(\sum_{i=1}^n e^{K x_i}\right)\end{equation}
+
+<p>By choosing a constant $K$, we get the approximation:</p>
+
+\begin{equation}\max(x_1,x_2,\dots,x_n) \approx \frac{1}{K}\log\left(\sum_{i=1}^n e^{K x_i}\right)\end{equation}
+
+<p>In many models, we can set $K=1$, which is equivalent to incorporating $K$ into the model itself. Thus, the simplest version is:</p>
+
+\begin{equation}\begin{aligned}\max(x_1,x_2,\dots,x_n) \approx&\, \log\left(\sum_{i=1}^n e^{x_i}\right) \\
+\triangleq&\, \text{logsumexp}(x_1, x_2, \dots, x_n)\end{aligned}\label{eq:max-approx}\end{equation}
+
+<p>Here, $\text{logsumexp}$ appears. This is a very common operator, and here it serves as a smooth approximation of the $\max$ function. Indeed, the smooth approximation of the $\max$ function is actually $\text{logsumexp}$, not $\text{softmax}$, which sounds similar. For related derivations, you can also refer to my previous post <a href="translation_3290.html">"Seeking a Smooth Maximum Function"</a>.</p>
+
+<h2 id="softmax">softmax</h2>
+
+<p>I just mentioned that $\text{softmax}$ is not a smooth approximation of $\max$. So what is it an approximation of? It is actually a smooth approximation of $\text{onehot}(\text{argmax}(\boldsymbol{x}))$, which first finds the position of the maximum value and then generates a vector of equal length where the maximum value's position is set to 1 and all other positions are set to 0. For example:</p>
+
+\begin{equation}[2, 1, 4, 5, 3]\quad \to \quad [0, 0, 0, 1, 0]\end{equation}
+
+<p>We can easily provide a derivation from $\text{logsumexp}$ to $\text{softmax}$. Consider a vector $\boldsymbol{x}=[x_1, x_2, \dots, x_n]$, and then consider</p>
+
+\begin{equation}\boldsymbol{x}'=[x_1, x_2, \dots, x_n] - \max(x_1, x_2, \dots, x_n)\end{equation}
+
+<p>That is, subtracting the overall maximum value from each element. The position of the maximum value in this new vector is the same as in the original vector, meaning $\text{onehot}(\text{argmax}(\boldsymbol{x}))=\text{onehot}(\text{argmax}(\boldsymbol{x}'))$. Without loss of generality, consider the case where $x_1, x_2, \dots, x_n$ are pairwise distinct. Then the maximum value of the new vector is clearly 0, and all other elements are negative. Given this, we can consider</p>
+
+\begin{equation}e^{\boldsymbol{x}'}=[e^{x_1 - \max(x_1, x_2, \dots, x_n)}, e^{x_2 - \max(x_1, x_2, \dots, x_n)}, \dots, e^{x_n - \max(x_1, x_2, \dots, x_n)}]\end{equation}
+
+<p>as an approximation for $\text{onehot}(\text{argmax}(\boldsymbol{x}'))$. Since the maximum value is 0, the corresponding position becomes $e^0=1$, while the others are negative, getting close to 0 after exponentiation.</p>
+
+<p>Finally, substituting the approximation $\eqref{eq:max-approx}$ into the above formula and simplifying, we get:</p>
+
+\begin{equation}\begin{aligned}\text{onehot}(\text{argmax}(\boldsymbol{x}))=&\, \text{onehot}(\text{argmax}(\boldsymbol{x}'))\\
+\approx&\, \left(\frac{e^{x_1}}{\sum\limits_{i=1}^n e^{x_i}}, \frac{e^{x_2}}{\sum\limits_{i=1}^n e^{x_i}}, \dots, \frac{e^{x_n}}{\sum\limits_{i=1}^n e^{x_i}}\right)\\
+\triangleq&\, \text{softmax}(x_1, x_2, \dots, x_n)
+\end{aligned}\end{equation}
+
+<h2 id="argmax">argmax</h2>
+
+<p>$\text{argmax}$ refers to directly giving the index (an integer) where the vector's maximum value is located. For example:</p>
+
+\begin{equation}[2, 1, 4, 5, 3]\quad \to \quad 4\end{equation}
+
+<p>Here we follow general usage where indexing starts from 1, so the result is 4; however, in programming languages, it usually starts from 0, so the result would typically be 3.</p>
+
+<p>If we want a smooth approximation of $\text{argmax}$, we naturally hope to output a floating-point number close to 4. To construct such an approximation, we first observe that $\text{argmax}$ is actually equal to:</p>
+
+\begin{equation}\text{sum}\Big(\underbrace{[1, 2, 3, 4, 5]}_{\text{Sequence vector } [1, 2, ..., n]}\, \otimes\, \underbrace{[0, 0, 0, 1, 0]}_{\text{onehot}(\text{argmax}(\boldsymbol{x}))}\Big)\end{equation}
+
+<p>Which is the inner product of the array $[1, 2, \dots, n]$ and $\text{onehot}(\text{argmax}(\boldsymbol{x}))$. Constructing a softened version of $\text{argmax}$ is then simple: replace $\text{onehot}(\text{argmax}(\boldsymbol{x}))$ with $\text{softmax}(\boldsymbol{x})$:</p>
+
+\begin{equation}\text{argmax} (\boldsymbol{x}) \approx \sum_{i=1}^n i\times \text{softmax}(\boldsymbol{x})_i\end{equation}
+
+<h2 id="Accuracy">Accuracy</h2>
+
+<p>The various approximations discussed above are basically derived by finding the correct form based on one-hot vectors and then using softmax to approximate the one-hot vector. Using this logic, smooth approximations for many other operators can be derived, such as accuracy.</p>
+
+<p>For simplicity, let's introduce the notation $\boldsymbol{1}_k$, which represents a one-hot vector with a 1 at the $k$-th position. Suppose in a classification problem, the target category is $i$ and the predicted category is $j$. We can consider the one-hot vectors $\boldsymbol{1}_i$ and $\boldsymbol{1}_j$ and then look at their inner product:</p>
+
+\begin{equation}\langle \boldsymbol{1}_i, \boldsymbol{1}_j\rangle = \left\{\begin{aligned}&1,\,\,(i=j)\\ &0,\,\,(i\neq j)\end{aligned}\right.\end{equation}
+
+<p>In other words, when the two categories are the same, the inner product is exactly 1, and when they are different, the inner product is exactly 0. Thus, the inner product of the one-hot vectors corresponding to the target category and the predicted category defines exactly a "predicted correctly" counting function. With a counting function, we can calculate accuracy:</p>
+
+\begin{equation}\text{Accuracy}=\frac{1}{|\mathcal{B}|}\sum_{\boldsymbol{x}\in\mathcal{B}}\langle \boldsymbol{1}_i(\boldsymbol{x}), \boldsymbol{1}_j(\boldsymbol{x})\rangle\end{equation}
+
+<p>where $\mathcal{B}$ denotes the current batch. The formula above is the function for calculating accuracy within a batch. In a neural network, to ensure differentiability, the final output can only be a probability distribution (the result after softmax). Thus, a smooth approximation of accuracy is obtained by replacing the predicted category's one-hot vector with the probability distribution:</p>
+
+\begin{equation}\text{Accuracy}\approx \frac{1}{|\mathcal{B}|}\sum_{\boldsymbol{x}\in\mathcal{B}}\langle \boldsymbol{1}_i(\boldsymbol{x}), p(\boldsymbol{x})\rangle\end{equation}
+
+<p>Similarly, smooth approximations for recall, F1, and other metrics can be derived. Taking binary classification as an example, if $p(\boldsymbol{x})$ is the probability of the positive class and $t(\boldsymbol{x})$ is the label of sample $\boldsymbol{x}$ (0 or 1), then the smooth approximation for the positive class F1 is:</p>
+
+\begin{equation}\text{Positive F1}\approx\frac{2 \sum\limits_{\boldsymbol{x}\in\mathcal{B}}t(\boldsymbol{x}) p(\boldsymbol{x})}{\sum\limits_{\boldsymbol{x}\in\mathcal{B}}\big[t(\boldsymbol{x}) + p(\boldsymbol{x})\big]}\end{equation}
+
+<p>The accuracy approximation formula derived this way is differentiable and can be used directly with its negative as the loss. However, in the sampling estimation process, it is a biased estimate of F1 (the denominator also contains a summation over the batch), which can sometimes affect the optimization trajectory or even lead to divergence. Therefore, in general, it is best not to use it directly from the start; instead, train with standard cross-entropy until it is nearly converged, and then fine-tune using the negative of F1 as the loss.</p>
+
+<h2 id="softkmax">soft-k-max</h2>
+
+<p>$\text{softmax}$ is a smooth approximation of "setting the maximum position to 1 and others to 0." What if we want a smooth approximation of "setting the positions of the top $k$ values to 1 and others to 0"? We might call this $\text{soft-}k\text{-max}$.</p>
+
+<p>I haven't constructed a simple analytical form for $\text{soft-}k\text{-max}$, but it can be constructed recursively:</p>
+
+<blockquote>
+    Input is $\boldsymbol{x}$, initialize $\boldsymbol{p}^{(0)}$ as an all-zero vector;<br>
+    Execute $\boldsymbol{x} = \boldsymbol{x} - \min(\boldsymbol{x})$ (to ensure all elements are non-negative)<br>
+    <br>
+    For $i=1,2,\dots,k$, execute:<br>
+    &emsp;&emsp;&emsp;&emsp; $\boldsymbol{y} = (1 - \boldsymbol{p}^{(i-1)})\otimes\boldsymbol{x}$;<br>
+    &emsp;&emsp;&emsp;&emsp; $\boldsymbol{p}^{(i)} = \boldsymbol{p}^{(i-1)} + \text{softmax}(\boldsymbol{y})$<br>
+    <br>
+    Return $\boldsymbol{p}^{(k)}$.
+</blockquote>
+
+<p>As for the principle, if you replace $\text{softmax}(\boldsymbol{y})$ with $\text{onehot}(\text{argmax}(\boldsymbol{y}))$ and look at the recursion, it becomes clear: it essentially finds the max, then effectively removes that max so the second-largest value becomes the new max, then applies softmax again, and repeats $k$ times.</p>
+
+<h2 id="Summary">Summary</h2>
+
+<p>Function smoothing is an interesting mathematical topic that frequently appears in machine learning. On one hand, it is a technique to make certain operations differentiable, allowing models to be solved directly using backpropagation without "resorting" to reinforcement learning. On the other hand, in some cases, it can enhance the interpretability of a model because the corresponding non-differentiable functions often have better interpretability. After training with the smoothed version, it may be possible to revert to the non-differentiable version to explain the model's outputs.</p>
+
+<p>Of course, appreciating it as a piece of pure mathematical beauty is also quite rewarding.</p>
+
+<hr />
+
+<h3>You might also be interested in the following content</h3>
+<ul>
+    <li><a href="translation_11006.html">Calculating mclip (Singular Value Clipping) via msign</a></li>
+    <li><a href="translation_10996.html">Newton-Schulz Iteration for the msign Operator (Part 2)</a></li>
+    <li><a href="translation_10972.html">The Equioscillation Theorem: Necessary and Sufficient Conditions for Optimal Polynomial Approximation</a></li>
+    <li><a href="translation_10922.html">Newton-Schulz Iteration for the msign Operator (Part 1)</a></li>
+    <li><a href="translation_10831.html">Finding Alternatives to Normalization via Gradient Approximation</a></li>
+    <li><a href="translation_10662.html">The Road to Low-Rank Approximation (V): CUR</a></li>
+    <li><a href="translation_10501.html">The Road to Low-Rank Approximation (IV): ID</a></li>
+    <li><a href="translation_10427.html">The Road to Low-Rank Approximation (III): CR</a></li>
+    <li><a href="translation_10407.html">The Road to Low-Rank Approximation (II): SVD</a></li>
+    <li><a href="translation_10373.html">Softmax Sequel: Seeking a Smooth Approximation for Top-K</a></li>
+</ul>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6620.html" style="color: #005fcc;">https://kexue.fm/archives/6620</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

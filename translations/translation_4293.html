@@ -1,0 +1,305 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/4293">Text Sentiment Classification (Part 4): A Better Loss Function</a></h1>
+    <p>By 苏剑林 | March 30, 2017</p>
+
+    <p>Text sentiment classification is essentially a binary classification problem. In fact, classification models often suffer from a common issue: the optimization objective is inconsistent with the evaluation metrics. Generally, for classification (including multi-class), we use cross-entropy as the loss function, which originates from Maximum Likelihood Estimation (refer to <a href="translation_4277.html">"Gradient Descent and EM Algorithm: From the Same Origin"</a>). However, our final evaluation goal is not to see how small the cross-entropy is, but to look at the model's accuracy. Usually, a small cross-entropy leads to high accuracy, but this relationship is not absolute.</p>
+
+    <h2>Aiming for Average Doesn't Necessarily Mean Being Top-Tier</h2>
+    <blockquote>
+        <p>A more common example is this: A math teacher is working hard to improve the students' average score, but the final assessment metric is the passing rate (passing at 60 points). If the average score is 100 points (implying everyone scored 100), then naturally the passing rate is 100%, which is ideal. But reality isn't always so perfect. As long as the average score hasn't reached 100, a higher average doesn't necessarily mean a higher passing rate. For example, if two students score 40 and 90 respectively, the average is 65, but the passing rate is only 50%. If both students score 60, the average is 60, but the passing rate is 100%. This means that while the average can serve as a target, it does not directly align with the final assessment goal.</p>
+        <p>So, to improve the final assessment metric, what should the teacher do? Obviously, they should first identify which students have already passed; they don't need to worry about them for now. Instead, they should focus on providing extra tutoring for the students who failed. In principle, this allows many failing students to reach 60 points. While some students who previously passed might slip below 60, this process can be iterated until everyone is above 60. Of course, the final average score might not be very high, but there's no choice—that's how the assessment works.</p>
+    </blockquote>
+
+    <h2>A Better Update Scheme</h2>
+    <p>For binary classification models, we hope the model outputs 1 for positive samples and 0 for negative samples, but due to limitations in model fitting capacity, this is generally impossible. In practice, during prediction, we consider outputs greater than 0.5 as positive and less than 0.5 as negative. This implies we can update the model "selectively." For example, we could set a threshold of 0.6. If the model's output for a positive sample is already greater than 0.6, I won't update the model based on that sample. If the output for a negative sample is less than 0.4, I won't update the model for that either. Only samples falling within the 0.4 to 0.6 range trigger updates. This way, the model "concentrates its energy" on ambiguous samples, which leads to better classification results—consistent with the core idea of SVMs.</p>
+    <p>Furthermore, this approach theoretically helps prevent overfitting. It prevents the model from "obsessively" fitting easy samples just to lower the loss function. It’s like a teacher who only cares about top students, hoping they improve from 80 to 90 points, without finding ways to improve the grades of struggling students. That clearly isn't the mark of a good teacher.</p>
+
+    <h2>Modified Cross-Entropy Loss</h2>
+    <p>How can we achieve the goal described above? It's simple: adjust the loss function. This primarily draws inspiration from hinge loss and triplet loss. The standard cross-entropy loss function is:</p>
+    \[L_{old} = -\sum_y y_{true} \log y_{pred}\]
+
+    <p>Choose a threshold $m=0.6$ (in principle, any value greater than 0.5 works). Introduce the unit step function $\theta(x)$:</p>
+    \[\theta(x) = \left\{\begin{aligned}&1, x > 0\\ &\frac{1}{2}, x = 0\\ &0, x < 0\end{aligned}\right.\]
+
+    <p>Now, consider a new loss function:</p>
+    \[L_{new} = -\sum_y \lambda(y_{true}, y_{pred}) y_{true}\log y_{pred}\]
+    <p>where</p>
+    \[\lambda(y_{true}, y_{pred}) = 1-\theta(y_{true}-m)\theta(y_{pred}-m)-\\theta(1-m-y_{true})\\theta(1-m-y_{pred})\]
+    <p>$L_{new}$ adds a correction factor $\lambda(y_{true}, y_{pred})$ to the cross-entropy. What does this term represent? When a positive sample is processed, $y_{true}=1$, and clearly:</p>
+    \[\lambda(1, y_{pred})=1-\theta(y_{pred}-m)\]
+    <p>In this case, if $y_{pred} > m$, then $\lambda(1, y_{pred})=0$, and the cross-entropy automatically becomes 0 (reaching its minimum). Conversely, if $y_{pred} < m$, then $\lambda(1, y_{pred})=1$, and the cross-entropy is maintained. In other words, if a positive sample's output is already greater than $m$, it stops updating (as it has reached the minimum and the gradient can be considered 0); it only continues updating if it's less than $m$. A similar analysis applies to negative samples: if the output is already less than $1-m$, the update stops; it only continues if it's greater than $1-m$.</p>
+
+    <p>Thus, <strong>simply by replacing the original cross-entropy loss with the modified cross-entropy $L_{new}$, we can achieve our design goal</strong>.</p>
+
+    <h2>Experimental Testing Based on IMDB</h2>
+    <p>The theory sounds great, but does it work as well as imagined in practice? Let's experiment immediately.</p>
+    <p>To make the results more comparable, I chose a standard task in text sentiment classification: IMDB movie review classification. The tool used is the latest version of Keras (2.0). Most of the code can be found in the <a href="https://github.com/fchollet/keras/tree/master/examples">Keras examples</a>, including LSTM and CNN versions.</p>
+
+    <p>First, the LSTM version:</p>
+<pre><code>from keras.preprocessing import sequence
+from keras.models import Sequential
+from keras.layers import Embedding, LSTM, Dense
+from keras.datasets import imdb
+from keras import backend as K
+
+margin = 0.6
+theta = lambda t: (K.sign(t)+1.)/2.
+
+max_features = 20000
+maxlen = 80
+batch_size = 32
+
+(x_train, y_train), (x_test, y_test) = imdb.load_data(num_words=max_features)
+
+x_train = sequence.pad_sequences(x_train, maxlen=maxlen)
+x_test = sequence.pad_sequences(x_test, maxlen=maxlen)
+
+model = Sequential()
+model.add(Embedding(max_features, 128))
+model.add(LSTM(128, dropout=0.2, recurrent_dropout=0.2))
+model.add(Dense(1, activation='sigmoid'))
+
+def loss(y_true, y_pred):
+ return - (1 - theta(y_true - margin) * theta(y_pred - margin)
+ - theta(1 - margin - y_true) * theta(1 - margin - y_pred)
+ ) * (y_true * K.log(y_pred + 1e-8) + (1 - y_true) * K.log(1 - y_pred + 1e-8))
+
+model.compile(loss=loss,
+ optimizer='adam',
+ metrics=['accuracy'])
+
+model.fit(x_train, y_train,
+ batch_size=batch_size,
+ epochs=15,
+ validation_data=(x_test, y_test))
+</code></pre>
+
+    <p>The code is basically copied from the official examples. After execution, the model achieved a training accuracy of 99.01% and a test accuracy of 82.26%. If the loss is changed directly to <code>binary_crossentropy</code> (leaving everything else the same), the results are 99.56% training accuracy and 81.02% test accuracy. This shows that the new loss function indeed helps prevent overfitting and improves accuracy. While there might be some random error, the average results across multiple runs show that the new loss function brings about a 0.5% to 1% improvement in accuracy (naturally, you cannot expect a revolutionary leap just by slightly modifying the loss function).</p>
+
+    <p>Now, let's look at the CNN version:</p>
+<pre><code>from keras.preprocessing import sequence
+from keras.models import Sequential
+from keras.layers import Embedding, Dense, Dropout, Activation
+from keras.layers import Conv1D, GlobalMaxPooling1D
+from keras.datasets import imdb
+from keras import backend as K
+
+margin = 0.6
+theta = lambda t: (K.sign(t)+1.)/2.
+
+max_features = 5000
+maxlen = 400
+batch_size = 32
+embedding_dims = 50
+filters = 250
+kernel_size = 3
+hidden_dims = 250
+epochs = 10
+
+(x_train, y_train), (x_test, y_test) = imdb.load_data(num_words=max_features)
+x_train = sequence.pad_sequences(x_train, maxlen=maxlen)
+x_test = sequence.pad_sequences(x_test, maxlen=maxlen)
+
+model = Sequential()
+model.add(Embedding(max_features,
+ embedding_dims,
+ input_length=maxlen))
+model.add(Dropout(0.2))
+model.add(Conv1D(filters,
+ kernel_size,
+ padding='valid',
+ activation='relu',
+ strides=1))
+model.add(GlobalMaxPooling1D())
+model.add(Dense(hidden_dims))
+model.add(Dropout(0.2))
+model.add(Activation('relu'))
+model.add(Dense(1))
+model.add(Activation('sigmoid'))
+
+def loss(y_true, y_pred):
+ return - (1 - theta(y_true - margin) * theta(y_pred - margin)
+ - theta(1 - margin - y_true) * theta(1 - margin - y_pred)
+ ) * (y_true * K.log(y_pred + 1e-8) + (1 - y_true) * K.log(1 - y_pred + 1e-8))
+
+model.compile(loss=loss,
+ optimizer='adam',
+ metrics=['accuracy'])
+
+model.fit(x_train, y_train,
+ batch_size=batch_size,
+ epochs=epochs,
+ validation_data=(x_test, y_test))
+</code></pre>
+
+    <p>After execution, the model achieved 98.66% training accuracy and 88.24% test accuracy. The results for pure <code>binary_crossentropy</code> were 98.90% training accuracy and 88.14% test accuracy, which are basically consistent within the range of fluctuation. However, during the training process, the test results using the new loss function remained stable around 88.2%, whereas with cross-entropy, they would jump to 89%, down to 87%, and back to 88%. This means that although the final accuracies were similar, the fluctuations were much larger with cross-entropy. We have reason to believe that models trained with the new loss function have better generalization capabilities.</p>
+
+    <h2>In Short</h2>
+    <p>This article primarily draws on the ideas of hinge loss and triplet loss to adjust the cross-entropy loss used in binary classification, making it more effective at fitting samples that are incorrectly predicted. Experiments also show that, in a certain sense, the new loss function can indeed bring a small improvement.</p>
+    <p>Furthermore, this logic can actually be applied to multi-class classification or even regression problems. I won't go into detail here, but I will share further analysis as I encounter specific cases.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_4293.html" style="color: #005fcc;">https://kexue.fm/archives/4293</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

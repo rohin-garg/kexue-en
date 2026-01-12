@@ -1,0 +1,272 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of Array.from(document.querySelectorAll('script[type^="math/tex"]'))) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/11072">Efficient Inversion Method for "Diagonal + Low-Rank" Triangular Matrices</a></h1>
+    <p>By 苏剑林 | July 1, 2025</p>
+
+    <p>From the article <a href="translation_11033.html">"A Brief History of Linear Attention: From Imitation and Innovation to Feedback"</a>, we can find that DeltaNet and subsequent linear attention models basically all involve the inverse matrix $(\boldsymbol{I} + \boldsymbol{K}\boldsymbol{K}^{\top}\odot\boldsymbol{M}^-)^{-1}$. This post is specifically dedicated to exploring the calculation of the inverse of such triangular matrices characterized by a "diagonal + low-rank" structure.</p>
+
+    <h2>Basic Results</h2>
+    <p>We define the problem generally as follows:</p>
+    <blockquote>
+        <p>Given matrices $\boldsymbol{Q}, \boldsymbol{K} \in \mathbb{R}^{n \times d}$ and a diagonal matrix $\boldsymbol{\Lambda} \in \mathbb{R}^{n \times n}$, satisfying $n \gg d$, define
+        \begin{equation}\boldsymbol{T} = \boldsymbol{\Lambda} + \boldsymbol{Q}\boldsymbol{K}^{\top}\odot\boldsymbol{M}^-\end{equation}
+        where $\boldsymbol{M}^- = \boldsymbol{M} - \boldsymbol{I}$, and the matrix $\boldsymbol{M}$ is defined as
+        \begin{equation}M_{i,j} = \left\{\begin{aligned} &1, &i \geq j \\ &0, &i < j\end{aligned}\right.\end{equation}
+        The goal is to find the inverse matrix $\boldsymbol{T}^{-1}$ and prove that its complexity is $\mathcal{O}(n^2)$.</p>
+    </blockquote>
+
+    <p>First, if there were no lower triangular constraint imposed by $\odot\boldsymbol{M}^-$, it could be solved directly using the <a href="https://en.wikipedia.org/wiki/Woodbury_matrix_identity">"Woodbury Matrix Identity"</a>:
+    \begin{equation}(\boldsymbol{\Lambda} + \boldsymbol{Q}\boldsymbol{K}^{\top})^{-1} = \boldsymbol{\Lambda}^{-1} - \boldsymbol{\Lambda}^{-1} \boldsymbol{Q}(\boldsymbol{I} + \boldsymbol{K}^{\top}\boldsymbol{\Lambda}^{-1}\boldsymbol{Q})^{-1}\boldsymbol{K}^{\top}\boldsymbol{\Lambda}^{-1}\end{equation}
+    It is easy to verify that the computational complexity of the right-hand side is $\mathcal{O}(n^2)$. However, with the addition of $\odot\boldsymbol{M}^-$, $\boldsymbol{T}$ itself no longer possesses the "diagonal + low-rank" structure, so it cannot be solved directly by this identity. Focusing on the characteristic of it being a lower triangular matrix, a basic strategy is recursion, as we have the block matrix identity:
+    \begin{equation}\begin{bmatrix}\boldsymbol{A} & \boldsymbol{0} \\ \boldsymbol{C} & \boldsymbol{B}\end{bmatrix}^{-1} = \begin{bmatrix}\boldsymbol{A}^{-1} & \boldsymbol{0} \\ -\boldsymbol{B}^{-1}\boldsymbol{C}\boldsymbol{A}^{-1} & \boldsymbol{B}^{-1}\end{bmatrix}\end{equation}
+    This allows us to transform $\boldsymbol{T}^{-1}$ into a recursive form (convention: in the absence of parentheses, slicing has the highest priority):
+    \begin{equation}\boldsymbol{T}_{[:l+1,:l+1]}^{-1} = \begin{bmatrix}\boldsymbol{T}_{[:l,:l]}^{-1} & \boldsymbol{0} \\ -\boldsymbol{T}_{[l:l+1,l:l+1]}^{-1}\boldsymbol{T}_{[l:l+1,:l]}\boldsymbol{T}_{[:l,:l]}^{-1} & \boldsymbol{T}_{[l:l+1,l:l+1]}^{-1}\end{bmatrix}\end{equation}
+    The main calculation here is $\boldsymbol{T}_{[l:l+1,:l]}\boldsymbol{T}_{[:l,:l]}^{-1}$, which is a product of a $1 \times l$ and an $l \times l$ matrix with a complexity of $\mathcal{O}(l^2)$. This means the complexity of each iteration grows quadratically, resulting in a total complexity of $\mathcal{O}(n^3)$.</p>
+
+    <h2>Low-Rank Structure</h2>
+    <p>Of course, this is because we haven't yet utilized the low-rank structure of $\boldsymbol{T}$ (before the $\odot\boldsymbol{M}^-$ mask). By leveraging it, we get $\boldsymbol{T}_{[l:l+1,:l]} = \boldsymbol{Q}_{[l:l+1]}\boldsymbol{K}_{[:l]}^{\top}$. Substituting this into the equation above yields:
+    \begin{equation}\boldsymbol{T}_{[:l+1,:l+1]}^{-1} = \begin{bmatrix}\boldsymbol{T}_{[:l,:l]}^{-1} & \boldsymbol{0} \\ -\boldsymbol{T}_{[l:l+1,l:l+1]}^{-1}\boldsymbol{Q}_{[l:l+1]}\boldsymbol{K}_{[:l]}^{\top}\boldsymbol{T}_{[:l,:l]}^{-1} & \boldsymbol{T}_{[l:l+1,l:l+1]}^{-1}\end{bmatrix}\end{equation}
+    Note that $\boldsymbol{K}_{[:l]}^{\top}\boldsymbol{T}_{[:l,:l]}^{-1} \in \mathbb{R}^{d \times l}$. If we can use this as our recursive variable, the complexity of each step would be only $\mathcal{O}(l)$, successfully reducing the total complexity to $\mathcal{O}(n^2)$. Based on this idea, we have:
+    \begin{equation}\begin{aligned}
+    \boldsymbol{K}_{[:l+1]}^{\top}\boldsymbol{T}_{[:l+1,:l+1]}^{-1} =&\, \begin{bmatrix}\boldsymbol{K}_{[:l]}^{\top} & \boldsymbol{K}_{[l:l+1]}^{\top}\end{bmatrix}\begin{bmatrix}\boldsymbol{T}_{[:l,:l]}^{-1} & \boldsymbol{0} \\ -\boldsymbol{T}_{[l:l+1,l:l+1]}^{-1}\boldsymbol{Q}_{[l:l+1]}\boldsymbol{K}_{[:l]}^{\top}\boldsymbol{T}_{[:l,:l]}^{-1} & \boldsymbol{T}_{[l:l+1,l:l+1]}^{-1}\end{bmatrix} \\[6pt]
+    =&\, \begin{bmatrix}\boldsymbol{K}_{[:l]}^{\top}\boldsymbol{T}_{[:l,:l]}^{-1} & \boldsymbol{0}\end{bmatrix} + \boldsymbol{K}_{[l:l+1]}^{\top}\underbrace{\begin{bmatrix}-\boldsymbol{T}_{[l:l+1,l:l+1]}^{-1}\boldsymbol{Q}_{[l:l+1]}\boldsymbol{K}_{[:l]}^{\top}\boldsymbol{T}_{[:l,:l]}^{-1} & \boldsymbol{T}_{[l:l+1,l:l+1]}^{-1}\end{bmatrix}}_{\text{which is simply } (\boldsymbol{T}^{-1})_{[l:l+1,:l+1]}}\end{aligned}\end{equation}
+    As we can see, this recursive process does not involve $\mathcal{O}(l^2)$ operations, so the approach is feasible. One just needs to introduce a new variable to cache $\boldsymbol{K}_{[:l]}^{\top}\boldsymbol{T}_{[:l,:l]}^{-1}$. If we replace $l+1$ with $l+c$, we can obtain a chunked recursive format.</p>
+
+    <p>The test code is as follows:</p>
+<pre><code>import numpy as np
+
+n, d, c = 1000, 100, 200
+Q = np.random.randn(n, d) / d**0.5
+K = np.random.randn(n, d) / d**0.5
+T = np.tril(Q @ K.T, -1) + np.eye(n)
+
+Y, Z = np.zeros((n, n)), np.zeros((d, n))
+for l in range(0, n, c):
+    Y[l:l + c, l:l + c] = np.linalg.inv(T[l:l + c, l:l + c])
+    Y[l:l + c, :l] = - Y[l:l + c, l:l + c] @ Q[l:l + c] @ Z[:, :l]
+    Z[:, :l + c] += K[l:l + c].T @ Y[l:l + c, :l + c]
+
+print(np.allclose(Y @ T, np.eye(n)))
+</code></pre>
+
+    <h2>Multiplication Calculation</h2>
+    <p>Based on the same logic, we can also prove:</p>
+    <blockquote>
+        <p>For any matrix $\boldsymbol{V} \in \mathbb{R}^{n \times d}$, calculating $\boldsymbol{T}^{-1}\boldsymbol{V}$ requires only $\mathcal{O}(n)$ complexity.</p>
+    </blockquote>
+    <p>The proof only requires a slight modification of the previous process. First, we have:
+    \begin{equation}\begin{aligned}
+    (\boldsymbol{T}^{-1}\boldsymbol{V})_{[:l+1]} =&\, \boldsymbol{T}_{[:l+1,:l+1]}^{-1}\boldsymbol{V}_{[:l+1]} \\[6pt]
+    =&\, \begin{bmatrix}\boldsymbol{T}_{[:l,:l]}^{-1} & \boldsymbol{0} \\ -\boldsymbol{T}_{[l:l+1,l:l+1]}^{-1}\boldsymbol{Q}_{[l:l+1]}\boldsymbol{K}_{[:l]}^{\top}\boldsymbol{T}_{[:l,:l]}^{-1} & \boldsymbol{T}_{[l:l+1,l:l+1]}^{-1}\end{bmatrix}\begin{bmatrix}\boldsymbol{V}_{[:l]} \\ \boldsymbol{V}_{[l:l+1]}\end{bmatrix} \\[6pt]
+    =&\, \begin{bmatrix}\boldsymbol{T}_{[:l,:l]}^{-1}\boldsymbol{V}_{[:l]} \\ -\boldsymbol{T}_{[l:l+1,l:l+1]}^{-1}\boldsymbol{Q}_{[l:l+1]}\boldsymbol{K}_{[:l]}^{\top}\boldsymbol{T}_{[:l,:l]}^{-1}\boldsymbol{V}_{[:l]} + \boldsymbol{T}_{[l:l+1,l:l+1]}^{-1}\boldsymbol{V}_{[l:l+1]}\end{bmatrix} \\[6pt]
+    =&\, \begin{bmatrix}(\boldsymbol{T}^{-1}\boldsymbol{V})_{[:l]} \\ \boldsymbol{T}_{[l:l+1,l:l+1]}^{-1}(\boldsymbol{V}_{[l:l+1]} - \boldsymbol{Q}_{[l:l+1]}\boldsymbol{K}_{[:l]}^{\top}(\boldsymbol{T}^{-1}\boldsymbol{V})_{[:l]})\end{bmatrix}
+    \end{aligned}\end{equation}
+    Then
+    \begin{equation}\begin{aligned}
+    \boldsymbol{K}_{[:l+1]}^{\top}(\boldsymbol{T}^{-1}\boldsymbol{V})_{[:l+1]} =&\, \begin{bmatrix}\boldsymbol{K}_{[:l]}^{\top} & \boldsymbol{K}_{[l:l+1]}^{\top}\end{bmatrix}\begin{bmatrix}(\boldsymbol{T}^{-1}\boldsymbol{V})_{[:l]} \\ (\boldsymbol{T}^{-1}\boldsymbol{V})_{[l:l+1]} \end{bmatrix} \\[8pt]
+    =&\, \boldsymbol{K}_{[:l]}^{\top}(\boldsymbol{T}^{-1}\boldsymbol{V})_{[:l]} + \boldsymbol{K}_{[l:l+1]}^{\top}(\boldsymbol{T}^{-1}\boldsymbol{V})_{[l:l+1]}
+    \end{aligned}\end{equation}
+    Thus, by simply caching $\boldsymbol{K}_{[:l]}^{\top}(\boldsymbol{T}^{-1}\boldsymbol{V})_{[:l]} \in \mathbb{R}^{d \times d}$, the computational complexity of each step becomes independent of $l$, and the total complexity is therefore $\mathcal{O}(n)$. Likewise, replacing $l+1$ with $l+c$ provides the chunked format.</p>
+
+    <p>The test code is as follows:</p>
+<pre><code>import numpy as np
+
+n, d, c = 1000, 100, 200
+Q = np.random.randn(n, d) / d**0.5
+K = np.random.randn(n, d) / d**0.5
+V = np.random.randn(n, d) / d**0.5
+T = np.tril(Q @ K.T, -1) + np.eye(n)
+
+Y, Z = np.zeros((n, d)), np.zeros((d, d))
+for l in range(0, n, c):
+    X = np.linalg.inv(T[l:l + c, l:l + c])
+    Y[l:l + c] = X @ (V[l:l + c] - Q[l:l + c] @ Z)
+    Z += K[l:l + c].T @ Y[l:l + c]
+
+print(np.allclose(T @ Y, V))
+</code></pre>
+
+    <h2>Summary</h2>
+    <p>This article discussed the inversion problem for triangular matrices with "diagonal + low-rank" characteristics, which commonly appear in modern linear attention models.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_11072.html" style="color: #005fcc;">https://kexue.fm/archives/11072</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

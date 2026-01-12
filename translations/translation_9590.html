@@ -1,0 +1,284 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9590">LoRA from a Gradient Perspective: Introduction, Analysis, Conjectures, and Extensions</a></h1>
+
+<p>By 苏剑林 | April 17, 2023</p>
+
+<p>With the fervor surrounding ChatGPT and its open-source alternatives, various parameter-efficient fine-tuning methods have also risen in popularity. One of the most prominent among these is <strong>LoRA</strong>, the subject of this article, which originates from the paper <a href="https://papers.cool/arxiv/2106.09685">"LoRA: Low-Rank Adaptation of Large Language Models"</a>. LoRA's methodology is relatively simple and direct, and there are many existing implementations. Therefore, understanding and using it is quite straightforward, and there might not seem to be much left to narrate.</p>
+
+<p>However, directly implementing LoRA requires modifying the network structure, which can be slightly cumbersome. At the same time, LoRA feels very similar to the previous optimizer <a href="translation_7302.html">AdaFactor</a>. Thus, my question is: <strong>Can we analyze and implement LoRA from an optimizer perspective?</strong> This article revolves around this theme.</p>
+
+<h2>Method Introduction</h2>
+
+<p>Previous results (such as <a href="https://papers.cool/arxiv/2110.07867">"Exploring Universal Intrinsic Task Subspace via Prompt Tuning"</a>) have shown that although pre-trained models have a huge number of parameters, the "intrinsic dimension" corresponding to each downstream task is not large. In other words, theoretically, we can fine-tune a very small number of parameters to achieve good results on downstream tasks.</p>
+
+<p>LoRA draws on these findings and proposes that for a pre-trained parameter matrix $W_0 \in \mathbb{R}^{n \times m}$, instead of directly fine-tuning $W_0$, we assume a low-rank decomposition for the incremental update:</p>
+
+\begin{equation}W = W_0 + A B,\qquad A\in\mathbb{R}^{n\times r},B\in\mathbb{R}^{r\times m}\end{equation}
+
+<p>where one of $A$ or $B$ is initialized as all zeros, and $W_0$ remains fixed. The optimizer only optimizes $A$ and $B$. Due to the conclusion that the intrinsic dimension is small, we can set $r$ to be very small; commonly $r=8$, and in extreme cases, we can even take $r=1$. Thus, LoRA is a parameter-efficient fine-tuning method, as the number of optimized parameters is significantly reduced.</p>
+
+<p>A conceptual diagram drawn using MathJax:</p>
+$$\style{display: inline-block; width: 24ex; padding: 10ex 0; border: 1px solid #6C8EBF; background-color: #DAE8FC}{W_0\in\mathbb{R}^{n\times m}} \quad + \quad \style{display: inline-block; width: 8ex; padding: 10ex 0; border: 1px solid #D79B00; background-color: #FFE6CC}{A\in\mathbb{R}^{n\times r}}\quad\times\quad \style{display: inline-block; width: 24ex; padding: 3ex 0; border: 1px solid #D79B00; background-color: #FFE6CC}{B\in\mathbb{R}^{r\times m}}$$
+
+<h2>Gradient Analysis</h2>
+
+<p>As mentioned in <a href="translation_9138.html">"Ladder Side-Tuning: The 'Step-Ladder' of Pre-trained Models"</a>, many parameter-efficient fine-tuning methods actually only reduce VRAM requirements and do not reduce the amount of computation. Is LoRA an exception? How is its efficiency in terms of VRAM and computation? Let's analyze it below.</p>
+
+<p>First, we know that the VRAM consumed by training a model comes from four parts: <strong>model parameters</strong>, <strong>model gradients</strong>, <strong>model activations</strong>, and <strong>optimizer states</strong>. LoRA reduces the number of trained parameters through low-rank decomposition, so the gradients and optimizer states will decrease accordingly. Therefore, the VRAM savings are obvious. Can it save on computation?</p>
+
+<p>This depends on the implementation of LoRA. Different implementations have different complexities for calculating gradients. Two equivalent implementations of LoRA are as follows:</p>
+
+\begin{align}Y =&\, XW = X(W_0 + AB) \label{eq:lora-1}\\[5pt]
+Y =&\, XW_0 + XAB = XW_0 + ZB \label{eq:lora-2}\end{align}
+
+<p>where $X\in\mathbb{R}^{b\times n}$ is the model input, and $Z=XA\in\mathbb{R}^{b\times r}$ is the intermediate output. For implementation $\eqref{eq:lora-1}$, we have:</p>
+
+\begin{equation}\frac{\partial \mathcal{L}}{\partial A} = \frac{\partial \mathcal{L}}{\partial W} B^{\top} = \left(X^{\top}\frac{\partial \mathcal{L}}{\partial Y}\right) B^{\top},\quad \frac{\partial \mathcal{L}}{\partial B} = A^{\top}\frac{\partial \mathcal{L}}{\partial W} = A^{\top}\left(X^{\top}\frac{\partial \mathcal{L}}{\partial Y}\right)\label{eq:grad-1}\end{equation}
+
+<p>where $\mathcal{L}$ is the loss function. Obviously, the consequence of this implementation is the need to calculate the full gradient $\frac{\partial \mathcal{L}}{\partial W}\in\mathbb{R}^{n\times m}$ before calculating the gradients of $A$ and $B$. This means it is even slower than non-LoRA and consumes more VRAM. For implementation $\eqref{eq:lora-2}$, we have:</p>
+
+\begin{equation}\frac{\partial \mathcal{L}}{\partial A} = X^{\top}\frac{\partial \mathcal{L}}{\partial Z} = X^{\top}\left(\frac{\partial \mathcal{L}}{\partial Y} B^{\top}\right),\quad \frac{\partial \mathcal{L}}{\partial B} = Z^{\top}\frac{\partial \mathcal{L}}{\partial Y} = (XA)^{\top}\frac{\partial \mathcal{L}}{\partial Y}\label{eq:grad-2}\end{equation}
+
+<p>In this case, $Z, \frac{\partial \mathcal{L}}{\partial Z}\in\mathbb{R}^{b\times r}$, which is significantly smaller than the full gradient, and the computational complexity is also markedly reduced. Therefore, for LoRA to maximize VRAM and computational savings, it is crucial to follow implementation $\eqref{eq:lora-2}$ rather than $\eqref{eq:lora-1}$.</p>
+
+<p>(Note: Regarding matrix gradient calculations, we can "assemble" them according to the chain rule and output shapes. For example, for $\frac{\partial \mathcal{L}}{\partial A}$, according to the chain rule, we know it must be some product of $\frac{\partial \mathcal{L}}{\partial W}$ and $B$. We define the shape of $\frac{\partial \mathcal{L}}{\partial A}$ to be the same as $A$, i.e., $n\times r$. To get an $n\times r$ result from $\frac{\partial \mathcal{L}}{\partial W}$ and $B$, the only way is $\frac{\partial \mathcal{L}}{\partial W} B^{\top}$.)</p>
+
+<h2>Other Reasons</h2>
+
+<p>Besides the benefits of low-rank decomposition, the following points also contribute to LoRA's VRAM savings and speedups:</p>
+
+<blockquote>
+    1. Only updating partial parameters: For example, the original LoRA paper chose to only update the Self-Attention parameters. In practice, we can also choose to update only certain layers.<br><br>
+    2. Reduced communication time: Since the number of updated parameters is smaller, the amount of data to be transmitted (especially in multi-GPU training) is reduced, thereby decreasing transmission time.<br><br>
+    3. Adoption of various low-precision acceleration techniques, such as FP16, FP8, or INT8 quantization.
+</blockquote>
+
+<p>Of course, while these three factors can indeed speed up training, they are not unique to LoRA. In fact, almost all parameter-efficient methods share these characteristics. LoRA's standout advantages are that its low-rank decomposition is intuitive, its performance is consistent with full fine-tuning in many scenarios, and in the inference stage, $W_0, A, B$ can be merged into a single matrix, thus adding no inference cost.</p>
+
+<h2>Optimization Perspective</h2>
+
+<p>The gradient $\eqref{eq:grad-1}$ also tells us how to implement LoRA from an optimizer perspective. The optimizer can directly access the full gradient $\frac{\partial \mathcal{L}}{\partial W}$, and we only need to project the gradient according to formula $\eqref{eq:grad-1}$ to obtain the gradients of $A$ and $B$. We then can implement the updates for $A$ and $B$ under a standard optimizer.</p>
+
+<p>If the optimizer is SGD, then it is:</p>
+
+\begin{equation}\begin{aligned}
+A_{t+1} =&\, A_t - \eta\frac{\partial \mathcal{L}}{\partial W_t} B_t^{\top},\quad B_{t+1} = B_t - \eta A_t^{\top}\frac{\partial \mathcal{L}}{\partial W_t}\\[5pt]
+W_{t+1} =&\, W_0 + A_{t+1} B_{t+1} = W_t + (A_{t+1} B_{t+1} - A_t B_t)
+\end{aligned}\end{equation}
+
+<p>If it is an optimizer with moving averages like Adam, we only need to track the moving averages of the projected gradients. This reduces the parameter count of the optimizer, saving some VRAM. The larger the model, the higher the proportion of VRAM this part of the parameters occupies.</p>
+
+<p>LoRA specifies that either $A$ or $B$ should be initialized to all zeros to ensure the initial state of the model is consistent with pre-training, but this also introduces an asymmetry (one all zero, one non-zero). In fact, it is also possible for both $A$ and $B$ to use non-zero initialization. One only needs to subtract $A_0 B_0$ from the pre-trained weights beforehand, or equivalently, parameterize $W$ as:</p>
+
+\begin{equation}W = W_0 - A_0 B_0 + A B\end{equation}
+
+<p>This maintains initial state consistency while allowing both $A$ and $B$ to be initialized with non-zero values, enhancing symmetry.</p>
+
+<h2>Random Projection</h2>
+
+<p>If we expand the update amount $A_{t+1} B_{t+1} - A_t B_t$ in the SGD scenario, the result is:</p>
+
+\begin{equation}- \eta\left(\frac{\partial \mathcal{L}}{\partial W_t} B_t^{\top} B_t + A_t A_t^{\top}\frac{\partial \mathcal{L}}{\partial W_t}\right) + \eta^2 \frac{\partial \mathcal{L}}{\partial W_t} B_t^{\top} A_t^{\top}\frac{\partial \mathcal{L}}{\partial W_t}\end{equation}
+
+<p>Assuming the $\eta^2$ term is a negligible higher-order term, we are left with:</p>
+
+\begin{equation}- \eta\left(\frac{\partial \mathcal{L}}{\partial W_t} B_t^{\top} B_t + A_t A_t^{\top}\frac{\partial \mathcal{L}}{\partial W_t}\right)\end{equation}
+
+<p>From this perspective, compared to full-parameter SGD, LoRA replaces the full gradient $\frac{\partial \mathcal{L}}{\partial W_t}$ with the result in the parentheses.</p>
+
+<p>For simplicity, let's consider the case where $r=1$. Notice that in the above formula, the projection vectors $A_t, B_t$ depend on $t$. If we replace them with random vectors independent of $t$ (re-randomized at each training step), what happens? Consider $u, v \sim \mathcal{N}(0, 1)$, where $u \in \mathbb{R}^{m \times 1}, v \in \mathbb{R}^{1 \times n}$. Then the update amount becomes:</p>
+
+\begin{equation}- \eta\left(\frac{\partial \mathcal{L}}{\partial W_t} v^{\top} v + u u^{\top}\frac{\partial \mathcal{L}}{\partial W_t}\right)\end{equation}
+
+<p>It can be proven that:</p>
+
+\begin{equation}\mathbb{E}_{u\sim \mathcal{N}(0,1)}[u u^{\top}] = I_{n\times n},\quad \mathbb{E}_{v\sim \mathcal{N}(0,1)}[v^{\top} v] = I_{m\times m}\end{equation}
+
+<p>where $I_{n\times n}, I_{m\times m}$ refer to identity matrices. Therefore, similar to "<a href="https://kexue.fm/archives/7737#%E9%9B%B6%E9%98%B6%E6%A2%AF%E5%BA%A6">zero-order gradients</a>", this LoRA re-initialized at every step is equivalent to full-rank SGD in an analytical sense. However, if implemented this way, its speed might be even slower than full-rank SGD. Thus, its purpose is not to speed up, but hopefully to mitigate catastrophic forgetting—by using low-rank updates (instead of full-rank) for single batches, reducing the impact on the entire model weights. Of course, this is just a conjecture, and its actual effectiveness has not been experimentally verified by me yet.</p>
+
+<h2>A Variant</h2>
+
+<p>Again, considering only $r=1$, LoRA essentially assumes $\Delta w_{i,j} = u_i v_j$. Can we use other low-rank decomposition assumptions? For example, $\Delta w_{i,j} = u_i + v_j$? In matrix form, this is:</p>
+
+\begin{equation}W = W_0 + A \mathbb{1}_{1\times m} + \mathbb{1}_{n\times 1} B,\qquad A\in\mathbb{R}^{n\times 1},B\in\mathbb{R}^{1\times m}\end{equation}
+
+<p>where $\mathbb{1}_{1\times m}$ and $\mathbb{1}_{n\times 1}$ refer to all-ones matrices. It is easy to find its gradient:</p>
+
+\begin{equation}\frac{\partial \mathcal{L}}{\partial A} = \frac{\partial \mathcal{L}}{\partial W} \mathbb{1}_{m\times 1},\quad \frac{\partial \mathcal{L}}{\partial B} = \mathbb{1}_{1\times n}\frac{\partial \mathcal{L}}{\partial W}\end{equation}
+
+<p>This is simply the row sum and column sum of the original gradient. Compared to the original LoRA, this additive decomposition has two advantages: 1. Addition is computationally cheaper than multiplication, and the gradient form is simpler; 2. The rank of $AB$ is strictly 1, but the rank of $A \mathbb{1}_{1\times m} + \mathbb{1}_{n\times 1} B$ could be 2. If rank represents model capacity, then for the same number of parameters, additive decomposition might have stronger expressive power. As for the specific effect, I'll conduct comparative experiments when I use LoRA in the future.</p>
+
+<p>So, can the additive decomposition be extended to the case where $r > 1$? Naturally, yes, though with a bit of technique. Here we assume that $m, n$ are divisible by $r$, then we only need to change the parameterization to:</p>
+
+\begin{equation}W = W_0 + A I_{r(1\times m/r)} + I_{r(n/r\times 1)} B,\qquad A\in\mathbb{R}^{n\times r},B\in\mathbb{R}^{r\times m}\end{equation}
+
+<p>where $I_{r(1\times m/r)}$ and $I_{r(n/r\times 1)}$ are block matrices of sizes $1 \times m/r$ and $n/r \times 1$ respectively, where each block is an $r \times r$ identity matrix. Essentially, this form treats $A$ and $B$ as $n/r \times 1$ and $1 \times m/r$ block matrices and applies the $r=1$ logic.</p>
+
+<h2>Summary</h2>
+
+<p>This article introduced an understanding of LoRA from a gradient perspective. In addition to basic introductions, it included some of my conjectures and extensions for readers' reference.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9590.html" style="color: #005fcc;">https://kexue.fm/archives/9590</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

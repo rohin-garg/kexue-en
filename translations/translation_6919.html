@@ -1,0 +1,308 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']},
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        document.querySelectorAll('script[type^="math/tex"]').forEach(function(node) {
+          var display = !!node.type.match(/; *mode=display/);
+          var math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          var text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        });
+      }, '']
+    }
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="MathJax-script" async></script>
+
+<h1><a href="https://kexue.fm/archives/6919">Baidu Entity Linking Competition Post-Mortem: Behavioral Modeling and Entity Linking</a></h1>
+
+    <p>By 苏剑林 | September 03, 2019</p>
+
+
+<p>A few months ago, I participated in <a href="https://biendata.com/competition/ccks_2019_el/">Baidu's Entity Linking competition</a>, which was one of the evaluation tasks of CCKS2019. The official name was "Entity Linking" (实体链指). The competition completely ended a few weeks ago. My final F1 score was around 0.78 (the champion was 0.80), ranking 14th. The results aren't particularly prominent (the only highlight is that the model is very lightweight and can easily run on a GTX1060), so this article is purely to record the process. Experts, please take this with a grain of salt.</p>
+
+<h2 id="赛题介绍">Problem Introduction</h2>
+
+<p>Entity Linking mainly refers to predicting which entity ID in a knowledge base a specific mention in an input query corresponds to, given an existing knowledge base. In other words, the knowledge base records many entities. For entities with the same name, there might be multiple interpretations, each assigned a unique ID. Our task is to predict which interpretation (ID) the mention in the query actually corresponds to. This is a necessary step for question-answering systems based on knowledge graphs.</p>
+
+<h3>Data Format</h3>
+
+<p>Entity Linking is prepared for knowledge graph-based QA, so first, we need a knowledge base (<code>kb_data</code>). An example is as follows:</p>
+
+<pre><code>{"alias": ["胜利"], "subject_id": "10001", "subject": "胜利", "type": ["Thing"], "data": [{"predicate": "摘要", "object": "英雄联盟胜利系列皮肤是拳头公司制作的具有纪念意义限定系列皮肤之一..."}, {"predicate": "制作方", "object": "Riot Games"}, {"predicate": "外文名", "object": "Victorious"}, {"predicate": "来源", "object": "英雄联盟"}, {"predicate": "中文名", "object": "胜利"}, {"predicate": "属性", "object": "虚拟"}, {"predicate": "义项描述", "object": "游戏《英雄联盟》胜利系列限定皮肤"}]}
+{"alias": ["张三的歌"], "subject_id": "10002", "subject": "张三的歌", "type": ["CreativeWork"], "data": [{"predicate": "摘要", "object": "《张三的歌》这首经典老歌，词曲作者是张子石..."}, {"predicate": "歌曲原唱", "object": "李寿全"}, {"predicate": "谱曲", "object": "张子石"}, {"predicate": "歌曲时长", "object": "3分58秒"}, {"predicate": "歌曲语言", "object": "普通话"}, {"predicate": "音乐风格", "object": "民谣"}, {"predicate": "唱片公司", "object": "飞碟唱片"}, {"predicate": "翻唱", "object": "齐秦、苏芮、南方二重唱等"}, {"predicate": "填词", "object": "张子石"}, {"predicate": "发行时间", "object": "1986-08-01"}, {"predicate": "中文名称", "object": "张三的歌"}, {"predicate": "所属专辑", "object": "8又二分之一"}, {"predicate": "义项描述", "object": "李寿全演唱歌曲"}, {"predicate": "标签", "object": "单曲"}, {"predicate": "标签", "object": "音乐作品"}]}
+... ...</code></pre>
+
+<p>The knowledge base includes many entities. Information for each entity includes a unique entity ID, aliases, as well as related attributes and attribute values. Essentially, this is a knowledge graph. A characteristic of the knowledge base is that "entities" are not necessarily specific proper nouns but also include common nouns, verbs, adjectives, etc., such as "victory" (胜利) or "beautiful" (美丽). Furthermore, there are many homonymous entities (which is why entity linking is needed). For example, in the knowledge base provided for this competition, there are 15 entities named "Victory" (胜利), as follows:</p>
+
+<pre><code>{"alias": ["胜利"], "subject_id": "10001", "subject": "胜利", "type": ["Thing"], "data": [{"predicate": "摘要", "object": "英雄联盟胜利系列皮肤..."}, ..., {"predicate": "义项描述", "object": "游戏《英雄联盟》胜利系列限定皮肤"}]}
+{"alias": ["胜利"], "subject_id": "19044", "type": ["Vocabulary"], "data": [{"predicate": "摘要", "object": "胜利，汉语词汇。拼音：shèng lì..."}, ..., {"predicate": "义项描述", "object": "汉语词语"}, {"predicate": "标签", "object": "文化"}], "subject": "胜利"}
+{"alias": ["胜利"], "subject_id": "37234", "type": ["Thing"], "data": [{"predicate": "摘要", "object": "《胜利》是由[英] 约瑟夫·康拉德所著一部讽喻小说..."}, ..., {"predicate": "义项描述", "object": "[英] 约瑟夫·康拉德所著小说"}], "subject": "胜利"}
+... ...</code></pre>
+
+<p>In addition to the knowledge base, we have a batch of labeled samples in the following format:</p>
+
+<pre><code>{"text_id": "1", "text": "南京南站:坐高铁在南京南站下。南京南站", "mention_data": [{"kb_id": "311223", "mention": "南京南站", "offset": "0"}, {"kb_id": "341096", "mention": "高铁", "offset": "6"}, {"kb_id": "311223", "mention": "南京南站", "offset": "9"}, {"kb_id": "311223", "mention": "南京南站", "offset": "15"}]}
+{"text_id": "2", "text": "比特币吸粉无数,但央行的心另有所属|界面新闻 ·jmedia", "mention_data": [{"kb_id": "278410", "mention": "比特币", "offset": "0"}, {"kb_id": "199602", "mention": "央行", "offset": "9"}, {"kb_id": "215472", "mention": "界面新闻", "offset": "18"}]}
+{"text_id": "3", "text": "解读《万历十五年》", "mention_data": [{"kb_id": "131751", "mention": "万历十五年", "offset": "3"}]}
+{"text_id": "4", "text": "《时间的针脚第一季》迅雷下载_完整版在线观看_美剧...", "mention_data": [{"kb_id": "NIL", "mention": "时间的针脚第一季", "offset": "1"}, {"kb_id": "57067", "mention": "迅雷", "offset": "10"}, {"kb_id": "394479", "mention": "美剧", "offset": "23"}]}
+... ...</code></pre>
+
+<p>The training data labels the mention (entity), its position (offset) in the query text, and the corresponding entity ID (kb_id) in the knowledge base. Each query might have multiple entities identified. Since only the query text is provided during prediction, we need to perform both entity recognition and entity linking simultaneously.</p>
+
+<h3 id="基本思路">Basic Approach</h3>
+
+<p>As mentioned, in this Baidu competition, you not only need to find the knowledge base ID corresponding to the entity but also need to find the entities themselves first. In other words, we need to do entity recognition followed by entity linking. In this section, we analyze these two tasks based on the competition data to derive my approach.</p>
+
+<p>Entity recognition technology is clearly mature, with the standard solution being BiLSTM+CRF. Recently, it has also become popular to use BERT+CRF for fine-tuning. In my model, the entity recognition model is "LSTM + semi-pointer semi-annotation structure" with some manual features. This was done both for speed considerations and to align with the specific characteristics of the labeled data.</p>
+
+<p>As for the entity linking step, we see that each entity in the knowledge base has multiple "attribute-attribute value" pairs. Processing these pairs individually would be quite cumbersome, so I simply concatenated all "attribute-attribute value" pairs into a single string to serve as the complete description of the entity. For example, here is the complete concatenated description of a specific entity named "Victory":</p>
+
+<blockquote>
+Summary: The League of Legends Victorious skin series is one of the commemorative limited series skins produced by Riot Games...
+Producer: Riot Games
+Foreign Name: Victorious
+Source: League of Legends
+Chinese Name: Victory
+Attribute: Virtual
+Description: Limited edition skins for the game "League of Legends"
+Name: Victory
+</blockquote>
+
+<p>In this way, each entity corresponds to a (usually long) text description. To perform entity linking, we actually need to match the query text and the entity span with this entity description. Overall, this is close to a text matching problem. My approach was to encode the query and the description text separately, mark the position of a specific entity in the query, and then merge the query and description encodings via Attention, eventually turning it into a binary classification problem.</p>
+
+<p>The advantage of this is low training cost. The disadvantage is that each process handles only one entity from the query and iterates through single entities from the knowledge base, resulting in lower sampling efficiency and relatively longer training times. During prediction, it iterates through all homonymous entities, performing binary classification for each against the query and span, and finally outputs the one with the highest probability.</p>
+
+<h2 id="模型细节">Model Details</h2>
+
+<p>Here I will introduce my processing and modeling steps. In my implementation, entity recognition and linking are trained jointly and share some modules. The overall philosophy (including the training scheme) is similar to the article <a href="translation_6671.html">"A Lightweight Information Extraction Model Based on DGCNN and Probabilistic Graphs"</a>. Readers may want to compare the two.</p>
+
+<p><a href="https://kexue.fm/usr/uploads/2019/09/1863076348.png"><img src="https://kexue.fm/usr/uploads/2019/09/1863076348.png" alt="Overall Diagram of the Entity Linking Model" title="Overall Diagram of the Entity Linking Model"></a><br>
+Overall Diagram of the Entity Linking Model (Click for large version)</p>
+
+<h3 id="实体识别">Entity Recognition</h3>
+
+<p>First is the entity recognition part, divided into the "base model" and "manual features."</p>
+
+<h4>Base Model</h4>
+
+<p><a href="https://kexue.fm/usr/uploads/2019/09/1198720376.png"><img src="https://kexue.fm/usr/uploads/2019/09/1198720376.png" alt="Entity Recognition Model" title="Entity Recognition Model"></a><br>
+The "base model" refers to the neural network part, which performs character-level tagging through mixed character-word embeddings and manual features. The tagging structure is the "semi-pointer semi-annotation structure" I previously devised (refer <a href="translation_5409.html">here</a> and <a href="translation_6671.html">here</a>).</p>
+
+<p>Unlike my usual habit of using only CNNs, this model mainly uses BiLSTM because I didn't intend to make the model very deep. When the model is very shallow (only 1-2 layers), BiLSTM usually performs better than CNN or Attention.</p>
+
+<h4>Manual Features</h4>
+
+<p>Since the knowledge base is provided and the identified entity names appear in it (the <code>alias</code> field; if it doesn't appear, it can be considered a labeling error), a baseline for entity recognition is to take all <code>alias</code> names from the knowledge base to form a vocabulary and build a maximum matching model. This achieves a recall of about 92%, but the precision is low (about 30%), with a total F1 of roughly 40%.</p>
+
+<p>Next, we can observe that in the training data, the labeling of entities is quite "capricious." Subjective factors are huge. Strictly speaking, this isn't semantic-based entity recognition but rather "modeling the annotator's trajectory." We are trying to model the annotator's habits rather than building recognition on semantic understanding. For example, in the query "《暗警》迅雷下载/在线观看 -犯罪/历史" mentioned earlier, only "Dark Police" (暗警), "Thunder" (迅雷), and "History" (历史) were labeled. In fact, "Download," "Online," "Watching," and "Crime" are all entities in the knowledge base and have corresponding IDs for this query. Why weren't they labeled? One can only say the annotators didn't like to label them / didn't want to / were too tired. Another case: for "High Definition Video" (高清视频), in some queries it's labeled as one entity, while in others it's labeled as two entities, "High Definition" and "Video" (since all three exist in the knowledge base).</p>
+
+<p>Therefore, many entity recognition results aren't particularly logical; they are just annotator habits. To better fit these habits, we can use the training set to run statistics: see which knowledge base entities are labeled frequently and which are rarely labeled. This way, we can perform basic filtering on the knowledge base entities (see the open-source code for filtering details). Using the filtered entity set to build a maximum matching model, the recall is about 91.8%, but the precision reaches 60%, and the F1 goes up to 70%+.</p>
+
+<p>In other words, through simple statistics and max-matching, you can reach an F1 of 70%+. We then convert this max-matching result into a 0/1 feature and pass it to the base model, which acts as a further filter on top of the max-matching result. The final entity recognition F1 was about 81% (don't remember the exact value).</p>
+
+<h3 id="实体链接">Entity Linking</h3>
+
+<p>Now for the entity linking part, again divided into the "base model" and "manual features." It is still a simple baseline model combined with manual features for improvement.</p>
+
+<h4>Base Model</h4>
+
+<p>In the entity linking model, we need to "judge whether a specific mention in a query matches a specific homonymous entity in the knowledge base." For this, we need random sampling: randomly sample a mention from the recognized entities in the query and sample one of its homonymous entities from the knowledge base.</p>
+
+<p><a href="https://kexue.fm/usr/uploads/2019/09/3206652439.png"><img src="https://kexue.fm/usr/uploads/2019/09/3206652439.png" alt="Entity Linking Model" title="Entity Linking Model"></a><br>
+For the query, we use the encoded sequence from the entity recognition step, then use a 0/1 sequence to mark the sampled mention and concatenate it to the encoded sequence, along with some manual features. After concatenation, we apply a BiLSTM to get the final encoding sequence $\boldsymbol{Q}$. For the homonymous entity, we take its description, pass it through an Embedding layer (shared with the query embedding), and then feed it into a BiLSTM to complete the encoding $\boldsymbol{D}$.</p>
+
+<p>With both encoded sequences, we can perform Attention. As described in <a href="translation_4765.html">"Brief Reading of 'Attention is All You Need'"</a>, the three elements of Attention are query, key, and value. Here, we first use $\boldsymbol{Q}$ as the query and $\boldsymbol{D}$ as both the key and value for an Attention operation. Then we use $\boldsymbol{D}$ as the query and $\boldsymbol{Q}$ as both the key and value for another Attention operation. We apply MaxPooling to the results of both Attention operations to get fixed-length vectors, concatenate them, and feed them into a fully connected layer for binary classification.</p>
+
+<h4>Manual Features</h4>
+
+<p>The manual features used in entity linking are query-based, ultimately generating a vector sequence of the same length as the query, which is concatenated to the query encoding. In this model, three manual features were used:</p>
+
+<ol>
+  <li>Whether each character in the query appears in the entity description (a 0/1 sequence).</li>
+  <li>Both the query and description are segmented; then we judge whether each word in the query appears in the description (a 0/1 sequence, where the tag for each word is repeated for the length of that word to ensure equal sequence length).</li>
+  <li>Whether each word/segment in the query is a specific <code>object</code> of that entity (a 0/1 sequence; the meaning of <code>object</code> refers to the knowledge base sample at the start).</li>
+</ol>
+
+<p>I recall that these three features significantly improved linking accuracy. Additionally, during prediction, a statistical result was used. As emphasized before, entity recognition is more like "labeling behavior modeling" than "semantic understanding," and entity linking is the same. We found through statistics that for certain mentions, there might be many homonymous entities in the knowledge base, but only a few were ever labeled. The annotators might not have even looked at the others. That is, what could be a 1-out-of-50 problem effectively became a 1-out-of-5 problem based on annotator habits.</p>
+
+<p>So, we ran statistics on all entities and their corresponding entity IDs appearing in the training set. This gives us a distribution for each entity name describing how likely it is to be linked to a specific ID. If the distribution is highly concentrated on a few IDs, we simply keep those few and discard the rest. This turned out to improve both prediction speed and accuracy.</p>
+
+<h2 id="代码分享">Code Sharing</h2>
+
+<p>GitHub address: <a href="https://github.com/bojone/el-2019">https://github.com/bojone/el-2019</a></p>
+
+<p>The testing environment is Python 2.7 + Keras 2.2.4 + Tensorflow 1.8. The entire model only needs one GTX 1060 (6G) to run, making it very light. Other parts are similar to my <a href="https://kexue.fm/archives/6671#%E5%AE%9E%E9%AA%8C%E7%82%BC%E4%B8%B9">previous experiments on information extraction</a>; the code was adapted from that, so the differences are small.</p>
+
+<h2 id="文章小结">Conclusion</h2>
+
+<p>This article shared my experience in an entity linking competition. From a modeling perspective, the overall model is quite simple; the main performance boost came from manual features. These manual features are mostly statistical features derived from observing data characteristics—basically competition tricks. In reality, such tricks might be seen as opportunistic and may not be applicable in a production environment, but they fit the competition data closely.</p>
+
+<p>Again, I tend to believe this was more about "labeling behavior modeling" than true semantic understanding, especially in the entity recognition step where subjectivity was too high, becoming a major bottleneck. To increase the final score, one has to put significant effort into entity recognition. But doing well at that only means you've fitted the annotators' behavior better, not necessarily that you've mastered semantic recognition, nor does it help much with the competition's core goal: entity linking. Furthermore, in a production environment, there are usually standard methods for entity recognition, so only entity linking needs to be focused on. This is what I consider a shortcoming of this competition. <strong>That said, labeled data is hard to come by, so I still thank the Baidu experts for hosting the competition and providing the labeled data~</strong></p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6919.html" style="color: #005fcc;">https://kexue.fm/archives/6919</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

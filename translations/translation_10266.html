@@ -1,0 +1,370 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    tags: 'ams',
+    packages: {'[+]': ['ams']},
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']]
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+
+<h1><a href="https://kexue.fm/archives/10266">Aligning Full Fine-Tuning! The Most Brilliant LoRA I've Seen (Part 2)</a></h1>
+
+    <p>By 苏剑林 | July 29, 2024</p>
+
+<p>Two weeks ago, I wrote <a href="translation_10231.html">"Aligning with Full Fine-Tuning! This is the most brilliant LoRA improvement I've seen (Part 1)"</a> (at that time, it wasn't numbered "Part 1"), which introduced a LoRA variant called "LoRA-GA." It improves the initialization of LoRA through gradient SVD to achieve alignment between LoRA and full fine-tuning. Of course, theoretically, this only attempts to align the first step update $W_1$, leading some readers to ask: "What about $W_2, W_3, \dots$ later on?" At the time, I didn't think too deeply about it, simply assuming that after aligning the first step, subsequent optimizations would strictly follow a superior trajectory.</p>
+
+<p>Interestingly, not long after LoRA-GA was released, a new paper appeared on arXiv titled <a href="https://arxiv.org/abs/2407.18242">"LoRA-Pro: Are Low-Rank Adapters Properly Optimized?"</a>. The proposed LoRA-Pro happened to answer exactly that question! LoRA-Pro also aims to align with full fine-tuning, but it aligns the gradient at every step, thereby aligning the entire optimization trajectory. This is a complementary improvement to LoRA-GA.</p>
+
+<h3>Aligning Full Fine-Tuning</h3>
+
+<p>This article follows the notation and content of the previous post, so I will only provide a brief recap of the previous section without repeating it in detail. The parameterization of LoRA is:</p>
+
+\begin{equation}W = (W_0 - A_0 B_0) + AB\end{equation}
+
+<p>where $W_0 \in \mathbb{R}^{n\times m}$ is the pre-trained weight, $A\in\mathbb{R}^{n\times r}, B\in\mathbb{R}^{r\times m}$ are the newly introduced trainable parameters, and $A_0, B_0$ are their initial values.</p>
+
+<p>In the previous section, we mentioned that full fine-tuning often performs better than LoRA, so full fine-tuning is the direction LoRA should most aim to align with. To describe this quantitatively, we write the optimization formulas for full fine-tuning and LoRA fine-tuning under SGD respectively. The results are:</p>
+
+\begin{equation} W_{t+1} = W_t - \eta G_t\end{equation}
+
+<p>and</p>
+
+\begin{equation}\begin{gathered} 
+A_{t+1} = A_t - \eta G_{A,t} = A_t - \eta G_t B_t^{\top},\quad B_{t+1} = B_t - \eta G_{B,t} = B_t - \eta A_t^{\top}G_t \\[8pt] 
+W_{t+1} = W_t - A_t B_t + A_{t+1} B_{t+1} \approx W_t - \eta(A_t A_t^{\top}G_t + G_tB_t^{\top} B_t) 
+\end{gathered}\end{equation}
+
+<p>where $\mathcal{L}$ is the loss function, $\eta$ is the learning rate, and $G_t=\frac{\partial \mathcal{L}}{\partial W_t}$, $G_{A,t}=\frac{\partial \mathcal{L}}{\partial A_t}=\frac{\partial \mathcal{L}}{\partial W_t} B_t^{\top}=G_t B_t^{\top}$, and $G_{B,t}=\frac{\partial \mathcal{L}}{\partial B_t}=A_t^{\top}\frac{\partial \mathcal{L}}{\partial W_t} =A_t^{\top}G_t$.</p>
+
+<p>The idea of LoRA-GA is that we should at least make $W_1$ of LoRA as close as possible to $W_1$ of full fine-tuning, so it minimizes the objective:</p>
+
+\begin{equation}\mathop{\text{argmin}}_{A_0,B_0}\left\Vert A_0 A_0^{\top}G_0 + G_0 B_0^{\top} B_0 - G_0\right\Vert_F^2\end{equation}
+
+<p>Its optimal solution can be found by performing SVD on $G_0$, allowing us to solve for the optimal $A_0, B_0$ as the initialization for $A, B$.</p>
+
+<h3>Step-by-Step Alignment</h3>
+
+<p>The idea behind LoRA-Pro is more thorough; it hopes to align every $W_t$ between full fine-tuning and LoRA. But how can this be achieved? Do we minimize $\left\Vert A_t A_t^{\top}G_t + G_t B_t^{\top} B_t - G_t\right\Vert_F^2$ at every step? This is clearly incorrect, as $A_t, B_t$ are determined by the optimizer based on $A_{t-1}, B_{t-1}$ and their gradients, rather than being freely adjustable parameters.</p>
+
+<p>It seems like there is nothing left to modify. No—LoRA-Pro ingeniously thinks: since "$A_t, B_t$ are determined by the optimizer based on $A_{t-1}, B_{t-1}$ and their gradients," and we cannot change the previous $A_{t-1}, B_{t-1}$ or the gradients, we can still change the optimizer! Specifically, we change the update rules for $A_t, B_t$ to:</p>
+
+\begin{equation}\begin{gathered} 
+A_{t+1} = A_t - \eta H_{A,t} \\ 
+B_{t+1} = B_t - \eta H_{B,t} 
+\end{gathered}\end{equation}
+
+<p>where $H_{A,t}, H_{B,t}$ are to be determined, but their shapes match $A$ and $B$. Now we can write:</p>
+
+\begin{equation}W_{t+1} = W_t - A_t B_t + A_{t+1} B_{t+1} \approx W_t - \eta(H_{A,t} B_t + A_t H_{B,t}) \end{equation}
+
+<p>At this point, we can adjust $H_{A,t}, H_{B,t}$ to make this $W_{t+1}$ as close as possible to the $W_{t+1}$ from SGD:</p>
+
+\begin{equation}\mathop{\text{argmin}}_{H_{A,t},H_{B,t}}\left\Vert H_{A,t} B_t + A_t H_{B,t} - G_t\right\Vert_F^2 \label{eq:loss}\end{equation}
+
+<p>Let's solve this optimization problem. For simplicity, we omit the subscript $t$ in the derivation, considering:</p>
+
+\begin{equation}\mathop{\text{argmin}}_{H_A,H_B}\left\Vert H_A B + A H_B - G\right\Vert_F^2 \end{equation}
+
+<h3>Simplifying the Objective</h3>
+
+<p>Since there are no constraints between $H_A$ and $H_B$, the optimization of $H_A$ and $H_B$ can be coupled. We can adopt a strategy of first optimizing $H_A$ and then $H_B$ (or vice versa). When optimizing $H_A$, we treat $H_B$ as a constant. To this end, let's first consider the following simplified equivalent proposition:</p>
+
+\begin{equation}\mathop{\text{argmin}}_H\left\Vert H B - X\right\Vert_F^2 \label{eq:h-xb-loss}\end{equation}
+
+<p>where $H\in\mathbb{R}^{n\times r}, B\in\mathbb{R}^{r\times m}, X\in\mathbb{R}^{n\times m}$. If $r=m$ and $B$ is invertible, we can directly solve the system of equations $HB=X$, i.e., $H=XB^{-1}$. When $r < m$, we resort to optimization techniques. Noting that $HB-X$ is linear with respect to $H$, this is essentially a least-squares problem for linear regression, which has an analytical solution:</p>
+
+\begin{equation}H = XB^{\top}(B B^{\top})^{-1} \label{eq:h-xb}\end{equation}
+
+<p>Here, $B^{\top}(B B^{\top})^{-1}$ is exactly the "pseudo-inverse" of matrix $B$. If you are unfamiliar with this answer, we can derive it on the spot. First, let $l=\left\Vert H B - X\right\Vert_F^2$. Direct differentiation with respect to $H$ yields:</p>
+
+\begin{equation}\frac{\partial l}{\partial H} = 2(HB - X)B^{\top} = 2(HBB^{\top} - XB^{\top})\end{equation}
+
+<p>Setting it to zero gives equation $\eqref{eq:h-xb}$. For readers not familiar with matrix differentiation rules, one can simply think of the chain rule: $\frac{\partial l}{\partial H}$ must involve multiplying $2(HB - X)$ and $B$ in some way. Given that the shape of $\frac{\partial l}{\partial H}$ must be the same as $H$ ($n\times r$), the only way to get $n\times r$ from $2(HB - X)$ and $B$ is $2(HB - X)B^{\top}$.</p>
+
+<p>Similarly, the derivative of $\left\Vert AH - X\right\Vert_F^2$ with respect to $H$ is $2A^{\top}(AH - X)$, from which we get:</p>
+
+\begin{equation}\mathop{\text{argmin}}_H\left\Vert AH - X\right\Vert_F^2\quad\Rightarrow\quad H = (A^{\top} A)^{-1}A^{\top}X \label{eq:h-ax}\end{equation}
+
+<h3>Complete Results</h3>
+
+<p>With the conclusions from $\eqref{eq:h-xb}$ and $\eqref{eq:h-ax}$, we can proceed to solve $\eqref{eq:loss}$. First, fixing $H_B$, we obtain from $\eqref{eq:h-xb}$:</p>
+
+\begin{equation}H_A = (G - A H_B) B^{\top}(B B^{\top})^{-1} \label{eq:h-a-1}\end{equation}
+
+<p>Note that the objective function in $\eqref{eq:loss}$ possesses an invariance property:</p>
+
+\begin{equation}\left\Vert H_A B + A H_B - G\right\Vert_F^2 = \left\Vert (H_A + AC) B + A (H_B - CB) - G\right\Vert_F^2\end{equation}
+
+<p>where $C$ is any $r\times r$ matrix. In other words, the solution for $H_A$ can be added/subtracted by any matrix of the form $AC$, provided $H_B$ subtracts/adds the corresponding $CB$. Based on this property, we can simplify $H_A$ from $\eqref{eq:h-a-1}$ to:</p>
+
+\begin{equation}H_A = G B^{\top}(B B^{\top})^{-1}\end{equation}
+
+<p>Substituting this back into the objective function gives:</p>
+
+\begin{equation}\mathop{\text{argmin}}_{H_B}\left\Vert A H_B - G(I - B^{\top}(B B^{\top})^{-1}B)\right\Vert_F^2\end{equation}
+
+<p>Applying equation $\eqref{eq:h-ax}$ yields:</p>
+
+\begin{equation}H_B = (A^{\top} A)^{-1}A^{\top}G(I - B^{\top}(B B^{\top})^{-1}B)\end{equation}
+
+<p>Recognizing that $G B^{\top}$ and $A^{\top}G$ are simply the gradients $G_A$ and $G_B$ of $A$ and $B$, and once again utilizing the aforementioned invariance, we can write the complete solution as:</p>
+
+\begin{equation}\left\{\begin{aligned} H_A =&\, G_A (B B^{\top})^{-1} + AC \\ 
+H_B =&\, (A^{\top} A)^{-1}G_B(I - B^{\top}(B B^{\top})^{-1}B) - CB 
+\end{aligned}\right.\end{equation}
+
+<h3>Optimal Parameters</h3>
+
+<p>Thus far, we have solved for the form of $H_A$ and $H_B$, but the solution is not unique; there is a freely choosable parameter matrix $C$. We can select an appropriate $C$ to make the final $H_A, H_B$ possess certain desired properties.</p>
+
+<p>For instance, $H_A$ and $H_B$ are currently not quite symmetric; $H_B$ has an extra $-(A^{\top} A)^{-1}G_B B^{\top}(B B^{\top})^{-1}B$ term. We could distribute it equally between $H_A$ and $H_B$ to make them more symmetric, which is equivalent to choosing $C = -\frac{1}{2}(A^{\top} A)^{-1}G_B B^{\top}(B B^{\top})^{-1}$:</p>
+
+\begin{equation}\left\{\begin{aligned} H_A =&\, \left[I - \frac{1}{2}A(A^{\top}A)^{-1}A^{\top}\right]G_A (B B^{\top})^{-1} \\ 
+H_B =&\, (A^{\top} A)^{-1}G_B\left[I - \frac{1}{2}B^{\top}(B B^{\top})^{-1}B\right] 
+\end{aligned}\right.\end{equation}
+
+<p>This $C$ is also the solution to the following two optimization problems:</p>
+
+\begin{align} 
+& \mathop{\text{argmin}}_C \Vert H_A B - A H_B\Vert_F^2 \\ 
+& \mathop{\text{argmin}}_C \Vert H_A B - G\Vert_F^2 + \Vert A H_B - G\Vert_F^2 \\ 
+\end{align}
+
+<p>The first objective can be understood as making the contributions of $A$ and $B$ to the final effect as equal as possible, which shares some commonality with the assumption in <a href="translation_10214.html">"Setting different learning rates—Can LoRA gain a bit more?"</a>. The second objective is to make both $H_A B$ and $A H_B$ approximate the full gradient $G$ as closely as possible. Taking $l=\Vert H_A B - A H_B\Vert_F^2$ as an example, direct differentiation yields:</p>
+
+\begin{equation}\frac{\partial l}{\partial C} = 4A^{\top}(H_A B - A H_B)B^{\top}=4A^{\top}\left[G_A (BB^{\top})^{-1}B + 2ACB\right]B^{\top}\end{equation}
+
+<p>Setting it to zero allows us to solve for the same $C$, where critical simplification steps include $[I - B^{\top}(B B^{\top})^{-1}B]B^{\top} = 0$ and $A^{\top}G_A = G_B B^{\top}$.</p>
+
+<p>The $C$ chosen by LoRA-Pro is slightly different; it is the optimal solution to the following objective function:</p>
+
+\begin{equation}\mathop{\text{argmin}}_C \Vert H_A - G_A\Vert_F^2 + \Vert H_B - G_B\Vert_F^2\end{equation}
+
+<p>The intention here is obvious: $H_A, H_B$ are meant to replace $G_A, G_B$. Given that the same mapping effect is achieved, choosing the option that minimizes the change relative to $G_A, G_B$ is a reasonable choice. Again, taking the derivative with respect to $C$ and setting it to zero yields, upon simplification:</p>
+
+\begin{equation}A^{\top}A C + C B B^{\top} = -A^{\top} G_A (BB^{\top})^{-1}\end{equation}
+
+<p>Now we have an equation for $C$ known as a "Sylvester equation." While an analytical solution for $C$ can be written using Kronecker products, it is unnecessary because the complexity of direct numerical solvers is lower than that of the analytical form; hence, numerical methods are used. Overall, these various selection schemes for $C$ all aim to make $H_A, H_B$ more symmetric from certain perspectives. Although I haven't personally conducted comparative experiments, I believe there likely won't be significant differences between these choices.</p>
+
+<h3>General Discussion</h3>
+
+<p>Let's summarize the results obtained so far. Our model is still standard LoRA, but our goal is to hope every update step approximates the full fine-tuning result. To this end, we assumed the optimizer is SGD and compared the $W_{t+1}$ obtained from full fine-tuning and LoRA under the same $W_t$. We found that to achieve this goal, the gradients $G_A, G_B$ of $A, B$ used during the update need to be replaced by the $H_A, H_B$ derived above.</p>
+
+<p>Next, we return to a common problem in optimization analysis: the previous analysis was based on the SGD optimizer, but in practice, we more commonly use Adam. How do we adapt it? If we repeat the derivation for the Adam optimizer, the result is that the gradient $G$ in $H_A, H_B$ should be replaced by the Adam update direction $U$ under full fine-tuning. However, $U$ needs to be calculated from the full fine-tuning gradient $G$ according to Adam's update rules. In our LoRA scenario, we cannot obtain the full gradient $G$—we only have the gradients for $A, B$.</p>
+
+<p>Nevertheless, we can consider an approximation scheme. Since the optimization objective of $H_A B + A H_B$ is to approximate $G$, we can use it as an approximation of $G$ to execute Adam. In this way, the entire process can function. Thus, we can write the following update rules:</p>
+
+\begin{equation}\begin{array}{l} 
+\begin{array}{l}G_A = \frac{\partial\mathcal{L}}{\partial A_{t-1}},\,\,G_B = \frac{\partial\mathcal{L}}{\partial B_{t-1}}\end{array} \\ 
+\color{green}{\left.\begin{array}{l}H_A = G_A (B B^{\top})^{-1} \\ 
+H_B = (A^{\top} A)^{-1}G_B(I - B^{\top}(B B^{\top})^{-1}B) \\ 
+\tilde{G} = H_A B + A H_B \end{array}\quad\right\} \text{Gradient Estimation}} \\ 
+\color{red}{\left.\begin{array}{l}M_t = \beta_1 M_{t-1} + (1 - \beta_1) \tilde{G} \\ 
+V_t = \beta_2 V_{t-1} + (1 - \beta_2) \tilde{G}^2 \\ 
+\hat{M}_t = \frac{M_t}{1-\beta_1^t},\,\,\hat{V}_t = \frac{V_t}{1-\beta_2^t},\,\,U = \frac{\hat{M}_t}{\sqrt{\hat{V}_t + \epsilon}}\end{array}\quad\right\} \text{Adam Update}} \\ 
+\color{purple}{\left.\begin{array}{l}U_A = UB^{\top},\,\, U_B = A^{\top} U \\ 
+\tilde{H}_A = U_A (B B^{\top})^{-1} + AC \\ 
+\tilde{H}_B = (A^{\top} A)^{-1}U_B(I - B^{\top}(B B^{\top})^{-1}B) - CB 
+\end{array}\quad\right\} \text{Project to } A, B} \\ 
+\begin{array}{l}A_t = A_{t-1} - \eta \tilde{H}_A \\ 
+B_t = B_{t-1} - \eta \tilde{H}_B \\ 
+\end{array} \\ 
+\end{array}\end{equation}
+
+<p>This is the final update algorithm used by LoRA-Pro (more accurately, LoRA-Pro uses AdamW, making the results slightly more complex, but not substantially different). However, regardless of the additional computational complexity introduced, the biggest issue with this algorithm is that its sliding update variables $M, V$ are full-rank, just like in full fine-tuning. This means the optimizer does not save memory compared to full fine-tuning; it only saves a portion of memory for parameters and gradients through low-rank decomposition. This still represents a significant increase in memory consumption compared to standard LoRA.</p>
+
+<p>A simpler alternative (though I haven't tested it) would be to directly use $H_A, H_B$ to replace $G_A, G_B$ and then calculate the standard LoRA Adam updates. In this case, the shapes of $M, V$ would match $A, B$, maximizing memory savings. However, the theoretical basis for this approach to Adam is not as strong as LoRA-Pro's Adam; it relies more on the "faith" that SGD conclusions can be applied in parallel to Adam, similar to <a href="translation_10231.html">"Aligning with Full Fine-Tuning! This is the most brilliant LoRA improvement I've seen (Part 1)"</a>.</p>
+
+<h3>Experimental Results</h3>
+
+<p>The experimental results for LoRA-Pro on GLUE are even more stunning, exceeding the results of full fine-tuning:</p>
+
+<p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2024/07/3579848574.png" alt="LoRA-Pro experimental results on GLUE" style="max-width:100%;"></p>
+<p style="text-align:center;">LoRA-Pro experimental results on GLUE</p>
+
+<p>However, the paper contains only this experiment. It seems that LoRA-Pro was put together somewhat hastily, perhaps because they felt a strong sense of "collision" after seeing LoRA-GA and wanted to stake their claim first. When I first came across LoRA-Pro, my first reaction was also that it overlapped with LoRA-GA, but upon closer reading, I realized they are actually complementary results under the same core philosophy.</p>
+
+<p>Looking at the results of LoRA-Pro, they involve inversions of $A^{\top} A$ and $B B^{\top}$. It is clear that one of $A$ or $B$ cannot be initialized to zero. An intuitive choice would be orthogonal initialization—making the initial $A^{\top} A$ and $B B^{\top}$ (multiples of) the identity matrix. Conveniently, as we saw in <a href="translation_10231.html">Part 1</a>, the initialization provided by LoRA-GA happens to be orthogonal initialization. Thus, LoRA-Pro and LoRA-GA can be considered the "perfect partners."</p>
+
+<h3>Summary</h3>
+
+<p>This article introduced another work on aligning with full fine-tuning, LoRA-Pro. It is a complementary result to the previous LoRA-GA. LoRA-GA attempts to align LoRA with full fine-tuning by improving initialization, while LoRA-Pro is more thorough, modifying the optimizer's update rule to make every update step of LoRA align with full fine-tuning as much as possible. Both are brilliant improvements to LoRA and are genuinely delightful works.</p>
+
+<hr />
+<p>
+    <em>Original Address: <a href="translation_10266.html">https://kexue.fm/archives/10266</a></em>
+</p>
+
+<p>
+    If you need to cite this article, please use:
+    <br />
+    Jianlin Su. (Jul. 29, 2024). "Aligning with Full Fine-Tuning! This is the most brilliant LoRA improvement I've seen (Part 2)" [Blog post]. Retrieved from https://kexue.fm/archives/10266
+</p>
+
+<pre>
+@online{kexuefm-10266,
+    title={Aligning with Full Fine-Tuning! This is the most brilliant LoRA improvement I've seen (Part 2)},
+    author={Jianlin Su},
+    year={2024},
+    month={Jul},
+    url={\url{https://kexue.fm/archives/10266}},
+}
+</pre>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10266.html" style="color: #005fcc;">https://kexue.fm/archives/10266</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

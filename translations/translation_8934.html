@@ -1,0 +1,299 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/8934">FLASH: Probably the Most Interesting Efficient Transformer Design Recently</a></h1>
+
+<p>By 苏剑林 | February 25, 2022</p>
+
+<p>Efficient Transformers, which generally refer to works that improve the efficiency of Transformer models, are something I have been following for a long time. My earliest blog post on this topic dates back to 2019, <a href="translation_6853.html">"Born for Economy: From Standard Attention to Sparse Attention"</a>, at a time when there were very few works in this area. Later, such works gradually increased, and I followed several of them, such as <a href="translation_7546.html">Linear Attention</a>, <a href="translation_7921.html">Performer</a>, and <a href="translation_8180.html">Nyströmformer</a>, and even performed some explorations myself, such as the <a href="https://kexue.fm/search/Transformer%E5%8D%87%E7%BA%A7%E4%B9%8B%E8%B7%AF/">"Transformer Upgrade Path"</a>. Subsequently, as related works became more numerous and often quite repetitive, I stopped paying close attention.</p>
+
+<p>Feeling like "welcome rain after a long drought," a very interesting work on efficient Transformers has recently appeared—Google's <a href="https://papers.cool/arxiv/2202.10447">"Transformer Quality in Linear Time"</a>. After reading it carefully, I believe it is truly full of surprises.</p>
+
+<h2>What’s the Surprise?</h2>
+
+<p>What kind of results deserve the description "surprising"? Is it an exaggeration? Let's first look at what the paper achieves:</p>
+
+<blockquote>
+<p>1. It proposes a new Transformer variant that still has quadratic complexity but, compared to standard Transformers, offers faster speeds, lower memory usage, and better performance.</p>
+<p>2. It proposes a new linearization scheme for Transformers that not only improves the performance of existing Linear Attention but also maintains the possibility of acting as a Decoder, and even maintains high training parallelism when functioning as a Decoder.</p>
+</blockquote>
+
+<p>To be honest, I feel that achieving either of these points would be rare and commendable, but this paper achieves both simultaneously. More importantly, the improvements in the paper are generally natural and elegant, unlike many similar works that feel forced. Furthermore, I have conducted simple replication experiments, and the results show that the paper's reproducibility is quite good. I really feel a sense of "Transformer is in danger."</p>
+
+<h2>Gated Attention</h2>
+
+<p>Without further ado, let's get to the main topic. We know that <a href="translation_4765.html">standard Transformers</a> are built by alternating Attention layers and FFN layers. The core of this paper is the proposal of a new design called GAU (Gated Attention Unit), which merges the two. This is the key to the new model being faster, more economical, and better. Additionally, it results in a model with only one type of layer, which is more elegant.</p>
+
+<h3>Initial Power</h3>
+
+<p>How do we merge Attention and FFN? First, a standard FFN is a two-layer MLP model:</p>
+\begin{equation}\boldsymbol{O}=\phi(\boldsymbol{X}\boldsymbol{W}_u)\boldsymbol{W}_o\end{equation}
+<p>Here $\boldsymbol{X}\in\mathbb{R}^{n\times d}, \boldsymbol{W}_u\in\mathbb{R}^{d\times e}, \boldsymbol{W}_o\in\mathbb{R}^{e\times d}$ and $\phi$ is an activation function. Later, <a href="https://papers.cool/arxiv/2002.05202">"GLU Variants Improve Transformer"</a> found that FFNs using GLU (Gated Linear Unit) perform better, which was adopted by <a href="translation_7867.html">mT5</a>. Its form is:</p>
+\begin{equation}\boldsymbol{O}=(\boldsymbol{U}\odot\boldsymbol{V})\boldsymbol{W}_o,\quad \boldsymbol{U}=\phi_u(\boldsymbol{X}\boldsymbol{W}_u),\quad\boldsymbol{V}=\phi_v(\boldsymbol{X}\boldsymbol{W}_v)\end{equation}
+<p>Where $\boldsymbol{W}_u, \boldsymbol{W}_v\in\mathbb{R}^{d\times e}$ and $\odot$ is the element-wise (Hadamard) product. It is not surprising that GLU is more effective; it played a key role in Facebook's 2017 paper <a href="https://papers.cool/arxiv/1705.03122">"Convolutional Sequence to Sequence Learning"</a>, and my own research on <a href="translation_5409.html">DGCNN</a> also confirmed the effectiveness of GLU.</p>
+
+<p>In general GLUs, $\boldsymbol{U}$ is used without an activation function while $\boldsymbol{V}$ has a Sigmoid. However, this paper uses the <a href="https://papers.cool/arxiv/1710.05941">Swish</a> activation function (also known as <a href="https://papers.cool/arxiv/1606.08415">SiLU</a>, Sigmoid Linear Unit) for both $\boldsymbol{U}$ and $\boldsymbol{V}$. This can be found in the source code in the appendix; this usage is slightly different from the mainstream GLU usage, and I'm pointing it out specifically.</p>
+
+<h3>Combining Strengths</h3>
+
+<p>Since GLU-style FFNs are more effective, let's modify it. Note that FFNs cannot replace Attention because there is no interaction between tokens—that is, each row of $\boldsymbol{U}, \boldsymbol{V}$ is calculated independently. To compensate for this, a natural idea is to add the relationship between tokens to $\boldsymbol{U}$ and $\boldsymbol{V}$. To reflect the combination with Attention, a natural design is:</p>
+\begin{equation}\boldsymbol{O}=(\boldsymbol{U}\odot\boldsymbol{A}\boldsymbol{V})\boldsymbol{W}_o\label{eq:mix}\end{equation}
+<p>Where $\boldsymbol{A}\in\mathbb{R}^{n\times n}$ is the Attention matrix, responsible for merging information between tokens. The resulting $\boldsymbol{O}$ contains token interactions, and in principle, it can replace Attention. As for how $\boldsymbol{A}$ is calculated, we will discuss that in a moment.</p>
+
+<p>In formula $\eqref{eq:mix}$, if $\boldsymbol{A}$ equals the identity matrix $\boldsymbol{I}$, it becomes a GLU-style FFN; if $\boldsymbol{U}$ is an all-ones matrix, it becomes the standard attention mechanism. Therefore, $\eqref{eq:mix}$ is a simple and natural fusion of Attention and FFN. We expect it to replace both Attention and FFN simultaneously, perhaps with better performance.</p>
+
+<h3>Weak Attention</h3>
+
+<p>As mentioned, GLU is already very strong—otherwise, Facebook wouldn't have achieved SOTA in Seq2Seq using CNN+GLU. Since GLU is so strong, one hypothesis is that it weakens the dependence on Attention. That is, although $\boldsymbol{A}$ is indispensable in formula $\eqref{eq:mix}$, we might be able to simplify its form. Indeed, the original paper uses the following simplified Attention matrix:</p>
+\begin{equation}\boldsymbol{A}=\frac{1}{n}\text{relu}^2\left(\frac{\mathcal{Q}(\boldsymbol{Z})\mathcal{K}(\boldsymbol{Z})^{\top}}{\sqrt{s}}\right)=\frac{1}{ns}\text{relu}^2\left(\mathcal{Q}(\boldsymbol{Z})\mathcal{K}(\boldsymbol{Z})^{\top}\right),\quad \boldsymbol{Z}=\phi_z(\boldsymbol{X}\boldsymbol{W}_z)\label{eq:relu-att}\end{equation}
+<p>Here $\boldsymbol{W}_z\in\mathbb{R}^{d\times s}$, and $s$ is the attention's head_size ($s=128$ is used). $\mathcal{Q}, \mathcal{K}$ are simple affine transformations (like multiplying by $\gamma$ and adding $\beta$ in Layer Norm), and $\text{relu}^2$ is $\text{relu}$ followed by a square. </p>
+
+<p>Similar to standard Scaled-Dot Self Attention, the attention matrix here is derived from the inner product of $\boldsymbol{Q}$ and $\boldsymbol{K}$ divided by the square root of the dimension, and the complexity is still $\mathcal{O}(n^2)$. The difference is that the transformation source for $\boldsymbol{Q}, \boldsymbol{K}$ is simplified, and the activation function is changed to $\text{relu}^2$. This activation function might be unfamiliar; it was actually discovered via NAS by the authors in their previous paper <a href="https://papers.cool/arxiv/2109.08668">"Primer: Searching for Efficient Transformers for Language Modeling"</a>. The final $1/n$ is a simple normalization factor to eliminate the effect of length.</p>
+
+<p>Note that according to the reference code in the appendix, the simplified scaling factor is actually $\frac{1}{n^2}$ rather than $\frac{1}{ns}$ as shown above. I believe $\frac{1}{ns}$ is more reasonable; otherwise, as $n$ grows large, each attention term becomes too small. Comparing it to the softmax used in standard attention, its denominator is only of order $\mathcal{O}(n)$, so $n^2$ feels unscientific. I've done a simple comparison and found that at sequence length 512, the $\frac{1}{ns}$ version performs slightly better, so I will stick with my intuition here.</p>
+
+<h3>One is Enough</h3>
+
+<p>Next, ladies and gentlemen, don't blink—the real "heavyweight" is arriving! Perhaps GLU is truly so powerful that its dependence on Attention is incredibly weak, to the point where the authors discovered: <strong>Only one head is enough!</strong></p>
+
+<p>We know standard Transformers use multi-head attention mechanisms, which require generating matrices of size $bhn^2$ during computation ($b$ is batch_size, $h$ is the number of heads). Imagine when $n=1000, n=2000$, or even larger, $n^2$ is already painful, and multiplying it by $h$ makes time and space complexity even worse. Now, a single-headed GAU can achieve the same or even better results, increasing calculation speed and reducing memory usage—it's essentially a "free lunch."</p>
+
+<p>When GAU has only one head, the number of parameters for $\boldsymbol{W}_z$ is very small. The main parameter counts are in $\boldsymbol{W}_u, \boldsymbol{W}_v, \boldsymbol{W}_o$, so the total GAU parameters are approximately $3de$. In a standard Transformer, Attention has $4d^2$ parameters and FFN has $8d^2$ (assuming $e=4d$), for a total of $12d^2$. Thus, from a parameter standpoint, when $e=2d$, two GAU layers are roughly equivalent to one Attention+FFN layer. </p>
+
+<p>In the GAU experiments, the authors fixed $e=2d$. Thus, a standard Transformer with "$n$ Attention layers + $n$ FFN layers" corresponds to a "$2n$ GAU layer" model, which we call FLASH-Quad. "Quad" is short for "Quadratic," indicating the complexity remains quadratic. As for the meaning of FLASH, we'll talk about that next.</p>
+
+<h2>Efficient Linearization</h2>
+
+<p>In fact, FLASH-Quad is already an excellent replacement for the standard Transformer. However, the authors weren't satisfied with quadratic complexity and proposed FLASH (Fast Linear Attention with a Single Head) with linear complexity. To do this, they proposed a "Mixed Chunk Attention" scheme, which can be used both in GAU and standard Attention as a general linearization trick.</p>
+
+<h3>Existing Methods</h3>
+
+<p>Mainstream efficient Transformer efforts generally fall into two categories: "Sparsification" and "Linearization."</p>
+
+<p>The post <a href="translation_6853.html">"Born for Economy"</a> mentioned earlier is a "Sparsification" work, followed by things like <a href="https://papers.cool/arxiv/2001.04451">Reformer</a>. Works combined with pooling like <a href="https://papers.cool/arxiv/2006.04768">Linformer</a> also fall into this category. The característica of these works is introducing certain inductive biases to force most attention to zero, theoretically reducing computation. However, the downside is that they often require specialized programming optimization to achieve speedup, or they are difficult to use as Decoders (pooling-based works), and their effectiveness depends heavily on the introduced inductive bias.</p>
+
+<p>As for "Linearization," introduced in <a href="translation_7546.html">"Exploring Linear Attention"</a>, many researchers have looked into this, including <a href="https://papers.cool/arxiv/2202.08791">cosFormer</a> and <a href="https://papers.cool/arxiv/2202.06258">Flowformer</a>. Simply put, these works change standard Attention $\phi(\boldsymbol{Q}\boldsymbol{K}^{\top})\boldsymbol{V}$ to $(\phi_q(\boldsymbol{Q})\phi_k(\boldsymbol{K})^{\top})\boldsymbol{V}=\phi_q(\boldsymbol{Q})(\phi_k(\boldsymbol{K})^{\top}\boldsymbol{V})$, achieving linear complexity. The benefit is ease of implementation, but there are two major problems: one is that low-rankness significantly degrades performance, and the other is that when used as a Decoder (Causal), it sacrifices training parallelism because it must be calculated as an RNN. Alternatively, to keep parallelism, it requires $bhns^2$ space complexity, which only has an advantage over standard Attention's $bhn^2$ when $n \gg s^2$ (even if $s=64$, then $n \gg 4096$), which is unrealistic in most cases.</p>
+
+<h3>Mixed Chunking</h3>
+
+<p>FLASH takes a "local-global" mixed chunking approach, combining the advantages of "Sparsification" and "Linearization." First, for an input sequence of length $n$, we divide it into $n/c$ non-overlapping chunks of length $c$ (assuming $c$ divides $n$; the paper uses $c=256$). Let $\boldsymbol{U}_g, \boldsymbol{V}_g \in \mathbb{R}^{c \times e}, \boldsymbol{Z}_g \in \mathbb{R}^{c \times s}$ be the $g$-th chunk. As in formula $\eqref{eq:relu-att}$, we pass $\boldsymbol{Z}_g$ through four simple affine transformations to obtain $\boldsymbol{Q}_g^{\text{quad}}, \boldsymbol{K}_g^{\text{quad}}, \boldsymbol{Q}_g^{\text{lin}}, \boldsymbol{K}_g^{\text{lin}}$.</p>
+
+<p>We use $\boldsymbol{Q}_g^{\text{quad}}, \boldsymbol{K}_g^{\text{quad}}$ to calculate intra-chunk self-attention:</p>
+\begin{equation}\hat{\boldsymbol{V}}_g^{\text{quad}}=\frac{1}{cs}\text{relu}^2\left(\boldsymbol{Q}_g^{\text{quad}}{\boldsymbol{K}_g^{\text{quad}}}^{\top}\right)\boldsymbol{V}_g\end{equation}
+<p>This represents internal interaction within each chunk, which is essentially a form of "Sparsification." Its complexity is approximately $\mathcal{O}(n/c \times c^2) = \mathcal{O}(nc)$, which is linear with respect to $n$. Implementation is equivalent to multi-head attention with $n/c$ heads and sequence length $c$, enabling full parallelism. To make it a Decoder, simply mask the upper triangle of the attention matrix.</p>
+
+<p>The remaining $\boldsymbol{Q}_g^{\text{lin}}, \boldsymbol{K}_g^{\text{lin}}$ are used for global Attention, which we compute using Linear Attention:</p>
+\begin{equation}\hat{\boldsymbol{V}}_g^{\text{lin}}=\frac{1}{n}\boldsymbol{Q}_g^{\text{lin}}\sum_{h=1}^{n/c} {\boldsymbol{K}_h^{\text{lin}}}^{\top}\boldsymbol{V}_h\end{equation}
+<p>Note that this operation is perfectly equivalent to using full matrices $\boldsymbol{Q}^{\text{lin}}, \boldsymbol{K}^{\text{lin}} \in \mathbb{R}^{n \times s}$ with $\boldsymbol{V}$ for linear attention; writing it this way just highlights the connection to chunking. For a Decoder, to prevent future information leakage, change it to a cumsum form:</p>
+\begin{equation}\hat{\boldsymbol{V}}_g^{\text{lin}}=\frac{1}{(g-1)n/c}\boldsymbol{Q}_g^{\text{lin}}\sum_{h=1}^{g-1} {\boldsymbol{K}_h^{\text{lin}}}^{\top}\boldsymbol{V}_h\end{equation}
+<p>In this case, to maintain parallelism, we only need $b(n/c)se$ space complexity. Without chunking, linear attention requires $bns^2$ (or $bhns^2$ with multi-head). Under current params where $e/c \ll s$, this is much more memory efficient.</p>
+
+<p>Finally, combine the two attention results and integrate them into GAU to obtain the linear version of GAU:</p>
+\begin{equation}\boldsymbol{O}_g=\left[\boldsymbol{U}_g\odot\left(\hat{\boldsymbol{V}}_g^{\text{quad}} + \hat{\boldsymbol{V}}_g^{\text{lin}}\right)\right]\boldsymbol{W}_o\end{equation}
+<p>The Transformer model built based on this linear version of GAU is the FLASH model.</p>
+
+<h3>Some Discussions</h3>
+
+<p>I believe the reason for this "local-global" mixed chunking, besides reducing computational cost, is that it produces an attention distribution that better fits reality. According to our empirical understanding of NLP, natural language correlations are primarily local. While global, extremely long-distance correlations exist, they are not dominant. Therefore, this mixed attention design helps the model highlight local correlations without discarding long-range ones. The original paper also performed ablation experiments showing that local attention is generally more important than global attention, but the hybrid version performs best.</p>
+
+<p>Additionally, some readers might worry that non-overlapping chunking might disadvantage boundary words. The paper addresses this, stating that introducing more complex overlapping local attention does improve results, but it also increases calculation cost. For the same increase in cost, adding more layers of current non-overlapping GAU provides more gain than shifting to overlapping attention. Thus, the current non-overlapping design strikes a good balance between speed and effect.</p>
+
+<p>Finally, this "Mixed Chunking" linearization is essentially universal. It can be used not only in GAU but also in standard Transformers (keeping standard Attention+FFN but linearizing Attention with mixed chunking). The paper calls this "MC-TFM" and performed comparisons showing that GAU is more advantageous in linearization.</p>
+
+<h2>Experimental Analysis</h2>
+
+<p>Regarding GAU and FLASH, two experimental results are most noteworthy.</p>
+
+<p>The first is the comparison between the new GAU and standard Multi-Head Attention (MHSA), which is effectively comparing FLASH-Quad with standard Transformer. The results show that regardless of model size, GAU outperforms standard multi-head attention models in both speed and effect (being closer to the top-right of the plot).</p>
+
+<p>The second is the experiment table for the FLASH model, which directly shows:</p>
+
+<blockquote>
+<p>1. Although both FLASH-Quad and Transformer have quadratic complexity, FLASH-Quad has better results and faster speeds;</p>
+<p>2. When the sequence is long enough, the linear-complexity FLASH is faster than FLASH-Quad with similar performance.</p>
+</blockquote>
+
+<p>The speed increase of FLASH-Quad (still quadratic) is something many so-called linear complexity works fail to achieve, demonstrating the power of GAU. The paper also points out that <a href="translation_8265.html">RoPE (Rotary Positional Embedding)</a>, which I proposed previously, significantly improves the performance of both Transformer and FLASH, so Transformer+, Transformer++, FLASH-Quad, and FLASH in the experiments all use RoPE. I'm quite proud of this.</p>
+
+<p>Furthermore, though the table doesn't explicitly compare memory usage, my tests found that at the base-scale with sequence length 1024, the maximum usable batch_size for FLASH-Quad is nearly double that of a standard Transformer. I also attempted building a small version of FLASH-Quad for Chinese pre-training and found it performed slightly better than RoFormer (RoPE+Transformer), confirming the paper's reported results.</p>
+
+<h2>Further Thoughts</h2>
+
+<p>The introduction to GAU and FLASH is basically complete. As of this post, the authors have not yet released the full source code on GitHub, but the appendix contains almost usable pseudo-code (TensorFlow version). Implementation should not be difficult. Those with interest and compute can experiment with it.</p>
+
+<p>Now for the "nitpicking"—areas where I feel the paper is not perfect. </p>
+
+<p>Firstly, I feel that FLASH-Quad and FLASH are not decoupled well enough. As stated at the start, both are blockbuster results. To me, FLASH-Quad is even more valuable because the quadratic complexity of self-attention provides enough degrees of freedom for various tricks like <a href="translation_6933.html">UniLM</a>. FLASH-Quad is a very independent and worthy model, but in the paper, it feels like a transition product for FLASH. Fortunately, the authors isolated the GAU concept, which alleviates this.</p>
+
+<p>Secondly, GAU can replace both Attention and FFN. From its design, it seems intended to replace Self-Attention. The authors don't seem concerned with its ability to replace Cross-Attention, and the paper lacks experiments on this. Is it possible for GAU to replace Cross-Attention? Theoretically, formula $\eqref{eq:mix}$ suggests it is, but it's unclear if it can remain single-headed, which is GAU's greatest advantage. Also, the paper only conducted LM and MLM language modeling experiments; it didn't do "pre-training + fine-tuning" experiments, so the transfer performance of GAU is uncertain.</p>
+
+<p>Lastly, something I don't fully understand is why GAU/FLASH-Quad/FLASH use additive absolute, additive relative, and RoPE positioning all at once. Theoretically, one should suffice. In my GAU experiments, using only RoPE worked well. Regarding the appendix code, the authors didn't handle padding very carefully, and the recursive normalization factor for the Decoder (where sum to $t$ should be divided by $t$, not $n$) needs improvement. These are minor details, and the authors' actual code might be correct, with the appendix being simplified for readability.</p>
+
+<h2>Conclusion</h2>
+
+<p>This article introduced Google's new efficient Transformer work, which merges Attention and FFN into a new GAU layer to create FLASH-Quad and then further proposes a "Mixed Chunking" linearization to create FLASH. Experimental results show that compared to standard Transformers, both are faster, more memory-efficient, and better. Perhaps in the near future, what "You Need" will no longer be Attention, but GAU.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8934.html" style="color: #005fcc;">https://kexue.fm/archives/8934</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

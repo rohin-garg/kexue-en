@@ -1,0 +1,367 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/6024">Mutual Information in Deep Learning: Unsupervised Feature Extraction</a></h1>
+
+<p>By 苏剑林 | Oct 02, 2018</p>
+
+<p><img src="https://kexue.fm/usr/uploads/2018/10/3748950882.png" alt="KNN samples from random sampling" /><br />
+<em>KNN samples from random sampling</em></p>
+
+<p>For NLP, mutual information is a very important indicator as it measures the essential correlation between two things. This blog has discussed mutual information several times, and I am quite interested in various articles that utilize it. A few days ago, I saw the recently proposed <a href="https://papers.cool/arxiv/1808.06670">Deep INFOMAX model</a> on Machine Heart (Jiqi Zhixin), which uses the maximization of mutual information to perform unsupervised learning on images. Naturally, I was intrigued and studied it, leading to this article.</p>
+
+<p>The overall structure of this article originates from the original Deep INFOMAX paper, but I have not copied the original model exactly. Instead, I have modified the model according to my own ideas (mainly the prior distribution part) and will provide notes at the corresponding positions.</p>
+
+<h2>What Are We Doing?</h2>
+
+<h3>Autoencoders</h3>
+
+<p>Feature extraction is a crucial and fundamental task in unsupervised learning. A common form is training an encoder to map the original dataset into fixed-length vectors. Naturally, our basic requirement for this encoder is: <strong>to preserve (as much as possible) the important information of the original data</strong>.</p>
+
+<p>How do we know if the encoding vector has preserved the important information? A natural thought is that this encoding vector should also be able to reconstruct the original image. Therefore, we also train a decoder, attempting to reconstruct the original image, with the final loss being the MSE between the original and reconstructed images. This leads to the design of standard autoencoders. Later, we also hoped that the distribution of the encoding vectors would be as close to a Gaussian distribution as possible, leading to Variational Autoencoders (VAEs).</p>
+
+<h3>Reflections on Reconstruction</h3>
+
+<p>However, it is worth considering: is the requirement of "reconstruction" reasonable?</p>
+
+<p>First, we can observe that the results of reconstructing original images through low-dimensional encoding are usually very blurry. This can be explained by the fact that the MSE loss function's requirement for "pixel-by-pixel" reconstruction is too harsh. Alternatively, it can be understood as the fact that we don't actually have a very suitable loss to choose from for image reconstruction. The ideal method would be using a GAN to train a discriminator, but this further increases the task difficulty.</p>
+
+<p>Secondly, a very interesting fact is: most of us can distinguish between many real and counterfeit bills, but if we were asked to draw a hundred-dollar bill, I believe almost none of us could draw it accurately. This indicates that for the task of identifying real vs. counterfeit currency, we can assume that given a pile of real and fake bills to learn from, we can extract very rich features, but these features are not enough to reconstruct the original image; they only allow us to distinguish the differences between the bills. In other words, for a dataset and a task, reasonable and sufficient features do not necessarily have to be capable of completing image reconstruction.</p>
+
+<h2>Maximizing Mutual Information</h2>
+
+<h3>Mutual Information</h3>
+
+<p>The above discussion suggests that reconstruction is not a necessary condition for good features. The basic principle of good features should be "the ability to distinguish the sample from the entire dataset," which means extracting the (most) unique information of the sample. How do we measure whether the extracted information is unique to the sample? We use "mutual information" to measure this.</p>
+
+<p>Let's introduce some notation. Let $X$ represent the set of original images, $x \in X$ represent a specific original image, $Z$ represent the set of encoding vectors, $z \in Z$ represent a specific encoding vector, and $p(z|x)$ represent the distribution of the encoding vector generated by $x$. We assume it is a Gaussian distribution, or simply understand it as the encoder we want to find. Then, mutual information can be used to represent the correlation between $X$ and $Z$:
+\begin{equation}I(X,Z) = \iint p(z|x)\tilde{p}(x)\log \frac{p(z|x)}{p(z)}dxdz\label{eq:mi}\end{equation}
+Here, $\tilde{p}(x)$ is the distribution of original data, and $p(z)$ is the distribution of the entire $Z$ given $p(z|x)$, i.e.,
+\begin{equation}p(z) = \int p(z|x)\tilde{p}(x)dx\end{equation}
+A good feature encoder should maximize this mutual information, i.e.,
+\begin{equation}p(z|x) = \mathop{\text{argmax}}_{p(z|x)} I(X,Z) \end{equation}
+Higher mutual information means that (for most cases) $\log \frac{p(z|x)}{p(z)}$ should be as large as possible. This implies $p(z|x)$ should be much larger than $p(z)$, meaning for each $x$, the encoder can find a $z$ that exclusively belongs to $x$, such that the probability $p(z|x)$ is much higher than the random probability $p(z)$. Consequently, we have the ability to distinguish the original sample solely through $z$.</p>
+
+<blockquote>Note: The name of $\eqref{eq:mi}$ is mutual information, while the logarithmic term $\log \frac{p(z|x)}{p(z)}$ is called "pointwise mutual information" (PMI), sometimes also simply called mutual information. The difference between the two is: $\eqref{eq:mi}$ calculates the global relationship, such as answering "is there a relationship between two consecutive words"; $\log \frac{p(z|x)}{p(z)}$ calculates a local relationship, such as answering "do 'high' and 'way' often appear together."</blockquote>
+
+<h3>Prior Distribution</h3>
+
+<p>As mentioned earlier, relative to autoencoders, Variational Autoencoders also hope the latent variables follow a standard normal distribution as a prior distribution. This helps make the encoding space more regular and even facilitates decoupling features for subsequent learning. Therefore, we also want to add this constraint here.</p>
+
+<p>The Deep INFOMAX paper uses a method similar to AAE (Adversarial Autoencoder) to add this constraint through adversarial training. However, it is well known that adversarial training is a minimax process that requires alternating training, which is not stable or concise enough. Here, I provide another more end-to-end approach: let $q(z)$ be the standard normal distribution, and we minimize the KL divergence between $p(z)$ and the prior distribution $q(z)$:
+\begin{equation}\label{eq:prior}KL(p(z)\Vert q(z))=\int p(z)\log \frac{p(z)}{q(z)}dz\end{equation}
+By weighted mixing of $\eqref{eq:mi}$ and $\eqref{eq:prior}$, we get the total objective for minimization:
+\begin{equation}\begin{aligned}p(z|x) =& \min_{p(z|x)} \left\{- I(X,Z) + \lambda KL(p(z)\Vert q(z))\right\}\\
+=&\min_{p(z|x)}\left\{-\iint p(z|x)\tilde{p}(x)\log \frac{p(z|x)}{p(z)}dxdz + \lambda\int p(z)\log \frac{p(z)}{q(z)}dz\right\}\end{aligned}\label{eq:total-loss-1}\end{equation}
+It looks very clear and beautiful, but we still don't know the expression for $p(z)$, so we can't calculate it yet; thus, we are not finished.</p>
+
+<h2>Dividing and Conquering</h2>
+
+<h3>Simplifying the Prior Term</h3>
+
+<p>Interestingly, the loss in Equation $\eqref{eq:total-loss-1}$ can be slightly transformed to get:
+\begin{equation}p(z|x) =\min_{p(z|x)}\left\{\iint p(z|x)\tilde{p}(x)\left[-(1+\lambda)\log \frac{p(z|x)}{p(z)} + \lambda \log \frac{p(z|x)}{q(z)}\right]dxdz\right\}\end{equation}
+Notice that the expression above is exactly a weighted sum of mutual information and $\mathbb{E}_{x\sim\tilde{p}(x)}[KL(p(z|x)\Vert q(z))]$, and the $KL(p(z|x)\Vert q(z))$ term can be calculated (it is exactly the same KL divergence term from VAE). So we have already successfully solved half of the total loss, which can be written as:
+\begin{equation}p(z|x) =\min_{p(z|x)}\left\{-\beta\cdot I(X,Z)+\gamma\cdot \mathbb{E}_{x\sim\tilde{p}(x)}[KL(p(z|x)\Vert q(z))]\right\}\label{eq:total-loss-2}\end{equation}
+Now, we focus on the mutual information term.</p>
+
+<h3>The Essence of Mutual Information</h3>
+
+<p>Now only the mutual information term remains. How can we maximize mutual information? Let's transform the definition of mutual information $\eqref{eq:mi}$ slightly:
+\begin{equation}\begin{aligned}I(X,Z) =& \iint p(z|x)\tilde{p}(x)\log \frac{p(z|x)\tilde{p}(x)}{p(z)\tilde{p}(x)}dxdz\\
+=& KL(p(z|x)\tilde{p}(x)\Vert p(z)\tilde{p}(x))
+\end{aligned}\end{equation}
+This form reveals the essential meaning of mutual information: $p(z|x)\tilde{p}(x)$ describes the joint distribution of the two variables $x,z$, while $p(z)\tilde{p}(x)$ is the distribution when an $x$ and a $z$ are sampled randomly (assuming they are independent). Mutual information is the KL divergence between these two distributions. Thus, maximizing mutual information means increasing the distance between $p(z|x)\tilde{p}(x)$ and $p(z)\tilde{p}(x)$.</p>
+
+<p>Note that KL divergence is theoretically unbounded. Maximizing an unbounded quantity is dangerous, as it might lead to infinite results. To optimize more effectively, we grasp the characteristic that "maximizing mutual information is increasing the distance between $p(z|x)\tilde{p}(x)$ and $p(z)\tilde{p}(x)$" and replace the KL divergence with a bounded metric: JS divergence (alternatively, Hellinger distance could be used; please refer to <a href="translation_6016.html">"Introduction to f-GAN: The Production Workshop of GAN Models"</a>). It is defined as:
+$$JS(P,Q) = \frac{1}{2}KL\left(P\left\Vert\frac{P+Q}{2}\right.\right)+\frac{1}{2}KL\left(Q\left\Vert\frac{P+Q}{2}\right.\right)$$
+JS divergence also measures the distance between two distributions, but it has an upper bound of $\frac{1}{2}\log 2$. When we maximize it, it achieves an effect similar to maximizing mutual information without the risk of infinity. Therefore, we use the following objective to replace $\eqref{eq:total-loss-2}$:
+\begin{equation}p(z|x) =\min_{p(z|x)}\left\{-\beta\cdot JS\big(p(z|x)\tilde{p}(x), p(z)\tilde{p}(x)\big)+\gamma\cdot \mathbb{E}_{x\sim\tilde{p}(x)}[KL(p(z|x)\Vert q(z))]\right\}\label{eq:total-loss-3}\end{equation}
+Of course, this hasn't changed the essence or difficulty of the problem; JS divergence still hasn't been calculated. Now we come to the final step of the breakthrough.</p>
+
+<h3>Tackling Mutual Information</h3>
+
+<p>In the article <a href="translation_6016.html">"Introduction to f-GAN: The Production Workshop of GAN Models"</a>, we introduced the general local variational inference for $f$-divergence (Equation (13) of that article):
+\begin{equation}\mathcal{D}_f(P\Vert Q) = \max_{T}\Big(\mathbb{E}_{x\sim p(x)}[T(x)]-\mathbb{E}_{x\sim q(x)}[g(T(x))]\Big)\label{eq:f-div-e}\end{equation}
+For JS divergence, the result is:
+\begin{equation}JS(P,Q) = \max_{T}\Big(\mathbb{E}_{x\sim p(x)}[\log \sigma(T(x))] + \mathbb{E}_{x\sim q(x)}[\log(1-\sigma(T(x))]\Big)\end{equation}
+Substituting $p(z|x)\tilde{p}(x)$ and $p(z)\tilde{p}(x)$ into this gives:
+\begin{equation}\begin{aligned}&JS\big(p(z|x)\tilde{p}(x), p(z)\tilde{p}(x)\big)\\=& \max_{T}\Big(\mathbb{E}_{(x,z)\sim p(z|x)\tilde{p}(x)}[\log \sigma(T(x,z))] + \mathbb{E}_{(x,z)\sim p(z)\tilde{p}(x)}[\log(1-\sigma(T(x,z))]\Big)\end{aligned}\label{eq:f-div-e-js}\end{equation}
+You didn't see it wrong; ignoring the constant terms, this is completely equivalent to Equation (5) in the Deep INFOMAX paper. I find it strange why the authors didn't use this clean and intuitive form and instead used a confusing expression. In fact, the meaning of $\eqref{eq:f-div-e-js}$ is very simple: it is "negative sampling estimation." By introducing a discrimination network $\sigma(T(x,z))$, $x$ and its corresponding $z$ are treated as a positive sample pair, while $x$ and a randomly selected $z$ are treated as a negative sample pair. Maximizing the likelihood function is then equivalent to minimizing the cross-entropy.</p>
+
+<p>In this way, through negative sampling, we provide a scheme for estimating JS divergence, and thus a scheme for estimating the JS version of mutual information, successfully tackling mutual information. Now, corresponding to $\eqref{eq:total-loss-3}$, the specific loss is:
+\begin{equation}\begin{aligned}&p(z|x),T(x,z) \\
+=&\min_{p(z|x),T(x,z)}\Big\{-\beta\cdot\Big(\mathbb{E}_{(x,z)\sim p(z|x)\tilde{p}(x)}[\log \sigma(T(x,z))] + \mathbb{E}_{(x,z)\sim p(z)\tilde{p}(x)}[\log(1-\sigma(T(x,z))]\Big)\\
+&\qquad\qquad\qquad+\gamma\cdot \mathbb{E}_{x\sim\tilde{p}(x)}[KL(p(z|x)\Vert q(z))]\Big\}\end{aligned}\label{eq:total-loss-4}\end{equation}
+The theory is now complete, and all that remains is putting it into practice.</p>
+
+<h2>From Global to Local</h2>
+
+<h3>Shuffling Within the Batch</h3>
+
+<p>From an experimental perspective, how should we implement $\eqref{eq:total-loss-4}$? The KL divergence for the prior distribution is easy; just copy the one from VAE. What about the mutual information term?</p>
+
+<p>First, we randomly select an image $x$, and through the encoder, we get the mean and variance of $z$. Then, using reparameterization, we obtain $z_x$. Such an $(x, z_x)$ pair constitutes a positive sample. What about negative samples? To reduce computation, we directly shuffle the images within the batch and use the shuffled sequence to select negative samples. That is, if $x$ was the 4th image in the original batch, and after shuffling, the 4th image is $\hat{x}$, then $(x, z_x)$ is a positive sample, and $(\hat{x}, z_x)$ is a negative sample.</p>
+
+<h3>Local Mutual Information</h3>
+
+<p>The above method actually considers the correlation between whole images. However, we know that image correlation is more reflected in local regions (which is why we use CNNs for images). In other words, image recognition, classification, etc., should be a process from local to global. Therefore, it is necessary to consider "local mutual information."</p>
+
+<p>The encoding process through CNN is generally:
+$$\text{Original Image } x \xrightarrow{\text{multiple conv layers}} h \times w \times c \text{ features} \xrightarrow{\text{conv and global pooling}} \text{fixed length vector } z$$
+We have already considered the correlation between $x$ and $z$. What about the correlation between intermediate feature maps and $z$? We denote the intermediate feature map as $\{C_{ij}(x)|i=1,2,\dots,h;j=1,2,\dots,w\}$, treating them as a set of $h \times w$ vectors. We also calculate the mutual information between each of these $h \times w$ vectors and $z_x$, called "local mutual information."</p>
+
+<p>The estimation method is the same as the global one. Each $C_{ij}(x)$ is concatenated with $z_x$ to get $[C_{ij}(x), z_x]$, which is equivalent to getting a larger feature map. Then, multiple 1x1 convolutional layers are used on this feature map as the local mutual information estimation network $T_{local}$. The negative sample selection also follows the random shuffling scheme within the batch.</p>
+
+<p>Now, the total loss including local mutual information is:
+\begin{equation}\begin{aligned}&p(z|x),T_1(x,z),T_2(C_{ij}, z)=\min_{p(z|x),T_1,T_2}\Big\{\\
+&\quad-\alpha\cdot\Big(\mathbb{E}_{(x,z)\sim p(z|x)\tilde{p}(x)}[\log \sigma(T_1(x,z))] + \mathbb{E}_{(x,z)\sim p(z)\tilde{p}(x)}[\log(1-\sigma(T_1(x,z))]\Big)\\
+&\quad-\frac{\beta}{hw}\sum_{i,j}\Big(\mathbb{E}_{(x,z)\sim p(z|x)\tilde{p}(x)}[\log \sigma(T_2(C_{ij},z))] + \mathbb{E}_{(x,z)\sim p(z)\tilde{p}(x)}[\log(1-\sigma(T_2(C_{ij},z))]\Big)\\
+&\quad+\gamma\cdot \mathbb{E}_{x\sim\tilde{p}(x)}[KL(p(z|x)\Vert q(z))]\Big\}\end{aligned}\label{eq:total-loss-5}\end{equation}</p>
+
+<h3>Other Information</h3>
+
+<p>In fact, there is much other information that can be considered.</p>
+
+<p>For example, since we have considered the mutual information between $C_{ij}$ and $z$, we can also consider the mutual information between $C_{ij}$ units themselves. That is, $C_{ij}$ from the same image should be correlated, and their mutual information should be maximized (positive samples), while $C_{ij}$ from different images should be uncorrelated, and their mutual information minimized. However, in my experiments, the improvement from this term was not particularly significant.</p>
+
+<p>There is also multi-scale information. One could manually perform multi-scale data augmentation on the input images, or introduce multi-scale structures or Attention structures into the encoder. Such operations can be considered for inclusion in unsupervised learning to improve encoding quality.</p>
+
+<h3>Analogous to word2vec</h3>
+
+<p>In fact, readers familiar with the principles of the word2vec model in NLP will recognize: isn't this word2vec for images?</p>
+
+<p>Exactly. In principle and methodology, Deep INFOMAX is largely the same as word2vec. In word2vec, negative samples are randomly collected, and a discriminator is used to distinguish between them. This process is commonly called "Noise Contrastive Estimation." As mentioned before, the actual optimization objective of the noise contrastive estimation process (negative sampling) in word2vec is mutual information. (For details, please refer to <a href="translation_5617.html">"Noise Contrastive Estimation: The Beauty of a Winding Path"</a>)</p>
+
+<p>In word2vec, a window size is fixed, and word co-occurrences are counted within the window (positive samples). What about Deep INFOMAX? Since there is only one image and no other "words," it simply segments the image into small patches, treats one image as a window, and each patch of the image becomes a "word." To be more precise, Deep INFOMAX is more like the doc2vec model which is similar to word2vec.</p>
+
+<p>From another perspective, it can also be understood this way: the introduction of local mutual information effectively treats each local patch as a sample. This is equivalent to turning the original 1 sample into $1+hw$ samples, greatly increasing the sample size, which enhances performance. At the same time, this ensures that every "corner" of the image is utilized. Because low-dimensional compressed encoding—for example, $32 \times 32 \times 3$ encoded into 128 dimensions—might allow the top-left $8 \times 8 \times 3 > 128$ area alone to uniquely identify the image. But this doesn't represent the entire image, so we must find ways to ensure the whole image is utilized.</p>
+
+<h2>Open Source and Result Demonstrations</h2>
+
+<h3>Reference Code</h3>
+
+<p>The implementation code for the above model is quite simple (much easier than my reproduction of the glow model!). It's not difficult regardless of the framework used. Below is a version implemented in Keras (Python 2.7 + Tensorflow 1.8 + Keras 2.2.4):</p>
+
+<p>Github: <a href="https://github.com/bojone/infomax">https://github.com/bojone/infomax</a></p>
+
+<h3>Let's See the Pictures</h3>
+
+<p>It is generally difficult to quantitatively judge the quality of unsupervised algorithms. Usually, it's done by seeing the performance on various downstream tasks. It's just like when word vectors were first popular; how to quantitatively measure their quality was also a headache. The Deep INFOMAX paper did many related experiments, which I will not repeat here. Instead, let's look at its KNN effect (finding the $k$ most similar images for a given image).</p>
+
+<p>Overall, the results are satisfactory. I think after fine-tuning, it could easily be used for basic image search. Many experimental results in the original paper were also good, further verifying the power of this idea~</p>
+
+<h4>CIFAR-10</h4>
+
+<p>In each row, the first image on the left is the original image, and the 9 images on the right are the nearest neighbors using cosine similarity. Results using Euclidean distance are similar.</p>
+
+<p><img src="https://kexue.fm/usr/uploads/2018/10/3748950882.png" alt="Randomly sampled KNN instances 1" /><br />
+<em>Randomly sampled KNN instances 1</em></p>
+
+<p><img src="https://kexue.fm/usr/uploads/2018/10/3932882252.png" alt="Randomly sampled KNN instances 2" /><br />
+<em>Randomly sampled KNN instances 2</em></p>
+
+<h4>Tiny ImageNet</h4>
+
+<p>In each row, the first image on the left is the original image, and the 9 images on the right are the nearest neighbors using cosine similarity. Results using Euclidean distance are similar.</p>
+
+<p><img src="https://kexue.fm/usr/uploads/2018/10/1628189626.png" alt="Randomly sampled KNN instances 1" /><br />
+<em>Randomly sampled KNN instances 1</em></p>
+
+<p><img src="https://kexue.fm/usr/uploads/2018/10/2402120468.png" alt="Randomly sampled KNN instances 2" /><br />
+<em>Randomly sampled KNN instances 2</em></p>
+
+<h4>Global vs. Local</h4>
+
+<p>The introduction of local mutual information is essential. Below is a comparison of the KNN differences when only global mutual information and only local mutual information are used.</p>
+
+<p><img src="https://kexue.fm/usr/uploads/2018/10/1187740525.png" alt="Random KNN samples (only global mutual information)" /><br />
+<em>Random KNN samples (only global mutual information)</em></p>
+
+<p><img src="https://kexue.fm/usr/uploads/2018/10/4096181750.png" alt="Random KNN samples (only local mutual information)" /><br />
+<em>Random KNN samples (only local mutual information)</em></p>
+
+<h2>Arriving at the Terminal Again</h2>
+
+<p>As a success in unsupervised learning, this work generalizes and theorizes the concept of mutual information commonly seen in NLP and applies it to images. Of course, it now appears that it could also be applied back to NLP or even other fields, as it has been abstracted and is highly applicable.</p>
+
+<p>I like the style of the whole Deep INFOMAX paper: starting from a generalized concept (maximizing mutual information) to an estimation framework and then to a practical model. The thinking is clear and the argumentation is complete—it is the style of an ideal paper in my mind (except for using adversarial networks for the prior distribution, which I think is unnecessary). I look forward to seeing more such articles.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6024.html" style="color: #005fcc;">https://kexue.fm/archives/6024</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

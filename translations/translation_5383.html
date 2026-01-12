@@ -1,0 +1,331 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\(']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  },
+  options: {
+    ignoreHtmlClass: 'tex2jax_ignore',
+    processHtmlClass: 'tex2jax_process'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+<h1><a href="https://kexue.fm/archives/5383">Variational Autoencoders (Part 2): From a Bayesian Perspective</a></h1>
+
+    <p>By 苏剑林 | April 03, 2018</p>
+
+    <p>I feel like my recent articles have been becoming quite long, and they seem to come in clusters! After writing three consecutive posts introducing Capsules, it's now VAE's turn. This is the third exploration of VAE, and who knows, there might even be a fourth. Regardless, quantity isn't what matters; what's important is thinking through the problems clearly. Especially for a novel modeling approach like VAE, it's worth scrutinizing the details. The question we want to address this time is: <strong>Why does VAE actually work?</strong></p>
+
+    <p>I imagine readers of VAE go through several stages. Phase one: having just read an introduction and feeling lost in the fog—it seems like an autoencoder but also doesn't; after several readings and looking at the source code, you get a general idea. Phase two: building on the first, reading the principles deeply—latent variable models, KL divergence, variational inference, etc. As you dig deeper, you find that despite all the tossing and turning, you finally understand it.</p>
+
+    <p>At this point, readers might enter the third stage. Here, various questions arise, particularly regarding feasibility: "Why is it that after all this maneuvering, the resulting model actually works? I have many ideas too—why don't mine work?"</p>
+
+    <h3>Review of Previous Content</h3>
+    <hr>
+    <p>Let's tirelessly review some principles of VAE. VAE aims to describe the distribution of data $X$ via latent variable decomposition:</p>
+
+    $$p(x)=\int p(x|z)p(z)dz,\quad p(x,z) = p(x|z)p(z)\tag{1}$$
+
+    <p>Then, we fit $p(x|z)$ with the model $q(x|z)$ and $p(z)$ with the model $q(z)$. To give the model generative capabilities, $q(z)$ is defined as a standard normal distribution. Theoretically, we can solve the model using maximum likelihood of the marginal probability:</p>
+
+    $$\begin{aligned}q(x|z)=&\mathop{\text{argmax}}_{q(x|z)} \int \tilde{p}(x)\ln\left(\int q(x|z)q(z)dz\right)dx\\ 
+    =&\mathop{\text{argmax}}_{q(x|z)} \mathbb{E}_{x\sim\tilde{p}(x)}\left[\ln\left(\int q(x|z)q(z)dz\right)\right] 
+    \end{aligned}\tag{2}$$
+
+    <p>However, because the integral inside the parentheses cannot be solved explicitly, we introduce the KL divergence to observe the gap between joint distributions. The final objective function becomes:</p>
+
+    $$\begin{aligned}\mathcal{L} =&\mathbb{E}_{x\sim \tilde{p}(x)} \left[-\int p(z|x)\ln q(x|z)dz+\int p(z|x)\ln \frac{p(z|x)}{q(z)}dz\right]\\ 
+    = & \mathbb{E}_{x\sim \tilde{p}(x)} \left[\mathbb{E}_{z\sim p(z|x)}\big[-\ln q(x|z)\big]+\mathbb{E}_{z\sim p(z|x)}\Big[\ln \frac{p(z|x)}{q(z)}\Big]\right]\end{aligned}\tag{3}$$
+
+    <p>By minimizing $\mathcal{L}$, we find $p(z|x)$ and $q(x|z)$ respectively. The previous post, <a href="translation_5343.html">"Variational Autoencoders (Part 2): Starting from the Bayesian Perspective,"</a> also showed that $\mathcal{L}$ has a lower bound $-\mathbb{E}_{x\sim \tilde{p}(x)}\big[\ln \tilde{p}(x)\big]$, so comparing the proximity of $\mathcal{L}$ to $-\mathbb{E}_{x\sim \tilde{p}(x)}\big[\ln \tilde{p}(x)\big]$ allows us to compare the relative quality of the generator.</p>
+
+    <h3>Confusions of Sampling</h3>
+    <hr>
+    <p>In this section, we attempt to ask detailed questions about VAE principles to answer why it's done this way and why it works.</p>
+
+    <h4>One Point is Enough</h4>
+    <p>Regarding equation $(3)$, we later handle it like this:</p>
+    <ol>
+        <li>Notice that $\mathbb{E}_{z\sim p(z|x)}\Big[\ln \frac{p(z|x)}{q(z)}\Big]$ is exactly the KL divergence between $p(z|x)$ and $q(z)$, denoted as $KL\Big(p(z|x)\Big\Vert q(z)\Big)$. Since both are assumed to be normal distributions, this term can be calculated analytically;</li>
+        <li>For the term $\mathbb{E}_{z\sim p(z|x)}\big[-\ln q(x|z)\big]$, we believe that sampling just one point is representative enough, so this term becomes $-\ln q(x|z),\, z\sim p(z|x)$.</li>
+    </ol>
+
+    <p>With this treatment, the entire loss can be explicitly written as:</p>
+    $$\mathcal{L}=\mathbb{E}_{x\sim \tilde{p}(x)} \left[-\ln q(x|z) + KL\Big(p(z|x)\Big\Vert q(z)\Big)\right],\quad z\sim p(z|x)\tag{4}$$
+
+    <p>Wait, some readers might find this questionable: calculating $KL\Big(p(z|x)\Big\Vert q(z)\Big)$ analytically is equivalent to sampling infinitely many points to estimate it, yet for $\mathbb{E}_{z\sim p(z|x)}\big[-\ln q(x|z)\big]$, we only sample one point. Given that both are parts of the loss, is this "unfair treatment" really okay?</p>
+
+    <p>In fact, $\mathbb{E}_{z\sim p(z|x)}\Big[\ln \frac{p(z|x)}{q(z)}\Big]$ can also be calculated by sampling just one point. That is, by sampling one point for the entire expression, we can turn equation $(3)$ into:</p>
+
+    $$\begin{aligned}\mathcal{L} =&\mathbb{E}_{x\sim \tilde{p}(x)} \left[-\ln q(x|z)+\ln \frac{p(z|x)}{q(z)}\right]\\ 
+    =&\mathbb{E}_{x\sim \tilde{p}(x)} \Big[-\ln q(x|z)+\ln p(z|x) - \ln q(z)\Big]\,,\quad z\sim p(z|x) 
+    \end{aligned}\tag{5}$$
+
+    <p>Although this loss is different from the standard VAE, it actually converges to similar results.</p>
+
+    <h4>Why is One Point Enough?</h4>
+    <p>So why is sampling one point enough? Under what circumstances is one point sufficient?</p>
+    <p>First, let me give an example where "sampling one point is <strong>not</strong> enough." Let's look back at equation $(2)$, which can be rewritten as:</p>
+
+    $$q(x|z)=\mathop{\text{argmax}}_{q(x|z)} \mathbb{E}_{x\sim\tilde{p}(x)}\Bigg[\ln\Big(\mathbb{E}_{z\sim q(z)}\big[q(x|z)\big]\Big)\Bigg]\tag{6}$$
+
+    <p>If one point were enough—actually, let's be cautious and sample $k$ points—we could write:</p>
+
+    $$q(x|z)=\mathop{\text{argmax}}_{q(x|z)} \mathbb{E}_{x\sim\tilde{p}(x)}\Bigg[\ln\left(\frac{1}{k}\sum_{i=1}^k q(x|z_i)\right)\Bigg],\quad z_1,\dots,z_k \sim q(z)\tag{7}$$
+
+    <p>Then we could train with gradient descent. However, this strategy is <strong>unsuccessful</strong>. In practice, the number of samples $k$ is usually smaller than the batch size. In this case, maximizing $\ln\left(\frac{1}{k}\sum\limits_{i=1}^k q(x|z_i)\right)$ leads to a "resource scramble": in each iteration, various $x_i$ in a batch compete for $z_1, z_2, \dots, z_k$. Whoever successfully "claims" a $z_j$ gets a high $q(x|z)$ (specifically, if $x_i$ finds a $z_j$ that belongs only to it, meaning $z_j$ only generates $x_i$ and not others, then $q(x_i|z_j)$ is high). But all samples are equal, and sampling is random; we cannot predict the outcome of this "resource scramble." It's complete chaos!</p>
+
+    <p>If the dataset is just MNIST, it might be okay because MNIST samples have clear clustering tendencies. If the number of samples $k$ exceeds 10, there's enough for each $x_i$ to share. But for datasets like faces or ImageNet, which lack obvious clustering and have high intra-class variance, the $z$'s are simply not enough to go around. One moment $x_i$ grabs $z_j$, and the next $x_{i+1}$ grabs $z_j$; training simply fails.</p>
+
+    <p>Therefore, it is this "too many monks, too little porridge" situation that causes model $(7)$ to fail. But why does VAE succeed with just one point?</p>
+
+    <h4>One Point Really is Enough</h4>
+    <p>We need to further analyze our thinking regarding $q(x|z)$. We call $q(x|z)$ the generative model part. Generally, we assume it's a Bernoulli or Gaussian distribution. Given that Bernoulli distributions have limited use cases, we'll assume it's Gaussian:</p>
+
+    $$q(x|z)=\frac{1}{\prod\limits_{k=1}^D \sqrt{2\pi \sigma_{(k)}^2(z)}}\exp\left(-\frac{1}{2}\left\Vert\frac{x-\mu(z)}{\sigma(z)}\right\Vert^2\right)\tag{8}$$
+
+    <p>Where $\mu(z)$ is the network used to calculate the mean and $\sigma^2(z)$ is the network for the variance. Often, we fix the variance, leaving only the mean network.</p>
+
+    <p>Note that $q(x|z)$ is a probability distribution. After sampling $z$ from $q(z)$ and plugging it into $q(x|z)$, we get the specific form of the distribution. Theoretically, we should sample from $q(x|z)$ <strong>again</strong> to get $x$. However, we don't do that. <strong>We directly treat the result of the mean network $\mu(z)$ as $x$.</strong> Being able to do this indicates that $q(x|z)$ is a Gaussian distribution with very low variance (if the variance is fixed, it must be set low before training; if it's a Bernoulli distribution, this isn't an issue). Each sampling result is nearly identical (always the mean $\mu(z)$). At this point, $x$ and $z$ have an "almost" one-to-one relationship, approaching the deterministic function $x=\mu(z)$.</p>
+
+    <p style="text-align: center;">Standard Normal Distribution (Blue) vs. Low Variance Normal Distribution (Orange)</p>
+
+    <p>For the posterior distribution $p(z|x)$, we also assume it's Gaussian. Since we said $z$ and $x$ are almost one-to-one, this property also applies to the posterior distribution $p(z|x)$. This implies that the <strong>posterior distribution will also be a Gaussian with very small variance</strong> (readers can verify this by checking the encoder results on MNIST). This means that each sample taken from $p(z|x)$ is almost the same.</p>
+
+    <p>As such, there is little difference between sampling once and sampling multiple times, because the samples are essentially the same anyway. This explains why we can start from equation $(3)$ and calculate using only one sample, resulting in equations $(4)$ or $(5)$.</p>
+
+    <h3>The Magic of the Posterior</h3>
+    <hr>
+    <p>We previously explained why sampling from the prior distribution $q(z)$ is bad, while one point from the posterior $p(z|x)$ is enough. In fact, using KL divergence to introduce a posterior distribution into latent variable models is a magical trick. In this section, we'll organize these thoughts and provide a new example applying this idea.</p>
+
+    <h4>Prior Knowledge of the Posterior</h4>
+    <p>Readers might feel a bit logically confused: "You say $q(x|z)$ and $p(z|x)$ both end up as low-variance Gaussians, but that's just the final training result. Theoretically, we shouldn't know how large the variances are before modeling, so how can we sample just one point beforehand?"</p>
+
+    <p>I believe this is our <strong>prior knowledge of the problem</strong>. When we decide to use a dataset $X$ for VAE, the dataset itself carries strong constraints. For example, MNIST has 784 pixels, but its independent dimensions are much fewer than 784. Most obviously, some edge pixels are always 0. Compared to all $28\times 28$ images, MNIST is a very small subset. Another example: the "Tang Poetry" corpus is a tiny subset of all possible sentences. Even for ImageNet with thousands of categories, it's a small subset of the infinite space of images.</p>
+
+    <p>Consequently, we think this dataset $X$ can be projected onto a low-dimensional space (latent variable space), where the latent variables correspond one-to-one with the original set $X$. Readers might notice: isn't this just a standard autoencoder? Yes. In the case of a standard autoencoder, we can achieve a one-to-one mapping between latent variables and the original dataset (meaning the variances of $p(z|x)$ and $q(x|z)$ are zero). After introducing the Gaussian prior distribution $q(z)$, roughly speaking, this only applies translation and scaling to the latent space, so the variance doesn't have to be large.</p>
+
+    <p>Thus, we are essentially guessing beforehand that the variances of $q(x|z)$ and $p(z|x)$ are small and making the model realize this estimate. Simply put, <strong>the operation of "sampling one point" is our prior knowledge of the data and the model—a prior about the posterior.</strong> We use this prior knowledge to hope the model will move towards it.</p>
+
+    <p>The entire logic is:</p>
+    <ol>
+        <li>Have the original corpus;</li>
+        <li>Observe the corpus and hypothesize that it can be mapped one-to-one to a latent variable space;</li>
+        <li>Use "sampling one point" to let the model learn this mapping.</li>
+    </ol>
+
+    <p>This part is a bit messy—it feels almost redundant. I hope readers aren't confused by me. If it feels confusing, feel free to ignore this part!</p>
+
+    <h4>The Straightforward IWAE</h4>
+    <p>The following example, called "Importance Weighted Autoencoders" (IWAE), demonstrates the utility of the posterior even more directly. In some ways, it can be seen as an upgrade to VAE.</p>
+
+    <p>The starting point of IWAE is equation $(2)$. It introduces the posterior distribution to rewrite equation $(2)$:</p>
+
+    $$\int q(x|z)q(z)dz = \int p(z|x)\frac{q(x|z)q(z)}{p(z|x)}dz=\mathbb{E}_{z\sim p(z|x)}\left[\frac{q(x|z)q(z)}{p(z|x)}\right]\tag{8}$$
+
+    <p>In this way, equation $(2)$ changes from sampling from $q(z)$ to sampling from $p(z|x)$. Since we've argued that $p(z|x)$ has low variance, sampling a few points is sufficient:</p>
+
+    $$\int q(x|z)q(z)dz = \frac{1}{k}\sum_{i=1}^k \frac{q(x|z_i)q(z_i)}{p(z_i|x)},\quad z_1,\dots,z_k\sim p(z|x)\tag{9}$$
+
+    <p>Substituting into equation $(2)$ gives:</p>
+
+    $$q(x|z)=\mathop{\text{argmax}}_{q(x|z)} \mathbb{E}_{x\sim\tilde{p}(x)}\Bigg[\ln\left(\frac{1}{k}\sum_{i=1}^k \frac{q(x|z_i)q(z_i)}{p(z_i|x)}\right)\Bigg],\quad z_1,\dots,z_k \sim p(z|x)\tag{10}$$
+
+    <p>This is IWAE. To align with equations $(4)$ and $(5)$, it can be equivalently written as:</p>
+
+    $$\begin{aligned}&q(x|z) = \mathop{\text{argmin}}_{q(x|z),p(z|x)} \mathcal{L}_k,\\ 
+    \mathcal{L}_k = \mathbb{E}_{x\sim\tilde{p}(x)}\Bigg[&-\ln\left(\frac{1}{k}\sum_{i=1}^k \frac{q(x|z_i)q(z_i)}{p(z_i|x)}\right)\Bigg],\quad z_1,\dots,z_k \sim p(z|x)\end{aligned}\tag{11}$$
+
+    <p>When $k=1$, the above equation is exactly the same as equation $(5)$. So from this perspective, IWAE is an upgrade of VAE.</p>
+
+    <p>From the construction process, replacing $p(z|x)$ in equation $(8)$ with any distribution of $z$ would be valid; $p(z|x)$ is chosen simply because it is focused and easy to sample from. When $k$ is large enough, the specific form of $p(z|x)$ actually becomes unimportant. This suggests that <strong>in IWAE, the role of the encoder model $p(z|x)$ is weakened in exchange for improving the generative model $q(x|z)$.</strong> In VAE, we assume $p(z|x)$ is a Gaussian, which is just an approximation for easy computation; the validity of this approximation simultaneously affects the quality of the generative model $q(x|z)$. It can be proven that $\mathcal{L}_k$ is closer to the lower bound $-\mathbb{E}_{x\sim \tilde{p}(x)} \left[\ln \tilde{p}(x)\right]$ than $\mathcal{L}$, so the generator's quality is superior.</p>
+
+    <p>Intuitively, in IWAE, the degree of approximation of $p(z|x)$ isn't as critical, resulting in a better generative model. However, the cost is that the encoder's quality decreases because the importance of $p(z|x)$ is reduced, so the model doesn't focus as much effort on training $p(z|x)$. Therefore, <strong>if we want a good encoder, IWAE is not the way to go.</strong></p>
+
+    <p>There is also a paper, <a href="https://arxiv.org/abs/1802.04537">"Tighter Variational Bounds are Not Necessarily Better,"</a> which supposedly improves both the encoder and decoder quality, though I haven't fully understood it yet.</p>
+
+    <h3>The Godlike Reparameterization</h3>
+    <hr>
+    <p>If the introduction of the posterior distribution successfully outlines the VAE blueprint, the reparameterization trick is the "finishing touch" that brings it to life.</p>
+
+    <p>Previously, we said VAE introduces the posterior distribution to shift sampling from the loose standard normal $q(z)$ to the compact normal $p(z|x)$. However, though both are normal distributions, their implications are very different. Let's write out:</p>
+
+    $$p(z|x)=\frac{1}{\prod\limits_{k=1}^d \sqrt{2\pi \sigma_{(k)}^2(x)}}\exp\left(-\frac{1}{2}\left\Vert\frac{z-\mu(x)}{\sigma(x)}\right\Vert^2\right)\tag{12}$$
+
+    <p>That is, the mean and variance of $p(z|x)$ are both models to be trained. Let's imagine: when the model reaches this step, it calculates $\mu(x)$ and $\sigma(x)$, and then constructs the normal distribution and samples. But what is sampled? It's a vector, and we can't see the relationship between this vector and $\mu(x)$ or $\sigma(x)$. It effectively treats the sample as a constant vector; differentiating it results in zero. Thus, during gradient descent, we get no feedback to update $\mu(x)$ and $\sigma(x)$.</p>
+
+    <p><strong>The Reparameterization Trick</strong></p>
+    <p>This is where the reparameterization trick makes its grand entrance. It tells us directly:</p>
+    $$z = \mu(x) + \varepsilon \times \sigma(x),\quad \varepsilon\sim \mathcal{N}(0,I).$$
+
+    <p>Nothing is simpler than this. It looks like a minor transformation, but it explicitly tells us the relationship between $z$ and $\mu(x), \sigma(x)$! Consequently, the derivative of $z$ is no longer zero, and $\mu(x), \sigma(x)$ finally receive the feedback they deserve. With this, the model is ready—all that's left is writing the code.</p>
+
+    <p>Clearly, the "reparameterization trick" is a masterstroke.</p>
+
+    <h3>Conclusion</h3>
+    <hr>
+    <p>Rambling on, I've filled another post. This post was meant to clear up some minor details of VAE, especially how VAE solves the sampling hurdle (and thus the training hurdle) by cleverly introducing the posterior, and to introduce IWAE along the way.</p>
+
+    <p>Seeking an intuitive understanding inevitably sacrifices some rigor; you can't have both. So, for any flaws in the article, I hope experienced readers will be lenient and I welcome criticisms and suggestions.</p>
+
+    <p>Original link: <a href="translation_5383.html">https://kexue.fm/archives/5383</a></p>
+</div>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_5383.html" style="color: #005fcc;">https://kexue.fm/archives/5383</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

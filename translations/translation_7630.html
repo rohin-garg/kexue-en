@@ -1,0 +1,232 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    tags: 'ams',
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    ignoreHtmlClass: 'tex2jax_ignore',
+    processHtmlClass: 'tex2jax_process'
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/7630">BERT That Learns to Ask: End-to-End Construction of Q&A Pairs from Passages</a></h1>
+    <p>By 苏剑林 | July 25, 2020</p>
+
+    <p>Machine Reading Comprehension (MRC) tasks are likely familiar to many readers. Simply put, it involves finding the answer to a given question from a given passage—a process of "Passage + Question → Answer." I have previously written articles on reading comprehension, such as <a href="translation_5409.html">"CNN-based Machine Reading Comprehension Question Answering Model: DGCNN"</a>. Constructing Q&A pairs is essentially the inverse task of reading comprehension: the process of "Passage → Answer + Question." In academia, this is generally referred to as "Question Generation (QG)." Since answers can often be selected through relatively regular random selection in most cases, many papers focus only on the "Passage + Answer → Question" step.</p>
+
+    <p>This article presents a fully end-to-end practice of <strong>"Passage → Answer + Question,"</strong> including the model introduction and implementation code based on <a href="https://github.com/bojone/bert4keras">bert4keras</a>. Readers are welcome to try it out.</p>
+
+    <h2 id="先看效果">First, See the Results <a href="https://kexue.fm/archives/7630#%E5%85%88%E7%9C%8B%E6%95%88%E6%9E%9C">#</a></h2>
+
+    <blockquote>
+        <strong>Input Passage</strong>: Mount K2 is the second highest peak in the world, located in China.<br>
+        <strong>Generated Q&A</strong>: What is the name of the second highest mountain in the world? &emsp;&emsp;&emsp; Mount K2<br>
+        &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;Which highest peak in the world is Mount K2? &emsp;&emsp;&emsp; Second<br>
+        <br>
+        <strong>Input Passage</strong>: On July 28, Thailand will celebrate the 68th birthday of King Maha Vajiralongkorn, Rama X.<br>
+        <strong>Generated Q&A</strong>: Who is the Rama X of Thailand? &emsp;&emsp;&emsp; King Maha Vajiralongkorn<br>
+        &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;How old is King Maha Vajiralongkorn, Rama X of Thailand? &emsp;&emsp;&emsp; 68 years old<br>
+        &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;What is the birth date of King Maha Vajiralongkorn of Thailand? &emsp;&emsp;&emsp; July 28<br>
+        &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;Which country does King Maha Vajiralongkorn belong to? &emsp;&emsp;&emsp; Thailand<br>
+        <br>
+        <strong>Input Passage</strong>: The Water Splashing Festival, also known as the Songkran Festival, has a history of 700 years and is the grandest traditional festival for the Dai (China) and De'ang ethnic groups.<br>
+        <strong>Generated Q&A</strong>: What is the Water Splashing Festival also known as? &emsp;&emsp;&emsp; Songkran Festival<br>
+        &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;Which ethnic group in China observes the Water Splashing Festival as their grandest festival? &emsp;&emsp;&emsp; Dai<br>
+        &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;How many years of history does the Water Splashing Festival have? &emsp;&emsp;&emsp; 700 years
+    </blockquote>
+
+    <h2 id="思路分析">Thought Analysis <a href="https://kexue.fm/archives/7630#%E6%80%9D%E8%B7%AF%E5%88%86%E6%9E%90">#</a></h2>
+
+    <p>The goal of this article is to implement "Passage → Answer + Question" fully end-to-end, including answer selection being automatically completed by the model without manual rules. To put it simply, it uses the "BERT + UniLM" method to construct a Seq2Seq model (UniLM's Attention Mask combined with BERT's pre-trained weights). If readers are unfamiliar with UniLM, they are welcome to first read <a href="translation_6933.html">"From Language Models to Seq2Seq: Transformer as a Play, All About the Mask"</a>.</p>
+
+    <p>In a previous article, <a href="translation_7115.html">"Universal seq2seq: Reading Comprehension Q&A Based on seq2seq"</a>, I also provided an implementation of reading comprehension using a Seq2Seq model, which directly constructs $p\big(\text{Answer}\big\|\text{Passage}, \text{Question}\big)$ using a Seq2Seq model, illustrated as follows:</p>
+
+    <p style="text-align:center"><img src="https://files.kexue.fm/illustration/2020/qag/qag1.png" width="500" alt="Reading comprehension with Seq2Seq"></p>
+
+    <p>In fact, by slightly modifying the above model to include the question in the generation target, Q&A pair generation can be achieved. That is, the model becomes $p\big(\text{Question}, \text{Answer}\big\|\text{Passage}\big)$, as shown below:</p>
+
+    <p style="text-align:center"><img src="https://files.kexue.fm/illustration/2020/qag/qag2.png" width="500" alt="Modified for Q&A generation"></p>
+
+    <p>However, intuitively, it is easy to imagine that the difficulty of "Passage → Answer" and "Passage + Answer → Question" should be lower than "Passage + Question → Answer." Therefore, we swap the generation order of the question and the answer to $p\big(\text{Answer}, \text{Question}\big\|\text{Passage}\big)$, which yields better final results:</p>
+
+    <p style="text-align:center"><img src="https://files.kexue.fm/illustration/2020/qag/qag3.png" width="500" alt="Generate answer first, then question, for better results"></p>
+
+    <h2 id="实现分析">Implementation Analysis <a href="https://kexue.fm/archives/7630#%E5%AE%9E%E7%8E%B0%E5%88%86%E6%9E%90">#</a></h2>
+
+    <p>The model introduction ends here. There isn't much more to say—simply determine what is input and what is output, and apply the "BERT + UniLM" approach. Below is my reference implementation:</p>
+
+    <blockquote>
+        <a href="https://github.com/bojone/bert4keras/blob/master/examples/task_question_answer_generation_by_seq2seq.py"><strong>task_question_answer_generation_by_seq2seq.py</strong></a>
+    </blockquote>
+
+    <p>The decoding strategy is worth discussing here. In a typical Seq2Seq model, decoding ends upon reaching a [SEP]. However, the model in this article needs to decode until two [SEP] tokens are reached. The text up to the first [SEP] is the answer, while the text between the two [SEP] tokens is the question. Theoretically, many Q&A pairs can be constructed from a given passage; in other words, the target is not unique. Therefore, we cannot use deterministic decoding algorithms like Beam Search. Instead, we should use random decoding algorithms (concepts related to this can be found in the "Decoding Algorithms" section of <a href="https://kexue.fm/archives/7500#%E8%A7%A3%E7%A0%81%E7%AE%97%E6%B3%95">"How to Deal with the 'Can't Stop' Problem in Seq2Seq?"</a>).</p>
+
+    <p>However, the problem is that if a purely random decoding algorithm is used, the generated questions might be too "out of this world"—they might include content irrelevant to the passage. For example, if the passage is "China's Mars probe Tianwen-1 was successfully launched," the generated question might be "What was China's first artificial satellite?" Although related, it is too divergent. Therefore, I suggest a compromise strategy: use random decoding to generate the answer, and then use deterministic decoding to generate the question. This helps ensure the reliability of the question as much as possible. Of course, if readers care more about the diversity of the generated questions, using random decoding for everything is also fine; it's a matter of personal tuning.</p>
+
+    <p>Readers should also note that the aforementioned reference script does not impose constraints on the answer; thus, the generated answer may not necessarily be a snippet from the passage. After all, this is just a reference implementation and is still some distance from practical application. Interested readers are encouraged to understand and modify the code according to their own needs. Furthermore, since Q&A pair construction has become a pure Seq2Seq problem, any techniques used to improve Seq2Seq performance can be applied to improve the quality of Q&A generation, such as the previously discussed <a href="translation_7259.html">"A Brief Analysis and Countermeasures for the Exposure Bias Phenomenon in Seq2Seq"</a>. These are left for the readers to explore.</p>
+
+    <h2 id="文章小结">Article Summary <a href="https://kexue.fm/archives/7630#%E6%96%87%E7%AB%A0%E5%B0%8F%E7%BB%93">#</a></h2>
+
+    <p>This article is an end-to-end practice of Q&A pair generation, primarily based on the "BERT + UniLM" Seq2Seq model to generate answers and questions directly from passages and discusses decoding strategies. Generally speaking, there is nothing unique about the model in this article, but because it leverages BERT's pre-trained weights, the quality of the finally generated Q&A pairs is quite noteworthy.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7630.html" style="color: #005fcc;">https://kexue.fm/archives/7630</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

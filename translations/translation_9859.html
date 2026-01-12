@@ -1,0 +1,305 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+<h1><a href="https://kexue.fm/archives/9859">Transformer Upgrade Path: 15. Key Normalization Helps Length Extrapolation</a></h1>
+
+<p>By 苏剑林 | November 20, 2023</p>
+
+<p>Broadly speaking, current Transformer length extrapolation techniques can be classified into two categories: one is post-hoc modification, such as <a href="translation_9675.html">NTK-RoPE</a>, <a href="https://papers.cool/arxiv/2309.00071">YaRN</a>, and <a href="translation_9708.html">ReRoPE</a>. These methods are characterized by directly modifying the inference model, achieving a certain degree of length extrapolation without fine-tuning. However, the downside is that they cannot maintain identity in the model's performance within the original training length. The other category is pre-training modification, such as <a href="https://kexue.fm/archives/9431#ALIBI">ALIBI</a>, <a href="https://kexue.fm/archives/9431#KERPLE">KERPLE</a>, <a href="https://kexue.fm/archives/9431#XPOS">XPOS</a>, and <a href="translation_9603.html">HWFA</a>. These can achieve length extrapolation without further modification, but the corresponding changes must be introduced before training. Consequently, they cannot be used on existing models without fine-tuning, and whether such methods can effectively scale up has not yet been widely recognized.</p>
+
+<p>In this article, I will introduce an unexpectedly discovered length extrapolation scheme—"KeyNorm"—which involves applying $L_2$ Normalization to the Key sequence in Attention. It clearly belongs to the pre-training modification category, but the change to the Attention mechanism is very small, making it look very promising for scaling up.</p>
+
+<h2>Initial Motivation <a href="https://kexue.fm/archives/9859#%E6%9C%80%E5%88%9D%E5%8A%A8%E6%9C%BA">#</a></h2>
+
+<p>The reason I called it an "unexpected discovery" is that the original motivation for this change was not length extrapolation, but an attempt to replace the scaling method in Scaled Dot-Product Attention. As we know, the standard definition of Attention (primarily considering the Causal scenario in this paper) is:</p>
+
+\begin{equation}\boldsymbol{o}_i = \frac{\sum_{j = 1}^i\exp\left(\frac{\boldsymbol{q}_i\cdot \boldsymbol{k}_j}{\sqrt{d}}\right)\boldsymbol{v}_j}{\sum_{j = 1}^i\exp\left(\frac{\boldsymbol{q}_i\cdot \boldsymbol{k}_j}{\sqrt{d}}\right)},\quad \boldsymbol{q}_i,\boldsymbol{k}_j\in\mathbb{R}^d\label{eq:sdpa}\end{equation}
+
+<p>The scale factor $\frac{1}{\sqrt{d}}$ has been explained and even generalized multiple times, such as in <a href="https://kexue.fm/archives/8620#NTK%E5%8F%82%E6%95%B0%E5%8C%96">"On the Initialization, Parameterization, and Standardization of Transformer"</a>, <a href="translation_8823.html">"Attention Scaling from the Invariance of Entropy"</a>, and <a href="translation_9812.html">"Attention Scaling from the Perspective of Gradient Maximization"</a>. The standard derivation is performed under the assumption that "$\boldsymbol{q}_i$ and $\boldsymbol{k}_j$ are independently sampled from a distribution with mean 0 and variance 1." Under this assumption, we also have:</p>
+
+\begin{equation}\Vert\boldsymbol{q}_i\Vert\approx \sqrt{d},\quad \Vert\boldsymbol{k}_j\Vert\approx \sqrt{d}\end{equation}
+
+<p>This is because:</p>
+
+\begin{equation}\Vert\boldsymbol{x}\Vert^2 = \sum_{i=1}^d x_i^2 = d\times\frac{1}{d}\sum_{i=1}^d x_i^2\approx d\,\mathbb{E}_{x\sim\mathcal{N}(0,1)}[x^2] = d\end{equation}
+
+<p>Related generalizations can also be found in <a href="https://kexue.fm/archives/8679#%E5%BC%95%E7%90%86%E7%9A%84%E5%BC%95%E7%90%86">"The Amazing Johnson-Lindenstrauss Lemma: Theoretical Part"</a>. This approximation implies that in the initial stage of Attention, equation $\eqref{eq:sdpa}$ has the same effect as the following two variants:</p>
+
+\begin{align}\color{red}{\text{Q}}\text{uery}\color{red}{\text{N}}\text{orm:}\quad\boldsymbol{o}_i =&\, \frac{\sum_{j = 1}^i\exp\left(\tilde{\boldsymbol{q}}_i\cdot \boldsymbol{k}_j\right)\boldsymbol{v}_j}{\sum_{j = 1}^i\exp\left(\tilde{\boldsymbol{q}}_i\cdot \boldsymbol{k}_j\right)},\qquad \tilde{\boldsymbol{q}}_i = \frac{\boldsymbol{q}_i}{\Vert\boldsymbol{q}_i\Vert} \label{eq:qna}\\[5pt]
+\color{red}{\text{K}}\text{ey}\color{red}{\text{N}}\text{orm:}\quad\boldsymbol{o}_i =&\, \frac{\sum_{j = 1}^i\exp\left(\boldsymbol{q}_i\cdot \tilde{\boldsymbol{k}}_j\right)\boldsymbol{v}_j}{\sum_{j = 1}^i\exp\left(\boldsymbol{q}_i\cdot \tilde{\boldsymbol{k}}_j\right)},\qquad \tilde{\boldsymbol{k}}_j = \frac{\boldsymbol{k}_j}{\Vert\boldsymbol{k}_j\Vert} \label{eq:kna}
+\end{align}
+
+<p>Therefore, I had the idea to verify which of these two variants is superior compared to the standard equation $\eqref{eq:sdpa}$. For convenience, we can refer to them as "Query/Key-Normalized Dot-Product Attention," abbreviated as "QNA" and "KNA" respectively.</p>
+
+<p>Furthermore, since we can have QueryNorm and KeyNorm, it is natural to consider normalizing both. Thus, we also experimented with the following "Scaled Cosine Attention (CosA)":</p>
+
+\begin{equation}\boldsymbol{o}_i = \frac{\sum_{j = 1}^i\exp\left(\lambda\,\tilde{\boldsymbol{q}}_i\cdot \tilde{\boldsymbol{k}}_j\right)\boldsymbol{v}_j}{\sum_{j = 1}^i\exp\left(\lambda\,\tilde{\boldsymbol{q}}_i\cdot \tilde{\boldsymbol{k}}_j\right)} = \frac{\sum_{j = 1}^i\exp\left(\lambda\cos(\boldsymbol{q}_i,\boldsymbol{k}_j)\right)\boldsymbol{v}_j}{\sum_{j = 1}^i\exp\left(\lambda\cos(\boldsymbol{q}_i,\boldsymbol{k}_j)\right)} \label{eq:cosa}
+\end{equation}
+
+<p>Where $\lambda$ adopts the results from <a href="translation_9812.html">"Attention Scaling from the Perspective of Gradient Maximization"</a>, specifically $\lambda = 4\log n$ (the original paper suggests 3.5, but since the training length here is relatively small, 4 is more precise), where $n$ is fixed at half the training length or dynamically set to the position ID plus 1.</p>
+
+<h2>Results First <a href="https://kexue.fm/archives/9859#%E5%85%88%E7%9C%8B%E7%BB%93%E6%9E%9C">#</a></h2>
+
+<p>Following the same <a href="https://kexue.fm/archives/9731#%E5%AE%9E%E9%AA%8C">experimental setup</a> for length extrapolation used previously: small models with 100 million parameters, <a href="translation_9052.html">GAU</a> architecture, trained for the same number of steps (given time constraints, the models are not yet fully trained at this step count), a training length of 512, and evaluating extrapolation to a length of 4096. The experimental results are shown in the table below. "Baseline" refers to equation $\eqref{eq:sdpa}$, and "$-\log n$" refers to the addition of the length-dependent scaling factor introduced in <a href="translation_8823.html">"Attention Scaling from the Invariance of Entropy"</a>. The evaluation metric is the per-token accuracy of the language model (higher is better).</p>
+
+\[\begin{array}{c|cc}
+\hline
+\text{Test Length} & 512(\text{Train}) & 4096(\text{Repeated}) & 4096(\text{Non-repeated}) \\
+\hline
+\text{Baseline} & 49.41\% & 24.17\% & 23.16\% \\
+\text{Baseline-}\log n & 49.40\% & 24.60\% & 24.02\% \\
+\hline
+\text{QNA} & 49.55\% & 22.45\% & 22.18\% \\
+\text{QNA-}\log n & 49.42\% & 19.55\% & 18.74\% \\
+\text{KNA} & 49.60\% & 61.08\% & 47.69\% \\
+\text{KNA-}\log n & 49.58\% & 63.17\% & 46.40\%\\
+\text{CosA} & 49.73\% & 58.90\% & 46.98\% \\
+\text{CosA-}\log n & 49.67\% & 64.74\% & 48.95\% \\
+\hline
+\end{array}\]
+
+<p>From the table, we can observe: 1. Both QueryNorm and KeyNorm achieved better results at the training length. Although this advantage is very slight and will likely become negligible as training progresses, the advantage is very stable, suggesting a possibility for more stable training. 2. <strong>KeyNorm provides a very significant boost to length extrapolation</strong>—this is the "unexpected gift" of the experiment!</p>
+
+<p>Note that unlike NTK-RoPE and YaRN, which require modifying the model during the inference stage, the length extrapolation for KNA and CosA here is achieved without any changes during inference. Therefore, some readers might wonder: since KNA and CosA already have such good extrapolation performance without modifications, would the effect be even better if combined with extrapolation techniques like NTK-RoPE or YaRN? To investigate this, I also conducted tests, and the results are shown in the table below:</p>
+
+\[\begin{array}{c|cc}
+\hline
+\text{Test Length} & 512(\text{Train}) & 4096(\text{Repeated}) & 4096(\text{Non-repeated}) \\
+\hline
+\text{Baseline} & 49.41\% & 24.17\% & 23.16\% \\
+\text{Baseline-NTK} & 49.41\% & 60.57\% & 42.20\% \\
+\text{Baseline-YaRN} & 49.41\% & 80.10\% & 47.45\% \\
+\text{Baseline-ReRoPE} & 49.41\% & 76.11\% & 47.82\% \\
+\hline
+\text{Baseline-}\log n & 49.40\% & 24.60\% & 24.02\% \\
+\text{Baseline-}\log n\text{-NTK} & 49.40\% & 75.86\% & 47.06\% \\
+\text{Baseline-}\log n\text{-YaRN} & 49.40\% & 82.57\% & 46.52\% \\
+\text{Baseline-}\log n\text{-ReRoPE} & 49.40\% & 85.47\% & 48.87\% \\
+\hline
+\text{QNA} & 49.55\% & 22.45\% & 22.18\% \\
+\text{QNA-NTK} & 49.55\% & 52.28\% & 39.88\% \\
+\text{QNA-YaRN} & 49.55\% & 82.53\% & 47.50\% \\
+\text{QNA-ReRoPE} & 49.55\% & 78.22\% & 47.72\% \\
+\hline
+\text{QNA-}\log n & 49.42\% & 19.55\% & 18.74\% \\
+\text{QNA-}\log n\text{-NTK} & 49.42\% & 57.44\% & 41.56\% \\
+\text{QNA-}\log n\text{-YaRN} & 49.42\% & 80.08\% & 45.16\% \\
+\text{QNA-}\log n\text{-ReRoPE} & 49.42\% & 84.71\% & 48.31\% \\
+\hline
+\text{KNA} & 49.60\% & 61.08\% & 47.69\% \\
+\text{KNA-NTK} & 49.60\% & 64.44\% & 43.02\% \\
+\text{KNA-YaRN} & 49.60\% & 84.19\% & 47.44\% \\
+\text{KNA-ReRoPE} & 49.60\% & 77.76\% & 47.73\% \\
+\hline
+\text{KNA-}\log n & 49.58\% & 63.17\% & 46.40\%\\
+\text{KNA-}\log n\text{-NTK} & 49.58\% & 79.05\% & 47.43\%\\
+\text{KNA-}\log n\text{-YaRN} & 49.58\% & 83.95\% & 47.16\%\\
+\text{KNA-}\log n\text{-ReRoPE} & 49.58\% & 85.48\% & 48.78\%\\
+\hline
+\text{CosA} & 49.73\% & 58.90\% & 46.98\% \\
+\text{CosA-NTK} & 49.73\% & 62.50\% & 42.77\% \\
+\text{CosA-YaRN} & 49.73\% & 83.40\% & 47.80\% \\
+\text{CosA-ReRoPE} & 49.73\% & 77.82\% & 47.80\% \\
+\hline
+\text{CosA-}\log n & 49.67\% & 64.74\% & 48.39\% \\
+\text{CosA-}\log n\text{-NTK} & 49.67\% & 78.97\% & 47.46\% \\
+\text{CosA-}\log n\text{-YaRN} & 49.67\% & 82.28\% & 45.72\% \\
+\text{CosA-}\log n\text{-ReRoPE} & 49.67\% & 85.67\% & 48.39\% \\
+\hline
+\end{array}\]
+
+<p>This table is a bit verbose, primarily to give everyone a comprehensive sense of the difference in effectiveness of mainstream length extrapolation techniques. You can compare the dimensions you are interested in, but note that if you are looking at length extrapolation performance, you should focus on the "Non-repeated" column, with the "Repeated" column as secondary. Looking at the table above, the results are quite surprising: KeyNorm seems to be "immune" to existing RoPE extrapolation techniques; stacking NTK or YaRN did not result in a significant improvement and might even lead to a decline. However, overall, the "Repeated" column still shows a significant improvement, while the improvement in the "Non-repeated" column is not prominent. These results indicate that while KeyNorm still struggles with the problem of effectively identifying positions exceeding the training length (hence the "Repeated" results are not high), it effectively avoids the PPL explosion problem (hence the "Non-repeated" results are decent).</p>
+
+<p>This might be good news for those working on Long Context: on the one hand, unlike ALIBI or KERPLE, KeyNorm's length extrapolation does not require adding local constraints and requires no modification after training—it is purely a "free lunch." It even looks like training effectiveness improves after adding KeyNorm. On the other hand, because it is non-local, it can be used for continued training on longer texts, and you no longer have to struggle between choosing <a href="https://papers.cool/arxiv/2306.15595">PI</a> or <a href="https://papers.cool/arxiv/2309.16039">ABF</a>; for KeyNorm, you don't need to change anything.</p>
+
+<h2>Principle Analysis <a href="https://kexue.fm/archives/9859#%E5%8E%9F%E7%90%86%E5%88%86%E6%9E%90">#</a></h2>
+
+<p>Despite this being an unexpected discovery, we still need to attempt to explain it, otherwise it remains just a fluke. So in this section, let's think about why KeyNorm helps with length extrapolation.</p>
+
+<p>Let's return to equation $\eqref{eq:sdpa}$. The correlation score between the $i$-th token and the $j$-th token is calculated by the dot product:</p>
+
+\begin{equation}s(j|i) = \boldsymbol{q}_i\cdot \boldsymbol{k}_j = \Vert\boldsymbol{q}_i\Vert \Vert\boldsymbol{k}_j\Vert \cos(\boldsymbol{q}_i,\boldsymbol{k}_j),\quad p(j|i) = \frac{\exp\left(\frac{s(j|i)}{\sqrt{d}}\right)}{\sum_{j=1}^i \exp\left(\frac{s(j|i)}{\sqrt{d}}\right)}\end{equation}
+
+<p>For the second equality, based on geometric meaning, we decompose it into the product of their respective norms and the cosine of the included angle. Attention $p(j|i)$ is a conditional probability. $\Vert\boldsymbol{q}_i\Vert$ is only related to the current position $i$; it does not change the relative size of attention but only its <a href="translation_9595.html">sparsity</a>. $\Vert\boldsymbol{k}_j\Vert$ has the ability to change the relative size of $p(j|i)$, but it does not involve the interaction between $i$ and $j$; it can be used to express some absolute signals. For example, <a href="https://papers.cool/arxiv/2305.17118">Scissorhands</a> shows that the attention of tokens at certain absolute positions remains very high, which could be expressed using $\Vert\boldsymbol{k}_j\Vert$. The remaining $\cos(\boldsymbol{q}_i,\boldsymbol{k}_j)$ is used to express the interaction between $i$ and $j$, and it is the term with the greatest degree of freedom.</p>
+
+<p>Obviously, to increase the relative importance of a certain position $j$, the model has two choices: 1. increase the norm $\Vert\boldsymbol{k}_j\Vert$; 2. increase $\cos(\boldsymbol{q}_i,\boldsymbol{k}_j)$, i.e., reduce the angle between $\boldsymbol{q}_i$ and $\boldsymbol{k}_j$. However, due to the existence of the "<a href="translation_7076.html">curse of dimensionality</a>," significantly changing the angle in a high-dimensional space is relatively difficult. Therefore, if the task can be completed by increasing the norm $\Vert\boldsymbol{k}_j\Vert$, the model will prioritize doing so. The direct consequence is that the training of $\cos(\boldsymbol{q}_i,\boldsymbol{k}_j)$ might be insufficient.</p>
+
+<p>Here, I make an assertion (conjecture):</p>
+
+<blockquote>The insufficient training of $\cos(\boldsymbol{q}_i,\boldsymbol{k}_j)$ is the main reason why Attention cannot perform length extrapolation.</blockquote>
+
+<p>Insufficient training of $\cos(\boldsymbol{q}_i,\boldsymbol{k}_j)$ means that the angles between the trained $\boldsymbol{q}_i$ and $\boldsymbol{k}_j$ form only a finite set. During length extrapolation, the model faces a larger set, rendering it unable to make correct predictions. A careful consideration of the derivation in the <a href="https://papers.cool/arxiv/2309.00071">YaRN</a> paper reveals that the reason NTK and YaRN are effective is that they modify the implementation of RoPE during inference, causing the angles of $\boldsymbol{q}_i$ and $\boldsymbol{k}_j$ to fall within the original finite set from the training phase, avoiding the larger, unseen set and turning extrapolation into interpolation. ReRoPE is even more straightforward, directly truncating relative positions outside the window, which ensures that the position encodings encountered during inference are never "unfamiliar." These techniques, to some extent, indirectly validate this assertion.</p>
+
+<p>Starting from this assertion, the cause of KeyNorm's length extrapolation becomes simple. Whether it is KNA, which only performs KeyNorm, or CosA, which performs both QueryNorm and KeyNorm, they both exclude $\Vert\boldsymbol{k}_j\Vert$ from the definition of Attention. Consequently, to change the relative importance of $j$, the model has only one choice: "adjust $\cos(\boldsymbol{q}_i,\boldsymbol{k}_j)$." This forces the model to train and utilize $\cos(\boldsymbol{q}_i,\boldsymbol{k}_j)$ more thoroughly, thereby indirectly promoting length extrapolation. Furthermore, I also experimented with the combination of "KeyNorm + NoPE," but found no length extrapolation capability. This suggests that RoPE also plays an important role in the length extrapolation of KeyNorm. In fact, this is not hard to understand: RoPE rotates $\boldsymbol{q}_i$ and $\boldsymbol{k}_j$, which helps expand the range of $\cos(\boldsymbol{q}_i,\boldsymbol{k}_j)$ during training, making its training more thorough.</p>
+
+<p>Has any work already attempted QueryNorm and KeyNorm? Yes. The 2020 paper <a href="https://papers.cool/arxiv/2010.04245">"Query-Key Normalization for Transformers"</a> experimented with CosA and proposed a similar scale factor based on the logarithm of length, but did not discuss length extrapolation. Additionally, Google's paper <a href="https://papers.cool/arxiv/2302.05442">"Scaling Vision Transformers to 22 Billion Parameters"</a> earlier this year also added Norm to Query and Key, but it used LayerNorm. LayerNorm or RMSNorm both include learnable gamma parameters, which means the vector norms after normalization are not necessarily constant. Therefore, it is difficult to say whether they can achieve the same length extrapolation effect as in this article.</p>
+
+<h2>Summary <a href="https://kexue.fm/archives/9859#%E6%96%87%E7%AB%A0%E5%B0%8F%E7%BB%93">#</a></h2>
+
+<p>This article introduced an unexpectedly discovered length extrapolation scheme, "KeyNorm"—applying $L_2$ normalization to the Key sequence in Attention. It achieves better results at the training length and shows a significant improvement in length extrapolation. It belongs to the "pre-training modification" category. Compared to other pre-training modification schemes like ALIBI and KERPLE, it has no local constraints and thus is more promising for scaling up. Compared to "post-hoc modification" schemes like NTK-RoPE and YaRN, it does not sacrifice performance within the training length during extrapolation.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9859.html" style="color: #005fcc;">https://kexue.fm/archives/9859</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

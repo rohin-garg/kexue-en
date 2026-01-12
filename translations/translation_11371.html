@@ -1,0 +1,266 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+<h1><a href="https://kexue.fm/archives/11371">Low-Precision Attention May Have Biased Rounding Errors</a></h1>
+
+<p>By 苏剑林 | October 27, 2025</p>
+
+<p>Some time ago, I came across the paper <a href="https://papers.cool/arxiv/2510.04212">"Why Low-Precision Transformer Training Fails: An Analysis on Flash Attention"</a> on arXiv. The experimental phenomena described in it closely match some of the phenomena we observed while training <a href="https://papers.cool/arxiv/2507.20534">Kimi K2</a>, such as problems starting to appear from the second Attention layer. The paper attributes this to the inherent biased errors in low-precision Attention. This analytical perspective was quite unexpected for me, so I read it with great interest.</p>
+
+<p>However, the paper's phrasing seemed somewhat difficult to understand—partly because I am not very familiar with low-precision arithmetic. In short, after consulting the authors multiple times, I finally managed to understand the paper and decided to record my understanding here for everyone's reference.</p>
+
+<h2>Brief Conclusion <a id="结论简述" href="#结论简述">#</a></h2>
+
+<p>It should be noted that although the paper's title specifically mentions "Flash Attention," according to the paper's description, the same problem occurs even if the <code>block_size</code> is set as large as the training sequence length. Therefore, the block-wise calculation of Flash Attention is not the cause of the problem, and we can simplify the analysis by following a naive low-precision Attention implementation.</p>
+
+<p>For simplicity, let's analyze single-head Attention. Let $\boldsymbol{Q},\boldsymbol{K},\boldsymbol{V}\in\mathbb{R}^{n\times d}$, and denote $\boldsymbol{S} = \boldsymbol{Q}\boldsymbol{K}^{\top}$. The bold $\boldsymbol{1}$ refers to an $n\times 1$ matrix of ones, and $\boldsymbol{S}_{\max}$ refers to the $n\times 1$ matrix obtained by taking the maximum value of each row of $\boldsymbol{S}$. Then:</p>
+
+\begin{equation}\boldsymbol{O} = \frac{\exp(\boldsymbol{S})\boldsymbol{V}}{\exp(\boldsymbol{S})\boldsymbol{1}} = \frac{\exp(\boldsymbol{S} - \boldsymbol{S}_{\max})\boldsymbol{V}}{\exp(\boldsymbol{S}- \boldsymbol{S}_{\max})\boldsymbol{1}}\end{equation}
+
+<p>If we denote $\bar{\boldsymbol{P}} = \exp(\boldsymbol{S} - \boldsymbol{S}_{\max})$, then the key calculation of Attention is the matrix multiplication $\bar{\boldsymbol{P}}\boldsymbol{V}$, which is generally performed in BF16 precision. The paper's conclusion is: <strong>under low-precision calculation, the step $\bar{\boldsymbol{P}}\boldsymbol{V}$ has a biased rounding error.</strong> In other words, over a long-term average, the expectation of the difference between the low-precision calculation of $\bar{\boldsymbol{P}}\boldsymbol{V}$ and its exact value is not zero.</p>
+
+<p>As a result, biases between different training steps may continuously accumulate, leading to problems such as <a href="translation_11126.html">MaxLogit explosion</a> and Loss Spikes, eventually causing training to collapse. Strictly speaking, this is only one possible mechanism for issues like MaxLogit explosion, not necessarily the only one, but even so, it is worth studying and reflecting upon.</p>
+
+<h2>Round-to-Even <a id="向偶舍入" href="#向偶舍入">#</a></h2>
+
+<p>To understand the paper's conclusion, let's first review some basic common sense regarding rounding errors. The reason for writing this section is—as I said at the beginning—I am not familiar with low-precision arithmetic. So this section is entirely for my own foundational learning, and readers who are already familiar with this can skip it.</p>
+
+<p>We know that the most common rounding method is "rounding half up" (four-down, five-up). In base-10, if a positive 1-decimal-place number is rounded to an integer: 0.0–0.4 become 0, generating errors of $0, -0.1, -0.2, -0.3, -0.4$; 0.5–0.9 become 1, generating errors of $0.5, 0.4, 0.3, 0.2, 0.1$. Have you noticed? The average of these errors is not 0, but 0.05. That is, "rounding half up" on average tends to slightly increase the original number, creating a positive bias.</p>
+
+<p>Of course, the relative bias decreases as the number of rounded digits increases (e.g., rounding a 2-decimal number to an integer results in an average error of 0.005). Regardless, this positive bias in rounding half up always exists; it's just a matter of magnitude. The metabolic root of the bias lies at the midpoint. For instance, 0.51 rounds up and 0.49 rounds down, and their errors roughly cancel out, but for 0.50, whether you round it up or down by rule, there isn't another number to cancel out its error.</p>
+
+<p>To eliminate this bias, <a href="https://en.wikipedia.org/wiki/IEEE_754">IEEE 754</a> proposed the "Round-to-Even" principle. it stipulates that for midpoint cases, one should round toward the nearest even number. For example, 2.5 rounded to an integer becomes 2, while 3.5 becomes 4. In this way, "5" has a 50% chance of generating a $\pm 0.5$ error, making the average error zero and thus eliminating the bias.</p>
+
+<p>Returning to the computer field: we know computers use binary, which only has 0 and 1. Here, 1 plays the role of "5" in base-10. The bias of "rounding half up" is more evident in binary because the last bit can only be 0 or 1. If it's 0, it stays the same; if it's 1, it triggers "round up" and increments. Thus, rounding a binary number by "rounding half up" always results in a value greater than or equal to the original. Consequently, "Round-to-Even" is also needed in binary to eliminate bias.</p>
+
+<h2>BF16 Addition <a id="BF16加法" href="#BF16加法">#</a></h2>
+
+<p>Next, let's review the BF16 format. BF16 uses 16 bits to represent a floating-point number: 1 bit for the sign, 8 bits for the exponent, and 7 bits for the mantissa. The 8-bit exponent design allows it to cover the same range as FP32 (1 sign, 8 exponent, 23 mantissa), which is why it has become the main floating-point format for LLM training today.</p>
+
+<p>BF16 preserves more exponent bits at the cost of having fewer mantissa bits, resulting in lower precision. To mitigate cumulative errors from low precision, BF16 operations often adopt a "multiply in BF16, accumulate in FP32" strategy. This means that the summation of BF16 numbers involves converting them to FP32, adding them in the FP32 space, and then casting the result back to BF16.</p>
+
+<p>Now consider adding two BF16 numbers with the <strong>same sign and exponent</strong>. Why pick the same exponent? Because when estimating error, identical exponents mean the numbers are of the same magnitude, and adding them is most likely to produce the largest rounding error. For example, if two numbers differ by 100x, even if I just returned the larger one, the error would only be 1%. The maximum error often occurs when adding numbers of the same magnitude.</p>
+
+<p>When two BF16 numbers with the same sign and exponent are added, a carry (overflow into the next bit) inevitably occurs. For example: "1.0000001 + 1.0000100 = 10.0000101 = 1.00000101 × 10". At this point, the exponent must be incremented by 1, and the last bit '1' must be rounded off to return to BF16 format. As discussed in the previous section, if we round off the last bit using "rounding half up," a positive bias occurs. However, we know that scientists discovered this long ago and proposed "Round-to-Even" to eliminate it.</p>
+
+<h2>Two Large and One Small <a id="两大一小" href="#两大一小">#</a></h2>
+
+<p>So far, everything is within controllable and expected ranges, and no bias has appeared. However, as the saying goes, if something can go wrong, it will.</p>
+
+<p>Let's consider adding three numbers with the same sign. The characteristic of these three numbers is: two have large, identical exponents, and the third is very small. For instance, based on the previous example "1.0000001 + 1.0000100," let's add "0.0000000001". We get "1.0000001 + 1.0000100 + 0.0000000001 = 10.0000101001 = 1.00000101001 × 10".</p>
+
+<p>Originally, adding the two numbers resulted in "1.00000101 × 10". Rounding the last bit would trigger "Round-to-Even," resulting in "1.0000010 × 10". But now, with the addition of a tiny value, the bits to be rounded off when converting to BF16 become "1001"—which is greater than the midpoint (1000). This triggers an upward round, resulting in "1.0000011 × 10". From the perspective of the original two-number sum, the appearance of this tiny third number has broken the "Round-to-Even" rule, causing the positive bias to reappear!</p>
+
+<p>Of course, the conditions for this to happen seem quite stringent. First, the three numbers must have the same sign. Second, they must satisfy the "two large, one small" condition—where the two large numbers trigger a carry, and the small number is just large enough to influence the FP32 mantissa (i.e., bits 9 to 23 of the mantissa). In this scenario, the small number is so tiny that discarding it wouldn't cause much error on its own, yet its presence happens to disrupt the "Round-to-Even" logic for the two large numbers, bringing about a systemic one-sided bias.</p>
+
+<h2>Tailor-made <a id="量身定制" href="#量身定制">#</a></h2>
+
+<p>Can such specific conditions really occur in practice? Generally, it's not easy, but for Attention, this seems like a "tailor-made" bug!</p>
+
+<p>Let's look at a specific element (row and column) of $\bar{\boldsymbol{P}}\boldsymbol{V}$. It can be written as:</p>
+
+\begin{equation}\sum_{i=1}^n \bar{p}_i v_i \label{eq:sum-pi-vi}\end{equation}
+
+<p>where $\bar{p}_i = \exp(s_i - \max(s_i)) \leq 1$. We know that a characteristic of Softmax Attention is its ability to "concentrate attention." This means attention might concentrate on a few tokens. This reflects in $\bar{p}_i$ as a few tokens having $\bar{p}_i \approx 1$, while the rest are very close to 0 (though due to $\exp$, they are never exactly 0 unless they underflow the BF16 range).</p>
+
+<p>As layers stack and training progresses, the input $\boldsymbol{V}$ may exhibit "anisotropy." One manifestation of this is that the signs in certain dimensions are not uniformly distributed. Without loss of generality, assume most $v_i$ are positive (the same applies if they are negative) and of roughly the same magnitude. Then, the sum $\eqref{eq:sum-pi-vi}$ can be divided into two parts: a few "main terms" where $\bar{p}_i \approx 1$ multiplies $v_i$, and many "residue terms" where $\bar{p}_i \approx 0$ multiplies $v_i$.</p>
+
+<p>In this way, the "stars align" and perfectly trigger the bug described in the previous section: most terms have the same sign; the main terms' sum satisfies the carry condition; and the remaining residue terms are extremely small, only affecting the far end of the FP32 mantissa, just enough to break the "Round-to-Even" rule and generate bias. Finally, because of the "concentration of attention," the number of main terms is small, meaning carries don't happen too many times (the more bits are rounded away, the smaller the bias), keeping the bias in a significant range!</p>
+
+<p>Isn't this combination effectively an "exclusive bug" designed for Attention?</p>
+
+<h2>Eliminating the Residue <a id="干掉余项" href="#干掉余项">#</a></h2>
+
+<p>After understanding the cause and effect of the problem, let's think about how to solve it.</p>
+
+<p>On the surface, the bias is caused by tiny residue terms breaking "Round-to-Even." But thinking more deeply, the root cause is that the "rounding half up" rule has a point of abrupt change (discontinuity) at the midpoint. Near this point, small perturbations can easily generate bias. "Round-to-Even" eliminates the bias but not the discontinuity. The ideal radical cure is <a href="https://en.wikipedia.org/wiki/Rounding#Stochastic_rounding">Stochastic Rounding</a>—rounding up or down based on a probability—which avoids biases from small perturbations to the greatest extent.</p>
+
+<p>However, Stochastic Rounding is difficult to implement efficiently at the hardware level, so most current matrix multiplication units (TCUs) do not support it. Therefore, the original paper chose a different path: directly facing the problem with an approach I call "eliminating the residue." Specifically, when a certain trigger condition is detected, the Attention formula is modified to:</p>
+
+\begin{equation}\boldsymbol{O} = \frac{\exp(\boldsymbol{S})\boldsymbol{V}}{\exp(\boldsymbol{S})\boldsymbol{1}} = \frac{\exp(\boldsymbol{S} - \beta\boldsymbol{S}_{\max})\boldsymbol{V}}{\exp(\boldsymbol{S}- \beta\boldsymbol{S}_{\max})\boldsymbol{1}}\end{equation}
+
+<p>where $\beta > 1$. In this case, every term is divided by an additional $\exp((\beta-1)\boldsymbol{S}_{\max})$. This is a significantly large number (the paper sets $\beta \geq 2$). Consequently, the already tiny residue terms are more likely to underflow to zero and disappear. Then "Round-to-Even" can function normally again, thereby eliminating the bias.</p>
+
+<p>So, what is the detection condition? The original paper's version is simple: when the maximum value appears twice or more in a row of matrix $\boldsymbol{S}$, the modification is triggered, as this implies at least two $\bar{p}_i$ are effectively 1. However, I believe there is significant room for fine-tuning here, which could be an area for future improvement. Additionally, note that because Flash Attention computes by block, this detection and modification are also performed per block. Details can be found in the code in the original paper's appendix.</p>
+
+<h2>Extended Reflections <a id="延伸思考" href="#延伸思考">#</a></h2>
+
+<p>In summary, the paper provides a unique perspective for understanding phenomena like MaxLogit explosion. It explains some things, but it cannot cover everything, and it leaves many points for thought (or criticism).</p>
+
+<p>First, the paper's analysis of Attention bias depends on the anisotropy of $\boldsymbol{V}$. This might explain why MaxLogit explosion and similar anomalies only appear from the 2nd layer of Attention: the input to the 1st layer is the Embedding, which is relatively less likely to be anisotropic, whereas the input to the 2nd and subsequent layers has passed through previous Attention layers and might inherently be anisotropic (<a href="https://papers.cool/arxiv/2401.12143">reference</a>).</p>
+
+<p>However, this doesn't explain why MaxLogit explosion only occurs in specific layers. For example, the paper's experiment showed problems only in Layer 2, while K2's results showed problems in layers 2–4. Similarly, this clearly doesn't explain why Muon is more prone to MaxLogit explosion than Adam (as noted in Moonlight and K2). Therefore, this is likely the comprehensive result of many factors including architecture, optimizer, and low precision. Looking at precision alone is incomplete.</p>
+
+<p>Furthermore, there is a deep question regarding causality. One of the conditions for Attention bias is that attention is concentrated on a small number of tokens. Intervening in the Attention calculation at this point successfully prevented subsequent anomalies. However, I observed a normally training small model, and its attention was not as concentrated as imagined. For example, the top-1 average probability was less than 0.2, and the cumulative probability of the top-400 only reached 0.9 (with a training length of 4096).</p>
+
+<p>So, is Attention bias the "cause" or the "effect" of training collapse? In other words, when "attention concentrates on a few tokens" occurs, does it already indicate that the model has entered a state of collapse? Is intervening at that point "too late"? For example, while it might prevent some anomalies in metrics, is it possible the model can no longer scale? These questions remain unanswered for now.</p>
+
+<h2>Summary <a id="文章小结" href="#文章小结">#</a></h2>
+
+<p>This article shared a paper analyzing biased rounding errors in low-precision Attention calculations, and took this opportunity to brush up on the basics of low-precision computing.</p>
+
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_11371.html" style="color: #005fcc;">https://kexue.fm/archives/11371</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

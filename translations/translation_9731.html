@@ -1,0 +1,262 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['base', 'ams', 'noerrors', 'noundefined']}
+  },
+  options: {
+    ignoreHtmlClass: 'tex2jax_ignore',
+    processHtmlClass: 'tex2jax_process'
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/9731">The Road to Transformer Upgrade: 14. When HWFA Meets ReRoPE</a></h1>
+    <p>By 苏剑林 | August 24, 2023</p>
+
+    <p>In the previous article <a href="translation_9728.html">"The Road to Transformer Upgrade: 13. Reversing Leaky ReRoPE"</a>, I attempted to use the idea of reversing Leaky ReRoPE during the training phase so that the position encoding during the inference phase becomes normal RoPE. This aimed to achieve length extrapolation while solving the drawback of slow inference in ReRoPE. Unfortunately, experimental results showed that the "Leaky ReRoPE &rarr; RoPE" effect was not as good as "RoPE &rarr; ReRoPE/Leaky ReRoPE," so this problem hasn't been fully resolved yet.</p>
+
+    <p>At this point, I remembered the HWFA proposed in the earlier article <a href="translation_9603.html">"The Road to Transformer Upgrade: 9. A New Idea for Global Length Extrapolation"</a>. HWFA itself possesses a certain degree of length extrapolation capability. If combined with ReRoPE in a "powerful alliance," would it yield better results? More importantly, the addition of HWFA can significantly reduce inference costs, thereby compensating for the shortcomings of ReRoPE!</p>
+
+    <h2>Reviewing the Old</h2>
+    <p>First, as a "routine," let's review HWFA. HWFA (Hybrid Window-Full Attention) is not a specific model but an Attention combination method that can enhance the length extrapolation capability of Attention models while keeping performance essentially unchanged, and also reducing training and inference costs.</p>
+
+    <p>Specifically, HWFA consists of "$L-1$ layers of Window RoPE Attention + 1 layer of Full NoPE Attention." That is, the first $L-1$ layers of Attention all use <a href="translation_8265.html">RoPE</a> and restrict the receptive field via a window. Consequently, the inference cost becomes constant, and training speed can also be improved if optimized based on block parallelization. As for the final layer of Attention, it remains global but removes position encoding (NoPE) while adding <a href="translation_8823.html">$\log n$ scaling</a>. After these modifications and an appropriate choice of window, the model's training performance shows only a slight decline while exhibiting excellent length extrapolation capability.</p>
+
+    <p>Coincidentally, Google later proposed <a href="https://papers.cool/arxiv/2307.03170">FOT (Focused Transformer)</a>, which has many similarities with HWFA: it also uses $L-1$ layers of Local Attention plus 1 layer of Full Attention, and the Full Attention is likewise NoPE. The difference is that FOT places the Full Attention in the middle layers, and the Local Attention does not strictly limit the receptive field, so it cannot achieve length extrapolation directly; therefore, it proposed crossbatch training to extend the model length. After the fact, I experimented with using crossbatch training on HWFA and also obtained good results.</p>
+
+    <h2>Learning the New</h2>
+    <p>Returning to the theme of this article, how can HWFA and ReRoPE be combined in a "powerful alliance"? We know that ReRoPE is used in Full RoPE Attention, where the relative position matrix is truncated during the inference phase:</p>
+
+    $$
+    \begin{pmatrix}0 & \\
+    1 & 0 & \\
+    2 & 1 & 0 &\\
+    \ddots & 2 & 1 & 0 & \\
+    \ddots & \ddots & 2 & 1 & 0 & \\
+    \ddots & \ddots & \ddots & \ddots & \ddots & \ddots \\
+    \small{L - 2} & \ddots & \ddots & \ddots & \ddots & \ddots & \ddots \\
+    \small{L - 1} & \small{L - 2} & \ddots & \ddots & \ddots & 2 & 1 & 0 & \\
+    \end{pmatrix} \,\to\, \begin{pmatrix}
+    \color{red}{0} & \\
+    \color{red}{1} & \color{red}{0} & \\
+    \color{red}{\ddots} & \color{red}{1} & \color{red}{0} & \\
+    \color{red}{\small{w - 1}} & \color{red}{\ddots} & \color{red}{1} & \color{red}{0} & \\
+    \color{green}{w} & \color{red}{\small{w - 1}} & \color{red}{\ddots} & \color{red}{1} & \color{red}{0} & \\
+    \color{green}{\ddots} & \color{green}{w} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{1} & \color{red}{0} & \\
+    \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \\
+    \color{green}{w} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{w} & \color{red}{\small{w - 1}} & \color{red}{\ddots} & \color{red}{1} & \color{red}{0} & \\
+    \end{pmatrix}
+    $$
+
+    <p>Unexpectedly, such post-processing reflects excellent length extrapolation capability. However, due to the specificity of RoPE, the original ReRoPE implementation requires calculating the Attention matrix twice and is incompatible with mainstream acceleration like Flash Attention. Overall, the increase in inference cost is somewhat significant.</p>
+
+    <p>However, the addition of HWFA will greatly alleviate this problem! As summarized above, ReRoPE is only used on Full RoPE Attention, while HWFA mostly consists of Window RoPE Attention. Thus, the "HWFA+ReRoPE" scheme emerges naturally: during the training phase, replace HWFA's original Full NoPE Attention with Full RoPE Attention, and during inference, change it to Full ReRoPE Attention. In this way, the extra cost brought by switching to ReRoPE in the inference phase becomes very small, and the gains from changing other layers to Window Attention become even more significant.</p>
+
+    <p>Furthermore, "HWFA+ReRoPE" can compensate for the performance loss of the original HWFA. Previously, to ensure length extrapolation capability, the Full Attention in HWFA had to remove position encoding (i.e., NoPE), and the window size $\tilde{w}$ of Window Attention had to satisfy $(\tilde{w}-1)(L-1)+1 = \alpha N$ (where $L$ is the number of layers, $N$ is the training length, and $0 < \alpha \leq 1$). These constraints limited the model's expressive power, leading to poorer training results. With the introduction of ReRoPE, the window size $\tilde{w}$ for Window Attention can be larger, Full Attention can use RoPE, and it can be placed in middle layers instead of just the last layer, or even multiple layers of Full Attention can be used./ These changes can compensate for the loss in performance, and thanks to ReRoPE, the length extrapolation capability will not decrease.</p>
+
+    <p>To distinguish it from the initial version of HWFA, we can also call the combination of "HWFA+ReRoPE" "HWFA2."</p>
+
+    <h2>Experiments</h2>
+    <p>Below are some experimental results of "HWFA+ReRoPE (HWFA2)." Since the introduction of ReRoPE gives HWFA much more flexibility, I have only selected combinations that seem intuitive to me for experimentation, and cannot fully verify all permutations.</p>
+
+    <p>The experimental model is the same as the previous HWFA and ReRoPE models: a GAU model with 100 million parameters and a training length of 512. Note that there are two window parameters here: one is the $w$ parameter inherent to ReRoPE (previous ReRoPE experiments showed this has little impact, so it is uniformly set to 256 below); the other is the receptive field of HWFA's Window Attention, denoted as $\tilde{w}$ above, which is adjustable. Thus, the main parameters of "HWFA+ReRoPE" are the $\tilde{w}$ of Window Attention, as well as the number of layers and distribution positions of Full Attention. Previous experiments showed that for training effect, placing Full Attention in the middle is better than placing it at the end. Therefore, if there is 1 layer of Full Attention, its default position is the layer (index = num_layers / 2); if there are 2 layers of Full Attention, the default positions are (index = num_layers / 3) and (index = 2 * num_layers / 3), and so on.</p>
+
+    <p>Partial experimental results are as follows:</p>
+
+    <div align="center">
+    $$
+    \begin{array}{c|cc}
+    \hline
+    \text{Test Length} & 512(\text{Train}) & 4096(\text{Repeat}) & 4096(\text{Non-repeat})\\
+    \hline
+    \text{Baseline} & 49.41\% & 24.17\% & 23.16\% \\
+    \text{Baseline-}\log n & 49.40\% & 24.60\% & 24.02\% \\
+    \hline
+    \text{ReRoPE-w256} & 49.41\% & 77.90\% & 48.48\% \\
+    \text{ReRoPE-w256-}\log n^{\dagger} & 49.41\% & 82.40\% & 48.85\% \\
+    \text{ReRoPE-w256-}\log n & 49.40\% & \boldsymbol{85.12\%} & 49.07\% \\
+    \hline
+    \text{InvLeaky ReRoPE-w128-}\log n & 49.38\% & 82.25\% & 48.32\% \\
+    \text{InvLeaky ReRoPE-w128-b8-}\log n & 49.62\% & 81.15\% & 48.85\% \\
+    \hline
+    \text{HFWA} & 48.70\% & 80.84\% & 48.15\% \\
+    \hline
+    \text{HFWA-ReRoPE-w32-f1} & 49.29\% & 83.13\% & 49.34\% \\
+    \text{HFWA-ReRoPE-w64-f1} & 49.32\% & 82.41\% & \boldsymbol{49.37\%} \\
+    \text{HFWA-ReRoPE-w128-f1} & 49.21\% & 80.18\% & 48.99\% \\
+    \text{HFWA-ReRoPE-w256-f1} & 49.00\% & 54.94\% & 47.64\% \\
+    \text{HFWA-ReRoPE-w32-f2} & \boldsymbol{49.50}\% & 84.09\% & 49.35\% \\
+    \text{HFWA-ReRoPE-w64-f2} & 49.46\% & 84.43\% & 49.36\% \\
+    \text{HFWA-ReRoPE-w128-f2} & 49.35\% & 83.09\% & 48.97\% \\
+    \text{HFWA-ReRoPE-w256-f2} & 49.37\% & 75.24\% & 48.42\% \\
+    \hline
+    \end{array}
+    $$
+    </div>
+
+    <p>In the table above, the number after $\text{w}$ is the size of the Window Attention receptive field $\tilde{w}$, and the number after $\text{f}$ is the number of Full Attention layers. In the original HFWA, due to various constraints, $\tilde{w}$ only reached 16; if set larger, the length extrapolation capability would drop significantly. As seen in the table, after increasing $\tilde{w}$, training performance quickly aligned with the baseline, and further increasing the number of Full Attention layers even surpassed the baseline. Regarding extrapolation effects, the $\text{w32}$ and $\text{w64}$ cases are both quite good, significantly exceeding the original HFWA. Overall, the optimal combination for HFWA-ReRoPE is $\text{w64-f2}$, where both the training effect and non-repeated extrapolation effect exceed the original ReRoPE. Considering the training length $N$ is 512 and the number of layers $L$ is 24, I suspect the optimal value for $\tilde{w}$ should be around $2 \sim 4$ times $N/L$.</p>
+
+    <h2>Summary</h2>
+    <p>This article proposes a combination of HWFA and ReRoPE. Small-scale experimental results show that this combination achieve nearly optimal length extrapolation without losing training efficacy. Moreover, thanks to the design of HWFA, it can significantly reduce inference costs, effectively alleviating the disadvantage of increased inference overhead in the original ReRoPE.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9731.html" style="color: #005fcc;">https://kexue.fm/archives/9731</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

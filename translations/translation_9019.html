@@ -1,0 +1,249 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScriptTab: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/9019">It Is Said That Attention and Softmax Go Better Together</a></h1>
+    <p>By 苏剑林 | April 07, 2022</p>
+
+    <p>I don't know if you've noticed a detail: the current mainstream NLP pre-training mode is carried out on a fixed length (such as 512), and then the pre-trained model is directly applied to tasks of different lengths. It seems that no one has ever doubted this mode, as if it's "taken for granted" that the model can automatically generalize to different lengths.</p>
+
+    <p>Of course, I hadn't questioned this either until a few days ago when I conducted Base-version GAU experiments. I found that the length generalization ability of GAU was not as good as imagined. After further analysis, I finally understood that this length generalization ability is not "naturally occurring"...</p>
+
+    <h2>Model Review</h2>
+    <p>In <a href="translation_8934.html">"FLASH: Perhaps the Most Interesting Efficient Transformer Design Recently,"</a> we introduced the "Gated Attention Unit (GAU)," which is a new design that integrates GLU and Attention.</p>
+
+    <p>Aside from its performance, GAU brought us two main design shocks: first, it showed that single-head attention is not necessarily inferior to multi-head attention, which established its status as being "fast" and "efficient"; second, it showed that attention does not necessarily require Softmax normalization and can be replaced by a simple $\text{relu}^2$ divided by the sequence length:</p>
+
+    \begin{equation}\boldsymbol{A}=\frac{1}{n}\text{relu}^2\left(\frac{\mathcal{Q}(\boldsymbol{Z})\mathcal{K}(\boldsymbol{Z})^{\top}}{\sqrt{s}}\right)=\frac{1}{ns}\text{relu}^2\left(\mathcal{Q}(\boldsymbol{Z})\mathcal{K}(\boldsymbol{Z})^{\top}\right)\end{equation}
+
+    <p>This form leads to an interesting question: if we try to organize samples into the same length (say 512) during the pre-training stage, then $n$ is almost always 512 throughout pre-training. In other words, $n$ acts as a constant. When we use it for fine-tuning on other lengths (such as 64 or 128), should this $n$ automatically change to the sample length, or remain at 512?</p>
+
+    <p>Intuitively, making it equal to the sample length should be more adaptive, but the answer is counter-intuitive: fine-tuning with $n$ fixed at 512 is significantly better than setting $n$ to the sample length! This is thought-provoking...</p>
+
+    <h2>Locating the Problem</h2>
+    <p>If we look only at GAU's pre-training performance, it is superior to standard Attention. Therefore, GAU's inherent fitting ability should be fine; it's just that $\frac{1}{n}\text{relu}^2(\cdot)$ has poor transferability regarding sample length. To confirm this, I also tried mixed-length sample pre-training for GAU and found that the results improved significantly.</p>
+
+    <p>So, what could be the issue with GAU? It's not hard to guess. The overall calculation of GAU can be simplified as $\boldsymbol{O}=(\boldsymbol{U}\odot\boldsymbol{A}\boldsymbol{V})\boldsymbol{W}_o$, where $\boldsymbol{U}, \boldsymbol{V}, \boldsymbol{W}_o$ are all token-wise. This means they are not affected by length changes at all, so the problem must lie in $\boldsymbol{A}$.</p>
+
+    <p>When we used standard Attention in the past, we didn't encounter similar problems, so much so that we unconsciously felt this was a "natural" property. Therefore, we need to find the problem in the differences between GAU's Attention and standard Attention. As mentioned before, there are two differences: one is that multi-head Attention becomes single-head Attention, but this would at most cause some fluctuation in performance, while our results showed a sharp decline. Thus, the problem can only lie in the other point: the normalization method, specifically the change from Softmax to $\frac{1}{n}\text{relu}^2(\cdot)$.</p>
+
+    <p>Verifying this guess is simple. I replaced the normalization method in GAU's Attention back to Softmax, re-trained a GAU model, and then fine-tuned it on tasks of different lengths. I found that its performance was significantly better than when using $\frac{1}{n}\text{relu}^2(\cdot)$. Thus, we conclude: Attention and Softmax are indeed a better match.</p>
+
+    <h2>Reason Analysis</h2>
+    <p>Why does the more intuitive, length-adaptive $n$ perform worse than a fixed $n$? Since we know Softmax doesn't have this problem, let's look at Softmax for inspiration. The Softmax operation is:</p>
+
+    \begin{equation}a_{i,j} = \frac{1}{Z_i}\exp\left(\frac{\boldsymbol{q}_i\cdot\boldsymbol{k}_j}{\sqrt{d}}\right),\quad Z_i = \sum_{j=1}^n \exp\left(\frac{\boldsymbol{q}_i\cdot\boldsymbol{k}_j}{\sqrt{d}}\right)\end{equation}
+
+    <p>An immediate question is: what is the relationship between $Z_i$ and $n$? If $Z_i=\mathcal{O}(n)$ were truly the case, then replacing $Z_i$ with $n$ should theoretically yield similar results, or at least not terrible ones.</p>
+
+    <p>However, we know that the core of attention is to "attend"—it should have the ability to "focus" on a few tokens it deems important. Meanwhile, previous experimental results on efficient Transformers showed that replacing standard Attention with Local Attention does not cause a significant drop in results. Thus, we can expect that the Attention at position $i$ focuses mainly on a few tokens near $i$, and drops to basically zero beyond a certain distance. In fact, many post-hoc visualization results show that the trained Attention matrices are very sparse.</p>
+
+    <p>Synthesizing these results, we can conclude that there exists some constant $k$ such that when $|j-i| \geq k$, $\exp\left(\frac{\boldsymbol{q}_i\cdot\boldsymbol{k}_j}{\sqrt{d}}\right)$ is very close to 0. Consequently, $Z_i$ should be closer to $\mathcal{O}(k)$ rather than $\mathcal{O}(n)$, which means $Z_i$ is likely independent of $n$, or at least its order of magnitude relative to $n$ is less than $\mathcal{O}(n)$! Therefore, if we want to replace $Z_i$ with something else, it should be a function of a lower order than $n$ to the power of one, or even a constant.</p>
+
+    <p>Now looking back at GAU, when its activation function is changed to $\text{relu}^2(\cdot)$, the Attention situation is similar, or even sparser. This is because the $\text{relu}$ operation has a direct zeroing effect, unlike $\exp(\cdot)$ which is always positive. Additionally, GAU comes "standard" with Rotary Positional Embedding (RoPE). In <a href="translation_8265.html">"Transformer Upgrade: 2. Rotary Positional Embedding"</a>, we derived that RoPE itself has a certain long-range decay capability. Combining these factors, GAU's normalization factor should also be of an order lower than $\mathcal{O}(n)$, or even constant.</p>
+
+    <h2>Entropy Invariance</h2>
+    <p>From this, we can summarize three solutions for GAU: first, use the same fixed $n$ for both pre-training and fine-tuning; second, continue using the dynamic sample length $n$, but mix samples of different lengths during pre-training instead of using a single length; third, add a normalization factor like Softmax and let the model learn it:</p>
+
+    \begin{equation}a_{i,j} = \frac{1}{Z_i}\text{relu}^2\left(\frac{\boldsymbol{q}_i\cdot\boldsymbol{k}_j}{\sqrt{d}}\right),\quad Z_i = \sum_{j=1}^n \text{relu}^2\left(\frac{\boldsymbol{q}_i\cdot\boldsymbol{k}_j}{\sqrt{d}}\right)\end{equation}
+
+    <p>Since these solutions exist, why do we say "Attention and Softmax are a better match"? What makes GAU's $\text{relu}^2(\cdot)$ a poor match? First, if we look at the ablation experiments in the original GAU paper, they show that replacing $\text{relu}^2(\cdot)$ with Softmax yields basically identical performance:</p>
+
+    <p style="text-align:center;">
+        <img src="https://kexue.fm/usr/uploads/2022/04/3734029708.png" alt="GAU squared_relu vs softmax ablation" title="Click to view original image" style="max-width:100%;">
+        <br>
+        <em>Replacing GAU's squared_relu with softmax yields similar performance</em>
+    </p>
+
+    <p>With this basic guarantee, we can see why Softmax is better than $\text{relu}^2(\cdot)$. Among the three solutions mentioned, Solution 1 feels insufficiently adaptive, and Solution 2 requires training with multiple lengths, which feels less elegant. As for Solution 3, the form actually becomes "bulky" compared to Softmax after adding the normalization factor. Thus, overall, Softmax appears more elegant and effective.</p>
+
+    <p>Furthermore, generalization can be divided into "interpolation" and "extrapolation." Here, interpolation (extrapolation) refers to test lengths being shorter (longer) than training lengths. When we said the normalization factor is of a constant magnitude, we were mostly talking about interpolation. For extrapolation, if the length becomes long enough, $\boldsymbol{q}_i, \boldsymbol{k}_j$ are all "crowded" together, making it difficult to maintain the property of approaching 0 beyond a certain range. If we use Softmax, we can derive an "entropy-invariant" version to enhance the model's extrapolation capability:</p>
+
+    \begin{equation}Attention(Q,K,V) = \text{softmax}\left(\frac{\log_{512} n}{\sqrt{d}}QK^{\top}\right)V\end{equation}
+
+    <p>In <a href="translation_8823.html">"Looking at Attention Scale Operations from Entropy Invariance,"</a> we performed simple comparative experiments showing that this version indeed improves performance beyond the training length.</p>
+
+    <p>So, can $\text{relu}^2(\cdot)$ derive an "entropy-invariant" version? The answer is no, because that would require adjusting the distribution's entropy via a temperature parameter, which requires the activation function to not possess positive homogeneity. For example, for a power function, $(\lambda \boldsymbol{q}_i \cdot \boldsymbol{k}_j)^n = \lambda^n (\boldsymbol{q}_i \cdot \boldsymbol{k}_j)^n$; after normalization, $\lambda^n$ cancels out and has no effect. The activation function should preferably be one order higher than a power function to achieve this regulation. The most common functions higher-order than power functions are exponential functions, and exponential normalization is exactly Softmax.</p>
+
+    <h2>Summary</h2>
+    <p>This article analyzed the reasons for GAU's poor fine-tuning performance and discovered that the normalization factor for Attention should be close to a constant magnitude. Therefore, using $n$ or $n^2$ as a normalization factor in GAU leads to poor performance. Generally, I believe Attention is still a better match with Softmax; it provides a good baseline and can further enhance extrapolation capabilities through "entropy invariance" extensions.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9019.html" style="color: #005fcc;">https://kexue.fm/archives/9019</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

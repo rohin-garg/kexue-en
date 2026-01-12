@@ -1,0 +1,311 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']},
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script type="text/javascript" id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/8194">【Search-based Text】 (4) Constructing Sentences through Addition, Deletion, and Modification</a></h1>
+    <p>By 苏剑林 | Feb 25, 2021</p>
+
+    <p>"Constructing sentences with given words" is a classic task in elementary school to help us understand and apply vocabulary. From the perspective of Natural Language Processing, it is a task of sentence expansion or sentence completion, which essentially requires the ability to perform non-directional text generation. However, current mainstream language models are unidirectional (mostly forward, i.e., left-to-right; a few are backward, i.e., right-to-left). Since the provided words in a sentence construction task do not necessarily appear at the beginning or the end of the sentence, language models cannot be directly used to complete such tasks.</p>
+
+    <p>In this article, we will introduce the paper <a href="https://papers.cool/arxiv/1811.10996">"CGMH: Constrained Sentence Generation by Metropolis-Hastings Sampling"</a>. It utilizes MCMC sampling to enable unidirectional language models to perform non-directional generation. By simulating the human process of writing and polishing through addition, deletion, and modification operations, it can unsupervisedly complete various text generation tasks, such as sentence construction.</p>
+
+    <h2>Problem Setting</h2>
+    <p>Unsupervised text sampling can be directly completed by a language model. What we want to do is add some signals $\boldsymbol{c}$ into this sampling process so that it generates the text we expect. In the section "Define the Goal" of the first article of this series, <a href="translation_8062.html">"【Search-based Text】 (1) From Text Generation to Search Sampling,"</a> we introduced the guiding ideology of this series: quantitatively write down the target we want to find, and then maximize it or sample from it.</p>
+
+    <p>There is no fixed format for the quantitative goal, but generally, it takes a form like the following:</p>
+
+    \begin{equation}\rho(\boldsymbol{x}, \boldsymbol{c}) = p(\boldsymbol{x})\cdot \text{sim}(\boldsymbol{x}, \boldsymbol{c})\cdot \chi(\boldsymbol{x}, \boldsymbol{c})\end{equation}
+
+    <p>Where $\boldsymbol{c}$ is the given condition and $\boldsymbol{x}$ is the sentence we want to generate; $p(\boldsymbol{x})$ is the fluency score, usually provided by a language model, representing the hope that our generated target is a natural sentence; $\text{sim}(\boldsymbol{x}, \boldsymbol{c})$ is a "soft" relevance score that measures the similarity between $\boldsymbol{x}$ and $\boldsymbol{c}$; $\chi(\boldsymbol{x}, \boldsymbol{c})$ is a "hard" constraint, usually represented by an indicator function, being 1 when certain conditions are met and 0 otherwise. These three terms do not necessarily all appear, nor are they restricted to just these three; this is simply a design thought for the objective.</p>
+
+    <p>Theoretically, once we have $\rho(\boldsymbol{x}, \boldsymbol{c})$, we can construct the conditional probability:</p>
+
+    \begin{equation}p(\boldsymbol{x}|\boldsymbol{c}) = \frac{\rho(\boldsymbol{x},\boldsymbol{c})}{\sum\limits_{\boldsymbol{x}} \rho(\boldsymbol{x},\boldsymbol{c})}\end{equation}
+
+    <p>And then perform conditional sampling. However, directly sampling from $p(\boldsymbol{x}|\boldsymbol{c})$ is generally quite difficult. Therefore, the MCMC method introduced in the second article <a href="translation_8084.html">"【Search-based Text】 (2) From MCMC to Simulated Annealing"</a> comes into play. It allows us to achieve sampling from $p(\boldsymbol{x}|\boldsymbol{c})$ knowing only $\rho(\boldsymbol{x}, \boldsymbol{c})$.</p>
+
+    <h2>Addition, Deletion, and Modification</h2>
+    <p>We mainly use the MH sampling within the MCMC method. Constructing MH sampling requires a prior transition probability $q(\boldsymbol{x}\leftarrow\boldsymbol{y})$. A transition probability is the probability of modifying one sample into another. In theory, almost any transition probability is acceptable. However, as derived from the "Analytical Thinking" section in <a href="translation_8084.html">"【Search-based Text】 (2) From MCMC to Simulated Annealing,"</a> the effectiveness of MH sampling lies in the fact that each transition probability only performs "fine-tuning" rather than "major overhauls" on the current sample. Therefore, the design of the transition probability here must follow this idea.</p>
+
+    <p>The "samples" in this series refer to the sentences to be generated. We can consider "words" as the basic unit of a sentence. Thus, for fine-tuning operations on a sentence, we can design operations on single words, specifically including three types: insertion (增), deletion (删), and replacement (改):</p>
+
+    <blockquote>
+        <p><strong>Insert (增):</strong> Insert a new word at a certain position in the sentence;</p>
+        <p><strong>Delete (删):</strong> Delete a certain word from the sentence;</p>
+        <p><strong>Replace (改):</strong> Replace a certain word in the sentence with another word.</p>
+    </blockquote>
+
+    <p>Note that these three operations have inverse relationships: insertion and deletion are inverse operations of each other, and replacement is its own inverse. Including inverse operations is mandatory because the calculation formula for the acceptance rate is $\mathcal{A}(\boldsymbol{y}\leftarrow\boldsymbol{x}) = \min\left(1, \frac{q(\boldsymbol{x}\leftarrow\boldsymbol{y})p(\boldsymbol{y})}{q(\boldsymbol{y}\leftarrow\boldsymbol{x})p(\boldsymbol{x})}\right)$. It requires both $q(\boldsymbol{x}\leftarrow\boldsymbol{y}) > 0$ and $q(\boldsymbol{y}\leftarrow\boldsymbol{x}) > 0$ (the probability of moving from the original sentence to the new one and vice versa must be non-zero) to reasonably calculate the acceptance rate. Thus, the transition probabilities for each operation and its inverse must be defined.</p>
+
+    <p>From a mathematical perspective, this is also a requirement for the transition probability to have a unique stationary distribution. As we stated in <a href="translation_8084.html">"【Search-based Text】 (2) From MCMC to Simulated Annealing,"</a> the condition for having a unique stationary distribution is that any two states are connected, which means one can gradually transform from any sentence to any other sentence. Clearly, this cannot be achieved without inverse operations.</p>
+
+    <h2>Transition Probabilities</h2>
+    <p>Now that we have three fine-tuning operations—insertion, deletion, and replacement—we first need to define the probabilities of these operations occurring: $p_{\text{insert}}, p_{\text{delete}}, p_{\text{replace}}$. Since properly defined MCMC methods will eventually converge to the same stationary distribution, their specific values don't significantly impact the final result. For simplicity, we can let $p_{\text{insert}} = p_{\text{delete}} = p_{\text{replace}} = 1/3$. Next, we define the transition probability for each operation step-by-step.</p>
+
+    <p>First to be defined is the transition probability for "replace". Suppose the current sentence is $\boldsymbol{x}=(x_1, x_2, \cdots, x_l)$. We randomly select a position $i$ from $1, 2, \cdots, l$, and then choose a new word $y$ from the probability distribution:</p>
+
+    \begin{equation}p(y|\boldsymbol{x}_{-i})=\frac{p(x_1,\dots,x_{i-1},y,x_{i+1},\cdots,x_l)}{\sum\limits_y p(x_1,\dots,x_{i-1},y,x_{i+1},\cdots,x_l)}\end{equation}
+
+    <p>Then let $\boldsymbol{y}=(x_1,\dots,x_{i-1},y,x_{i+1},\cdots,x_l)$ be the fine-tuned sentence. Here $p(x_1, x_2, \cdots, x_l)$ is the sentence probability given by the language model. This is the transition probability $q_{\text{replace}}(\boldsymbol{y}\leftarrow\boldsymbol{x})$.</p>
+
+    <p>Readers who have seen <a href="translation_8119.html">"【Search-based Text】 (3) Text Sampling Based on BERT"</a> will realize that $p(y|\boldsymbol{x}_{-i})$ is essentially the MLM (Masked Language Model) of BERT. However, CGMH was work done before BERT was released, so the concept of MLM likely didn't exist then; only unidirectional language models were available. If we used a unidirectional language model to calculate $p(y|\boldsymbol{x}_{-i})$ according to the above formula, it would mean calculating the probability of $|V|$ sentences (traversing all words in the vocabulary for the $i$-th position), which is computationally expensive. To address this, the authors devised a method to filter out low-probability parts using the language model. Specifically, they use a forward language model $\stackrel{\rightarrow}{p}(y|x_1,x_2,\cdots,x_{i-1})$ and a backward language model $\stackrel{\leftarrow}{p}(y|x_l,x_{l-1},\cdots,x_{i+1})$ to predict the word distribution at position $i$, and then use:</p>
+
+    \begin{equation}\min\big(\stackrel{\rightarrow}{p}(y|x_1,x_2,\cdots,x_{i-1}),\, \stackrel{\leftarrow}{p}(y|x_l,x_{l-1},\cdots,x_{i+1})\big)\end{equation}
+
+    <p>as an indicator to keep only the $K$ words with the highest indicators as the candidate set. This way, they only need to calculate the probabilities of $K$ sentences, reducing computation. Similarly, there's no strict requirement for this indicator; for instance, if we only have a forward language model, using $\stackrel{\rightarrow}{p}(y|x_1,x_2,\cdots,x_{i-1})$ directly as the indicator for screening is also fine.</p>
+
+    <p>With $q_{\text{replace}}(\boldsymbol{y}\leftarrow\boldsymbol{x})$, defining $q_{\text{insert}}(\boldsymbol{y}\leftarrow\boldsymbol{x})$ for the "insert" operation is also easy, as it can be viewed as a variation of "replace". Let $\boldsymbol{x}=(x_1, x_2, \cdots, x_l)$. Randomly select a position $i$ from $1, 2, \cdots, l, l+1$, insert an arbitrary new word $\tilde{x}$ between $x_{i-1}$ and $x_i$ to get $\tilde{\boldsymbol{x}} = (x_1,\dots,x_{i-1},\tilde{x},x_{i},\cdots,x_l)$, and then calculate $q_{\text{replace}}(\boldsymbol{y}\leftarrow\tilde{\boldsymbol{x}})$ starting from $\tilde{\boldsymbol{x}}$ with $i$ as the sampling position to serve as $q_{\text{insert}}(\boldsymbol{y}\leftarrow\boldsymbol{x})$.</p>
+
+    <p>Finally, the "delete" operation is the simplest. Let $\boldsymbol{x}=(x_1, x_2, \cdots, x_l)$. Randomly select a position $i$ from $1, 2, \cdots, l$. Deleting the word at that position gives $\boldsymbol{y} = (x_1,\dots,x_{i-1},x_{i+1},\cdots,x_l)$. Then simply set $q_{\text{delete}}(\boldsymbol{y}\leftarrow\boldsymbol{x})=1$.</p>
+
+    <h2>Acceptance Probability</h2>
+    <p>Earlier we defined the transition probabilities, which essentially define our action space for fine-tuning the sentence in each step. The transition probabilities defined above are independent of the task background; they do not depend on the conditional information $\boldsymbol{c}$, but only on an unsupervised language model. The specific task information is contained in the definition of the quantitative indicator $\rho(\boldsymbol{x}, \boldsymbol{c})$, which affects the final result by influencing the acceptance rate:</p>
+
+    \begin{equation}\begin{aligned}
+    \mathcal{A}_{\text{replace}}(\boldsymbol{y}\leftarrow\boldsymbol{x}) =&\, \frac{p_{\text{replace}} \cdot \rho(\boldsymbol{y},\boldsymbol{c}) \cdot q_{\text{replace}}(\boldsymbol{x}\leftarrow\boldsymbol{y})}{p_{\text{replace}} \cdot \rho(\boldsymbol{x},\boldsymbol{c}) \cdot q_{\text{replace}}(\boldsymbol{y}\leftarrow\boldsymbol{x})} = \frac{\rho(\boldsymbol{y},\boldsymbol{c}) \cdot q_{\text{replace}}(\boldsymbol{x}\leftarrow\boldsymbol{y})}{\rho(\boldsymbol{x},\boldsymbol{c}) \cdot q_{\text{replace}}(\boldsymbol{y}\leftarrow\boldsymbol{x})} \\[10pt]
+    \mathcal{A}_{\text{insert}}(\boldsymbol{y}\leftarrow\boldsymbol{x}) =&\, \frac{p_{\text{delete}} \cdot \rho(\boldsymbol{y},\boldsymbol{c}) \cdot q_{\text{delete}}(\boldsymbol{x}\leftarrow\boldsymbol{y})}{p_{\text{insert}} \cdot \rho(\boldsymbol{x},\boldsymbol{c}) \cdot q_{\text{insert}}(\boldsymbol{y}\leftarrow\boldsymbol{x})} = \frac{\rho(\boldsymbol{y},\boldsymbol{c})}{\rho(\boldsymbol{x},\boldsymbol{c}) \cdot q_{\text{insert}}(\boldsymbol{y}\leftarrow\boldsymbol{x})} \\[10pt]
+    \mathcal{A}_{\text{delete}}(\boldsymbol{y}\leftarrow\boldsymbol{x}) =&\, \frac{p_{\text{insert}} \cdot \rho(\boldsymbol{y},\boldsymbol{c}) \cdot q_{\text{insert}}(\boldsymbol{x}\leftarrow\boldsymbol{y})}{p_{\text{delete}} \cdot \rho(\boldsymbol{x},\boldsymbol{c}) \cdot q_{\text{delete}}(\boldsymbol{y}\leftarrow\boldsymbol{x})} = \frac{\rho(\boldsymbol{y},\boldsymbol{c}) \cdot q_{\text{insert}}(\boldsymbol{x}\leftarrow\boldsymbol{y})}{\rho(\boldsymbol{x},\boldsymbol{c})}
+    \end{aligned}\end{equation}
+
+    <p>By the way, the above acceptance rates are missing the $\min(1,\alpha)$ operation, but if our random number is sampled from $U[0,1]$, including this operation or not does not affect the outcome. Simply put, these acceptance rates mean that if a fine-tuning operation increases $\rho(\boldsymbol{x}, \boldsymbol{c})$, it is very likely to be accepted. However, even if it decreases $\rho(\boldsymbol{x}, \boldsymbol{c})$, there is still a certain chance it will be accepted. Whether it's random sampling or seeking a maximum (simulated annealing), this randomness is crucial; it is the key to jumping out of local extrema.</p>
+
+    <p>Using "insert", "delete", and "replace" as transition probability operations combined with the MH sampling acceptance rate essentially simulates the repeated polishing in our writing process: make a change, then check whether to keep it; keep the good ones as much as possible, and try not to keep the bad ones.</p>
+
+    <h2>Determining the Goal</h2>
+    <p>As the final step of preparation, let's discuss how $\rho(\boldsymbol{x}, \boldsymbol{c})$ is determined. CGMH conducted three types of experiments: sentence construction using keywords, unsupervised sentence rewriting, and unsupervised sentence error correction. Their sampling processes are the same, with the difference lying in $\rho(\boldsymbol{x}, \boldsymbol{c})$. For sentence construction, the constraint is a hard constraint, namely:</p>
+
+    \begin{equation}\rho(\boldsymbol{x}, \boldsymbol{c}) = p(\boldsymbol{x})\cdot \chi(\boldsymbol{x}, \boldsymbol{c})\end{equation}
+
+    <p>Where $\boldsymbol{c}$ is the given set of words, and $\chi(\boldsymbol{x}, \boldsymbol{c})$ is 1 only when sentence $\boldsymbol{x}$ contains all words in $\boldsymbol{c}$, and 0 otherwise. In implementation, we can record the positions of these words and ensure they are not selected during "replace" and "delete" operations. In the case of unsupervised sentence rewriting and error correction, $\boldsymbol{c}$ is the input sentence, and $\chi(\boldsymbol{x}, \boldsymbol{c})$ is replaced by some similarity indicator $\text{sim}(\boldsymbol{x}, \boldsymbol{c})$. Refer to the original paper for specific settings.</p>
+
+    <p>The choice of $p(\boldsymbol{x})$ is also worth discussing. It represents the fluency of the sentence, usually a language model:</p>
+
+    \begin{equation}p(\boldsymbol{x}) = \prod_{t=1}^l p(x_t|\boldsymbol{x}_{< t})\end{equation}
+
+    <p>However, using a language model directly tends to favor generating very short sentences, because generally, the longer a sentence, the lower its probability. To encourage generating longer sentences, it is recommended to add a power adjustment, making it $p^{\gamma}(\boldsymbol{x})$, where $\gamma$ is a number slightly less than 1.</p>
+
+    <h2>Experimental Results</h2>
+    <p>With everything in place, experiments can begin. Here we demonstrate the sentence construction task. To stay as consistent as possible with the methodology introduced by CGMH, only a forward language model is used, without an MLM model. The language model used is Huawei's open-source Chinese GPT base model (refer <a href="https://github.com/bojone/bert4keras/blob/master/examples/basic_language_model_nezha_gen_gpt.py">here</a>). The reference code is shared at:</p>
+
+    <blockquote>
+        <p><strong>GitHub Link: <a href="https://github.com/bojone/unsupervised-text-generation/blob/main/gpt_cgmh.py">https://github.com/bojone/unsupervised-text-generation/blob/main/gpt_cgmh.py</a></strong></p>
+    </blockquote>
+
+    <p>Effect Demonstration:</p>
+
+    <blockquote>
+        <p><strong>Input keywords: Guangzhou, Food, Opening (广州、美食、开幕)</strong><br>
+        Starting state: Guangzhou Food Opening (广州美食开幕。)<br>
+        Step 0, execute insert, output: Guangzhou Food Festival opens (广州美食节开幕。)<br>
+        Step 4, execute insert, output: Guangzhou Food Festival opening ceremony (广州美食节开幕式。)<br>
+        Step 11, execute insert, output: Guangzhou Food Festival opening month ceremony (广州美食节开幕月式。)<br>
+        Step 13, execute delete, output: Guangzhou Food Festival opening ceremony (广州美食节开幕式。)<br>
+        Step 14, execute replace, output: Guangzhou Food Festival has opened (广州美食节开幕了。)<br>
+        Step 20, execute delete, output: Guangzhou Food Festival opens (广州美食节开幕。)<br>
+        ...<br>
+        Step 127, execute replace, output: The Guangzhou Food Festival has opened again (广州的美食节又开幕了。)</p>
+
+        <p><strong>Input keywords: Science, Space (科学、空间)</strong><br>
+        Starting state: Science Space (科学空间。)<br>
+        Step 3, execute insert, output: Science, Space (科学，空间。)<br>
+        Step 9, execute insert, output: Science is space (科学是空间。)<br>
+        ...<br>
+        Step 125, execute insert, output: The space for scientific regulation will be even larger (科学调控的空间将更加大。)</p>
+
+        <p><strong>Input keywords: Delicious, Snacks (好吃、零食)</strong><br>
+        Starting state: Delicious Snacks (好吃零食。)<br>
+        Step 4, execute insert, output: Delicious snacks (好吃的零食。)<br>
+        Step 18, execute insert, output: I like eating delicious snacks (我好吃零食。)<br>
+        ...<br>
+        Step 127, execute replace, output: And I like eating delicious snacks (而我好吃零食。)</p>
+    </blockquote>
+
+    <p>Here, each sample underwent 128 iterations of iteration. Some intermediate steps that did not change the sentence are not shown. Of course, due to the existence of randomness, running the same input repeatedly will usually result in different sentences, as MCMC is essentially a stochastic sampling scheme. These examples show that this is indeed a process of repeated fine-tuning of sentences, eventually yielding relatively readable sentences that satisfy the conditions, demonstrating the effectiveness of the CGMH method.</p>
+
+    <p>Theoretically, as long as we can write down our target $\rho(\boldsymbol{x}, \boldsymbol{c})$, we can apply this entire process to unsupervisedly complete corresponding text generation tasks (though it might require a sufficient number of iterations, rather than just a hundred or so as in the sentence construction task).</p>
+
+    <h2>Summary</h2>
+    <p>This article introduced and briefly reproduced CGMH, an unsupervised constrained text generation method using MCMC. It can be said to simulate the human additions, deletions, and modifications during the writing process, making the generation process quite interpretable. It is the first truly practical example in this series. In principle, CGMH encompasses the general process of text generation through discrete optimization. Any text generation task that can define a quantitative evaluation metric without relying on labels can attempt to use this method for unsupervised generation.</p>
+
+    <hr>
+    <p><em><strong>Original Link:</strong> <a href="translation_8194.html">https://kexue.fm/archives/8194</a></em></p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8194.html" style="color: #005fcc;">https://kexue.fm/archives/8194</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

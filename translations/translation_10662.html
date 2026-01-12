@@ -1,0 +1,296 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/10662">The Road to Low-Rank Approximation (Part 5): CUR Decomposition</a></h1>
+
+    <p>By 苏剑林 | January 12, 2025</p>
+
+
+<p>Returning once again to the path of low-rank approximation. In <a href="translation_10636.html">"The Road to Low-Rank Approximation (Part 4): ID"</a>, we introduced "Interpolative Decomposition (ID)," which is the process of finding an approximation of the form $\boldsymbol{C}\boldsymbol{Z}$ for a matrix $\boldsymbol{M}\in\mathbb{R}^{n\times m}$, where $\boldsymbol{C}\in\mathbb{R}^{n\times r}$ consists of selected columns of $\boldsymbol{M}$, and $\boldsymbol{Z}\in\mathbb{R}^{r\times m}$ is an arbitrary matrix. In this article, we will introduce the CUR decomposition. It shares the same lineage as Interpolative Decomposition, as both use the rows and columns of the original matrix as a "skeleton" to construct an approximation of the original matrix. Unlike ID, which uses either rows or columns, CUR decomposition uses both rows and columns simultaneously.</p>
+
+<h3>Basic Definition</h3>
+
+<p>Actually, this is not the first time CUR decomposition has appeared on this site. As early as <a href="translation_8115.html">"Nyströmformer: A Linearized Attention Scheme Based on Matrix Decomposition"</a>, we introduced the Nyström approximation of a matrix, which is essentially a CUR decomposition. Later, in <a href="translation_9280.html">"Using CUR Decomposition to Accelerate Retrieval in Interactive Similarity Models"</a>, we also introduced the application of CUR decomposition in reducing the retrieval complexity of interactive similarity models.</p>
+
+<p>The key to these applications of CUR decomposition lies in the "C" and "R" in its name. Specifically, CUR decomposition seeks to find an approximation for a matrix $\boldsymbol{M}\in\mathbb{R}^{n\times m}$ in the following form:</p>
+
+\begin{equation}\mathop{\text{argmin}}_{S_1,S_2,\boldsymbol{\mathcal{U}}}\Vert \underbrace{\boldsymbol{M}_{[:,S_1]}}_{\boldsymbol{\mathcal{C}}}\boldsymbol{\mathcal{U}}\underbrace{\boldsymbol{M}_{[S_2,:]}}_{\boldsymbol{\mathcal{R}}} - \boldsymbol{M}\Vert_F^2\quad\text{s.t.}\quad \left\{\begin{aligned}&S_1\subset\{0,1,\cdots,m-1\},|S_1|=r\\ 
+&S_2\subset\{0,1,\cdots,n-1\},|S_2|=r \\ 
+&\boldsymbol{\mathcal{U}}\in\mathbb{R}^{r\times r} 
+\end{aligned}\right.\end{equation}
+
+<p>To distinguish it from the $\boldsymbol{U}$ in SVD, we use the calligraphic letters $\boldsymbol{\mathcal{C}}, \boldsymbol{\mathcal{U}}, \boldsymbol{\mathcal{R}}$. As a comparison, the ID introduced in the previous post is:</p>
+
+\begin{equation}\mathop{\text{argmin}}_{S,\boldsymbol{Z}}\Vert \underbrace{\boldsymbol{M}_{[:,S]}}_{\boldsymbol{C}}\boldsymbol{Z} - \boldsymbol{M}\Vert_F^2\quad\text{s.t.}\quad \left\{\begin{aligned} 
+&S\subset\{0,1,\cdots,m-1\},|S|=r\\ 
+&\boldsymbol{Z}\in\mathbb{R}^{r\times m} 
+\end{aligned}\right.\end{equation}
+
+<p>And the low-rank approximation found by SVD is:</p>
+
+\begin{equation}\mathop{\text{argmin}}_{\boldsymbol{U},\boldsymbol{\Sigma},\boldsymbol{V}}\Vert \boldsymbol{U}_{[:,:r]}\boldsymbol{\Sigma}_{[:r,:r]}\boldsymbol{V}_{[:,:r]}^{\top} - \boldsymbol{M}\Vert_F^2\quad\text{s.t.}\quad \left\{\begin{aligned} 
+&\boldsymbol{U}\in\mathbb{R}^{n\times n}, \boldsymbol{U}^{\top}\boldsymbol{U} = \boldsymbol{I}_n \\ 
+&\boldsymbol{V}\in\mathbb{R}^{m\times n}, \boldsymbol{V}^{\top}\boldsymbol{V} = \boldsymbol{I}_m \\ 
+&\boldsymbol{\Sigma}=\text{diag}(\sigma_1,\cdots,\sigma_{\min(n,m)})\in\mathbb{R}_{\geq 0}^{n\times m} 
+\end{aligned}\right.\end{equation}
+
+<p>In the <a href="translation_10183.html">SVD post</a>, we proved that SVD can find the optimal solution for a rank-$r$ approximation, but its computational complexity is high, and the physical meaning of $\boldsymbol{U}$ and $\boldsymbol{V}$ is not intuitive. In contrast, CUR decomposition replaces $\boldsymbol{U}$ and $\boldsymbol{V}$ with columns $\boldsymbol{\mathcal{C}}$ and rows $\boldsymbol{\mathcal{R}}$ from the original matrix. Although it is less accurate in terms of approximation compared to SVD, it is superior in terms of interpretability, storage cost, and computational cost. From an structural perspective, the left and right matrices $\boldsymbol{U}, \boldsymbol{V}$ in the SVD approximation are more complex while the middle matrix $\boldsymbol{\Sigma}$ is simpler; CUR decomposition is the opposite, where the left and right matrices $\boldsymbol{\mathcal{C}}, \boldsymbol{\mathcal{R}}$ are simpler and the middle matrix $\boldsymbol{\mathcal{U}}$ is more complex.</p>
+
+<h3>The Choice of U</h3>
+
+<p>Clearly, the difficulty of CUR decomposition lies in the selection of rows and columns, because once $\boldsymbol{\mathcal{C}}$ and $\boldsymbol{\mathcal{R}}$ are given, the optimal solution for $\boldsymbol{\mathcal{U}}$ can be expressed analytically using the pseudo-inverse:</p>
+
+\begin{equation}\boldsymbol{\mathcal{U}}^* = \boldsymbol{\mathcal{C}}^{\dagger}\boldsymbol{M}\boldsymbol{\mathcal{R}}^{\dagger}\end{equation}
+
+<p>The derivation process can refer to the <a href="translation_10237.html">pseudo-inverse post</a>. Actually, this solution is also very intuitive: assuming $\boldsymbol{\mathcal{C}}$ and $\boldsymbol{\mathcal{R}}$ were invertible matrices, the solution to the equation $\boldsymbol{\mathcal{C}}\boldsymbol{\mathcal{U}}\boldsymbol{\mathcal{R}}=\boldsymbol{M}$ would naturally be $\boldsymbol{\mathcal{U}}=\boldsymbol{\mathcal{C}}^{-1}\boldsymbol{M}\boldsymbol{\mathcal{R}}^{-1}$. When they are not invertible, the inverse ${}^{-1}$ is replaced by the pseudo-inverse ${}^{\dagger}$.</p>
+
+<p>In addition to this theoretical optimal solution, CUR decomposition also frequently uses another, in some sense more intuitive, choice:</p>
+
+\begin{equation}\boldsymbol{\mathcal{U}} = \boldsymbol{M}_{[S_2,S_1]}^{\dagger}\end{equation}
+
+<p>Note that the priority of the slicing operation is higher than the transpose and pseudo-inverse, so this $\boldsymbol{\mathcal{U}}$ is actually the pseudo-inverse of the submatrix formed by the intersection of $\boldsymbol{\mathcal{C}}$ and $\boldsymbol{\mathcal{R}}$. How do we understand this choice? By swapping rows and columns, we can make the selected rows and columns rank first, and assuming $\boldsymbol{M}_{[S_2,S_1]}$ is invertible, then the result can be written using block matrices as:</p>
+
+\begin{equation}\underbrace{\begin{pmatrix}\boldsymbol{A} & \boldsymbol{B} \\ \boldsymbol{C} & \boldsymbol{D}\end{pmatrix}}_{\boldsymbol{M}} \approx \underbrace{\begin{pmatrix}\boldsymbol{A} \\ \boldsymbol{C}\end{pmatrix}}_{\boldsymbol{\mathcal{C}}}\,\,\underbrace{\boldsymbol{A}^{-1}}_{\boldsymbol{\mathcal{U}}}\,\,\underbrace{\begin{pmatrix}\boldsymbol{A} & \boldsymbol{B}\end{pmatrix}}_{\boldsymbol{\mathcal{R}}} = \begin{pmatrix}\boldsymbol{A} & \boldsymbol{B} \\ \boldsymbol{C} & \boldsymbol{C}\boldsymbol{A}^{-1}\boldsymbol{B}\end{pmatrix}\label{eq:id-abcd}\end{equation}
+
+<p>It can be seen that at this point, the CUR decomposition accurately reconstructs the selected $\boldsymbol{A}, \boldsymbol{B}, \boldsymbol{C}$ (or rather, $\boldsymbol{\mathcal{C}}, \boldsymbol{\mathcal{R}}$), and uses $\boldsymbol{C}\boldsymbol{A}^{-1}\boldsymbol{B}$ to approximate $\boldsymbol{D}$. In this case, CUR decomposition acts as a "Matrix Completion" method. It is worth pointing out that since both $\boldsymbol{\mathcal{U}}$ formulations use the pseudo-inverse, and the definition of the pseudo-inverse does not require square matrices, the most general CUR decomposition does not actually require $\boldsymbol{\mathcal{C}}$ and $\boldsymbol{\mathcal{R}}$ to have the same number of columns and rows. If necessary, we can choose different numbers of columns/rows for $\boldsymbol{\mathcal{C}}/\boldsymbol{\mathcal{R}}$.</p>
+
+<h3>Row and Column Selection</h3>
+
+<p>After solving for $\boldsymbol{\mathcal{U}}$, the main task is the selection of $\boldsymbol{\mathcal{C}}$ and $\boldsymbol{\mathcal{R}}$. Since the selection of rows and columns is essentially equivalent, we will take column selection as an example below.</p>
+
+<p>That is to say, our task now is to select $r$ key columns from matrix $\boldsymbol{M}$ to serve as its "skeleton," which can also be called "contour," "sketch," etc. We have already explored this problem in the previous two articles (i.e., <a href="translation_10313.html">CR post</a> and <a href="translation_10636.html">ID post</a>). The schemes described therein can also be used to construct the $\boldsymbol{\mathcal{C}}$ and $\boldsymbol{\mathcal{R}}$ for CUR decomposition, including:
+1. Selecting the $r$ columns with the largest norm;
+2. Randomly sampling $r$ columns weighted by their norms;
+3. Uniformly random sampling of $r$ columns;
+4. Selecting the first $r$ columns using column-pivoted QR decomposition.
+These schemes each have their own pros and cons, and their own application scenarios and implicit assumptions. Besides these, we can also consider more intuitive approaches. For example, considering that the meaning of key columns is similar to "cluster centers," we can cluster the $n$ column vectors into $k$ categories and then select the $k$ vectors closest to the cluster centers. When $n$ is truly too large, we can first randomly sample a portion and then execute the above selection algorithms on those vectors.</p>
+
+<p>In general, column selection is a classic problem in matrix approximation, with English keywords like "Randomized Linear Algebra," "Column Subset Selection," etc. You can find a lot of information by searching for these.</p>
+
+<h3>Leverage Scores</h3>
+
+<p>Of course, as a new article, it's best to introduce some new methods. Next, we will introduce two other ideas for column selection. The first one we call "Leverage Scores," which involves selecting columns through the idea of linear regression.</p>
+
+<p>First, we view the matrix $\boldsymbol{M}$ as $m$ samples of $n$ dimensions, and correspondingly there is a target matrix $\boldsymbol{Y}$ composed of $m$ vectors of $d$ dimensions. Our task is to use $\boldsymbol{M}$ to predict $\boldsymbol{Y}$, using the simplest linear model with the optimization goal of least squares:</p>
+
+\begin{equation}\boldsymbol{W}^* = \mathop{\text{argmin}}_{\boldsymbol{W}} \Vert\boldsymbol{Y} - \boldsymbol{W}\boldsymbol{M}\Vert_F^2\label{eq:linear-loss}\end{equation}
+
+<p>We already solved this objective in the pseudo-inverse post; the answer is $\boldsymbol{W}^* = \boldsymbol{Y}\boldsymbol{M}^{\dagger}$. Assuming $n < m$ and the rank of $\boldsymbol{M}$ is $n$, then it can be further written as $\boldsymbol{W}^* = \boldsymbol{Y}\boldsymbol{M}^{\top}(\boldsymbol{M}\boldsymbol{M}^{\top})^{-1}$, so we have:</p>
+
+\begin{equation}\hat{\boldsymbol{Y}} = \boldsymbol{W}^*\boldsymbol{M} = \boldsymbol{Y}\boldsymbol{M}^{\top}(\boldsymbol{M}\boldsymbol{M}^{\top})^{-1}\boldsymbol{M} = \boldsymbol{Y}\boldsymbol{H}\end{equation}
+
+<p>Here $\boldsymbol{H}=\boldsymbol{M}^{\top}(\boldsymbol{M}\boldsymbol{M}^{\top})^{-1}\boldsymbol{M}$ is called the "Hat Matrix," reportedly because it turns $\boldsymbol{Y}$ into $\hat{\boldsymbol{Y}}$, like putting a hat ($\hat{\,}$) on $\boldsymbol{Y}$. Let $\boldsymbol{m}_i$ be the $i$-th column vector of $\boldsymbol{M}$, which is the $i$-th sample here. Then we consider that:</p>
+
+\begin{equation}\boldsymbol{H}_{i,i} = \boldsymbol{m}_i^{\top}(\boldsymbol{M}\boldsymbol{M}^{\top})^{-1}\boldsymbol{m}_i\end{equation}
+
+<p>measures the influence of this sample in predicting $\hat{\boldsymbol{Y}}$, which is the "Leverage Score." We believe that selecting $r$ key columns is equivalent to selecting the $r$ most important samples, so we can choose the $r$ columns with the largest $\boldsymbol{H}_{i,i}$.</p>
+
+<p>When $\boldsymbol{M}\boldsymbol{M}^{\top}$ is not invertible, the paper <a href="https://arxiv.org/abs/1301.1971">"Input Sparsity Time Low-Rank Approximation via Ridge Leverage Score Sampling"</a> generalizes Leverage Scores to "Ridge Leverage Score," which actually adds a regularization term to the objective \eqref{eq:linear-loss} to make it invertible. But in fact, we know that the concept of the pseudo-inverse does not require full rank, so we can directly calculate the pseudo-inverse through SVD, which avoids the need for an additional regularization term.</p>
+
+<p>Let the SVD of $\boldsymbol{M}$ be $\boldsymbol{U}\boldsymbol{\Sigma}\boldsymbol{V}^{\top}$, then:</p>
+
+\begin{equation}\boldsymbol{H} = \boldsymbol{M}^{\dagger}\boldsymbol{M} = (\boldsymbol{V}\boldsymbol{\Sigma}^{\dagger}\boldsymbol{U}^{\top})(\boldsymbol{U}\boldsymbol{\Sigma}\boldsymbol{V}^{\top}) = \boldsymbol{V}(\boldsymbol{\Sigma}^{\dagger}\boldsymbol{\Sigma})\boldsymbol{V}^{\top}\end{equation}
+
+<p>Assuming the rank of $\boldsymbol{M}$ is $\gamma$ (where $\gamma$ is not $r$), then according to the rules of pseudo-inverse calculation, $\boldsymbol{\Sigma}^{\dagger}\boldsymbol{\Sigma}$ is an $m\times m$ diagonal matrix where the first $\gamma$ elements on the diagonal are all 1 and the rest are 0. Therefore:</p>
+
+\begin{equation}\boldsymbol{H} = \boldsymbol{V}_{[:,:\gamma]}\boldsymbol{V}_{[:,:\gamma]}^{\top}\quad\Rightarrow\quad \boldsymbol{H}_{i,i} = \Vert\boldsymbol{V}_{[i-1,:\gamma]}\Vert^2\end{equation}
+
+<p>Note that $\boldsymbol{H}_{i,i}$ denotes the element in the $i$-th row and $i$-th column of $\boldsymbol{H}$, counting from 1, but the slicing rules follow Python, starting from 0, so the final slice is ${}_{[i-1,:\gamma]}$. We can see now that to calculate the leverage scores of the columns of $\boldsymbol{M}$, one only needs to perform an SVD as $\boldsymbol{U}\boldsymbol{\Sigma}\boldsymbol{V}^{\top}$ and then calculate the squared norms of the rows of $\boldsymbol{V}_{[:,:\gamma]}$. Similarly, to calculate the leverage scores of the rows, one only needs to calculate the squared norms of the rows of $\boldsymbol{U}_{[:,:\gamma]}$.</p>
+
+<p>Since $\boldsymbol{V}$ itself is an orthogonal matrix, it always holds that:</p>
+
+\begin{equation}\sum_{i=1}^m \boldsymbol{H}_{i,i} = \sum_{i=1}^m\Vert\boldsymbol{V}_{[i-1,:\gamma]}\Vert^2 = \gamma\end{equation}
+
+<p>Therefore, besides selecting the $r$ columns with the largest leverage scores, one can also construct a distribution $p_i = \boldsymbol{H}_{i,i} / \gamma$ for random sampling.</p>
+
+<p>Leverage scores are related to the rank $\gamma$ of $\boldsymbol{M}$, where the rank of $\boldsymbol{M}$ equals the number of its non-zero singular values. Thus, it will be influenced by singular values close to zero, but these smaller singular values actually have little effect. Therefore, in practice, $\gamma$ is generally taken as the number of significant singular values (dominant singular values) of $\boldsymbol{M}$. Another issue with leverage scores is the need for a prior SVD; in practice, approximate SVD algorithms are often used. As for approximate SVD algorithms, we will have the chance to discuss them later.</p>
+
+<h3>The DEIM Method</h3>
+
+<p>Another column selection method to be introduced is called DEIM, short for Discrete Empirical Interpolation Method. We won't delve deeply into the origins of this name here, but it is roughly certain that leverage scores and DEIM are both common column selection methods for CUR decomposition, and DEIM is more closely related to CUR decomposition, making it increasingly popular in recent years.</p>
+
+<p>The starting point for DEIM is the identity \eqref{eq:id-abcd}. Under the $\boldsymbol{\mathcal{C}}, \boldsymbol{\mathcal{U}}, \boldsymbol{\mathcal{R}}$ of that equation, the error of the CUR decomposition depends on $\Vert \boldsymbol{D} - \boldsymbol{C}\boldsymbol{A}^{-1}\boldsymbol{B}\Vert_F$. When will this expression be small? An intuitive idea is that when $\boldsymbol{A}$ is relatively "large" and $\boldsymbol{B}, \boldsymbol{C}, \boldsymbol{D}$ are all relatively small, the entire expression will definitely be very small. But $\boldsymbol{A}$ is a matrix; how do we measure its size? The absolute value of the determinant can serve as a reference indicator. Therefore, a feasible scheme is to choose the corresponding rows and columns that maximize the absolute value of the determinant of $\boldsymbol{M}_{[S_2,S_1]}$.</p>
+
+<p>Of course, this scheme has only theoretical value because finding the submatrix with the largest absolute determinant is NP-Hard. However, it provides a goal. We can try to find a greedy solution. When $r=1$, finding the determinant with the largest absolute value is simply finding the element with the largest absolute value, which is acceptable, and then we can proceed recursively. DEIM follows this logic, but instead of starting from $\boldsymbol{M}$, it borrows the approach of leverage scores and starts from $\boldsymbol{V}$ after SVD.</p>
+
+<p>Leverage scores transform "finding key columns from $\boldsymbol{M}$" into "finding key rows from $\boldsymbol{V}_{[:,:\gamma]}$," with the sorting criterion being the squared row norms. DEIM, on the other hand, attempts to find key rows by finding a CUR approximation for $\boldsymbol{V}$. But isn't CUR for $\boldsymbol{M}$ unsolved yet? Now we bring in CUR for $\boldsymbol{V}$; isn't that making it more complex? No, it's simpler here because $\boldsymbol{V}$ is the result of $\boldsymbol{M}$'s SVD, so its columns are already sorted by singular value size. We can consider that the columns of $\boldsymbol{V}$ are already ordered by importance, so the most important $r$ columns must be $\boldsymbol{V}_{[:,:r]}$, and we only need to select rows.</p>
+
+<p>As mentioned before, the solving approach is a greedy algorithm. The most important column is naturally the first column $\boldsymbol{V}_{[:,0]}$. What about the most important row? we want to choose the row where its intersection with the first column yields the determinant with the largest absolute value—to put it simply, the row containing the element with the largest absolute value in the first column. This gives us our initial row and column. Suppose we have already selected $k$ key rows, with the index set $S_k$. How do we select the $(k+1)$-th key row? First, we know that the CUR approximation constructed from the selected $k$ rows and the first $k$ columns is $\boldsymbol{V}_{[:,:k]}\boldsymbol{V}_{[S_k,:k]}^{-1}\boldsymbol{V}_{[S_k,:]}$. The error of the $(k+1)$-th column is:</p>
+
+\begin{equation}\boldsymbol{V}_{[:,k]} - \boldsymbol{V}_{[:,:k]}\boldsymbol{V}_{[S_k,:k]}^{-1}\boldsymbol{V}_{[S_k,k]}\end{equation}
+
+<p>From equation \eqref{eq:id-abcd}, we know that this type of CUR approximation can recover the selected rows and columns. Therefore, the components corresponding to the already selected $k$ rows in the above equation must be zero, so the remaining non-zero element with the largest absolute value must not be among the already selected $k$ rows. We choose its row index as the $(k+1)$-th key row.</p>
+
+<p>In short, DEIM takes advantage of the fact that SVD has already sorted the column vectors of $\boldsymbol{V}$, transforming CUR decomposition into a simple row search problem, reducing the search directions, and then solving it through a greedy algorithm. In each step, the basis for selection is the row where the element with the maximum error is located. For a more detailed introduction and proof, refer to <a href="https://arXiv.org/abs/1407.5516">"A DEIM Induced CUR Factorization"</a> and <a href="https://arxiv.org/abs/1407.7242">"CUR Matrix Factorizations: Algorithms, Analysis, Applications"</a>.</p>
+
+<h3>Summary</h3>
+
+<p>This article introduced CUR decomposition, which can be seen as a further extension of the Interpolative Decomposition (ID) introduced in the previous post. Its characteristic is the simultaneous use of selected rows and columns of the original matrix as a skeleton to construct a low-rank approximation.</p>
+
+<hr />
+
+<p>If you need to cite this article, please refer to:</p>
+<p>Su Jianlin. (Jan. 12, 2025). "The Road to Low-Rank Approximation (Part 5): CUR". [Blog post]. Retrieved from https://kexue.fm/archives/10662</p>
+
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10662.html" style="color: #005fcc;">https://kexue.fm/archives/10662</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,249 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/mathjax.r6.js"></script>
+
+<h1><a href="https://kexue.fm/archives/8725">Thoughts on Dimension Averaging Strategies for Non-Square Matrices in Initialization Methods</a></h1>
+
+<p>By 苏剑林 | Oct 18, 2021</p>
+
+<p>In articles such as <a href="translation_7180.html">"Understanding Model Parameter Initialization Strategies from a Geometric Perspective"</a> and <a href="translation_8620.html">"A Brief Discussion on Transformer Initialization, Parameterization, and Normalization"</a>, we discussed initialization strategies for models. The general idea is: if an $n \times n$ square matrix is initialized with independent and identically distributed (i.i.d.) values with a mean of 0 and a variance of $1/n$, it approximates an orthogonal matrix, allowing the second moment (or variance) of the data to remain roughly constant during propagation.</p>
+
+<p>But what if it is an $m \times n$ non-square matrix? The common approach (Xavier initialization) considers both forward and backward propagation together, thus using an i.i.d. initialization with mean 0 and variance $2/(m+n)$. However, this "averaging" is somewhat arbitrary. This article explores whether there might be better averaging schemes.</p>
+
+<h2>Basic Review</h2>
+
+<p>Xavier initialization considers a fully connected layer as follows (assuming $m$ input nodes and $n$ output nodes):</p>
+
+\begin{equation} y_j = b_j + \sum_i x_i w_{i,j}\end{equation}
+
+<p>where $b_j$ is typically initialized to 0, and the initial mean of $w_{i,j}$ is also generally 0. In <a href="translation_8620.html">"A Brief Discussion on Transformer Initialization, Parameterization, and Normalization"</a>, we calculated:</p>
+
+\begin{equation}
+\mathbb{E}[y_j^2] = \sum_{i} \mathbb{E}[x_i^2] \mathbb{E}[w_{i,j}^2]= m\mathbb{E}[x_i^2]\mathbb{E}[w_{i,j}^2]\end{equation}
+
+<p>To keep the second moment constant, we set the initialization variance of $w_{i,j}$ to $1/m$ (when the mean is 0, the variance equals the second moment).</p>
+
+<p>However, this derivation only considers forward propagation. We also need to ensure that the model has reasonable gradients, which means the model must also remain stable during backward propagation. Let the model's loss function be $l$; according to the chain rule, we have:</p>
+
+\begin{equation}\frac{\partial l}{\partial x_i} = \sum_j \frac{\partial l}{\partial y_j} \frac{\partial y_j}{\partial x_i}=\sum_j \frac{\partial l}{\partial y_j} w_{i,j}\end{equation}
+
+<p>Note that this is now summing over $j$, where the dimension is $n$. Under the same assumptions, we have:</p>
+
+\begin{equation}
+\mathbb{E}\left[\left(\frac{\partial l}{\partial x_i}\right)^2\right] = \sum_{j} \mathbb{E}\left[\left(\frac{\partial l}{\partial y_j}\right)^2\right] \mathbb{E}[w_{i,j}^2]= n \mathbb{E}\left[\left(\frac{\partial l}{\partial y_j}\right)^2\right]\mathbb{E}[w_{i,j}^2]\end{equation}
+
+<p>To keep the second moment constant during backward propagation, we set the initialization variance of $w_{i,j}$ to $1/n$.</p>
+
+<p>One is $1/m$ and the other is $1/n$. When $m \neq n$, there is a conflict. Since both are equally important, Xavier initialization simply averages the two dimensions, performing initialization with a variance of $2/(m+n)$.</p>
+
+<h2>Geometric Mean</h2>
+
+<p>Now let us consider two composite fully connected layers (temporarily ignoring bias terms):</p>
+
+\begin{equation} y = xW_1 W_2
+\end{equation}
+
+<p>where $x \in \mathbb{R}^m, W_1 \in \mathbb{R}^{m \times n}, W_2 \in \mathbb{R}^{n \times m}$. That is to say, the input is $m$-dimensional, transformed to $n$ dimensions, and then transformed back to $m$ dimensions. Similar operations can be found in, for example, the FFN layer of BERT (though the FFN layer has an activation function in the middle).</p>
+
+<p>According to the stability of forward propagation, we should initialize $W_1$ with a variance of $1/m$ and $W_2$ with a variance of $1/n$. However, if we require that $W_1$ and $W_2$ must be initialized with the same variance, then obviously, to keep the variance of $x$ and $y$ unchanged, both $W_1$ and $W_2$ need to be initialized with a distribution having a variance of $1/\sqrt{mn}$. When considering backward propagation, the result is the same.</p>
+
+<p>In this way, we derive a new dimension averaging strategy: the geometric mean $\sqrt{mn}$. Through this strategy, in the composition of multi-layer networks, if the input and output dimensions remain the same, the variance will remain constant (for both forward and backward propagation). If we used the arithmetic mean $(m+n)/2$ and assumed $m < n$, then since $(m+n)^2/4 \geq mn$, the variance would shrink during forward/backward propagation.</p>
+
+<h2>Quadratic Mean</h2>
+
+<p>Another perspective is to treat this as a dual minimization problem: suppose the chosen variance is $t$. In forward propagation, we want $(mt-1)^2$ to be as small as possible, and in backward propagation, we want $(nt-1)^2$ to be as small as possible. Thus, we consider the sum:</p>
+
+\begin{equation}(mt-1)^2 + (nt-1)^2
+\end{equation}
+
+<p>When $t = (m+n)/(m^2+n^2)$, the above expression reaches its minimum value. This yields a quadratic fractional averaging scheme: $(m^2+n^2)/(m+n)$.</p>
+
+<p>It is easy to prove:</p>
+
+\begin{equation}\frac{m^2+n^2}{m+n} \geq \frac{m+n}{2}\geq \sqrt{mn}\end{equation}
+
+<p>From the derivation process, the quadratic mean on the left aims for the variance of each individual forward and backward step to remain as constant as possible; therefore, the left side can be considered a local optimal solution. The geometric mean on the right aims for the variance of the "initial input" and "final output" to remain as constant as possible; thus, in some sense, the right side can be considered a global optimal solution. The arithmetic mean in the middle is a solution that lies between the global and local optima.</p>
+
+<p>Looking at it this way, it seems that the "arbitrary" arithmetic mean of Xavier initialization might actually be a practical choice following the "Middle Way"?</p>
+
+<h2>Summary</h2>
+
+<p>This article briefly considers dimension averaging schemes for non-square matrices in initialization methods. For a long time, it seems that no one questioned the default arithmetic mean, but I have derived different possibilities for averaging strategies from two different perspectives. As for which strategy is better, I have not conducted detailed experiments; interested readers can explore this on their own. Of course, it is also possible that under current optimization strategies, the default initialization scheme already works well enough, making fine-tuning unnecessary.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8725.html" style="color: #005fcc;">https://kexue.fm/archives/8725</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

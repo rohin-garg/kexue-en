@@ -1,0 +1,348 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/6933">From Language Models to Seq2Seq: Transformer is Like a Play, It All Depends on the Mask</a></h1>
+
+    <p>By 苏剑林 | September 18, 2019</p>
+
+
+<p>I believe that over the past year (especially the last six months), everyone has frequently seen reports on various Transformer-related works (such as BERT, GPT, XLNet, etc.), along with the continuous refreshing of evaluation metrics for various basic tasks. At the same time, many blogs and columns have provided popular science and interpretations of these models.</p>
+
+<p>As the saying goes, "laymen watch the spectacle, while insiders look at the mechanism." We not only need to understand these works at the "what it is" level, but we also need to think about "why." This "why" is not just "why do it this way," but also "why can it be done this way." For instance, when discussing XLNet's Permutation Language Model, we might have understood its benefits from various introductions. However, it's worth thinking a step further:</p>
+
+<blockquote>Why can the Transformer implement a Permutation Language Model? How is it implemented? Can an RNN implement it?</blockquote>
+
+<p>This article analyzes the fundamental reasons why many Transformer models can be played so "brilliantly" from the perspective of masking the Attention matrix. As the title suggests, "Transformer is like a play, it all depends on the mask"—this is one of the important technical "inner workings" of various fancy Transformer models.</p>
+
+<p>By reading this article, you may learn about:</p>
+<ol>
+    <li>The relationship between Attention matrix masking methods and various pre-training schemes;</li>
+    <li>How to directly use a pre-trained BERT model to perform Seq2Seq tasks.</li>
+</ol>
+
+<h2>Background</h2>
+
+<p>Since <a href="translation_4765.html">"Attention is All You Need"</a>, Transformer-like models based on pure Attention have gradually become popular, and the emergence of BERT pushed this trend to a new height. Subsequently, various works based on large-scale pre-trained Transformer models have emerged continuously. Some use existing models for applications, some attempt to better explain and visualize these models, and others improve architectures or pre-training methods to achieve better results. Overall, these works based on pre-training are emerging in an endless stream, creating a dazzling array of options. To some extent, if you haven't fine-tuned BERT yet, you are already considered to be lagging behind mainstream NLP technology.</p>
+
+<h3>Fancy Pre-training</h3>
+
+<p>As is well known, the traditional means of model pre-training is the language model. For example, the <a href="https://papers.cool/arxiv/1802.05365">ELMo</a> model is based on the BiLSTM architecture and uses two directional language models to pre-train two directions of LSTMs respectively. Later, OpenAI's GPT and <a href="https://d4mucfpksywv.cloudfront.net/better-language-models/language-models.pdf">GPT-2</a> also unswervingly adhered to the ancestral (standard, unidirectional) language model for pre-training.</p>
+
+<p>However, there are even more varied ways to play with pre-training. For example, <a href="https://papers.cool/arxiv/1810.04805">BERT</a> used what is called a "Masked Language Model" for pre-training, though this is just a variant of the ordinary language model. Then there is <a href="https://papers.cool/arxiv/1906.08237">XLNet</a>, which proposed a more thorough "Permutation Language Modeling"; and the <a href="https://papers.cool/arxiv/1905.03197">UniLM</a> model, which directly uses a single BERT architecture to do Seq2Seq. You can use it as a pre-training method, or simply use it for Seq2Seq tasks...</p>
+
+<p>With such a variety of tricks, one cannot help but wonder: why is it only in the era of Transformer popularity that this phenomenon of "a hundred flowers blooming and a hundred schools of thought contending" in various large-scale pre-training models has appeared?</p>
+
+<h3>Transformer Exclusive</h3>
+
+<p>In fact, besides the unidirectional language model and its simple variant, the masked language model, the Seq2Seq pre-training of UniLM and the permutation language model pre-training of XLNet can basically be said to be specifically customized for the Transformer architecture. To put it plainly, if it were an RNN architecture, it simply could not be pre-trained using a permutation language model. As for the Seq2Seq pre-training method, it would require introducing two models (encoder and decoder) simultaneously, rather than being handled by a single model like the Transformer architecture.</p>
+
+<p>The secret lies primarily in the Attention matrix. Attention is essentially equivalent to calculating the similarity between inputs in pairs, which constitutes an $n^2$ size similarity matrix (i.e., the Attention matrix, where $n$ is the sentence length; in this article, Attention refers to Self-Attention). This means its memory footprint is of the $\mathcal{O}(n^2)$ magnitude, whereas RNN and CNN models are only $\mathcal{O}(n)$. Therefore, Attention usually consumes more video memory. However, there are advantages as well as disadvantages; a larger spatial occupancy also means more possibilities. We can add various prior constraints to this $\mathcal{O}(n^2)$ level Attention matrix to make it perform tasks more flexibly. Simply put, only pure Attention models have enough "capacity" to carry so many "tricks."</p>
+
+<p>The way to add prior constraints is to Apply different forms of masks to the Attention matrix, which is the focus of this article.</p>
+
+<h2>Analysis</h2>
+
+<p>In the article <a href="translation_4765.html">"A Brief Reading of 'Attention is All You Need' (Introduction + Code)"</a>, I already provided a basic introduction to Attention; here is just a brief review. The mathematical form of Attention is:</p>
+
+\begin{equation}Attention(\boldsymbol{Q}, \boldsymbol{K}, \boldsymbol{V}) = \text{softmax}\left(\frac{\boldsymbol{Q}\boldsymbol{K}^{\top}}{\sqrt{d_k}}\right)\boldsymbol{V}\end{equation}
+
+<p>Here $\boldsymbol{Q} \in \mathbb{R}^{l_q \times d_q}, \boldsymbol{K} \in \mathbb{R}^{l_k \times d_q}, \boldsymbol{V} \in \mathbb{R}^{l_k \times d_v}$ represent the query, key, and value vector sequences, respectively. We can consider key and value to be in a one-to-one correspondence, while $\boldsymbol{Q}\boldsymbol{K}^{\top}$ calculates the inner product of each pair of query and key vectors. After normalization with $\text{softmax}$, we obtain an $l_q \times l_k$ Attention matrix. It describes the correlation strength between any two elements of the query and the key. All the stories we will tell next take place within this Attention matrix. Finally, multiplying it by $\boldsymbol{V}$ is equivalent to performing a weighted sum of the various vectors of $\boldsymbol{V}$ according to this correlation strength, eventually outputting an $l_q \times d_v$ vector sequence.</p>
+
+<p>Currently, the most commonly used Attention method is Self-Attention, where $\boldsymbol{Q}, \boldsymbol{K}, \boldsymbol{V}$ are all transformed linearly from the same vector sequence, and the Transformer is a combination of Self-Attention and Position-Wise Feed-Forward layers (equivalent to a 1D convolution with a kernel size of 1). Thus, the Transformer is a sequence-to-sequence transformation based on Attention.</p>
+
+<p>In this section, we will analyze the masking methods of the Attention matrix in detail, which correspond to the implementation principles of unidirectional language models, permutation language models, and Seq2Seq.</p>
+
+<h3>Unidirectional Language Model</h3>
+
+<p>A language model can be said to be an unconditional text generation model. If readers do not yet understand text generation models, they can check relevant materials and refer to the article <a href="translation_5861.html">"Playing with Keras: Seq2Seq Automatic Title Generation"</a>. A unidirectional language model is equivalent to "remembering" the training corpus through the following conditional probability distribution:</p>
+
+\begin{equation}p(x_1, x_2, x_3, \dots, x_n) = p(x_1) p(x_2|x_1) p(x_3|x_1, x_2) \dots p(x_n|x_1, \dots, x_{n-1})\end{equation}
+
+<p>What we generally call a "language model" refers to a unidirectional (more narrowly, just forward) language model. The key point of a language model is to prevent seeing "future information." As shown in the equation above, when predicting $x_1$, there is no external input; when predicting $x_2$, only $x_1$ can be input; when predicting $x_3$, only $x_1, x_2$ can be input; and so on.</p>
+
+<p>RNN models are naturally suitable for language models because they are inherently recursive. If a CNN is used, the convolution kernel needs to be masked, meaning the parts of the kernel corresponding to the right side must be set to zero. What about the Transformer? It requires an Attention matrix in the form of a lower triangular matrix:</p>
+
+<p style="text-align:center;"><img src="https://v0.kexue.fm/usr/uploads/2019/09/1660447024.png" alt="Unidirectional Mask" /></p>
+
+<p>As shown in the figure, each row of the Attention matrix actually represents the output, while each column represents the input, and the Attention matrix represents the correlation between output and input. Assuming the white squares all represent 0, the first row indicates that "Bei" can only be associated with the start token &lt;S&gt;, and the second row indicates that "Jing" can only be associated with &lt;S&gt; and "Bei," and so on. Therefore, one only needs to introduce a lower triangular mask into the Transformer's Attention matrix and train the input and output with a one-position shift to implement a unidirectional language model.</p>
+
+<h3>Permutation Language Model</h3>
+
+<p>The Permutation Language Model is a concept proposed by XLNet, mainly used for XLNet's pre-training. Speaking of XLNet, I think the pre-training method of Permutation Language Modeling is very interesting, but I don't like its replacement of the basic architecture with Transformer-XL. I think anyone with resources could try the combination of "BERT + Permutation Language Model pre-training"; perhaps there would be surprising discoveries.</p>
+
+<p>Like a standard language model, a Permutation Language Model performs conditional probability decomposition, but the decomposition order of the Permutation Language Model is random:</p>
+
+\begin{equation}
+\begin{aligned}
+p(x_1, x_2, x_3, \dots, x_n) &= p(x_1) p(x_2|x_1) p(x_3|x_1, x_2) \dots p(x_n|x_1, x_2, \dots, x_{n-1}) \\
+&= p(x_3) p(x_1|x_3) p(x_2|x_3, x_1) \dots p(x_n|x_3, x_1, \dots, x_{n-1}) \\
+&= \dots \\
+&= p(x_{n-1}) p(x_1|x_{n-1}) p(x_n|x_{n-1}, x_1) \dots p(x_2|x_{n-1}, x_1, \dots, x_3)
+\end{aligned}
+\end{equation}
+
+<p>In short, any "appearance order" of $x_1, x_2, \dots, x_n$ is possible. In principle, each order corresponds to a model, so in theory, there are $n!$ language models. Models based on the Transformer, however, can integrate all these orders into a single model!</p>
+
+<p>How is this achieved? Taking the generation of "Beijing welcomes you" (北京欢迎你) as an example, suppose a random generation order is "&lt;S&gt; → Ying (迎) → Jing (京) → Ni (你) → Huan (欢) → Bei (北)". We only need to mask the Attention matrix as shown in the middle sub-figure below to achieve the goal:</p>
+
+<p style="text-align:center;"><img src="https://v0.kexue.fm/usr/uploads/2019/09/2026135834.png" alt="Different Language Model Masks" /></p>
+
+<p>Similar to the unidirectional language model mentioned earlier, the 4th row has only one blue square, indicating "Ying" can only correlate with the start token &lt;S&gt;, while the 2nd row has two blue squares, indicating "Jing" can only correlate with &lt;S&gt; and "Ying," and so on. Visually, this is like "shuffling" the lower triangular mask of the unidirectional language model.</p>
+
+<p>In other words, implementing a language model of a specific order is equivalent to shuffling the original lower triangular mask in a certain way. Precisely because Attention provides such an $n \times n$ Attention matrix, we have enough degrees of freedom to mask this matrix in different ways to achieve diverse effects.</p>
+
+<p>Speaking of this, readers might have an implementation doubt: the shuffled mask doesn't seem to follow any pattern; does one have to randomly generate such an arbitrary-looking mask matrix every time? In fact, there is a simpler, mathematically equivalent training scheme. This training scheme stems from the fact that pure Attention models are essentially unordered; the word order in them is actually added through Position Embeddings. That is to say, what we input is not just the tokens themselves, but also the position IDs where the tokens are located; in other words, you think you entered the sequence "[Bei, Jing, Huan, Ying, Ni]", but you actually entered the set "{(Bei, 1), (Jing, 2), (Huan, 3), (Ying, 4), (Ni, 5)}".</p>
+
+<p>Since it is just a set and independent of order, we can completely input it in a different order, such as the "&lt;S&gt; → Ying → Jing → Ni → Huan → Bei" just mentioned. We can input them in the order of "(Ying, 4), (Jing, 2), (Ni, 5), (Huan, 3), (Bei, 1)". That is, shuffle the tokens into "Ying, Jing, Ni, Huan, Bei" and input them into the Transformer, but the position of the first token is no longer 1, but 4, and so on. After this conversion, the Mask matrix can be restored to a lower triangular matrix, so we only need to shuffle at the input level, which makes the operation much simpler.</p>
+
+<h3>Seq2Seq</h3>
+
+<p>Now we come to our "highlight": <br><strong>Combining Transformer architectures like BERT with Seq2Seq.</strong> <br>Why call it a highlight? Because, in principle, any NLP problem can be transformed into Seq2Seq, which is a truly universal model. So if Seq2Seq can be achieved, any task can theoretically be implemented.</p>
+
+<p>There are two well-known works that combine BERT with Seq2Seq: <a href="https://papers.cool/arxiv/1905.02450">MASS</a> and <a href="https://papers.cool/arxiv/1905.03197">UniLM</a>. Both are works from Microsoft, and both were published in the same month! MASS still follows the standard Seq2Seq architecture, using BERT-like Transformer models as the encoder and decoder respectively; its main contribution is providing a pre-training scheme for Seq2Seq ideas. What is truly interesting is UniLM, which provides an elegant way to let us directly use a single BERT model to complete Seq2Seq tasks without distinguishing between encoder and decoder. And achieving this takes almost no effort—just a special mask is needed.</p>
+
+<p>(Interlude: The actual sequence of events is that I independently thought of the idea of using a single BERT model for Seq2Seq two weeks ago, and then I searched for materials and found that this idea had already been implemented—it was UniLM.)</p>
+
+<p>UniLM directly treats Seq2Seq as sentence completion. If the input is "What do you want to eat?" and the target sentence is "White cut chicken," UniLM concatenates these two sentences into one: [CLS] What do you want to eat [SEP] White cut chicken [SEP]. After this transformation, the simplest scheme is to train a language model and input "[CLS] What do you want to eat [SEP]" to predict "White cut chicken" word by word until "[SEP]" appears, as shown in the left figure below:</p>
+
+<p style="text-align:center;"><img src="https://v0.kexue.fm/usr/uploads/2019/09/2539151593.png" alt="Seq2Seq Mask Variants" /></p>
+
+<p>However, the left figure is just the most naive scheme. It also includes "What do you want to eat" in the prediction range (making Attention in this part unidirectional, i.e., the corresponding part of the Mask matrix is lower triangular). In fact, this is unnecessary and constitutes an extra constraint. What really needs to be predicted is the "White cut chicken" part, so we can remove the mask for the "What do you want to eat" part, resulting in the mask in the right figure above.</p>
+
+<p>In this way, the Attention for the input part is bidirectional, while the Attention for the output part is unidirectional, satisfying the requirements of Seq2Seq without extra constraints. This is the idea provided in UniLM for using a single BERT model to complete Seq2Seq tasks. One only needs to add a mask of the aforementioned shape without modifying the model architecture, and the BERT Masked Language Model pre-training weights can be directly used, leading to faster convergence. This fits the original intention of a universal model—"With BERT in hand, I have the world"—and I personally think this is a very elegant solution.</p>
+
+<p style="text-align:center;"><img src="https://v0.kexue.fm/usr/uploads/2019/09/2816362534.png" alt="UniLM Seq2Seq Diagram" /></p>
+
+<h2>Experiment</h2>
+
+<p>In fact, the masks mentioned above have basically been integrated into <a href="translation_6915.html">bert4keras</a>, which I wrote. Readers can directly use bert4keras to load BERT pre-training weights and call the aforementioned mask schemes to perform corresponding tasks. Below, we provide an example of using the UniLM idea to build a fast-converging Seq2Seq model.</p>
+
+<h3>Open Source Code</h3>
+
+<p>The test task for this code is still the previous title generation. The code is adapted from the code in <a href="translation_5861.html">"Playing with Keras: Seq2Seq Automatic Title Generation."</a> Thanks to the encapsulation of <a href="https://github.com/bojone/bert4keras">bert4keras</a>, the implementation of the model part is very simple and clean. This time, the original <a href="http://thuctc.thunlp.org/#%E4%B8%AD%E6%96%87%E6%96%87%E6%9C%AC%E5%88%86%E7%B1%BB%E6%95%B0%E6%8D%AE%E9%9B%86THUCNews">THUCNews</a> dataset was used directly. Readers can download the dataset and source code themselves to test and reproduce it.</p>
+
+<p>Details can be found at: <a href="https://github.com/bojone/bert4keras/blob/master/examples/task_seq2seq_autotitle.py"><strong>task_seq2seq_autotitle.py</strong></a></p>
+
+<p>How good is this effect? Through experiments, on the title generation task, starting from the first epoch (1000 iterations), it is already able to generate basically readable titles. Correspondingly, when using LSTM previously, it usually took dozens of times more iterations to achieve the same effect.</p>
+
+<p style="text-align:center;"><img src="https://v0.kexue.fm/usr/uploads/2019/09/3592397753.png" alt="Training Progress" /></p>
+
+<h3>Brief Explanation</h3>
+
+<p>Below is a brief explanation of the key parts of the code.</p>
+
+<p>First, the input format is still `token_id` and `segment_id`. For example:</p>
+
+<pre><code>tokens = ['[CLS]', u'你', u'想', u'吃', u'啥', '[SEP]', u'白', u'切', u'鸡', '[SEP]']
+token_ids = [token_dict[t] for t in tokens]
+segment_ids = [0, 0, 0, 0, 0, 0, 1, 1, 1, 1]
+</code></pre>
+
+<p>`segment_ids` are used to distinguish the input sentence from the target sentence. 0 corresponds to the input sentence, and 1 corresponds to the target sentence. Only the built-in `tokenizer.encode` is needed to generate these `token_id` and `segment_id` values.</p>
+
+<p>As for building the model, it takes only a few lines:</p>
+
+<pre><code>model = build_transformer_model(
+    config_path,
+    checkpoint_path,
+    application='unilm',
+    keep_tokens=keep_tokens
+)
+
+model.summary()
+
+y_in = model.input[0][:, 1:] # Target tokens
+y_mask = model.input[1][:, 1:]
+y = model.output[:, :-1] # Predicted tokens, shifted by one position from targets
+
+# Cross-entropy as loss, masking out the prediction of the input part
+cross_entropy = K.sparse_categorical_crossentropy(y_in, y)
+cross_entropy = K.sum(cross_entropy * y_mask) / K.sum(y_mask)
+</code></pre>
+
+<p>Note that in `build_transformer_model`, as long as `application='unilm'` is set, it will automatically load BERT's MLM part and pass in the corresponding mask. The rest is just writing the loss function. Additionally, there is a `keep_tokens` option, which is used to streamline the Embedding layer. For Chinese BERT, the total number of tokens is about 20,000, which means that predicting a generated token is a 20,000-class classification problem. But in fact, nearly half of the tokens will never be predicted (theoretically), so these 20,000 classes waste some calculation. Therefore, an option is provided here where we can maintain a token list ourselves and pass in the corresponding IDs to keep only that part of the tokens, thereby reducing the amount of calculation (after streamlining, it is generally only half the original size, or even less).</p>
+
+<p>The rest involves decoding steps such as beam search, which are no different from general Seq2Seq. I will not go into detail here; you can refer to <a href="translation_5861.html">"Playing with Keras: Seq2Seq Automatic Title Generation"</a> and the code.</p>
+
+<h2>Summary</h2>
+
+<p><strong>This article systematically summarizes the masking techniques for the Attention matrix in Transformer and provides a Seq2Seq implementation using the UniLM scheme. For monolingual Seq2Seq text generation tasks, adopting the UniLM approach and loading BERT's MLM pre-training weights can effectively and quickly implement and improve the generation results. It is worth a try.</strong></p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6933.html" style="color: #005fcc;">https://kexue.fm/archives/6933</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

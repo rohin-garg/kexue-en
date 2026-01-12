@@ -1,0 +1,310 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of Array.from(document.querySelectorAll('script[type^="math/tex"]'))) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/7325">Breaking Through the Bottleneck: Building a Stronger Transformer</a></h1>
+    
+    <p>By 苏剑林 | April 13, 2020</p>
+
+    <p>Since the release of <a href="https://papers.cool/arxiv/1706.03762">"Attention is All You Need"</a>, Transformer models based on Multi-Head Attention have become popular. The BERT model released last year pushed the popularity of the Transformer model to a new peak. Of course, the exploration of technology is endless, and incremental improvements have emerged: some improve pre-training tasks, such as XLNet's PLM and ALBERT's SOP; some improve normalization, such as the shift from Post-Norm to Pre-Norm and the removal of the beta parameter in Layer Norm in T5; some improve the model structure, such as Transformer-XL; some improve training methods, such as ALBERT's parameter sharing; and so on.</p>
+
+    <p>The changes above all take place outside of the Attention mechanism. In other words, they default to the rationality of the Attention mechanism itself and do not modify it. In this article, we introduce two new results: <strong>they target potential modeling bottlenecks in Multi-Head Attention and propose different solutions to improve Multi-Head Attention. Both papers come from Google and include extensive experiments, making the results quite persuasive.</strong></p>
+
+    <h2 id="再小也不能小key_size">No matter how small, key_size must be large <a href="https://kexue.fm/archives/7325#%E5%86%8D%E5%B0%8F%E4%B9%9F%E4%B8%8D%E8%83%BD%E5%B0%8Fkey_size">#</a></h2>
+    <p>The first result comes from the article <a href="https://papers.cool/arxiv/2002.07028">"Low-Rank Bottleneck in Multi-head Attention Models"</a>. It explicitly points out the bottleneck in representational capacity within Multi-Head Attention and proposes alleviating this bottleneck by increasing the <code>key_size</code>.</p>
+
+    <h3 id="Multi-Head Attention">Multi-Head Attention <a href="https://kexue.fm/archives/7325#Multi-Head%20Attention">#</a></h3>
+    <p>First, let's briefly review Multi-Head Attention. Readers can also refer to the previous post <a href="translation_4765.html">"A Brief Reading of 'Attention is All You Need' (Introduction + Code)"</a>. The foundation of Multi-Head Attention is naturally Single-Head Attention, also known as Scaled Dot-Product Attention, defined as follows:</p>
+
+\begin{equation}Attention(\boldsymbol{Q},\boldsymbol{K},\boldsymbol{V}) = softmax\left(\frac{\boldsymbol{Q}\boldsymbol{K}^{\top}}{\sqrt{d_k}}\right)\boldsymbol{V}\end{equation}
+
+    <p>where $\boldsymbol{Q}\in\mathbb{R}^{n\times d_k}, \boldsymbol{K}\in\mathbb{R}^{m\times d_k}, \boldsymbol{V}\in\mathbb{R}^{m\times d_v}$. Multi-Head Attention involves projecting $\boldsymbol{Q}, \boldsymbol{K}, \boldsymbol{V}$ using $h$ different sets of projection matrices $h$ times, performing $h$ Single-Head Attentions separately, and finally concatenating the results:</p>
+
+\begin{equation}\begin{aligned}&\boldsymbol{Q}^{(1)}=\boldsymbol{Q}\boldsymbol{W}_Q^{(1)},\boldsymbol{K}^{(1)}=\boldsymbol{K}\boldsymbol{W}_K^{(1)},\boldsymbol{V}^{(1)}=\boldsymbol{V}\boldsymbol{W}_V^{(1)},\boldsymbol{O}^{(1)}=Attention\left(\boldsymbol{Q}^{(1)},\boldsymbol{K}^{(1)},\boldsymbol{V}^{(1)}\right)\\
+&\boldsymbol{Q}^{(2)}=\boldsymbol{Q}\boldsymbol{W}_Q^{(2)},\boldsymbol{K}^{(2)}=\boldsymbol{K}\boldsymbol{W}_K^{(2)},\boldsymbol{V}^{(2)}=\boldsymbol{V}\boldsymbol{W}_V^{(2)},\boldsymbol{O}^{(2)}=Attention\left(\boldsymbol{Q}^{(2)},\boldsymbol{K}^{(2)},\boldsymbol{V}^{(2)}\right)\\
+&\qquad\qquad\qquad\qquad\vdots\\
+&\boldsymbol{Q}^{(h)}=\boldsymbol{Q}\boldsymbol{W}_Q^{(h)},\boldsymbol{K}^{(h)}=\boldsymbol{K}\boldsymbol{W}_K^{(h)},\boldsymbol{V}^{(h)}=\boldsymbol{V}\boldsymbol{W}_V^{(h)},\boldsymbol{O}^{(h)}=Attention\left(\boldsymbol{Q}^{(h)},\boldsymbol{K}^{(h)},\boldsymbol{V}^{(h)}\right)\\
+&\boldsymbol{O}=\left[\boldsymbol{O}^{(1)},\boldsymbol{O}^{(2)},\dots,\boldsymbol{O}^{(h)}\right]
+\end{aligned}\end{equation}
+
+    <h3 id="Attention里有个瓶颈">The Bottleneck in Attention <a href="https://kexue.fm/archives/7325#Attention%E9%87%8C%E6%9C%89%E4%B8%AA%E7%93%B6%E9%A2%88">#</a></h3>
+    <p>In practice, $\boldsymbol{Q}, \boldsymbol{K}, \boldsymbol{V}$ usually have the same feature dimension $d_k=d_v=d$ (i.e., <code>hidden_size</code>), such as 768 in BERT Base. $h$ is typically chosen as 12, 16, 24, etc. After determining $d$ and $h$, the standard choice is to set the projection matrices $\boldsymbol{W}\in\mathbb{R}^{d\times (d/h)}$. This means that in each Attention Head, the original $d$ dimensions are projected down to $d/h$ dimensions, the Attention operation is performed, the output is $d/h$ dimensions, and finally, the outputs of the $h$ heads are concatenated to get a $d$-dimensional output. We usually call $d/h$ the <code>head_size</code>.</p>
+
+    <p>The critical step in Attention is:</p>
+
+\begin{equation}\boldsymbol{P}=softmax\left(\frac{\boldsymbol{Q}\boldsymbol{K}^{\top}}{\sqrt{d_k}}\right)\label{eq:softmax}\end{equation}
+
+    <p>This step describes the relationship between pairs of vectors in $\boldsymbol{Q}$ and $\boldsymbol{K}$. We can view $\boldsymbol{P}$ as a binary joint distribution (it is actually $n$ univariate distributions, but this detail is not important). If the sequence length is $n$, meaning each element can take $n$ possible values, this distribution contains a total of $n^2$ values.</p>
+
+    <p>However, when we project $\boldsymbol{Q}$ and $\boldsymbol{K}$ into lower dimensions, the parameter count for each is only $n \times (d/h)$. The total parameter count is $2nd/h$. Thus, Equation \eqref{eq:softmax} is equivalent to using $2nd/h$ parameters to approximate a volume that inherently has $n^2$ values. Typically, $2nd/h \ll n^2$, especially when $h$ is large. Therefore, this modeling approach "overburdens the model," which is the meaning of the "Low-Rank Bottleneck" in the original paper.</p>
+
+    <h3 id="不妨试试增大key_size？">How about increasing key_size? <a href="https://kexue.fm/archives/7325#%E4%B8%8D%E5%A6%A8%E8%AF%95%E8%AF%95%E5%A2%9E%E5%A4%A7key_size%EF%BC%9F">#</a></h3>
+    <p>What is the solution? The direct thought is to increase $2nd/h$, so we either reduce the number of heads $h$ or increase the <code>hidden_size</code> $d$. However, more Attention Heads themselves enhance the representational power of the model, so reducing $h$ to alleviate the low-rank bottleneck might be counterproductive. Increasing $d$ would naturally enhance the overall expressiveness, but the model size and computational cost would grow dramatically, which doesn't seem like a good choice either.</p>
+
+    <p>Are there other ways? Yes! When we use projection matrices to map $\boldsymbol{Q}, \boldsymbol{K}, \boldsymbol{V}$ to lower dimensions, they are usually all projected to $d/h$. But in reality, their dimensions don't have to be equal. We only need the dimensions of $\boldsymbol{Q}$ and $\boldsymbol{K}$ to be identical (to perform the dot product). To distinguish them, we usually call the dimension of $\boldsymbol{Q}$ and $\boldsymbol{K}$ the <code>key_size</code>, and only the dimension of $\boldsymbol{V}$ is called the <code>head_size</code>. Changing the <code>key_size</code> without changing the <code>head_size</code> does not affect the model's <code>hidden_size</code>.</p>
+
+    <p>Therefore, the solution proposed in this paper is to <strong>increase the key_size of the model</strong>. This increases the expressiveness of Attention without changing the overall <code>hidden_size</code> of the model, while only slightly increasing the computational cost.</p>
+
+    <blockquote>
+    <p><strong>Supplementary Note:</strong></p>
+    <p>In fact, the original paper considers simultaneously increasing <code>key_size</code> and <code>head_size</code>, then using a transformation matrix to reduce the dimension after concatenating the Multi-Head Attention outputs. However, I believe that since the concatenation and reduction step is just a linear transformation, the fundamental improvement comes from increasing the <code>key_size</code>. Thus, this article emphasizes the step of increasing <code>key_size</code>.</p>
+    <p>Furthermore, if both <code>key_size</code> and <code>head_size</code> are increased, computational cost and memory consumption increase significantly. If only <code>key_size</code> is increased, the additional resource consumption is much smaller.</p>
+    </blockquote>
+
+    <h3 id="来看看实验结果～">Let's look at the experimental results <a href="https://kexue.fm/archives/7325#%E6%9D%A5%E7%9C%8B%E7%9C%8B%E5%AE%9E%E9%AA%8C%E7%BB%93%E6%9E%9C%EF%BD%9E">#</a></h3>
+    <p>The idea of increasing <code>key_size</code> is very simple and easy to implement, but is it really effective? Let's look at the results from the original paper. The experiments used BERT as a baseline. There are many charts in the original paper, so it is best to read it directly, but here is a representative one:</p>
+
+    <p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2020/04/46441019.png" alt="Maintaining a larger key_size allows the model to perform better given the same parameter scale" title="Maintaining a larger key_size allows the model to perform better given the same parameter scale" /></p>
+    <p style="text-align:center;"><em>Maintaining a larger key_size allows the model to perform better given the same parameter scale</em></p>
+
+    <p>This result shows that if we fix a relatively large <code>key_size</code> (e.g., 128), we can adjust the model's <code>hidden_size</code> and number of heads so that the parameter count is the same as the original BERT design, but the performance is better! Therefore, increasing <code>key_size</code> is indeed meaningful. Even if the total parameter count is adjusted back to the original size, it can still improve the model's performance to some extent. This undoubtedly provides important guidance for us when designing new Transformer models (especially small-scale ones).</p>
+
+    <p>Finally, we have attached two small RoBERTa models pre-trained with increased <code>key_size</code>. Everyone is welcome to use them (we call them <strong>RoBERTa+</strong>):</p>
+
+    <blockquote><a href="https://github.com/ZhuiyiTechnology/pretrained-models">https://github.com/ZhuiyiTechnology/pretrained-models</a></blockquote>
+
+    <h2 id="再缺也不能缺Talking">No matter what is missing, Talking must stay <a href="https://kexue.fm/archives/7325#%E5%86%8D%E7%BC%BA%E4%B9%9F%E4%B8%8D%E8%83%BD%E7%BC%BATalking">#</a></h2>
+    <p>The second result for improving Multi-Head Attention comes from the paper <a href="https://papers.cool/arxiv/2003.02436">"Talking-Heads Attention"</a>. Although this paper doesn't explicitly mention its connection to the previous one, I believe they are essentially solving the same problem but with different approaches. It points out that in current Multi-Head Attention, the computation of each head is isolated. By linking them ("Talking"), one can achieve a stronger Attention design, hence the title "Talking-Heads Attention."</p>
+
+    <h3 id="从单一分布到混合分布">From Single Distributions to Mixture Distributions <a href="https://kexue.fm/archives/7325#%E4%BB%8E%E5%8D%95%E4%B8%80%E5%88%86%E5%B8%83%E5%88%B0%E6%B7%B7%E5%90%88%E5%88%86%E5%B8%83">#</a></h3>
+    <p>In the previous paper, we mentioned the low-rank bottleneck, which means that because <code>key_size</code> is too small, the representational capacity of $\boldsymbol{Q}^{(i)}{\boldsymbol{K}^{(i)}}^{\top}$ is insufficient, making it difficult for the softmax to propose a complete binary distribution. To alleviate this problem, beyond increasing <code>key_size</code>, is there another way? Yes, for example, the mixture distribution approach used in this paper.</p>
+
+    <p>A mixture distribution is the superposition (e.g., weighted average) of multiple simple distributions. It can significantly enhance the expressiveness of the original distribution. A typical example is the Gaussian Mixture Model (GMM). We know that a single Gaussian distribution is just a common simple distribution, but a Gaussian Mixture distribution formed by superimposing multiple Gaussians is a much stronger distribution. Theoretically, as long as enough Gaussians are superimposed, a GMM can approximate any probability distribution. This example tells us that if we want to increase the representational power of the distributions in Attention without increasing <code>key_size</code>, we can consider superimposing multiple low-rank distributions.</p>
+
+    <p>Where do "multiple" low-rank distributions come from? We have Multi-Head! Each head carries a low-rank distribution; we can just superimpose them. This is Talking-Heads Attention. Specifically, its form is:</p>
+
+\begin{equation}\begin{aligned}&\hat{\boldsymbol{J}}^{(1)}=\boldsymbol{Q}^{(1)}{\boldsymbol{K}^{(1)}}^{\top},\quad\hat{\boldsymbol{J}}^{(2)}=\boldsymbol{Q}^{(2)}{\boldsymbol{K}^{(2)}}^{\top},\quad\cdots,\quad\hat{\boldsymbol{J}}^{(h)}=\boldsymbol{Q}^{(h)}{\boldsymbol{K}^{(h)}}^{\top}\\
+&\begin{pmatrix}\boldsymbol{J}^{(1)} \\ \boldsymbol{J}^{(2)} \\ \vdots \\ \boldsymbol{J}^{(h)}\end{pmatrix}=\begin{pmatrix}\lambda_{11} & \lambda_{12}& \cdots & \lambda_{1h}\\
+\lambda_{21} & \lambda_{22} & \cdots & \lambda_{2h}\\
+\vdots & \vdots & \ddots & \vdots\\
+\lambda_{h1} & \lambda_{h2} & \cdots & \lambda_{hh}
+\end{pmatrix}\begin{pmatrix}\hat{\boldsymbol{J}}^{(1)} \\ \hat{\boldsymbol{J}}^{(2)} \\ \vdots \\ \hat{\boldsymbol{J}}^{(h)}\end{pmatrix}\\
+&\boldsymbol{P}^{(1)}=softmax\left(\boldsymbol{J}^{(1)}\right),\boldsymbol{P}^{(2)}=softmax\left(\boldsymbol{J}^{(2)}\right),\dots,\boldsymbol{P}^{(h)}=softmax\left(\boldsymbol{J}^{(h)}\right)\\
+&\boldsymbol{O}^{(1)}=\boldsymbol{P}^{(1)} \boldsymbol{V}^{(1)},\quad \boldsymbol{O}^{(2)}=\boldsymbol{P}^{(2)} \boldsymbol{V}^{(2)},\quad ,\cdots,\quad\boldsymbol{O}^{(h)}=\boldsymbol{P}^{(h)} \boldsymbol{V}^{(h)}\\
+&\boldsymbol{O}=\left[\boldsymbol{O}^{(1)},\boldsymbol{O}^{(2)},\dots,\boldsymbol{O}^{(h)}\right]
+\end{aligned}\end{equation}
+
+    <p>It looks complicated, but it is actually very simple: <strong>Between "$\boldsymbol{Q}\boldsymbol{K}^{\top}$" and "softmax", use a parameter matrix $\boldsymbol{\lambda}$ to superimpose the results of various $\boldsymbol{Q}\boldsymbol{K}^{\top}$</strong>. This links the previously isolated Attention Heads, performing a simple "Talking" operation.</p>
+
+    <p>Two supplementary notes on the formulas above:</p>
+
+    <blockquote>
+    <p>1. For simplicity, I omitted the scaling factor $\sqrt{d_k}$ in the formulas above. If needed, readers can add it themselves.</p>
+    <p>2. A more general version of Talking-Heads Attention allows for up-projection in the step $\boldsymbol{J}=\boldsymbol{\lambda}\hat{\boldsymbol{J}}$, i.e., superimposing more than $h$ mixture distributions, and then using another parameter matrix to project back down. However, this is not a particularly critical improvement, so it is not featured in the main text.</p>
+    </blockquote>
+
+    <h3 id="再来看看实验结果～">Let's look at the experimental results <a href="https://kexue.fm/archives/7325#%E5%86%8D%E6%9D%A5%E7%9C%8B%E7%9C%8B%E5%AE%9E%E9%AA%8C%E7%BB%93%E6%9E%9C%EF%BD%9E">#</a></h3>
+    <p>Is it really effective? Of course, the experimental results speak for themselves. The experimental lineup of this paper is unprecedentedly strong, including results based on BERT, ALBERT, and T5 clusters! As we all know, BERT, ALBERT, and T5 were all SOTA (State of the Art) models in NLP at certain points in time. T5, in particular, remains at the top of the <a href="https://super.gluebenchmark.com/leaderboard">SuperGLUE</a> leaderboard, far ahead of the second place. Talking-Heads Attention has essentially pushed their glorious achievements to a new height!</p>
+
+    <p>Again, you should check the original paper for detailed experimental results. Here is a typical one:</p>
+
+    <p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2020/04/3111635993.png" alt="Experimental results show that when the Talking-Head mechanism is used and hidden_size is kept constant, a larger number of heads leads to better results." title="Experimental results show that when the Talking-Head mechanism is used and hidden_size is kept constant, a larger number of heads leads to better results." /></p>
+    <p style="text-align:center;"><em>Experimental results show that when the Talking-Head mechanism is used and hidden_size is kept constant, a larger number of heads leads to better results.</em></p>
+
+    <p>This result shows that when using Talking-Head Attention, while keeping <code>hidden_size</code> constant, the more heads there are (consequently, the smaller the <code>key_size</code> and <code>head_size</code>), the better the effect. This seems to contradict the conclusion of the previous paper about increasing <code>key_size</code>, but it actually illustrates the significant role of mixture distributions in improving distribution fitting. It can superimpose single distributions that are weakened by shrinking <code>key_size</code> into a distribution with much stronger fitting capabilities. Of course, this doesn't mean we should simply set <code>key_size=1</code>, because the computational cost would be significantly higher than the original BERT Base. In practice, a balance between performance and computation is required.</p>
+
+    <p>The table above is just the tip of the iceberg of the original paper's experiments. Let's look at another experimental table to feel the scale of the lineup:</p>
+
+    <p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2020/04/813962011.png" alt="Experimental results of T5 + Talking-Heads Attention on SuperGLUE" title="Experimental results of T5 + Talking-Heads Attention on SuperGLUE" /></p>
+    <p style="text-align:center;"><em>Experimental results of T5 + Talking-Heads Attention on SuperGLUE</em></p>
+
+    <p>Experiments were conducted for almost every task and every combination of hyperparameters. Such a powerful experimental blitz could essentially only be done by Google. Furthermore, the entire paper has a strong "T5 Style" (readers who haven't read the T5 paper can check out <a href="https://papers.cool/arxiv/1910.10683">"Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer"</a>). Sure enough, one of the authors, Noam Shazeer, is also one of the authors of T5.</p>
+
+    <p>I just want to say that this massive experimental bombardment seems to announce to us:</p>
+
+    <blockquote>
+    <p>"Don't doubt it, we've tuned all the parameters that need to be tuned, and our Talking-Heads Attention is the best~"</p>
+    </blockquote>
+
+    <h3 id="插曲：神奇的论文画风">Interlude: Strange Paper Style <a href="https://kexue.fm/archives/7325#%E6%8F%92%E6%9B%B2%EF%BC%9A%E7%A5%9E%E5%A5%87%E7%9A%84%E8%AE%BA%E6%96%87%E7%94%BB%E9%A3%8E">#</a></h3>
+    <p>Speaking of which, when I first came across the "Talking-Heads Attention" paper on ArXiv, my first impression was that it was a trashy paper. Why? Because its style looks like this:</p>
+
+    <p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2020/04/591585191.png" alt="Pseudo-code in Talking-Heads Attention" title="Pseudo-code in Talking-Heads Attention" /></p>
+    <p style="text-align:center;"><em>Pseudo-code in "Talking-Heads Attention"</em></p>
+
+    <p>Who could imagine that such a powerful paper contains not a single mathematical formula, replaced entirely by pseudo-code!! Actually, it's barely even pseudo-code; it feels more like copying Python code directly from the experiment into the main body of the paper! In my impression, only low-tier "watery" papers do this, so my first thought was that this was a fluff piece. However, only Google's big shots can afford to be so willful. If I hadn't patiently scanned it a few more times, and if I hadn't accidentally seen "T5" and other terms, and if I hadn't checked that the authors were all from Google, this powerful paper would have been treated as trash by me and sent to the recycle bin.</p>
+
+    <p>However, willfulness comes at a price. This paper, with such a massive experimental lineup and such effective results, has been out for over a month, but it seems to have little traction. This likely has something to do with its willful style~</p>
+
+    <h2 id="来自文末的小结">Summary at the End <a href="https://kexue.fm/archives/7325#%E6%9D%A5%E8%87%AA%E6%96%87%E6%9C%AB%E7%9A%84%E5%B0%8F%E7%BB%93">#</a></h2>
+    <p>This article introduced two follow-up works on improving Multi-Head Attention. Although the implementation details are different, they both address the "low-rank bottleneck" problem, giving a sense of "converging paths." Both works come from Google and follow-up with rich experiments, so the results are relatively persuasive. Readers working on structural improvements to models can refer to them.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7325.html" style="color: #005fcc;">https://kexue.fm/archives/7325</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

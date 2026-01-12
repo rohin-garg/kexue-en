@@ -1,0 +1,237 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/11196">Steepest Descent on Manifolds: 1. SGD + Hypersphere</a></h1>
+    <p>By 苏剑林 | August 01, 2025</p>
+
+    <p>Descriptions such as "the opposite direction of the gradient is the direction of steepest descent" are frequently used to introduce the principles of Stochastic Gradient Descent (SGD). However, this statement is conditional. For instance, "direction" is mathematically a unit vector, which depends on the definition of the "norm (magnitude)"; different norms lead to different conclusions. <a href="translation_10592.html">Muon</a>, in fact, simply replaces the Frobenius norm for matrix parameters with a spectral norm, thereby obtaining a new descent direction. Furthermore, when we shift from unconstrained optimization to constrained optimization, the direction of steepest descent is not necessarily the opposite direction of the gradient.</p>
+
+    <p>To this end, in this article, we will start a new series using "constraints" as the main thread to re-examine the proposition of "steepest descent" and explore where the "direction of steepest descent" points under different conditions.</p>
+
+    <h2>Optimization Principle</h2>
+    <p>As the first article, let us begin with SGD to understand the mathematical meaning behind the statement "the opposite direction of the gradient is the direction of steepest descent," and then apply it to optimization on a hypersphere. Before that, however, I would like to revisit the "<strong>Least Action Principle</strong>" for optimizers mentioned in <a href="translation_10739.html">"Muon Sequel: Why did we choose to try Muon?"</a>.</p>
+
+    <p>This principle attempts to answer "what constitutes a good optimizer." First, we certainly hope the model converges as quickly as possible. However, due to the complexity of neural networks, if the steps are too large, the training is likely to collapse. Therefore, a good optimizer should be both <strong>stable</strong> and <strong>fast</strong>; ideally, it should significantly reduce the loss without requiring major changes to the model. Mathematically, this can be written as:</p>
+    \begin{equation}\min_{\Delta \boldsymbol{w}} \mathcal{L}(\boldsymbol{w} +\Delta\boldsymbol{w}) \qquad \text{s.t.}\qquad \rho(\Delta\boldsymbol{w})\leq \eta\end{equation}
+    <p>Here, $\mathcal{L}$ is the loss function, $\boldsymbol{w}\in\mathbb{R}^n$ is the parameter vector, $\Delta \boldsymbol{w}$ is the update amount, and $\rho(\Delta\boldsymbol{w})$ is some measure of the magnitude of the update $\Delta\boldsymbol{w}$. The above objective is intuitive: to find the update amount that maximizes the decrease in the loss function (<strong>fast</strong>) under the premise that the "step" does not exceed $\eta$ (<strong>stable</strong>). This is the mathematical meaning of the "Least Action Principle" and the mathematical meaning of "steepest descent."</p>
+
+    <h2>Target Transformation</h2>
+    <p>Assuming $\eta$ is sufficiently small, $\Delta\boldsymbol{w}$ will also be small enough such that a first-order approximation is accurate. We can then replace $\mathcal{L}(\boldsymbol{w} +\Delta\boldsymbol{w})$ with $\mathcal{L}(\boldsymbol{w}) + \langle\boldsymbol{g},\Delta\boldsymbol{w}\rangle$, where $\boldsymbol{g} = \nabla_{\boldsymbol{w}}\mathcal{L}(\boldsymbol{w})$, yielding the equivalent objective:</p>
+    \begin{equation}\min_{\Delta \boldsymbol{w}} \langle\boldsymbol{g},\Delta\boldsymbol{w}\rangle \qquad \text{s.t.}\qquad \rho(\Delta\boldsymbol{w})\leq \eta\end{equation}
+    <p>This simplifies the optimization goal into a linear function of $\Delta \boldsymbol{w}$, reducing the difficulty of solving it. Furthermore, let $\Delta \boldsymbol{w} = -\kappa \boldsymbol{\varphi}$, where $\rho(\boldsymbol{\varphi})=1$. Then the above objective is equivalent to:</p>
+    \begin{equation}\max_{\kappa,\boldsymbol{\varphi}} \kappa\langle\boldsymbol{g},\boldsymbol{\varphi}\rangle \qquad \text{s.t.}\qquad \rho(\boldsymbol{\varphi}) = 1, \,\, \kappa\in[0, \eta]\end{equation}
+    <p>Assuming we can find at least one $\boldsymbol{\varphi}$ satisfying the conditions such that $\langle\boldsymbol{g},\boldsymbol{\varphi}\rangle\geq 0$, then $\max\limits_{\kappa\in[0,\eta]} \kappa\langle\boldsymbol{g},\boldsymbol{\varphi}\rangle = \eta\langle\boldsymbol{g},\boldsymbol{\varphi}\rangle$. That is, the optimization of $\kappa$ can be solved beforehand, resulting in $\kappa=\eta$. The final equivalence is the optimization of $\boldsymbol{\varphi}$ alone:</p>
+    \begin{equation}\max_{\boldsymbol{\varphi}} \langle\boldsymbol{g},\boldsymbol{\varphi}\rangle \qquad \text{s.t.}\qquad \rho(\boldsymbol{\varphi}) = 1\label{eq:core}\end{equation}
+    <p>Here $\boldsymbol{\varphi}$ satisfies the condition that some "magnitude" $\rho(\boldsymbol{\varphi})$ equals 1, so it represents the definition of a "direction vector." Maximizing its inner product with the gradient $\boldsymbol{g}$ means finding the direction in which the loss decreases most rapidly (i.e., the opposite direction of $\boldsymbol{\varphi}$).</p>
+
+    <h2>Gradient Descent</h2>
+    <p>From equation \eqref{eq:core}, we can see that for the "direction of steepest descent," the only uncertainty lies in the metric $\rho$. This is a fundamental inductive bias in an optimizer; different metrics will yield different steepest descent directions. The simplest is the L2 norm, or Euclidean norm $\rho(\boldsymbol{\varphi})=\Vert \boldsymbol{\varphi} \Vert_2$, which is the magnitude in the usual sense. In this case, we have the Cauchy-Schwarz inequality:</p>
+    \begin{equation}\langle\boldsymbol{g},\boldsymbol{\varphi}\rangle \leq \Vert\boldsymbol{g}\Vert_2 \Vert\boldsymbol{\varphi}\Vert_2 = \Vert\boldsymbol{g}\Vert_2\end{equation}
+    <p>The condition for equality is $\boldsymbol{\varphi} \propto \boldsymbol{g}$. Adding the condition that the magnitude is 1, we get $\boldsymbol{\varphi}=\boldsymbol{g}/\Vert\boldsymbol{g}\Vert_2$, which is precisely the direction of the gradient. Therefore, "the opposite direction of the gradient is the direction of steepest descent" assumes that the chosen metric is the Euclidean norm. More generally, we consider the $p$-norm:</p>
+    \begin{equation}\rho(\boldsymbol{\varphi}) = \Vert\boldsymbol{\varphi}\Vert_p = \sqrt[\uproot{10}p]{\sum_{i=1}^n |\varphi_i|^p}\end{equation}
+    <p>The Cauchy-Schwarz inequality can be generalized to <a href="https://en.wikipedia.org/wiki/H%C3%B6lder%27s_inequality">Hölder's inequality</a>:</p>
+    \begin{equation}\langle\boldsymbol{g},\boldsymbol{\varphi}\rangle \leq \Vert\boldsymbol{g}\Vert_q \Vert\boldsymbol{\varphi}\Vert_p = \Vert\boldsymbol{g}\Vert_q,\qquad 1/p + 1/q=1\end{equation}
+    <p>The condition for equality is $\boldsymbol{\varphi}^{[p]} \propto \boldsymbol{g}^{[q]}$, so we solve for:</p>
+    \begin{equation}\newcommand{sign}{\mathop{\text{sign}}}\boldsymbol{\varphi} = \frac{\boldsymbol{g}^{[q/p]}}{\Vert\boldsymbol{g}^{[q/p]}\Vert_p},\qquad \boldsymbol{g}^{[\alpha]} \triangleq \big[\sign(g_1) |g_1|^{\alpha},\sign(g_2) |g_2|^{\alpha},\cdots,\sign(g_n) |g_n|^{\alpha}\big]\end{equation}
+    <p>An optimizer using this as the direction vector is called pbSGD, from <a href="https://www.ijcai.org/proceedings/2020/451">"pbSGD: Powered Stochastic Gradient Descent Methods for Accelerated Non-Convex Optimization"</a>. It has two special cases: first, when $p=q=2$, it degenerates into SGD; second, when $p\to\infty$, then $q\to 1$, at which point $|g_i|^{q/p}\to 1$, and the update direction becomes the sign function of the gradient, i.e., SignSGD.</p>
+
+    <h2>On the Hypersphere</h2>
+    <p>In the previous discussion, we only imposed constraints on the parameter increment $\Delta\boldsymbol{w}$. Next, we wish to add constraints to the parameters $\boldsymbol{w}$ themselves. Specifically, we assume the parameters $\boldsymbol{w}$ lie on a unit sphere, and we hope that the updated parameters $\boldsymbol{w}+\Delta\boldsymbol{w}$ also lie on the unit sphere (see <a href="https://docs.modula.systems/algorithms/manifold/hypersphere/">"Hypersphere"</a>). Starting from objective \eqref{eq:core}, we can write the new objective as:</p>
+    \begin{equation}\max_{\boldsymbol{\varphi}} \langle\boldsymbol{g},\boldsymbol{\varphi}\rangle \qquad \text{s.t.}\qquad \Vert\boldsymbol{\varphi}\Vert_2 = 1,\,\,\Vert\boldsymbol{w}-\eta\boldsymbol{\varphi}\Vert_2 = 1,\,\,\Vert\boldsymbol{w}\Vert_2=1\end{equation}
+    <p>We still adhere to the principle that "$\eta$ is small enough for a first-order approximation to suffice," obtaining:</p>
+    \begin{equation}1 = \Vert\boldsymbol{w}-\eta\boldsymbol{\varphi}\Vert_2^2 = \Vert\boldsymbol{w}\Vert_2^2 - 2\eta\langle \boldsymbol{w}, \boldsymbol{\varphi}\rangle + \eta^2 \Vert\boldsymbol{\varphi}\Vert_2^2\approx 1 - 2\eta\langle \boldsymbol{w}, \boldsymbol{\varphi}\rangle\end{equation}
+    <p>So this is equivalent to converting the constraint into the linear form $\langle \boldsymbol{w}, \boldsymbol{\varphi}\rangle=0$. To solve the new objective, we introduce the Lagrange multiplier $\lambda$ and write:</p>
+    \begin{equation}\langle\boldsymbol{g},\boldsymbol{\varphi}\rangle = \langle\boldsymbol{g},\boldsymbol{\varphi}\rangle + \lambda\langle\boldsymbol{w},\boldsymbol{\varphi}\rangle =\langle \boldsymbol{g} + \lambda\boldsymbol{w},\boldsymbol{\varphi}\rangle\leq \Vert\boldsymbol{g} + \lambda\boldsymbol{w}\Vert_2 \Vert\boldsymbol{\varphi}\Vert_2 = \Vert\boldsymbol{g} + \lambda\boldsymbol{w}\Vert_2\end{equation}
+    <p>The condition for equality is $\boldsymbol{\varphi}\propto \boldsymbol{g} + \lambda\boldsymbol{w}$. Combined with the conditions $\Vert\boldsymbol{\varphi}\Vert_2=1, \langle \boldsymbol{w}, \boldsymbol{\varphi}\rangle=0, \Vert\boldsymbol{w}\Vert_2=1$, we can solve for:</p>
+    \begin{equation}\boldsymbol{\varphi} = \frac{\boldsymbol{g} - \langle \boldsymbol{g}, \boldsymbol{w}\rangle\boldsymbol{w}}{\Vert\boldsymbol{g} - \langle \boldsymbol{g}, \boldsymbol{w}\rangle\boldsymbol{w}\Vert_2}\end{equation}
+    <p>Note that we now have $\Vert\boldsymbol{w}\Vert_2=1, \Vert\boldsymbol{\varphi}\Vert_2=1$, and $\boldsymbol{w}$ and $\boldsymbol{\varphi}$ are orthogonal. Thus, the magnitude of $\boldsymbol{w} - \eta\boldsymbol{\varphi}$ is not exactly equal to 1, but rather $\sqrt{1 + \eta^2}=1 + \eta^2/2 + \cdots$. This is accurate to $\mathcal{O}(\eta^2)$, which is consistent with our previous assumption that "the first-order term of $\eta$ is enough." If we want the updated parameter magnitude to be strictly equal to 1, we can add a retraction step to the update rule:</p>
+    \begin{equation}\boldsymbol{w}\quad\leftarrow\quad \frac{\boldsymbol{w} - \eta\boldsymbol{\varphi}}{\sqrt{1 + \eta^2}}\end{equation}
+
+    <h2>Geometric Meaning</h2>
+    <p>We just used the "first-order approximation is enough" principle to simplify the non-linear constraint $\Vert\boldsymbol{w}-\eta\boldsymbol{\varphi}\Vert_2 = 1$ into the linear constraint $\langle \boldsymbol{w}, \boldsymbol{\varphi}\rangle=0$. The geometric meaning of the latter is "perpendicular to $\boldsymbol{w}$." There is a more formal term for this: the "tangent space" of $\Vert\boldsymbol{w}\Vert_2=1$. The operation $\boldsymbol{g} - \langle \boldsymbol{g}, \boldsymbol{w}\rangle\boldsymbol{w}$ corresponds exactly to the projection operation that projects the gradient $\boldsymbol{g}$ onto the tangent space.</p>
+
+    <p>Fortunately, SGD on a sphere has a very clear geometric meaning, as shown in the figure below:</p>
+
+    <p style="text-align:center;"><em>Steepest Descent on a Sphere - Geometric Meaning</em></p>
+
+    <p>I believe many readers enjoy this geometric perspective; it is indeed aesthetically pleasing. However, I must still remind everyone that priority should be given to understanding the algebraic derivation process. Clear geometric meaning is often a luxury—something pleasant to encounter but not always available. In most cases, the complex algebraic process is the essence.</p>
+
+    <h2>General Results</h2>
+    <p>Next, might some readers wish to generalize this to the general $p$-norm? Let's try and see what difficulties arise. The problem now is:</p>
+    \begin{equation}\max_{\boldsymbol{\varphi}} \langle\boldsymbol{g},\boldsymbol{\varphi}\rangle \qquad \text{s.t.}\qquad \Vert\boldsymbol{\varphi}\Vert_p = 1,\,\,\Vert\boldsymbol{w}-\eta\boldsymbol{\varphi}\Vert_p = 1,\,\,\Vert\boldsymbol{w}\Vert_p=1\end{equation}
+    <p>First-order approximation converts $\Vert\boldsymbol{w}-\eta\boldsymbol{\varphi}\Vert_p = 1$ into $\langle\boldsymbol{w}^{[p-1]},\boldsymbol{\varphi}\rangle = 0$, and then we introduce the multiplier $\lambda$:</p>
+    \begin{equation}\langle\boldsymbol{g},\boldsymbol{\varphi}\rangle = \langle\boldsymbol{g},\boldsymbol{\varphi}\rangle + \lambda\langle\boldsymbol{w}^{[p-1]},\boldsymbol{\varphi}\rangle = \langle \boldsymbol{g} + \lambda\boldsymbol{w}^{[p-1]},\boldsymbol{\varphi}\rangle \leq \Vert\boldsymbol{g} + \lambda\boldsymbol{w}^{[p-1]}\Vert_q \Vert\boldsymbol{\varphi}\Vert_p = \Vert\boldsymbol{g} + \lambda\boldsymbol{w}^{[p-1]}\Vert_q
+    \end{equation}
+    <p>The condition for equality is:</p>
+    \begin{equation}\boldsymbol{\varphi} = \frac{(\boldsymbol{g} + \lambda\boldsymbol{w}^{[p-1]})^{[q/p]}}{\Vert(\boldsymbol{g} + \lambda\boldsymbol{w}^{[p-1]})^{[q/p]}\Vert_p}\end{equation}
+    <p>Up to this point, there have been no substantive difficulties. However, we then need to find $\lambda$ such that $\langle\boldsymbol{w}^{[p-1]},\boldsymbol{\varphi}\rangle = 0$. When $p \neq 2$, this is a complex non-linear equation with no easy solution (though once solved, we are guaranteed the optimal solution by Hölder's inequality). Therefore, the solution for general $p$ stops here, and we will explore specific numerical methods when we encounter instances where $p\neq 2$.</p>
+
+    <p>Besides $p=2$, we can also attempt to solve for $p\to\infty$. In this case, $\boldsymbol{\varphi}=\sign(\boldsymbol{g} + \lambda\boldsymbol{w}^{[p-1]})$, and the condition $\Vert\boldsymbol{w}\Vert_p=1$ implies that the maximum value of $|w_1|,|w_2|,\cdots,|w_n|$ is equal to 1. If we further assume there is only one such maximum value, then $\boldsymbol{w}^{[p-1]}$ is a one-hot vector with $\pm 1$ at the position of the absolute maximum and zero elsewhere. In this case, $\lambda$ can be solved, and the result is to clip the gradient at the position of the maximum value to zero.</p>
+
+    <h2>Summary</h2>
+    <p>This article kicks off a new series focusing on optimization problems under "equality constraints," attempting to find the "direction of steepest descent" for some common constraint conditions. As the first article, this post discussed the SGD variant under "hypersphere" constraints.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_11196.html" style="color: #005fcc;">https://kexue.fm/archives/11196</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

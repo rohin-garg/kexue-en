@@ -1,0 +1,265 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/8610">Linear Transformer Should Not Be the Model You Are Waiting For</a></h1>
+
+<p>By 苏剑林 | August 09, 2021</p>
+
+<p>In this blog, we have discussed the content related to Linear Attention several times. The logic for introducing Linear Attention is generally: standard Attention has a quadratic complexity of $\mathcal{O}(n^2)$, which is one of its major "pain points." Therefore, we introduce improved models with $\mathcal{O}(n)$ linear complexity, known as Linear Attention. After seeing introductions to Linear Attention, some readers have been eagerly awaiting our release of pre-trained models based on Linear Attention, hoping to alleviate the "life-and-death" struggle caused by BERT's computational consumption.</p>
+
+<p>However, what this article aims to say is: readers holding onto this idea might be disappointed. The conversion from standard Attention to Linear Attention is likely to fall far short of your expectations, and the reason BERT is so slow is not actually because of the quadratic complexity of standard Attention.</p>
+
+<h2 id="BERT之反思">Reflections on BERT</h2>
+
+<p>According to intuitive understanding, shouldn't replacing quadratic complexity with linear complexity lead to a "massive leap"? Why would it "fall far short of expectations"? The primary reason for this doubt is that we have long failed to carefully evaluate the overall computational volume of conventional Transformer models (such as BERT).</p>
+
+<p>Many readers already know that the Transformer structure generally consists of an Embedding layer plus several Transformer layers. The computational load of the Embedding layer is minimal; we mainly care about the Transformer layers. Ignoring layers with relatively small computational loads like residuals and Layer Normalization, each Transformer layer is mainly composed of two sub-layers: Self Attention (SA) and the FeedForward Network (FFN). Although the seminal Transformer paper claimed that "<a href="https://papers.cool/arxiv/1706.03762">Attention is all you need</a>," many subsequent works have demonstrated the necessity of modules like residuals and FFN, such as <a href="https://papers.cool/arxiv/2103.03404">"Attention is Not All You Need: Pure Attention Loses Rank Doubly Exponentially with Depth"</a>.</p>
+
+<p>Now, a question for everyone:</p>
+
+<blockquote>Which do you think has a larger computational load, SA or FFN?</blockquote>
+
+<h2 id="评估计算量">Evaluating Computational Cost</h2>
+
+<p>Doubtless, the complexity of SA is $\mathcal{O}(n^2)$, while the complexity of FFN is $\mathcal{O}(n)$. If you simply assume SA's computational load is larger than FFN's based on this, you would be wrong!</p>
+
+<p>We know that addition is much faster than multiplication, so when estimating computational volume, we primarily count how many multiplications are performed. In neural networks, the main operations are matrix multiplications. It is easy to estimate that, by definition, multiplying an $a \times b$ matrix by a $b \times c$ matrix requires $abc$ multiplications. Thus, $abc$ is the complexity of multiplying two matrices, which is our basis for estimating Transformer complexity.</p>
+
+<p>Let $n$ be the sequence length, $d$ be the head_size (64 in the base version), and $h$ be the number of heads (12 in the base version). Then $hd$ is what we usually call the "hidden_size" (768 in the base version). For SA, first are the $Q, K, V$ projection transformations: an $n \times hd$ matrix multiplied by an $hd \times hd$ matrix, performed 3 times. Thus, the calculation volume is $3n(hd)^2$. Next is the computation of $h$ Attention heads. Each head involves multiplying an $n \times d$ $Q$ matrix with a $d \times n$ $K^{\top}$ matrix to get an $n \times n$ Attention matrix (ignoring softmax and normalization for now), and then multiplying the $n \times n$ matrix with an $n \times d$ $V$ matrix to get an $n \times d$ matrix. Both steps have a computational volume of $n^2 d$. So the total calculation for the heads is $h(n^2 d + n^2 d)$. Finally, the output has another projection transformation, which is an $n \times hd$ matrix multiplied by an $hd \times hd$ matrix, with a computational volume of $n(hd)^2$. Thus, the total computational volume for SA is:</p>
+
+\begin{equation}3n(hd)^2 + h(n^2 d + n^2 d) + n(hd)^2 = 4nh^2 d^2 + 2n^2 hd\end{equation}
+
+<p>As for FFN, it is simpler. It consists of two fully connected layers, meaning two matrix transformations (ignoring the calculation of activation functions). The general parameter setting is: the first layer is an $n \times hd$ matrix multiplied by an $hd \times 4hd$ matrix, and the second layer is an $n \times 4hd$ matrix multiplied by a $4hd \times hd$ matrix. Therefore, the total computational volume is:</p>
+
+\begin{equation}n\times hd\times 4hd + n\times 4hd\times hd = 8nh^2 d^2\end{equation}
+
+<p>In this way, if the computational load of SA were larger than that of FFN, it would mean:</p>
+
+\begin{equation}4nh^2 d^2 + 2n^2 hd > 8nh^2 d^2\quad\Leftrightarrow\quad n > 2hd\end{equation}
+
+<p>For the base version, this means $n > 1536$! In other words, only when the sequence length exceeds 1536 does the computational load of SA become larger than that of FFN. Before that, the linear-complexity FFN dominates!</p>
+
+<p>There's more. From the results above, we can obtain the total computational volume of a Transformer layer as:</p>
+
+\begin{equation}4nh^2 d^2 + 2n^2 hd + 8nh^2 d^2 = 12nh^2 d^2 + 2n^2 hd\end{equation}
+
+<p>This is the sum of a linear term and a quadratic term regarding $n$. When $n$ is large enough, the complexity is naturally $\mathcal{O}(n^2)$. However, the condition for the quadratic term to dominate is:</p>
+
+\begin{equation}2n^2 hd > 12nh^2 d^2\quad\Leftrightarrow\quad n > 6hd\end{equation}
+
+<p>For the base version, this means $n > 4608$! That is to say, only when the sequence length approaches 5000 does the complexity of the Transformer truly begin to manifest its quadratic nature!</p>
+
+<h2 id="综合的结论">Comprehensive Conclusions</h2>
+
+<p>Synthesizing the above results, we can conclude: for the base version, when the sequence length does not exceed 1536, the Transformer's complexity is nearly linear. When the sequence length exceeds 1536, the computational volume of the Transformer gradually becomes dominated by Attention, and the complexity slowly trends toward quadratic, until the length exceeds 4608, where the quadratic term truly dominates. Of course, these boundaries are estimates; actual conditions may deviate slightly. Everyone should just perceive the range and order of magnitude.</p>
+
+<p>I have previously suggested to many readers that for "long text" tasks with lengths not exceeding 2000, they should just try models like <a href="https://github.com/huawei-noah/Pretrained-Language-Model/tree/master/NEZHA-TensorFlow">NEZHA</a> or <a href="translation_8265.html">RoFormer</a> that do not have fixed length limits, without overthinking techniques. The reason is the same. No matter how many techniques you use, at most you reduce it to linear complexity, and within this length range, the model itself is already nearly linear. Various techniques won't save much.</p>
+
+<p>For readers dutifully using BERT-base, the maxlen generally does not exceed 512, which is far below the aforementioned boundaries. Therefore, please stop complaining about Attention's quadratic complexity taxing the hardware, because the truth is:</p>
+
+<blockquote>BERT is slow primarily because it is truly large, not because of the quadratic complexity of Attention.</blockquote>
+
+<h2 id="线性的含义">The Meaning of "Linear"</h2>
+
+<p>As for why there is "far less expectation" regarding Linear Attention, another reason is the failure to analyze the computational volume of Linear Attention from a practical perspective, resulting in overly high expectations.</p>
+
+<p>For an introduction to Linear Attention, you can refer to <a href="translation_7546.html">"Exploration of Linear Attention: Must Attention have a Softmax?"</a>; I will not repeat it here. Simply put, Linear Attention calculates attention in the order of $Q(K^{\top} V)$. Thus, following the previous estimation method, the computational volume for each head in Linear Attention is $2nd^2$, whereas standard Attention is $2n^2 d$. Therefore, if $n > d$, Linear Attention saves computational volume compared to standard Attention. (Note: There is more than one way to achieve linear efficiency in Attention, but generally, the complexity is similar, so the following conclusion is representative.)</p>
+
+<p>For the base version, that means $n > 64$, a boundary that is easily surpassed. So some readers might think, "Every little bit counts," or "Might as well use it." However, this is based on the assumption that standard Attention and Linear Attention both use the same $d$. Readers who have carefully pondered <a href="translation_7921.html">"Performer: Linearizing Attention Complexity with Random Projections"</a> and <a href="translation_8338.html">"Transformer Upgrade Road: 3. From Performer to Linear Attention"</a> know that Linear Attention suffers from a more severe "low-rank bottleneck" than standard Attention. Thus, if you switch to Linear Attention while keeping the same $d$, the performance will drop significantly. To maintain roughly the same effect, Linear Attention needs a larger $d$ (generally about 4 times the original).</p>
+
+<p>In this case, the computational volume of Linear Attention would be $2n(4d)^2$. If Linear Attention is to be faster than standard Attention, then $n > 16d$. For the base version, this means $n > 1024$, which is also beyond the range most readers encounter. Furthermore, after switching to Linear Attention, the previous conclusions regarding SA and FFN computational volume still hold—namely, that for most sequence lengths, the dominant computational load is still FFN and other linear operations. Switching to Linear Attention will not yield a noticeable speed boost. Thus, in summary:</p>
+
+<blockquote>Unless you are dealing with sequence lengths in the tens of thousands, don't worry about switching to Linear Attention.</blockquote>
+
+<h2 id="再翻翻论文">Revisiting the Papers</h2>
+
+<p>In fact, even without the above analysis, any reader who has seriously read work related to Attention efficiency improvements would reach similar conclusions from certain figures in the papers: so-called "efficient" Attention mechanisms generally only apply to sequence lengths in the thousands or tens of thousands. Only in such scenarios is there a significant performance improvement.</p>
+
+<p>For example, in the earlier work <a href="https://papers.cool/arxiv/1904.10509">Sparse Transformers</a>, there is a chart showing that the sequence lengths processed are all 3000+:</p>
+
+<p style="text-align:center;"><em>Sparse Transformer processes lengths that are all 3000+</em></p>
+
+<p>Take the famous <a href="https://papers.cool/arxiv/2001.04451">Reformer</a>; the sequence lengths used to demonstrate performance are all in units of K (thousands):</p>
+
+<p style="text-align:center;"><em>Reformer demonstrates performance with sequence lengths in units of K</em></p>
+
+<p>The highly praised <a href="https://papers.cool/arxiv/2004.05150">Longformer</a> is the same:</p>
+
+<p style="text-align:center;"><em>Longformer demonstrates performance with sequence lengths of several thousands or even tens of thousands</em></p>
+
+<p>And then there is Google's classic work on Linear Attention, <a href="https://papers.cool/arxiv/2009.14794">Performer</a>, which shows that even if the sequence length is $2^{12}=4096$, the gap between Performer and Transformer isn't particularly significant:</p>
+
+<p style="text-align:center;"><em>Performer performance curve</em></p>
+
+<p>Finally, the relatively newer work <a href="https://papers.cool/arxiv/2106.01540">Luna</a> provides a fairly comprehensive comparison table, which also supports our conclusion:</p>
+
+<p style="text-align:center;"><em>Comparison of performance for various improved Attention mechanisms in Luna</em></p>
+
+<p>From the existing various efficient Attention works, we can conclude: the sequence lengths these improvement works care about are primarily in the thousands. A sequence length with a clear boost in computational efficiency must generally be several thousand. Of course, our discussion here mainly targets time complexity. For spatial complexity—that is, memory occupancy—the degree of reduction is typically larger than the degree of speedup in time complexity, but overall, it's only valuable for long sequences.</p>
+
+<h2 id="换个期待吧">Change Your Expectations</h2>
+
+<p>Therefore, if your sequence length is only one or two hundred, then stop expecting anything from improvements to Attention itself—just switch to a smaller model. You can hope that in the future, smaller models will achieve the same good results, but do not expect similarly large models to improve efficiency by modifying Attention. To put it bluntly, even if you removed Attention entirely, it wouldn't improve performance by much.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8610.html" style="color: #005fcc;">https://kexue.fm/archives/8610</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

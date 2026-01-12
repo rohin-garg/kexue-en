@@ -1,0 +1,273 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/9768">A Brief Exploration of Stochastic Tokenization: From Viterbi Decoding to Viterbi Sampling</a></h1>
+    
+    <p>By 苏剑林 | September 16, 2023</p>
+
+    <p>After the previous article <a href="translation_9762.html">"A Problem and Countermeasure for Large Vocabulary Language Models in Continuation Tasks"</a> was published, a reader quickly pointed out that introducing stochastic tokenization during the training phase can solve the same problem, and there are already papers and implementations for it. After further research and learning, I discovered that this technique is called <a href="https://papers.cool/arxiv/1804.10959">Subword Regularization</a>, which was first applied in NMT (Neural Machine Translation), and SentencePiece already has a corresponding implementation. It seems this technique can indeed alleviate the aforementioned problem and may even help enhance the fault tolerance of language models, so I had the idea to include it in <a href="translation_9752.html">BytePiece</a>.</p>
+
+    <p>So the question arises: how to change deterministic tokenization into stochastic tokenization? BytePiece is based on the Unigram model, which uses the Viterbi algorithm to find the tokenization scheme with the maximum probability. Since there are probabilities involved, can we naturally derive a stochastic sampling method? This article discusses this issue and shares my own solution.</p>
+
+    <h2>Key Analysis <a id="analysis" href="#analysis">#</a></h2>
+
+    <p>At present, Unigram tokenization directly outputs the segmentation scheme with the maximum probability, which is typically a deterministic output. Specifically, suppose $\boldsymbol{w}=(w_1,w_2,\cdots,w_k)$ represents a segmentation scheme, and the corresponding score is $P(\boldsymbol{w})=p(w_1)p(w_2)\cdots p(w_k)$. If $\Omega(S)$ represents the set of all possible segmentation schemes for sentence $S$, then the tokenization algorithm can be described as:</p>
+    
+    \begin{equation}\boldsymbol{w}^* = \mathop{\text{argmax}}_{\boldsymbol{w}\in \Omega(S)}P(\boldsymbol{w})\end{equation}
+
+    <p>This can be completed in linear time using the Viterbi algorithm, so this process is also referred to as "Viterbi Decoding." It seems that the Unigram model inherently carries probabilities, so it shouldn't be difficult to change it into a probabilistic sampling form. However, upon closer reflection, this is not a trivial problem, and there are many technical details to overcome.</p>
+
+    <p>I initially envisioned designing a recursive sampling process mimicking autoregressive language models. However, the most difficult part here is how to maintain the ranking of original candidate segmentation schemes as much as possible, or at least ensure that the maximum probability remains unchanged—meaning the maximum probability path $\boldsymbol{w}^*$ from Viterbi decoding should correspond to the most probable sampling result of the designed recursive sampling algorithm. Since all segmentation schemes $\Omega(S)$ form a Directed Acyclic Graph (DAG), I initially thought a random walk on the DAG might be a viable solution. But upon further thought, I realized it is difficult to design appropriate transition probabilities to ensure the maximum probability path remains unchanged (because different edges from the same starting point are not equally weighted and cannot be sampled simply by their frequency).</p>
+
+    <h2>Existing Solutions <a id="existing-solutions" href="#existing-solutions">#</a></h2>
+
+    <p>Since I didn't have any new ideas for a while, I decided to check the "reference answer"—the original Subword Regularization paper: <a href="https://papers.cool/arxiv/1804.10959">"Subword Regularization: Improving Neural Network Translation Models with Multiple Subword Candidates"</a>.</p>
+
+    <p>However, this "standard answer" left me somewhat caught between laughter and tears. It turns out the idea of Subword Regularization is very simple and direct: first, search for the $n$ segmentation schemes with the highest $P(\boldsymbol{w})$, denoted as $\boldsymbol{w}^*_1,\boldsymbol{w}^*_2,\cdots,\boldsymbol{w}^*_n$ ($n$-best segmentations), and then construct the following distribution:</p>
+    
+    \begin{equation}p_i = \frac{P(\boldsymbol{w}^*_i)^{\alpha}}{\sum\limits_{j=1}^n P(\boldsymbol{w}^*_j)^{\alpha}}\end{equation}
+
+    <p>Then sample from these $n$ schemes according to their probabilities, where $\alpha > 0$ is a hyperparameter. This algorithm is already integrated into SentencePiece, and readers can test it themselves (refer to usage <a href="https://github.com/google/sentencepiece/tree/master#subword-regularization-and-bpe-dropout">here</a>).</p>
+
+    <p>The problem is that "simple and direct" does not necessarily mean "efficient." Although the complexity of searching for the top-$n$ optimal segmentation schemes is also linear (interested readers can look up N-best Viterbi), it is significantly larger than finding only the top-1 Viterbi Decoding (theoretically $n$ times the complexity). Consequently, once stochastic sampling is enabled, it becomes much slower than deterministic tokenization, so this was not my ideal sampling method.</p>
+
+    <h2>My Approach <a id="personal-思路" href="#personal-思路">#</a></h2>
+
+    <p>My thoughts hit a dead end again. In my frustration, I decided to re-evaluate the goals: we want to find a stochastic sampling algorithm with complexity similar to Viterbi Decoding. As such, Viterbi Decoding itself should be a good starting point. So, I looked at the tokenization code again. <a href="https://github.com/bojone/bytepiece/blob/b65716b76938b3ac4124661a3367fc1c270373fa/bytepiece/faster.pyx">The tokenization function at that time</a> looked like this:</p>
+
+<pre><code>def _tokenize(self, bytes text):
+    cdef int e, k, s
+    cdef double v, score
+    cdef list routes = [(0, None)] + [(-INFINITY, None) for _ in text]
+    cdef list tokens = []
+    for e, (k, v) in self._automaton.iter(text):
+        s, e = e - k + 1, e + 1
+        score = routes[s][0] + v
+        if score > routes[e][0]:
+            routes[e] = score, s
+    while text:
+        s = routes[e][1]
+        tokens.append(text[s:e])
+        text, e = text[:s], s
+    return tokens[::-1]
+</code></pre>
+
+    <p>After reading it a few times, I finally got an inspiration: the key to Viterbi Decoding is the line <code>if score > routes[e][0]:</code>. It represents keeping the optimal segmentation scheme up to the current position, where <code>score</code> is the score of the new segmentation scheme (log probability) and <code>routes[e][0]</code> is the historical optimal score; if the new scheme is better, it overwrites it. This reminded me of the acceptance rate design in the <a href="translation_8084.html">MCMC algorithm</a>. If we introduce stochastic sampling here, wouldn't we be able to randomize the tokenization results?</p>
+
+    <p>Let $r \in \{1, 0\}$ represent acceptance/rejection of the new scheme. Since this step is just a binary choice, probabilizing it is also very simple:</p>
+    
+    \begin{equation}
+    r_i = \left\{\begin{aligned}&\,1\,, \,\, s_i > s_{i-1} \\
+    &\,0\,, \,\, \text{else}\end{aligned}\right.\qquad\longrightarrow\qquad
+    r_i = \left\{\begin{aligned}&\,1\,, \,\, \varepsilon < \sigma(\alpha(s_i - s_{i-1})) \\
+    &\,0\,, \,\, \text{else}\end{aligned}\right.
+    \end{equation}
+
+    <p>Here $\varepsilon \sim U[0,1]$ is a uniform random number, $\alpha > 0$ is a hyperparameter, $\sigma(t)=1/(1+e^{-t})$ is the Sigmoid function, and $s_i, s_{i-1}$ are the scores (log probabilities) of the new and old schemes, respectively. It is not difficult to see that the deterministic sampling on the left corresponds to the stochastic sampling as $\alpha \to \infty$.</p>
+
+    <p>In this way, based on Viterbi decoding, we have obtained a very natural and lightweight stochastic sampling algorithm, which I call "Viterbi Sampling." Implementing it only requires replacing the <code>if score > routes[e][0]:</code> criterion with a version containing a random number. Due to the monotonicity of the Sigmoid function, when $s_i > s_{i-1}$, it naturally assigns a higher probability to the new scheme. Thus, it is clear that the original maximum probability segmentation under Viterbi Sampling is also the most probable result. Furthermore, as $s_i - s_{i-1}$ increases, $\sigma(\alpha(s_i - s_{i-1}))$ also increases, which means schemes that originally had higher scores have a higher probability of being sampled. This maintains the ranking of segmentation schemes to a certain extent (although it hasn't been proven to be strictly order-preserving, from an application standpoint, approximate order-preservation is sufficient).</p>
+
+    <h2>Simple Test <a id="test" href="#test">#</a></h2>
+
+    <p>Starting from version 0.4.0, Viterbi Sampling is built into BytePiece's tokenization function. You only need to add an <code>alpha</code> parameter greater than 0 when using <code>tokenizer.tokenize</code> or <code>tokenizer.encode</code> to get randomized results:</p>
+
+<pre><code>import bytepiece
+assert bytepiece.__version__ >= '0.4.0'
+
+tokenizer = bytepiece.Tokenizer('bytepiece_160k.model')
+text = '今天天气不错'
+print(tokenizer.tokenize(text)) # alpha defaults to -1; alpha ≤ 0 represents deterministic tokenization
+for i in range(5):
+    print(tokenizer.tokenize(text, alpha=0.1))
+
+# [b'\xe4\xbb\x8a\xe5\xa4\xa9', b'\xe5\xa4\xa9\xe6\xb0\x94', b'\xe4\xb8\x8d\xe9\x94\x99']
+# [b'\xe4\xbb\x8a\xe5\xa4\xa9', b'\xe5\xa4\xa9\xe6', b'\xb0\x94', b'\xe4\xb8\x8d\xe9\x94\x99']
+# [b'\xe4\xbb\x8a\xe5\xa4\xa9', b'\xe5\xa4\xa9\xe6\xb0\x94', b'\xe4\xb8\x8d\xe9\x94\x99']
+# [b'\xe4\xbb\x8a\xe5\xa4\xa9', b'\xe5\xa4\xa9\xe6\xb0\x94', b'\xe4\xb8', b'\x8d', b'\xe9\x94', b'\x99']
+# [b'\xe4\xbb\x8a\xe5\xa4\xa9', b'\xe5\xa4\xa9', b'\xe6\xb0\x94', b'\xe4\xb8\x8d\xe9\x94\x99']
+# [b'\xe4\xbb', b'\x8a\xe5\xa4\xa9', b'\xe5\xa4\xa9', b'\xe6\xb0\x94\xe4\xb8\x8d', b'\xe9\x94', b'\x99']
+</code></pre>
+
+    <p>Next, let's compare the speed of SentencePiece's Subword Regularization and BytePiece's Viterbi Sampling (both set to $\alpha=0.1$ for stochastic tokenization):</p>
+
+    \begin{array}{c|cc}
+    \hline
+    & \text{Deterministic Tokenization} & \text{Stochastic Tokenization} \\
+    \hline
+    \text{SP-BPE} & \text{1.36M bytes/sec} & \text{1.25M bytes/sec} \\
+    \text{SP-Unigram} & \text{5.65M bytes/sec} & \text{1.28M bytes/sec} \\
+    \text{BytePiece} & \text{1.95M bytes/sec} & \text{1.36M bytes/sec} \\
+    \hline
+    \end{array}
+
+    <p>As can be seen, after Subword Regularization (the "SP-Unigram" row) is enabled, the tokenization speed is less than 1/4 of the original, which indicates that the sampling algorithm for Subword Regularization is quite inefficient. In contrast, the Viterbi Sampling proposed in this article only drops by about 30%. The efficiency is clearly higher; the decrease is due to the generation of random numbers and the computation of the Sigmoid function. If these two parts can be further optimized, the speed could be increased even further. As for the BPE model, its stochastic tokenization is called <a href="https://papers.cool/arxiv/1910.13267">BPE Dropout</a>, which is a method specific to the BPE model; interested readers can explore it on their own, and it won't be introduced here.</p>
+
+    <h2>Summary <a id="summary" href="#summary">#</a></h2>
+
+    <p>This article primarily explores strategies for converting deterministic tokenization in Unigram models into stochastic tokenization. Although an existing method called "Subword Regularization" achieves this goal, its efficiency is relatively low. To this end, I have proposed a more efficient sampling algorithm, Viterbi Sampling, which only requires simple modifications to the deterministic Viterbi Decoding, thereby largely maintaining the original efficiency. Experiments show that the new algorithm's sampling speed significantly exceeds Subword Regularization. The corresponding implementation is already built into the latest version of BytePiece.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9768.html" style="color: #005fcc;">https://kexue.fm/archives/9768</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

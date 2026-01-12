@@ -1,0 +1,309 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/11267">Why is Adam's Update RMS 0.2?</a></h1>
+
+<p>By 苏剑林 | September 02, 2025</p>
+
+<p>As is well known, we started experimenting with applying Muon to large-scale LLM training quite early. Specifically, in <a href="translation_10739.html">"Muon Sequel: Why We Choose to Try Muon?"</a>, we proposed the "Match Adam Update RMS" trick to quickly migrate from Adam to Muon. This trick was also used in the training of Kimi K2. This technique refers to unifying the Update RMS of Muon to 0.2, which allows us to reuse Adam's learning rate and weight decay rate.</p>
+
+<p>Behind this trick is our observation that Adam's Update RMS is approximately equal to 0.2, and this phenomenon is stable and reproducible. This raises an interesting question: Why is Adam's Update RMS 0.2? Can we explain it theoretically?</p>
+
+<h2>Problem Introduction</h2>
+
+<p>First, let's describe the phenomenon: From experiments, we observed that roughly after the warmup ends and the model enters formal training, Adam's Update RMS remains almost entirely between 0.2 and 0.3, and models of different sizes exhibit similar patterns. A common point among these models is that they are all trained with Adam, with parameters $\beta_1=0.9, \beta_2=0.95$. Since the commonality is so obvious, this is likely not a coincidence, so the author attempted to analyze the underlying principle.</p>
+
+<p>Next, let's review the form of the Adam optimizer:</p>
+
+\begin{equation}\text{Adam}\color{skyblue}{\text{W}}:=\left\{\begin{aligned}
+&\boldsymbol{m}_t = \beta_1 \boldsymbol{m}_{t-1} + \left(1 - \beta_1\right) \boldsymbol{g}_t\\
+&\boldsymbol{v}_t = \beta_2 \boldsymbol{v}_{t-1} + \left(1 - \beta_2\right) \boldsymbol{g}_t^2\\
+&\hat{\boldsymbol{m}}_t = \boldsymbol{m}_t\left/\left(1 - \beta_1^t\right)\right.\\
+&\hat{\boldsymbol{v}}_t = \boldsymbol{v}_t\left/\left(1 - \beta_2^t\right)\right.\\
+&\boldsymbol{u}_t =\hat{\boldsymbol{m}}_t\left/\left(\sqrt{\hat{\boldsymbol{v}}_t} + \epsilon\right)\right.\\
+&\boldsymbol{\theta}_t = \boldsymbol{\theta}_{t-1} - \eta_t (\boldsymbol{u}_t \color{skyblue}{ + \lambda_t \boldsymbol{\theta}_{t-1}})
+\end{aligned}\right.\end{equation}
+
+<p>Note: In this article, all vector multiplications and divisions, including squaring, default to the Hadamard product/quotient, i.e., element-wise multiplication/division.</p>
+
+<p>What we want to do is prove that $\Vert\boldsymbol{u}_t\Vert_{RMS}\approx 0.2$, at least under the setting of $\beta_1=0.9, \beta_2=0.95$. Since we are concerned with the situation after stable training, we can assume $t$ is large enough such that $\beta_1^t$ and $\beta_2^t$ are sufficiently close to 0, so there is no need to distinguish between $\boldsymbol{m}_t$ and $\hat{\boldsymbol{m}}_t$, or $\boldsymbol{v}_t$ and $\hat{\boldsymbol{v}}_t$. At the same time, we assume $\epsilon$ is small enough to be ignored. Thus, we have $\boldsymbol{u}_t = \boldsymbol{m}_t/\sqrt{\boldsymbol{v}_t}$.</p>
+
+<p>For $\boldsymbol{m}_t$ and $\boldsymbol{v}_t$, we can obtain the expansion formulas:</p>
+
+\begin{equation}\boldsymbol{m}_t = (1 - \beta_1)\sum_{i=1}^t \beta_1^{t-i}\boldsymbol{g}_i,\qquad \boldsymbol{v}_t = (1 - \beta_2)\sum_{i=1}^t \beta_2^{t-i}\boldsymbol{g}_i^2\end{equation}
+
+<h2>Numerical Simulation</h2>
+
+<p>If we assume that $\boldsymbol{g}_1, \boldsymbol{g}_2, \dots, \boldsymbol{g}_t$ are all sampled from the same distribution, then we can use numerical simulation methods to estimate $\Vert\boldsymbol{u}_t\Vert_{RMS}$. Without further ado, let's try the simplest standard normal distribution $\mathcal{N}(\boldsymbol{0},\boldsymbol{I})$. The reference code is as follows:</p>
+
+<pre><code>import numpy as np
+
+N, T = 10000, 2000
+beta1, beta2 = 0.9, 0.95
+m, v = 0, 0
+for i in range(T):
+    g = np.random.randn(N)
+    m = beta1 * m + (1 - beta1) * g
+    v = beta2 * v + (1 - beta2) * g**2
+
+u = m / v**0.5
+rms = (u**2).mean()**0.5
+print(rms)
+</code></pre>
+
+<p>Guess what the result is? The answer is approximately 0.225, which is surprisingly similar to the experimental results! This in turn indicates that our simulation assumptions are quite consistent with the actual situation. Some readers might think this is wrong, as $\boldsymbol{g}\sim\mathcal{N}(\boldsymbol{0},\boldsymbol{I})$ is just pure noise—how can it be consistent? Actual training is certainly not pure noise; one can only say that the signal-to-noise ratio of a single gradient is pitiably small, so it can be simulated using pure noise.</p>
+
+<p>Readers can play around with the above reference code to observe the variables influencing Update RMS. The general conclusion is: Update RMS is positively correlated with $\beta_1$ and seems unrelated to $\beta_2$. If the distribution of $\boldsymbol{g}$ has a non-zero mean (equivalent to increasing the signal-to-noise ratio of the gradient), then the Update RMS will also increase.</p>
+
+<h2>Mean-Field Approximation</h2>
+
+<p>In this section, the author attempts to derive an approximate analytical solution for the above simulation results from a theoretical perspective. First, from the definition of RMS, to find $\Vert\boldsymbol{u}_t\Vert_{RMS}$, we first need to find $\boldsymbol{u}_t^2 = \boldsymbol{m}_t^2/\boldsymbol{v}_t$. The author's idea is to use the expectation of $\boldsymbol{u}_t^2$ as its approximation and further transform it into a mean-field approximation:</p>
+
+\begin{equation}\mathbb{E}[\boldsymbol{u}_t^2] = \mathbb{E}\left[\frac{\boldsymbol{m}_t^2}{\boldsymbol{v}_t}\right] \approx \frac{\mathbb{E}[\boldsymbol{m}_t^2]}{\mathbb{E}[\boldsymbol{v}_t]}\end{equation}
+
+<p>Some readers might question the rationality of this last step of approximation. The author's suggestion is to ignore these minor details for now, just like assuming $\boldsymbol{g}\sim\mathcal{N}(\boldsymbol{0},\boldsymbol{I})$ in the previous section—calculate it first. If the result is reasonable, then the process must be reasonable to some extent. Now we calculate the numerator and denominator separately. This time, we generally set $\mathbb{E}[\boldsymbol{g}]=\boldsymbol{\mu}$ and $\mathbb{E}[\boldsymbol{g}^2]=\boldsymbol{\mu}^2 + \boldsymbol{\sigma}^2$. The denominator is relatively simple:</p>
+
+\begin{equation}\begin{aligned}
+\mathbb{E}[\boldsymbol{v}_t] =&\, (1 - \beta_2)\sum_{i=1}^t \beta_2^{t-i}\mathbb{E}[\boldsymbol{g}_i^2] \\
+=&\, (1 - \beta_2)\sum_{i=1}^t \beta_2^{t-i}(\boldsymbol{\mu}^2 + \boldsymbol{\sigma}^2) \\[6pt]
+=&\, (1 - \beta_2^t)(\boldsymbol{\mu}^2 + \boldsymbol{\sigma}^2) \\[8pt]
+=&\, \boldsymbol{\mu}^2 + \boldsymbol{\sigma}^2\qquad (t\to\infty)
+\end{aligned}\end{equation}
+
+<p>As for the numerator, we can directly expand the square to calculate, or take a slight shortcut: What we want is the second moment of $\boldsymbol{m}_t$, $\mathbb{E}[\boldsymbol{m}_t^2]$, which equals $\mathbb{E}[\boldsymbol{m}_t]^2 + \mathbb{V}ar[\boldsymbol{m}_t]$. Since $\boldsymbol{m}_t$ is a weighted average of $\boldsymbol{g}_i$, it must hold that $\mathbb{E}[\boldsymbol{m}_t]=\mathbb{E}[\boldsymbol{g}_i]=\boldsymbol{\mu}$. Regarding the variance, it has quadratic additivity, so:</p>
+
+\begin{equation}\mathbb{V}ar[\boldsymbol{m}_t] = (1 - \beta_1)^2\sum_{i=1}^t \beta_1^{2(t-i)}\boldsymbol{\sigma}^2 = \frac{(1 - \beta_1)^2 (1 - \beta_1^{2t})}{1 - \beta_1^2}\boldsymbol{\sigma}^2= \frac{1 - \beta_1}{1 + \beta_1}\boldsymbol{\sigma}^2\qquad (t\to\infty)\end{equation}
+
+<p>Therefore:</p>
+
+\begin{equation}\mathbb{E}[\boldsymbol{u}_t^2]\approx \frac{\boldsymbol{\mu}^2 + \frac{1 - \beta_1}{1 + \beta_1}\boldsymbol{\sigma}^2}{\boldsymbol{\mu}^2 + \boldsymbol{\sigma}^2}\end{equation}
+
+<h2>Analysis of Results</h2>
+
+<p>Since $\mathbb{E}[\boldsymbol{u}_t^2]$ is already a vector of squared values, to estimate $\Vert\boldsymbol{u}_t\Vert_{RMS}$, we only need to average the components and then take the square root. For the averaging step, let's use the mean-field approximation again (averaging the numerator and denominator separately). We finally obtain:</p>
+
+\begin{equation}\Vert\boldsymbol{u}_t\Vert_{RMS} \approx \sqrt{\frac{\Vert\boldsymbol{\mu}\Vert^2 + \frac{1 - \beta_1}{1 + \beta_1}\Vert\boldsymbol{\sigma}\Vert^2}{\Vert\boldsymbol{\mu}\Vert^2 + \Vert\boldsymbol{\sigma}\Vert^2}} = \sqrt{\frac{\Vert\boldsymbol{\mu}\Vert^2/\Vert\boldsymbol{\sigma}\Vert^2 + \frac{1 - \beta_1}{1 + \beta_1}}{\Vert\boldsymbol{\mu}\Vert^2/\Vert\boldsymbol{\sigma}\Vert^2 + 1}}\label{eq:mean-field}\end{equation}
+
+<p>It has two influencing factors: first, $\Vert\boldsymbol{\mu}\Vert^2/\Vert\boldsymbol{\sigma}\Vert^2$, which can be seen as the signal-to-noise ratio (SNR) of the gradient; second, $\beta_1$, which is one of Adam's hyperparameters. notably, the result does not depend on $\beta_2$, which matches our earlier simulation results. So, how good is this approximation? Let's consider the simplest special case where $\boldsymbol{\mu}=\boldsymbol{0}$. Then:</p>
+
+\begin{equation}\Vert\boldsymbol{u}_t\Vert_{RMS} \approx \sqrt{\frac{1 - \beta_1}{1 + \beta_1}}\label{eq:special-case}\end{equation}
+
+<p>Substitute $\beta_1=0.9$, and the result is $0.2294\dots$, which is surprisingly consistent with both simulation results and practical performance! Furthermore, several comparisons with simulation results are as follows:</p>
+
+<p><em>Simulation results vs mean-field approximation (different beta1, beta2)</em></p>
+
+<p>It should be said that the degree of approximation is quite good, especially after $\beta_2 \geq 0.9$, where the results almost coincide with the mean-field approximation. As for the comparison considering SNR, the results are as follows:</p>
+
+<p><em>Simulation results vs mean-field approximation (different beta1, SNR)</em></p>
+
+<p>When the signal-to-noise ratio increases, the error of the mean-field approximation begins to grow, but it can still predict an overall trend. In fact, in actual training, the gradient signal-to-noise ratio rarely has the opportunity to be as high as 1, so mean-field can still be considered a good approximation.</p>
+
+<h2>Reverse Prediction</h2>
+
+<p>If we have accepted the mean-field approximation $\eqref{eq:mean-field}$, we can conversely use it to estimate the signal-to-noise ratio of the gradient:</p>
+
+\begin{equation}\frac{\Vert\boldsymbol{\mu}\Vert^2}{\Vert\boldsymbol{\sigma}\Vert^2} \approx \frac{\Vert\boldsymbol{u}_t\Vert_{RMS}^2 - \frac{1 - \beta_1}{1 + \beta_1}}{1 - \Vert\boldsymbol{u}_t\Vert_{RMS}^2}\end{equation}
+
+<p>In actual training, $\beta_1$ is given, and $\Vert\boldsymbol{u}_t\Vert_{RMS}$ (which is Adam's Update RMS) can also be directly estimated, so the above formula is computable. Of course, this formula only applies to Adam. Is there a more general estimation idea? Yes, there is! Don't forget that we previously estimated:</p>
+
+\begin{equation}\mathbb{E}[\boldsymbol{m}_t^2]\approx \boldsymbol{\mu}^2 + \frac{1 - \beta_1}{1 + \beta_1}\boldsymbol{\sigma}^2\end{equation}
+
+<p>Then, summing its components and taking the square root, we consider it an approximation of $\Vert\boldsymbol{m}_t\Vert$:</p>
+
+\begin{equation}\Vert\boldsymbol{m}_t\Vert\approx \sqrt{\Vert\boldsymbol{\mu}\Vert^2 + \frac{1 - \beta_1}{1 + \beta_1}\Vert\boldsymbol{\sigma}\Vert^2}\end{equation}
+
+<p>As for the second moment, it is $\mathbb{E}[\boldsymbol{v}_t]\approx \boldsymbol{\mu}^2 + \boldsymbol{\sigma}^2$. While optimizers like Muon do not have second moments available, we notice that the result for the second moment is independent of $\beta_2$. Thus, we might consider the simplest special case—$\beta_2=0$—at which point $\boldsymbol{v}_t=\boldsymbol{g}_t^2$. Of course, this might be a bit forced, but for estimation, we use whatever is convenient. This "approximation" implies that $\Vert\boldsymbol{g}_t\Vert^2\approx \Vert\boldsymbol{\mu}\Vert^2 + \Vert\boldsymbol{\sigma}\Vert^2$ holds, so we have:</p>
+
+\begin{equation}\frac{\Vert\boldsymbol{m}_t\Vert}{\Vert\boldsymbol{g}_t\Vert}\approx \sqrt{\frac{\Vert\boldsymbol{\mu}\Vert^2 + \frac{1 - \beta_1}{1 + \beta_1}\Vert\boldsymbol{\sigma}\Vert^2}{\Vert\boldsymbol{\mu}\Vert^2 + \Vert\boldsymbol{\sigma}\Vert^2}}\end{equation}
+
+<p>The right-hand side is exactly the same as in equation $\eqref{eq:mean-field}$, so we can write:</p>
+
+\begin{equation}\frac{\Vert\boldsymbol{\mu}\Vert^2}{\Vert\boldsymbol{\sigma}\Vert^2} \approx \frac{\Vert\boldsymbol{m}_t\Vert^2/\Vert\boldsymbol{g}_t\Vert^2 - \frac{1 - \beta_1}{1 + \beta_1}}{1 - \Vert\boldsymbol{m}_t\Vert^2/\Vert\boldsymbol{g}_t\Vert^2}\end{equation}
+
+<p>In other words, replacing $\Vert\boldsymbol{u}_t\Vert_{RMS}$ with $\Vert\boldsymbol{m}_t\Vert/\Vert\boldsymbol{g}_t\Vert$ gives a general logic for estimating $\Vert\boldsymbol{\mu}\Vert^2/\Vert\boldsymbol{\sigma}\Vert^2$ for optimizers with momentum. Some readers might ask what to do if there is no momentum? Then there's really no way, because the $\Vert\boldsymbol{\mu}\Vert^2/\Vert\boldsymbol{\sigma}\Vert^2$ here is a statistic across optimization trajectories, and we must have some cross-trajectory statistical information to estimate it.</p>
+
+<h2>Summary</h2>
+
+<p>This article primarily explored Adam's Update RMS from two perspectives: simulation experiments and theoretical approximation. This can serve as one of the theoretical bases for aligning the Update RMS to 0.2 in the Muon optimizer.</p>
+
+<hr />
+<p><em><strong>When reprinting, please include the address of this article:</strong> <a href="translation_11267.html">https://kexue.fm/archives/11267</a></em></p>
+<p><em><strong>For more detailed reprinting matters, please refer to:</strong> <a href="https://kexue.fm/archives/6508#%E6%96%87%E7%AB%A0%E5%A6%82%E4%BD%95%E8%BD%AC%E8%BD%BD/%E5%BC%95%E7%94%A8">"Scientific Spaces FAQ"</a></em></p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_11267.html" style="color: #005fcc;">https://kexue.fm/archives/11267</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

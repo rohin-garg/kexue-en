@@ -1,0 +1,298 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of doc.getScripts('mathjax')) {
+          const s = node.text;
+          const n = node.node;
+          const m = s.match(/^(?:\\\\\(|\\\\\[|\\begin\{)/);
+          if (m) {
+            node.type = 'math/tex' + (m[0] === '\\\\[' ? '; mode=display' : '');
+            node.remove();
+          }
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script type="text/javascript" id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/7343">EAE: Autoencoder + BN + Maximum Entropy = Generative Model</a></h1>
+
+<p>By 苏剑林 | April 20, 2020</p>
+
+<p>Generative models have always been a theme of great interest to me, whether in the context of NLP or CV. In this article, we introduce a novel generative model from the paper <a href="https://papers.cool/arxiv/2002.10631">"Batch norm with entropic regularization turns deterministic autoencoders into generative models,"</a> which the authors call <strong>EAE</strong> (Entropic AutoEncoder). What it aims to achieve is fundamentally consistent with Variational Autoencoders (VAEs), and the final results are also similar (slightly superior). Its novelty lies not so much in how well it generates, but in its unique and elegant line of thought. Furthermore, we will take this opportunity to learn a method for estimating statistics—the k-nearest neighbor (k-NN) method—which is a very useful non-parametric estimation technique.</p>
+
+<h2>Autoencoders vs. Generative Models</h2>
+
+<p>A standard autoencoder is a "coding-decoding" reconstruction process, as shown in the diagram below:</p>
+
+<p><img src="https://kexue.fm/usr/uploads/2020/04/2128638498.png" alt="Typical Autoencoder Diagram" title="Typical Autoencoder Diagram" /></p>
+
+<p>Its loss is generally given by:</p>
+
+\begin{equation}L_{AE} = \mathbb{E}_{x\sim \tilde{p}(x)}\left[\left\Vert x - \hat{x}\right\Vert^2\right] = \mathbb{E}_{x\sim \tilde{p}(x)}\left[\left\Vert x - D(E(x))\right\Vert^2\right]\end{equation}
+
+<p>Once training is complete, we can naturally obtain the encoding $z=E(x)$ and the reconstructed image $\hat{x}=D(z)$ for any image $x$. When $x$ and $\hat{x}$ are sufficiently close, we can consider $z$ as an effective representation of $x$, as it contains sufficient information about $x$.</p>
+
+<p>So, what is the situation for generative models? "Generation" refers to random generation, which means allowing us to construct an image at will. For the decoder $D(z)$ of an autoencoder, not every $z$ decoded will result in a meaningful image; therefore, a standard autoencoder cannot be regarded as a generative model. If we could know the distribution of $z=E(x)$ for all $x$ in advance, and if this distribution were easy to sample from, then we could achieve random sampling and generation.</p>
+
+<p>Thus, the missing step from an autoencoder to a generative model is determining the distribution of the latent variable $z$, or more accurately, forcing the latent variable $z$ to follow a simple distribution that is easy to sample from, such as the standard normal distribution. VAEs achieve this by introducing a KL divergence term. How does EAE implement it?</p>
+
+<h2>Normal Distribution and Maximum Entropy</h2>
+
+<p>As we know, the Principle of Maximum Entropy is a quite universal principle representing our most objective cognition of unknown events. One conclusion of the Maximum Entropy Principle is:</p>
+
+<blockquote>Among all distributions with a mean of 0 and a variance of 1, the standard normal distribution has the maximum entropy.</blockquote>
+
+<p>If readers are not yet familiar with Maximum Entropy, they can refer to the previous post <a href="translation_3552.html">"Can't Afford 'Entropy': From Entropy and Maximum Entropy Principle to Maximum Entropy Models (II)."</a> The above conclusion tells us that if we have a means to ensure that the latent variable has a mean of 0 and a variance of 1, then we only need to simultaneously maximize the entropy of the latent variable to achieve the goal of having the "latent variable follow a standard normal distribution," i.e.,</p>
+
+\begin{equation}\begin{aligned}&L_{EAE} = \mathbb{E}_{x\sim \tilde{p}(x)}\left[\left\Vert x - D(E(x))\right\Vert^2
+\right] - \lambda H(Z)\\
+&\text{s.t.}\,\,\text{avg}(E(x))=0,\,\text{std}(E(x))=1
+\end{aligned}\end{equation}
+
+<p>where $\lambda > 0$ is a hyperparameter, and</p>
+
+\begin{equation}H(Z)=\mathbb{E}_{z\sim p(z)}[-\log p(z)]\end{equation}
+
+<p>is the entropy corresponding to the latent variable $z=E(x)$. Minimizing $-\lambda H(Z)$ means maximizing $\lambda H(Z)$, which is maximum entropy.</p>
+
+<p>The questions are: how to guarantee these two constraints? And how to calculate the entropy of the latent variable?</p>
+
+<h2>Mean-Variance Constraints and BN</h2>
+
+<p>Let's address the first question: how to achieve—or at least approximately achieve—the constraint that "the mean of the latent variable is 0 and the variance is 1"? Because only under the premise of satisfying this constraint is the maximum entropy distribution standard normal. The solution to this is the familiar Batch Normalization, or BN.</p>
+
+<p>During the training phase of BN, we directly subtract the mean of each variable within the batch and divide by the standard deviation within the batch. This ensures that the mean of the variables in each training batch is indeed 0 and the variance is indeed 1. Then, it maintains a moving average of the mean and variance of each batch and caches them for prediction during the inference phase. In short, applying the BN layer to the latent variable allows it to (approximately) satisfy the corresponding mean and variance constraints. Note that the BN layer mentioned in this article does not include the two trainable parameters $\beta$ and $\gamma$. If using Keras, you should pass parameters <code>scale=False, center=False</code> when initializing the BN layer.</p>
+
+<p>At this point, we obtain:</p>
+
+\begin{equation}L_{EAE} = \mathbb{E}_{x\sim \tilde{p}(x)}\left[\left\Vert x - D(\mathcal{N}(E(x)))\right\Vert^2\right] - \lambda H(Z)\label{eq:eae}\end{equation}
+
+<p>Here, $\mathcal{N}(\cdot)$ represents the BN layer.</p>
+
+<h2>Sampling Neighborhood Estimation of Entropy</h2>
+
+<p>Now we come to the final and most hardcore part of the EAE model, which is how to estimate the entropy $H(Z)$. Theoretically, to calculate $H(Z)$, we need to know $p(z)$, but currently, we only have samples $z_1, z_2, \dots, z_n$ without knowing the expression for $p(z)$. Estimation of $H(Z)$ under such premises is called non-parametric estimation.</p>
+
+<p>First, the conclusion:</p>
+
+<blockquote><strong>Nearest Neighbor Estimation of Entropy</strong>: Let $z_1, z_2, \dots, z_n \in \mathbb{R}^d$ be $n$ samples drawn from $p(z)$, and let $\varepsilon(i)$ be the distance from $z_i$ to its nearest neighbor sample, i.e., $\varepsilon(i) = \min_{j\neq i} \Vert z_i - z_j \Vert$. If $B_d$ is the volume of the $d$-dimensional unit ball and $\gamma=0.5772\dots$ is the <a href="https://en.wikipedia.org/wiki/Euler%E2%80%93Mascheroni_constant">Euler-Mascheroni constant</a>, then:
+\begin{equation}H(Z)\approx \frac{d}{n}\sum_{i=1}^n \log \varepsilon(i) + \log B_d + \log (n - 1) + \gamma \label{eq:1nn}\end{equation}</blockquote>
+
+<p>Stripping away constants irrelevant to optimization, the above conclusion essentially says $H(Z) \sim \sum_{i=1}^n \log \varepsilon(i)$. This is the term we need to add to the loss.</p>
+
+<blockquote>
+How is this seemingly strange and difficult-to-understand result derived? In fact, it is a classic example of an important estimation method—the k-nearest neighbor method. Below is the derivation process, referenced from the paper <a href="https://papers.cool/arxiv/1506.06501">"A non-parametric k-nearest neighbour entropy estimator."</a><br /><br />
+
+Let's consider a specific sample $z_i$. Let $z_{i(k)}$ be its $k$-th nearest neighbor sample—that is, if we arrange all $z_j (j\neq i)$ in ascending order of $\Vert z_j - z_i\Vert$, the $k$-th one is $z_{i(k)}$. Denote $\varepsilon_k(i) = \Vert z_i - z_{i(k)}\Vert$. We now consider the probability distribution of $\varepsilon_k(i)$.<br /><br />
+
+Suppose $\varepsilon \leq \varepsilon_k(i) \leq \varepsilon + d\varepsilon$. This means that among the remaining $n-1$ samples, $k-1$ samples fall inside the ball centered at $z_i$ with radius $\varepsilon$, and $n-k-1$ samples fall outside the ball centered at $z_i$ with radius $\varepsilon+d\varepsilon$, with one remaining sample caught between the two balls. It is not difficult to find that the probability of this occurring is:
+\begin{equation}\binom{n-1}{1}\binom{n-2}{k-1}P_i(\varepsilon)^{k-1}(1 - P_i(\varepsilon + d\varepsilon))^{n-k-1}(P_i(\varepsilon + d\varepsilon) - P_i(\varepsilon))\label{eq:dp-1}\end{equation}
+Where $\binom{n-1}{1}$ represents the number of combinations to choose 1 sample from $n-1$ to be between the two balls, and $\binom{n-2}{k-1}$ is the number of combinations to choose $k-1$ samples from the remaining $n-2$ to place inside the ball (the other $n-k-1$ automatically fall outside). $P_i(\varepsilon)$ is the probability that a single sample lies within the ball:
+\begin{equation}P_i(\varepsilon) = \int_{\Vert z - z_i\Vert \leq \varepsilon} p(z)dz\end{equation}
+Therefore, $P_i(\varepsilon)^{k-1}$ is the probability that the $k-1$ chosen samples are all in the ball, $(1 - P_i(\varepsilon + d\varepsilon))^{n-k-1}$ is the probability that $n-k-1$ samples are all outside, and $P_i(\varepsilon + d\varepsilon) - P_i(\varepsilon)$ is the probability of one sample being in the shell. Multiplying all terms gives expression \eqref{eq:dp-1}. Expanding and keeping only first-order terms yields the approximation:
+\begin{equation}\binom{n-1}{1}\binom{n-2}{k-1}P_i(\varepsilon)^{k-1}(1 - P_i(\varepsilon))^{n-k-1}dP_i(\varepsilon)\label{eq:dp-2}\end{equation}
+Note that the above expression describes a valid probability distribution, so its integral must be 1.<br /><br />
+
+Now we can make an <strong>approximation assumption</strong>. It is worth noting that this is the only assumption in the entire derivation, and the reliability of the final result depends on how well this assumption holds:
+\begin{equation}p(z_i) \approx \frac{1}{B_d \varepsilon_k(i)^d}\int_{\Vert z - z_i\Vert \leq \varepsilon} p(z)dz = \frac{P_i(\varepsilon)}{B_d \varepsilon_k(i)^d}\end{equation}
+Where $B_d \varepsilon_k(i)^d$ is the volume of a ball with radius $\varepsilon_k(i)$. According to this approximation, we have $p(z_i) B_d \varepsilon_k(i)^d \approx P_i(\varepsilon)$. This might seem unreasonable because the left side is effectively a constant while the right side is a function of $\varepsilon$. How can they always remain approximately equal? In fact, when $n$ is large enough, the sampled points are sufficiently dense, so $\varepsilon$ will concentrate within a small range, and $\varepsilon_k(i)$ is a sampled value of $\varepsilon$. Thus, we can consider $\varepsilon$ to be concentrated near $\varepsilon_k(i)$. Although $P_i(\varepsilon)$ varies with respect to $\varepsilon$, we will later integrate over $\varepsilon$, so we only need a good approximation of $P_i(\varepsilon)$ near $\varepsilon_k(i)$; the approximation doesn't need to be good everywhere (i.e., when $\varepsilon \gg \varepsilon_k(i)$, \eqref{eq:dp-2} is nearly 0). Near $\varepsilon_k(i)$, we can assume the probability changes smoothly, so $p(z_i) B_d \varepsilon_k(i)^d \approx P_i(\varepsilon)$.<br /><br />
+
+Now we can write:
+\begin{equation}\log p(z_i) \approx \log P_i(\varepsilon) - \log B_d - d \log \varepsilon_k(i) \end{equation}
+Multiply both sides by \eqref{eq:dp-2} and integrate over $\varepsilon$ (the integration interval is $[0, +\infty)$, or equivalently, integrate $P_i$ over $[0, 1]$). Except for $\log P_i(\varepsilon)$, the other terms are independent of $\varepsilon$, so they remain themselves after integration, while:
+\begin{equation}\begin{aligned}&\int_0^1 \binom{n-1}{1}\binom{n-2}{k-1}P_i(\varepsilon)^{k-1}(1 - P_i(\varepsilon))^{n-k-1} \log P_i(\varepsilon) d P_i(\varepsilon) \\
+=&\psi(k)-\psi(n)\end{aligned}\end{equation}
+Where $\psi$ represents the <a href="https://en.wikipedia.org/wiki/Digamma_function">digamma function</a>. (Don't ask me how these integrals were calculated—I don't know, but I know they can be computed using Mathematica!)<br /><br />
+
+Thus, we obtain the approximation:
+\begin{equation}\log p(z_i) \approx \psi(k)-\psi(n) - \log B_d - d \log \varepsilon_k(i) \end{equation}
+Therefore, the final approximation for entropy is:
+\begin{equation}\begin{aligned}H(Z)=&\,\mathbb{E}_{z\sim p(z)}[-\log p(z)]\\
+\approx&\, -\frac{1}{n}\sum_{i=1}^n \log p(z_i)\\
+\approx&\,\frac{d}{n}\sum_{i=1}^n \log \varepsilon_k(i) + \log B_d + \psi(n)-\psi(k)
+\end{aligned}\label{eq:knn}\end{equation}
+This is a more general result than equation \eqref{eq:1nn}. In fact, \eqref{eq:1nn} is a special case of this formula with $k=1$, because $\psi(1)=-\gamma$ and $\psi(n)= \sum_{m=1}^{n-1}\frac{1}{m}-\gamma \approx \log(n-1)$; these conversion formulas can be found on Wikipedia.<br /><br />
+
+As mentioned at the beginning, the k-nearest neighbor method is a very useful non-parametric estimation approach. It is also related to the <a href="translation_6394.html">IMLE model</a> I introduced previously. However, I am not personally very familiar with k-NN methods and need to learn more. A found resource is <a href="https://link.springer.com/book/10.1007/978-3-319-25388-6">"Lectures on the Nearest Neighbor Method."</a> Additionally, regarding entropy estimation, one can refer to Stanford's material: <a href="https://web.stanford.edu/~yjhan/diff_entropy.pdf">"Theory and Practice of Differential Entropy Estimation."</a>
+</blockquote>
+
+<h2>Further Reflection and Analysis</h2>
+
+<p>With \eqref{eq:1nn} or \eqref{eq:knn}, the Loss of EAE described in \eqref{eq:eae} is complete, so the EAE model introduction is finished. As for experimental results, I won't describe them in detail—suffice it to say that the generated images feel about the same as VAE, but the metrics are slightly better.</p>
+
+<p><img src="https://kexue.fm/usr/uploads/2020/04/3907052608.jpg" alt="Experimental Comparison from EAE Paper" title="Experimental Comparison from EAE Paper" /></p>
+
+<p><img src="https://kexue.fm/usr/uploads/2020/04/2546475316.jpg" alt="Visual Results from EAE Paper" title="Visual Results from EAE Paper" /></p>
+
+<p>So, what is the advantage of EAE compared to VAE? In VAE, a key step is reparameterization (refer to my <a href="translation_5253.html">"Variational Autoencoder (I): So That's How It Works"</a>). It is this step that reduces the training variance of the model (compared to REINFORCE, the variance is smaller, see <a href="translation_6705.html">"A Chat on Reparameterization: From Normal Distribution to Gumbel Softmax"</a>), allowing VAEs to be trained effectively. However, although reparameterization reduces variance, the variance is actually still quite large. Simply put, the reparameterization step introduces significant noise (especially early in training), which may prevent the decoder from utilizing the encoder's information well. A classic example is the "KL vanishing" phenomenon when VAE is used in NLP.</p>
+
+<p>EAE basically doesn't have this problem, because EAE is essentially a standard autoencoder. The addition of BN doesn't have much impact on autoencoding performance, and the added entropy regularization term, in principle, only increases the diversity of the latent variable without causing significant difficulty in the utilization or reconstruction of encoded information. I believe this is where EAE's advantage lies over VAE. Of course, I haven't done many experiments on EAE myself yet, so the above analysis is mostly a subjective inference; please distinguish it for yourself. If I have further experimental conclusions, I will share them with you on the blog.</p>
+
+<h2>Final Summary</h2>
+
+<p>This article introduced a model called EAE, which essentially stuffs a BN layer and maximum entropy into a standard autoencoder to give it generative model capabilities. Many experiments in the original paper show that EAE works better than VAE, so it should be a model worth studying and trying. Furthermore, the key part of EAE is estimating entropy through the k-nearest neighbor method, which is somewhat hardcore but actually very valuable and worth reading for readers interested in statistical estimation.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7343.html" style="color: #005fcc;">https://kexue.fm/archives/7343</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

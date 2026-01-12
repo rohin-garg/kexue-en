@@ -1,0 +1,318 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['base', 'ams', 'noerrors', 'noundefined']}
+  },
+  options: {
+    ignoreHtmlClass: 'tex2jax_ignore',
+    processHtmlClass: 'tex2jax_process'
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/10542">When Batch Size Increases, How Should the Learning Rate Change Accordingly?</a></h1>
+    <p>By 苏剑林 | November 14, 2024</p>
+
+    <p>With the rapid advancement of computing power, more and more scenarios hope to achieve "trading compute for time"—that is, shortening model training time by piling on more computing resources. Ideally, we hope that if we invest $n$ times the compute, the time to reach the same level of performance will be reduced to $1/n$, while the total compute cost remains identical. This "hope" seems reasonable and natural, but in reality, it is not trivial. Even if we ignore communication bottlenecks, when compute exceeds a certain scale or models are smaller than a certain scale, increasing compute often only results in increasing the Batch Size. However, does increasing the Batch Size necessarily shorten training time while maintaining performance?</p>
+    <p>This is the topic we are about to discuss: when the Batch Size increases, how should various hyperparameters, especially the learning rate, be adjusted to maintain the original training effect and maximize training efficiency? We can also call this the Scaling Law between Batch Size and Learning Rate.</p>
+
+    <h2 id="方差视角">Variance Perspective</h2>
+    <p>Intuitively, when the Batch Size increases, the gradient for each batch will be more accurate, so the step can be larger—that is, the learning rate can be increased—in order to reach the destination faster and shorten training time. Most people can generally think of this point. The question is, how much of an increase is most appropriate?</p>
+
+    <h3 id="二次方根">Square Root Scaling</h3>
+    <p>The earliest answer to this question might be square root scaling, where if the Batch Size is expanded by a factor of $n$, the learning rate is expanded by a factor of $\sqrt{n}$, originating from the 2014 paper <a href="https://papers.cool/arxiv/1404.5997">"One weird trick for parallelizing convolutional neural networks"</a>. The derivation principle is to keep the variance of the SGD increments constant. Specifically, we denote the gradient of a randomly sampled example as $\tilde{\boldsymbol{g}}$, with its mean and covariance denoted as $\boldsymbol{g}$ and $\boldsymbol{\Sigma}$, respectively, where $\boldsymbol{g}$ is the gradient of all examples. When we increase the sample size to $B$, we have</p>
+    \begin{equation}\tilde{\boldsymbol{g}}_B \triangleq \frac{1}{B}\sum_{i=1}^B \tilde{\boldsymbol{g}}^{(i)},\quad \mathbb{E}[\tilde{\boldsymbol{g}}_B] = \boldsymbol{g},\quad \mathbb{E}[(\tilde{\boldsymbol{g}}_B-\boldsymbol{g})(\tilde{\boldsymbol{g}}_B-\boldsymbol{g})^{\top}]=\frac{\boldsymbol{\Sigma}}{B}\end{equation}
+    <p>This means that increasing the sample size does not change the mean, while the covariance is reduced to $1/B$. For the SGD optimizer, the increment is $-\eta \tilde{\boldsymbol{g}}_B$, and its covariance is proportional to $\eta^2/B$. We believe that a moderate amount of noise (neither too much nor too little) is necessary during the optimization process. Therefore, when the Batch Size $B$ changes, we adjust the learning rate $\eta$ to keep the noise intensity of the increment—that is, the covariance matrix—constant, leading to</p>
+    \begin{equation}\frac{\eta^2}{B} = \text{constant}\quad\Rightarrow\quad \eta\propto \sqrt{B}\end{equation}
+    <p>This gives the square root scaling law for the learning rate and Batch Size. Later, <a href="https://papers.cool/arxiv/1705.08741">"Train longer, generalize better: closing the generalization gap in large batch training of neural networks"</a> also agreed with this choice.</p>
+
+    <h3 id="线性缩放">Linear Scaling</h3>
+    <p>Interestingly, linear scaling, i.e., $\eta\propto B$, often performs better in practice. Even the author of the aforementioned <a href="https://papers.cool/arxiv/1404.5997">"One weird trick for parallelizing convolutional neural networks"</a>, which first proposed square root scaling, pointed this out in the paper and stated that he could not provide a reasonable explanation for it.</p>
+    <p>To some extent, linear scaling is more in line with our intuitive understanding, especially as described in <a href="https://papers.cool/arxiv/1706.02677">"Accurate, Large Minibatch SGD: Training ImageNet in 1 Hour"</a>: assuming the gradient directions of $n$ consecutive batches do not change much, then linear scaling is almost self-evident. However, this assumption is obviously too strong. Relaxing this assumption requires linking SGD with SDEs (Stochastic Differential Equations), which was accomplished by <a href="https://papers.cool/arxiv/1811.01558">"Stochastic Modified Equations and Dynamics of Stochastic Gradient Algorithms I: Mathematical Foundations"</a>. However, the first paper to point out the scaling relationship between the learning rate and Batch Size using this link should be <a href="https://papers.cool/arxiv/2006.15081">"On the Generalization Benefit of Noise in Stochastic Gradient Descent"</a>.</p>
+    <p>In hindsight, the establishment of this connection is not difficult to understand. Let the model parameters be $\boldsymbol{\theta}$, then the SGD update rule can be rewritten as</p>
+    \begin{equation}\boldsymbol{\theta}_{t+1} =\boldsymbol{\theta}_t - \eta \tilde{\boldsymbol{g}}_{B,t} =\boldsymbol{\theta}_t - \eta \boldsymbol{g}_t - \eta (\tilde{\boldsymbol{g}}_{B,t} - \boldsymbol{g}_t)\end{equation}
+    <p>where $\tilde{\boldsymbol{g}}_{B,t} - \boldsymbol{g}_t$ is the gradient noise. So far, we have not made any assumptions about the distribution of this noise, only that its mean is $\boldsymbol{0}$ and its covariance is $\boldsymbol{\Sigma}_t/B$. Next, we assume that the distribution of this noise is a normal distribution $\mathcal{N}(\boldsymbol{0},\boldsymbol{\Sigma}_t/B)$. Then the above iteration can be further rewritten as</p>
+    \begin{equation}\begin{aligned}
+    \boldsymbol{\theta}_{t+1} =&\, \boldsymbol{\theta}_t - \eta \boldsymbol{g}_t - \eta (\tilde{\boldsymbol{g}}_{B,t} - \boldsymbol{g}_t) \\[5pt]
+    =&\, \boldsymbol{\theta}_t - \eta \boldsymbol{g}_t - \eta \sqrt{\frac{\boldsymbol{\Sigma}_t}{B}}\boldsymbol{z},\quad \boldsymbol{z}\sim \mathcal{N}(\boldsymbol{0},\boldsymbol{I}) \\[5pt]
+    =&\, \boldsymbol{\theta}_t - \eta \boldsymbol{g}_t - \sqrt{\eta} \sqrt{\frac{\eta\boldsymbol{\Sigma}_t}{B}}\boldsymbol{z},\quad \boldsymbol{z}\sim \mathcal{N}(\boldsymbol{0},\boldsymbol{I}) \end{aligned}\end{equation}
+    <p>This means that the SGD iteration format $\boldsymbol{\theta}_{t+1} =\boldsymbol{\theta}_t - \eta \tilde{\boldsymbol{g}}_{B,t}$ is actually approximately solving the SDE:</p>
+    \begin{equation}d\boldsymbol{\theta} = - \boldsymbol{g}_t dt - \sqrt{\frac{\eta\boldsymbol{\Sigma}_t}{B}}d\boldsymbol{w}\end{equation}
+    <p>Therefore, for the running results to remain largely unchanged when $B$ changes, the form of the SDE above should be invariant, which leads to linear scaling $\eta\propto B$. The most critical step in this process is that the step size of the noise term in the SDE is the square root of the non-noise term, which separates out a factor of $\sqrt{\eta}$. We also commented on this point in <a href="translation_9209.html">"Generating Diffusion Models (5): General Framework—SDE Section"</a>; simply put, zero-mean Gaussian noise has a certain cancellation effect over the long term, so the step size must be increased to manifest the noise effect.</p>
+    <p>The above conclusions are all derived based on the SGD optimizer. The paper <a href="https://papers.cool/arxiv/2205.10287">"On the SDEs and Scaling Rules for Adaptive Gradient Algorithms"</a> generalized it to optimizers like RMSProp and Adam, resulting in square root scaling. Coincidentally, the slightly earlier <a href="https://papers.cool/arxiv/1904.00962">"Large Batch Optimization for Deep Learning: Training BERT in 76 minutes"</a> also applied square root scaling when testing Adam and its variant LAMB. For more details, refer to the blog <a href="https://www.cs.princeton.edu/~smalladi/blog/2024/01/22/SDEs-ScalingRules/">"How to Scale Hyperparameters as Batch Size Increases"</a>.</p>
+
+    <h2 id="直面损失">Facing the Loss Directly</h2>
+    <p>What is certain is that whether it is square root scaling or linear scaling, they can only be approximately true within a local range, because they both imply the conclusion that "as long as the Batch Size is large enough, the learning rate can be arbitrarily large," which is obviously impossible. Furthermore, the work in the previous two sections focused on variance, but our fundamental task is to reduce the loss function. Therefore, taking a loss-function-oriented approach may be more essential.</p>
+
+    <h3 id="单调有界">Monotonic and Bounded</h3>
+    <p>The classic work in this perspective is OpenAI's <a href="https://papers.cool/arxiv/1812.06162">"An Empirical Model of Large-Batch Training"</a>, which analyzes the optimal learning rate of SGD using a second-order approximation of the loss function, concluding that "the learning rate increases monotonically with the Batch Size but has an upper bound." The same idea appeared in the slightly earlier <a href="https://papers.cool/arxiv/1705.07774">"Dissecting Adam: The Sign, Magnitude and Variance of Stochastic Gradients"</a>, although that paper was not used to analyze the effect of Batch Size.</p>
+    <p>The most important concept in the entire derivation process is to treat the learning rate as an optimization parameter: let the loss function be $\mathcal{L}(\boldsymbol{\theta})$, and the gradient of the current batch be $\tilde{\boldsymbol{g}}_B$, then the loss function after SGD is $\mathcal{L}(\boldsymbol{\theta} - \eta\tilde{\boldsymbol{g}}_B)$. We regard solving for the optimal learning rate as an optimization problem:</p>
+    \begin{equation}\eta^* = \mathop{\text{argmin}}_{\eta} \mathbb{E}[\mathcal{L}(\boldsymbol{\theta} - \eta\tilde{\boldsymbol{g}}_B)]\end{equation}
+    <p>This goal is clearly intuitive—choosing the learning rate that makes the training efficiency highest (the loss function decreases fastest) on average. To solve this problem, we approximate the loss function by expanding it to the second order:</p>
+    \begin{equation}\mathcal{L}(\boldsymbol{\theta} - \eta\tilde{\boldsymbol{g}}_B) \approx \mathcal{L}(\boldsymbol{\theta}) - \eta\tilde{\boldsymbol{g}}_B^{\top}\underbrace{\frac{\partial \mathcal{L}(\boldsymbol{\theta})}{\partial\boldsymbol{\theta}}}_{\text{which is }\boldsymbol{g}} + \frac{1}{2}\eta^2 \tilde{\boldsymbol{g}}_B^{\top}\underbrace{\frac{\partial^2 \mathcal{L}(\boldsymbol{\theta})}{\partial\boldsymbol{\theta}^2}}_{\text{denoted as }\boldsymbol{H}}\tilde{\boldsymbol{g}}_B = \mathcal{L}(\boldsymbol{\theta}) - \eta\tilde{\boldsymbol{g}}_B^{\top}\boldsymbol{g} + \frac{1}{2}\eta^2 \tilde{\boldsymbol{g}}_B^{\top}\boldsymbol{H}\tilde{\boldsymbol{g}}_B\end{equation}
+    <p>where $\boldsymbol{H}$ is the Hessian matrix, and $\frac{\partial \mathcal{L}(\boldsymbol{\theta})}{\partial\boldsymbol{\theta}}$ is the gradient of the loss function. The ideal objective function is calculated based on all samples, which is why its gradient is the mean $\boldsymbol{g}$ of $\tilde{\boldsymbol{g}}_B$. Next, taking the expectation, we get</p>
+    \begin{equation}\mathbb{E}[\mathcal{L}(\boldsymbol{\theta} - \eta\tilde{\boldsymbol{g}}_B)] \approx \mathbb{E}[\mathcal{L}(\boldsymbol{\theta}) - \eta\tilde{\boldsymbol{g}}_B^{\top}\boldsymbol{g} + \frac{1}{2}\eta^2 \tilde{\boldsymbol{g}}_B^{\top}\boldsymbol{H}\tilde{\boldsymbol{g}}_B] = \mathcal{L}(\boldsymbol{\theta}) - \eta\boldsymbol{g}^{\top}\boldsymbol{g} + \frac{1}{2}\eta^2 \mathbb{E}[\tilde{\boldsymbol{g}}_B^{\top}\boldsymbol{H}\tilde{\boldsymbol{g}}_B]\end{equation}
+    <p>The last term involves a small trick:</p>
+    \begin{equation}\begin{aligned}
+    \mathbb{E}[\tilde{\boldsymbol{g}}_B^{\top}\boldsymbol{H}\tilde{\boldsymbol{g}}_B] =&\, \mathbb{E}[\text{Tr}(\tilde{\boldsymbol{g}}_B^{\top}\boldsymbol{H}\tilde{\boldsymbol{g}}_B)]= \mathbb{E}[\text{Tr}(\tilde{\boldsymbol{g}}_B\tilde{\boldsymbol{g}}_B^{\top}\boldsymbol{H})] = \text{Tr}(\mathbb{E}[\tilde{\boldsymbol{g}}_B\tilde{\boldsymbol{g}}_B^{\top}]\boldsymbol{H}) \\[5pt]
+    =&\, \text{Tr}((\boldsymbol{g}\boldsymbol{g}^{\top} + \boldsymbol{\Sigma}/B)\boldsymbol{H}) = \boldsymbol{g}^{\top}\boldsymbol{H}\boldsymbol{g} + \text{Tr}(\boldsymbol{\Sigma}\boldsymbol{H})/B
+    \end{aligned}\end{equation}
+    <p>The transformation process mainly utilizes $\text{Tr}(\boldsymbol{A}\boldsymbol{B}) = \text{Tr}(\boldsymbol{B}\boldsymbol{A})$. Now, assuming the positive definiteness of $\boldsymbol{H}$, the problem becomes finding the minimum of a quadratic function, which yields:</p>
+    \begin{equation}\eta^* \approx \frac{\boldsymbol{g}^{\top}\boldsymbol{g}}{\boldsymbol{g}^{\top}\boldsymbol{H}\boldsymbol{g} + \text{Tr}(\boldsymbol{\Sigma}\boldsymbol{H})/B} = \frac{\eta_{\max}}{1 + \mathcal{B}_{\text{noise}}/B}\label{eq:eta-opt}\end{equation}
+    <p>This results in the conclusion "monotonically increasing as $B$ increases with an upper bound," where</p>
+    \begin{equation}\eta_{\max} = \frac{\boldsymbol{g}^{\top}\boldsymbol{g}}{\boldsymbol{g}^{\top}\boldsymbol{H}\boldsymbol{g}},\qquad\mathcal{B}_{\text{noise}} = \frac{\text{Tr}(\boldsymbol{\Sigma}\boldsymbol{H})}{\boldsymbol{g}^{\top}\boldsymbol{H}\boldsymbol{g}}\end{equation}
+
+    <h3 id="实践分析">Practical Analysis</h3>
+    <p>When $B \ll \mathcal{B}_{\text{noise}}$, $1 + \mathcal{B}_{\text{noise}}/B\approx \mathcal{B}_{\text{noise}}/B$, so $\eta^* \approx \eta_{\max}B/\mathcal{B}_{\text{noise}}\propto B$, i.e., linear scaling. This again demonstrates that linear scaling is only a local approximation for small Batch Sizes. When $B > \mathcal{B}_{\text{noise}}$, $\eta^*$ gradually approaches a saturation value $\eta_{\max}$, meaning that the increase in training cost far outweighs the gain in training efficiency. Therefore, $\mathcal{B}_{\text{noise}}$ acts as a watershed; when the Batch Size exceeds this value, there is no need to continue investing compute power to increase the Batch Size.</p>
+    <p>For practice, the most critical question is undoubtedly how to estimate $\eta_{\max}$ and $\mathcal{B}_{\text{noise}}$, especially since $\mathcal{B}_{\text{noise}}$ is directly related to the scaling law of the learning rate and the saturation of training efficiency. Direct calculation involves the Hessian matrix $\boldsymbol{H}$, whose computational complexity is proportional to the square of the parameter count. In an era where models with hundreds of millions of parameters are considered small, calculating the Hessian matrix is clearly unrealistic, so a more effective calculation method must be found.</p>
+    <p>Let's look at $\mathcal{B}_{\text{noise}}$ first. Its formula is $\frac{\text{Tr}(\boldsymbol{\Sigma}\boldsymbol{H})}{\boldsymbol{g}^{\top}\boldsymbol{H}\boldsymbol{g}}$. Since both the numerator and the denominator have $\boldsymbol{H}$, there is an urge to "cancel" them out. In fact, the simplification follows exactly this logic. Assuming $\boldsymbol{H}$ is approximately a multiple of the identity matrix, we get</p>
+    \begin{equation}\mathcal{B}_{\text{noise}} = \frac{\text{Tr}(\boldsymbol{\Sigma}\boldsymbol{H})}{\boldsymbol{g}^{\top}\boldsymbol{H}\boldsymbol{g}}\approx \frac{\text{Tr}(\boldsymbol{\Sigma})}{\boldsymbol{g}^{\top}\boldsymbol{g}}\triangleq \mathcal{B}_{\text{simple}}\end{equation}
+    <p>$\mathcal{B}_{\text{simple}}$ is more computationally feasible, and experiments have found it is usually a good approximation of $\mathcal{B}_{\text{noise}}$, so we choose to estimate $\mathcal{B}_{\text{simple}}$ instead of $\mathcal{B}_{\text{noise}}$. Note that $\text{Tr}(\boldsymbol{\Sigma})$ only requires the diagonal elements, so there is no need to calculate the full covariance matrix; one only needs to calculate the variance of each gradient component individually and then sum them. In data-parallel scenarios, the gradients calculated on each device can be used directly to estimate the gradient variance.</p>
+    <p>It should be noted that the results like Eq $\eqref{eq:eta-opt}$ are actually dynamic—theoretically, $\eta_{\max}$, $\mathcal{B}_{\text{noise}}$, and $\mathcal{B}_{\text{simple}}$ are different for every training step. Therefore, if we hope to obtain a static law, we need to train for a period of time until the model's training is back on the "right track" before calculating a reliable $\mathcal{B}_{\text{simple}}$, or we can continuously monitor $\mathcal{B}_{\text{simple}}$ during the training process to judge the gap between the current setting and the optimum.</p>
+    <p>As for $\eta_{\max}$, there is no need to estimate it using the formula; one can simply perform a grid search for the learning rate at a certain small Batch Size to find an approximate $\eta^*$, and then combine it with the estimated $\mathcal{B}_{\text{simple}}$ to back-calculate $\eta_{\max}$.</p>
+
+    <h3 id="数据效率">Data Efficiency</h3>
+    <p>Starting from these results, we can also derive an asymptotic relationship between the training data volume and the number of training steps. The derivation process is simple: substituting $\eqref{eq:eta-opt}$ into the loss function shows that under the optimal learning rate, the reduction in the loss function per iteration is:</p>
+    \begin{equation}\Delta\mathcal{L} = \mathcal{L}(\boldsymbol{\theta}) - \mathbb{E}[\mathcal{L}(\boldsymbol{\theta} - \eta^*\tilde{\boldsymbol{g}}_B)] \approx \frac{\Delta\mathcal{L}_{\max}}{1 + \mathcal{B}_{\text{noise}}/B}\label{eq:Delta-L-sgd}\end{equation}
+    <p>where $\Delta\mathcal{L}_{\max} = \frac{(\boldsymbol{g}^{\top}\boldsymbol{g})^2}{2\boldsymbol{g}^{\top}\boldsymbol{H}\boldsymbol{g}}$. The focus now is on the interpretation of this result.</p>
+    <p>When $B\to\infty$, which is full-batch SGD, the reduction in the loss function per step reaches the maximum $\Delta\mathcal{L}_{\max}$. At this point, the goal can be achieved with the minimum number of training steps (denoted as $S_{\min}$). When $B$ is finite, the average loss reduction per step is only $\Delta\mathcal{L}$, which means we need $1 + \mathcal{B}_{\text{noise}}/B$ steps to achieve the reduction of a single step of full-batch SGD. Thus, the total number of training steps is roughly $S = (1 + \mathcal{B}_{\text{noise}}/B)S_{\min}$.</p>
+    <p>Since the Batch Size is $B$, the total number of samples consumed during the training process is $E = BS = (B + \mathcal{B}_{\text{noise}})S_{\min}$, which is an increasing function of $B$. When $B\to 0$, $E_{\min} = \mathcal{B}_{\text{noise}}S_{\min}$. This indicates that as long as we use a small enough Batch Size to train the model, the total training samples $E$ required will also decrease accordingly, at the cost of very many training steps $S$. Further, using these notations, we can write the relationship between them as:</p>
+    \begin{equation}\left(\frac{S}{S_{\min}} - 1\right)\left(\frac{E}{E_{\min}} - 1\right) = 1\label{eq:E-S}\end{equation}
+    <p>This is the scaling law between the amount of training data and the number of training steps. It indicates that the smaller the data volume, the more the Batch Size should be reduced—allowing for more training steps—to increase the chance of reaching a more optimal solution. The derivation here has been simplified by the author, assuming the invariance of $\mathcal{B}_{\text{noise}}$ and $\Delta\mathcal{L}_{\max}$ throughout the training process. If necessary, one could follow the appendix of the original paper using integration to more precisely handle the dynamics (but this requires introducing the assumption $B = \sqrt{r\mathcal{B}_{\text{noise}}}$), which we won't expand on here.</p>
+    <p>Additionally, since $\mathcal{B}_{\text{noise}} = E_{\min}/S_{\min}$, the above equation also provides another scheme for estimating $\mathcal{B}_{\text{noise}}$: get multiple $(S,E)$ pairs through multiple experiments and grid searches, and then fit the above equation to estimate $E_{\min}, S_{\min}$, and subsequently calculate $\mathcal{B}_{\text{noise}}$.</p>
+
+    <h2 id="自适应版">Adaptive Version</h2>
+    <p>It must be said that OpenAI is indeed one of the pioneers of various Scaling Laws. The previous analysis is quite brilliant and provides rich results. More importantly, the derivation process is not complex, giving a sense of "finding the essence in simplicity" (大道至简). However, current conclusions are based on SGD. Their applicability to adaptive learning rate optimizers like Adam is unclear. This part of the content was completed by <a href="https://papers.cool/arxiv/2405.14578">"Surge Phenomenon in Optimal Learning Rate and Batch Size Scaling"</a>.</p>
+
+    <h3 id="符号近似">Symbolic Approximation</h3>
+    <p>The logic for analyzing Adam is the same as for SGD, based on second-order expansion. The difference is that the direction vector $\tilde{\boldsymbol{g}}_B$ is replaced by a general vector $\tilde{\boldsymbol{u}}_B$. Here, we have</p>
+    \begin{equation}\mathbb{E}[\mathcal{L}(\boldsymbol{\theta} - \eta\tilde{\boldsymbol{u}}_B)] \approx \mathcal{L}(\boldsymbol{\theta}) - \eta\mathbb{E}[\tilde{\boldsymbol{u}}_B]^{\top}\boldsymbol{g} + \frac{1}{2}\eta^2 \text{Tr}(\mathbb{E}[\tilde{\boldsymbol{u}}_B\tilde{\boldsymbol{u}}_B^{\top}]\boldsymbol{H})\end{equation}
+    <p>Now we need to determine $\tilde{\boldsymbol{u}}_B$ and calculate the corresponding $\mathbb{E}[\tilde{\boldsymbol{u}}_B]$ and $\mathbb{E}[\tilde{\boldsymbol{u}}_B\tilde{\boldsymbol{u}}_B^{\top}]$. Since we only need an asymptotic relationship, just as in <a href="translation_10001.html">"Configuring different learning rates, can LoRA gain a bit more?"</a>, we choose SignSGD, i.e., $\tilde{\boldsymbol{u}}_B = \text{sign}(\tilde{\boldsymbol{g}}_B)$, as an approximation for Adam. This approach likely first appeared in <a href="https://papers.cool/arxiv/1705.07774">"Dissecting Adam: The Sign, Magnitude and Variance of Stochastic Gradients"</a>. The rationality of this approximation is reflected in two points:</p>
+    <blockquote>
+        <p>1. Regardless of the values of $\beta_1, \beta_2$, the update vector of the first step of Adam is $\text{sign}(\tilde{\boldsymbol{g}}_B)$;<br />
+        2. When $\beta_1=\beta_2=0$, the update vector of Adam is always $\text{sign}(\tilde{\boldsymbol{g}}_B)$.</p>
+    </blockquote>
+    <p>To calculate $\mathbb{E}[\tilde{\boldsymbol{u}}_B]$ and $\mathbb{E}[\tilde{\boldsymbol{u}}_B\tilde{\boldsymbol{u}}_B^{\top}]$, we also need to assume—just as in the "<a href="https://kexue.fm/archives/10542#%E7%BA%BF%E6%80%A7%E7%BC%A9%E6%94%BE">Linear Scaling</a>" section—that $\tilde{\boldsymbol{g}}_B$ follows the distribution $\mathcal{N}(\boldsymbol{g},\boldsymbol{\Sigma}/B)$, and to simplify calculation, we further assume $\boldsymbol{\Sigma}$ is a diagonal matrix $\text{diag}(\sigma_1^2,\sigma_2^2,\sigma_3^2,\dots)$, assuming that the components are independent. In this way, we can process each component independently. From reparameterization, $\tilde{g}_B\sim \mathcal{N}(g, \sigma^2/B)$ is equivalent to $\tilde{g}_B=g + \sigma z/\sqrt{B}, z\sim\mathcal{N}(0,1)$, thus</p>
+    \begin{equation}\begin{aligned}
+    \mathbb{E}[\tilde{u}_B] =&\, \mathbb{E}[\text{sign}(g + \sigma z/\sqrt{B})] = \mathbb{E}[\text{sign}(g\sqrt{B}/\sigma + z)] \\[5pt]
+    =&\, \frac{1}{\sqrt{2\pi}}\int_{-\infty}^{\infty} \text{sign}(g\sqrt{B}/\sigma + z) e^{-z^2/2}dz \\[5pt]
+    =&\, \frac{1}{\sqrt{2\pi}}\int_{-\infty}^{-g\sqrt{B}/\sigma} (-1)\times e^{-z^2/2}dz + \frac{1}{\sqrt{2\pi}}\int_{-g\sqrt{B}/\sigma}^{\infty} 1\times e^{-z^2/2}dz \\[5pt]
+    =&\, \text{erf}\left(\frac{g}{\sigma}\sqrt{\frac{B}{2}}\right)
+    \end{aligned}\end{equation}
+    <p>Here $\text{erf}$ is the <a href="https://en.wikipedia.org/wiki/Error_function">error function</a>, which is an S-shaped function with a value range of $(-1,1)$, similar to $\tanh$. It can serve as a smooth approximation of $\text{sign}$. However, since $\text{erf}$ itself does not have an elementary function expression, we'd better find an elementary function approximation to observe the variation law more intuitively. We discussed this topic in <a href="translation_7309.html">"Where did the two elementary function approximations of GELU come from?"</a>, but the approximations there are still too complex (incorporating exponential operations). Let's use something simpler here:</p>
+    \begin{equation}\text{erf}(x)\approx \text{sign}(x) = \frac{x}{|x|} = \frac{x}{\sqrt{x^2}}\approx \frac{x}{\sqrt{x^2+c}}\end{equation}
+    <p>We choose $c=\pi/4$ so that the first-order approximation of this function at $x=0$ is equal to that of $\text{erf}$. Of course, having made so many heavy approximations, the value of $c$ is no longer critical; we only need to know that such a $c > 0$ exists. Based on this approximation, we get</p>
+    \begin{equation}\mathbb{E}[\tilde{u}_B] \approx \frac{g/\sigma}{\sqrt{\pi/2B+(g/\sigma)^2}}\quad\Rightarrow\quad\mathbb{E}[\tilde{\boldsymbol{u}}_B]_i \approx \frac{g_i/\sigma_i}{\sqrt{\pi/2B+(g_i/\sigma_i)^2}}\triangleq \mu_i\end{equation}
+    <p>We can find that a clear difference between Adam and SGD is that $\mathbb{E}[\tilde{\boldsymbol{u}}_B]$ is already related to $B$ at this step. Fortunately, the second moment is simpler now because the square of $\text{sign}(x)$ must be 1, therefore</p>
+    \begin{equation}\mathbb{E}[\tilde{u}_B^2] = 1\quad\Rightarrow\quad\mathbb{E}[\tilde{\boldsymbol{u}}_B\tilde{\boldsymbol{u}}_B^{\top}]_{i,j} \to\left\{\begin{aligned}&=1, & i = j \\
+    &\approx\mu_i \mu_j,&\,i\neq j\end{aligned}\right.\end{equation}
+    <p>Using these results, we can calculate:</p>
+    \begin{gather}\eta^* \approx \frac{\mathbb{E}[\tilde{\boldsymbol{u}}_B]^{\top}\boldsymbol{g}}{\text{Tr}(\mathbb{E}[\tilde{\boldsymbol{u}}_B\tilde{\boldsymbol{u}}_B^{\top}]\boldsymbol{H})} \approx \frac{\sum_i \mu_i g_i}{\sum_i H_{i,i} + \sum_{i\neq j} \mu_i \mu_j H_{i,j}}\label{eq:eta-opt-sign} \\[5pt]
+    \Delta \mathcal{L} = \mathcal{L}(\boldsymbol{\theta}) - \mathbb{E}[\mathcal{L}(\boldsymbol{\theta} - \eta^*\tilde{\boldsymbol{u}}_B)] \approx \frac{1}{2}\frac{(\sum_i \mu_i g_i)^2}{\sum_i H_{i,i} + \sum_{i\neq j} \mu_i \mu_j H_{i,j}}\label{eq:Delta-L-sign}\end{gather}
+
+    <h3 id="两个特例">Two Special Cases</h3>
+    <p>Compared to Eq $\eqref{eq:eta-opt}$ for SGD, Eq $\eqref{eq:eta-opt-sign}$ for Adam is more complex, making it impossible to intuitively see its dependency law on $B$. Thus we start with several special examples.</p>
+    <p>First, consider $B\to\infty$. At this point $\mu_i = \text{sign}(g_i)$, so</p>
+    \begin{equation}\eta^* \approx \frac{\sum_i |g_i|}{\sum_i H_{i,i} + \sum_{i\neq j} \text{sign}(g_i g_j) H_{i,j}}\end{equation}
+    <p>The difference between this and SGD's $\eta_{\max}$ is that it is not homogeneous with respect to the gradient, but rather proportional to the scale of the gradient.</p>
+    <p>Next, we consider the case where $\boldsymbol{H}$ is a diagonal matrix, i.e., $H_{i,j}=0$ when $i\neq j$. Then</p>
+    \begin{equation}\eta^* \approx \frac{\sum_i \mu_i g_i}{\sum_i H_{i,i}}=\frac{1}{\sum_i H_{i,i}}\sum_i \frac{g_i^2/\sigma_i}{\sqrt{\pi/2B+(g_i/\sigma_i)^2}}\end{equation}
+    <p>Every term in the sum here is monotonically increasing with $B$ and has an upper bound, so the total result is the same. To capture the most essential law, we can consider further simplifying $\mu_i$ (starting differently from the original paper):</p>
+    \begin{equation}\mu_i = \frac{g_i/\sigma_i}{\sqrt{\pi/2B+(g_i/\sigma_i)^2}} = \frac{\text{sign}(g_i)}{\sqrt{1 + \pi(\sigma_i/g_i)^2/2B}} \approx \frac{\text{sign}(g_i)}{\sqrt{1 + \pi\kappa^2/2B}}\label{eq:mu-approx}\end{equation}
+    <p>The assumption here is that there exists a constant $\kappa^2$ independent of $i$ [for example, one could consider taking some kind of average of all $(\sigma_i/g_i)^2$; in fact, here $\kappa^2$ is similar to the previous $\mathcal{B}_{\text{simple}}$, and can be estimated according to its definition], such that replacing $(\sigma_i/g_i)^2$ with $\kappa^2$ for any $i$ is a good approximation. Thus</p>
+    \begin{equation}\eta^* \approx \frac{\sum_i \mu_i g_i}{\sum_i H_{i,i}}\approx \frac{\sum_i |g_i|}{\sum_i H_{i,i}}\frac{1}{\sqrt{1 + \pi\kappa^2/2B}}\label{eq:eta-opt-sign-diag}\end{equation}
+    <p>When $\pi\kappa^2\gg 2B$, i.e., $B \ll \pi\kappa^2/2$, we can further write the approximation:</p>
+    \begin{equation}\eta^* \approx \frac{\sum_i \sigma_i}{\kappa\sum_i H_{i,i}}\sqrt{\frac{2B}{\pi}} \propto \sqrt{B}\end{equation}
+    <p>This shows that when the Batch Size itself is small, Adam indeed follows the square root scaling law.</p>
+
+    <h3 id="涌现行为">Emergent Behavior</h3>
+    <p>If we apply approximation $\eqref{eq:mu-approx}$ to the original equation $\eqref{eq:eta-opt-sign}$, we will find that it possesses some entirely new characteristics. Specifically, we have</p>
+    \begin{equation}\eta^* \approx \frac{\sum_i \mu_i g_i}{\sum_i H_{i,i} + \sum_{i\neq j} \mu_i \mu_j H_{i,j}} \approx \frac{\eta_{\max}}{\frac{1}{2}\left(\frac{\beta_{\text{noise}}}{\beta} + \frac{\beta}{\beta_{\text{noise}}}\right)}\label{eq:eta-opt-beta}\end{equation}
+    <p>where $\beta = (1 + \pi\kappa^2/2B)^{-1/2}$, and</p>
+    \begin{equation}\beta_{\text{noise}} = \sqrt{\frac{\sum_i H_{i,i}}{\sum_{i\neq j}\text{sign}(g_i g_j) H_{i,j}}},\quad \eta_{\max} = \frac{\sum_i |g_i|}{2\sqrt{\left(\sum_i H_{i,i}\right)\left(\sum_{i\neq j} \text{sign}(g_i g_j) H_{i,j}\right)}}\end{equation}
+    <p>Note that $\beta$ is a monotonically increasing function of $B$, but the last approximation in Eq $\eqref{eq:eta-opt-beta}$ is not a monotonically increasing function of $\beta$. It increases first and then decreases, with its maximum achieved at $\beta=\beta_{\text{noise}}$. This means there is a corresponding $\mathcal{B}_{\text{noise}}$. When the Batch Size exceeds this $\mathcal{B}_{\text{noise}}$, the optimal learning rate should not increase but rather decrease! This is the "Surge phenomenon" mentioned in the title of the original paper. (Of course, there is an additional constraint: $\beta$ is always less than $1$. If $\beta_{\text{noise}} \geq 1$, the relationship between the optimal learning rate and Batch Size remains monotonically increasing.)</p>
+    <p>How do we intuitively understand the Surge phenomenon? The author believes this is essentially a manifestation of the <b>sub-optimality</b> of adaptive learning rate strategies. Still taking the approximation $\tilde{\boldsymbol{u}}_B = \text{sign}(\tilde{\boldsymbol{g}}_B)$ as an example: the larger $B$ is, the more accurate $\tilde{\boldsymbol{g}}_B$ is. $B\to \infty$ yields $\text{sign}(\boldsymbol{g})$. However, is $\text{sign}(\boldsymbol{g})$ the most scientific update direction? Not necessarily, especially in the later stages of training where such adaptive strategies may also have negative effects. Therefore, when $B$ takes an appropriate value, the noise of $\text{sign}(\tilde{\boldsymbol{g}}_B)$ may actually correct this sub-optimality. As $B$ continues to increase, noise decreases, thereby reducing the opportunity for correction, which necessitates more cautious lowering of the learning rate.</p>
+
+    <h3 id="效率关系">Efficiency Relationship</h3>
+    <p>As with the analysis of SGD, finally we can consider $\Delta\mathcal{L}$. By substituting Eq $\eqref{eq:eta-opt-beta}$ into Eq $\eqref{eq:Delta-L-sign}$, restoring the notation $B$ and then simplifying (the simplification process does not require any approximation), we obtain</p>
+    \begin{equation}\Delta \mathcal{L} \approx \frac{\Delta \mathcal{L}_{\max}}{1 + \mathcal{B}_{\text{noise-2}}/B}\label{eq:Delta-L-sign-2}\end{equation}
+    <p>where</p>
+    \begin{equation}\Delta \mathcal{L}_{\max} = \frac{\beta_{\text{noise}}\eta_{\max}\sum_i|g_i|}{1 + \beta_{\text{noise}}^2},\quad \mathcal{B}_{\text{noise-2}} = \frac{\pi\kappa^2\beta_{\text{noise}}^2}{2(1 + \beta_{\text{noise}}^2)}\label{eq:beta-B-noise}\end{equation}
+    <p>Note that here $\mathcal{B}_{\text{noise-2}}$ is a new notation, it is not $\mathcal{B}_{\text{noise}}$, the latter being the theoretically optimal Batch Size solved from $\beta=\beta_{\text{noise}}$, which results in</p>
+    \begin{equation}\mathcal{B}_{\text{noise}} = \frac{\pi\kappa^2\beta_{\text{noise}}^2}{2(1 - \beta_{\text{noise}}^2)}\end{equation}
+    <p>The relationship between them is</p>
+    \begin{equation}\frac{1}{\mathcal{B}_{\text{noise-2}}} - \frac{1}{\mathcal{B}_{\text{noise}}} = \frac{4}{\pi\kappa^2}\quad\Rightarrow\quad \mathcal{B}_{\text{noise}} = \left(\frac{1}{\mathcal{B}_{\text{noise-2}}} - \frac{4}{\pi\kappa^2}\right)^{-1}\label{eq:B-1-2}\end{equation}
+    <p>Since the form of Eq $\eqref{eq:Delta-L-sign-2}$ is the same as SGD's Eq $\eqref{eq:Delta-L-sgd}$, the analysis of that section applies equally, thus we can also derive Eq $\eqref{eq:E-S}$:</p>
+    \begin{equation}\left(\frac{S}{S_{\min}} - 1\right)\left(\frac{E}{E_{\min}} - 1\right) = 1\end{equation}
+    <p>except now $E_{\min}/S_{\min} = \mathcal{B}_{\text{noise-2}}$. This gives us a scheme to estimate $\beta_{\text{noise}}$ and $\mathcal{B}_{\text{noise}}$: get multiple $(S,E)$ pairs through multiple experiments. During the experiment, $\kappa^2$ can also be estimated. Then fit the equation to get $E_{\min}, S_{\min}$, and subsequently estimate $\mathcal{B}_{\text{noise-2}}$, finally solving $\beta_{\text{noise}}$ from Eq $\eqref{eq:beta-B-noise}$.</p>
+    <p>If $\beta_{\text{noise}} \geq 1$, then there is no optimal $\mathcal{B}_{\text{noise}}$. If $\beta_{\text{noise}} \gg 1$, it indicates the diagonal elements of the Hessian matrix dominate, so the scaling law $\eqref{eq:eta-opt-sign-diag}$ applies—increasing Batch Size can always moderately increase the learning rate. When $\beta_{\text{noise}} < 1$, the optimal $\mathcal{B}_{\text{noise}}$ can be solved from $\eqref{eq:B-1-2}$. If Batch Size exceeds this value, the learning rate should decrease.</p>
+
+    <h3 id="补充说明">Supplementary Remarks</h3>
+    <p>It should be pointed out that the starting point and final conclusion of the analysis in the previous sections are largely consistent with the original paper <a href="https://papers.cool/arxiv/2405.14578">"Surge Phenomenon in Optimal Learning Rate and Batch Size Scaling"</a>, but the handling of approximations in the intermediate process is different.</p>
+    <p>Most of the conclusions in the original paper are approximate results under the assumption $B \ll \pi(\sigma_i/g_i)^2/2$, which leads to the conclusion that the Surge phenomenon will almost always appear. This is not entirely scientific. The most obvious problem is the form of the assumption $B \ll \pi(\sigma_i/g_i)^2/2$ itself: its right side depends on $i$. We cannot assign a separate Batch Size to each component. Therefore, to get a global result, it would have to be $B \ll \min_i \pi(\sigma_i/g_i)^2/2$, which is somewhat harsh.</p>
+    <p>The approach in this paper is to introduce the approximation $\eqref{eq:mu-approx}$, which can be seen as a mean-field approximation. Intuitively, it is more reasonable than the point-by-point assumption $B \ll \pi(\sigma_i/g_i)^2/2$, so the conclusion should theoretically be more accurate. For example, it can yield the conclusion that "even if the non-diagonal elements of the Hessian matrix are not negligible, the Surge phenomenon does not necessarily occur" (depending on $\beta_{\text{noise}}$). In particular, this accuracy does not sacrifice simplicity; for instance, Eq $\eqref{eq:eta-opt-beta}$ is also very simple and clear, and the form of Eq $\eqref{eq:Delta-L-sign-2}$ is identical to the original paper without requiring additional approximation assumptions, and so on.</p>
+    <p>Finally, a small reflection: OpenAI's analysis of SGD was actually 2018 work, بينما the paper on the Surge phenomenon was only released in the middle of this year. It's quite surprising that it took 6 years to go from SGD to Adam. This is probably due to OpenAI's "prestige" and the guess $\eqref{eq:openai-adam}$, making everyone think there was nothing left to do with Adam. No one expected that Adam might have some new characteristics. Of course, the question of how reasonable $\tilde{\boldsymbol{u}}_B = \text{sign}(\tilde{\boldsymbol{g}}_B)$ is as an approximation for Adam and to what extent it represents practical situations still deserves further thought, in the author's opinion.</p>
+
+    <h2 id="文章小结">Conclusion</h2>
+    <p>This article has discussed the classic "AI alchemy" problem of the "Scaling Law between Batch Size and Learning Rate" from multiple perspectives. It has focused on the derivation and conclusion of OpenAI's analysis based on a second-order approximation of the loss function, as well as subsequent work using the same idea to analyze the Adam optimizer.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10542.html" style="color: #005fcc;">https://kexue.fm/archives/10542</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

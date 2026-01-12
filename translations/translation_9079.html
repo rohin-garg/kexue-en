@@ -1,0 +1,286 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['base', 'ams', 'noerrors', 'noundefined']}
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9079">When BERT-whitening Introduces Hyperparameters: There Is Always One That Suits You</a></h1>
+
+<p>By 苏剑林 | May 18, 2022</p>
+
+<p>In <a href="translation_8069.html">"You Might Not Need BERT-flow: A Linear Transformation Comparable to BERT-flow"</a>, I proposed BERT-whitening, verifying that a simple linear transformation could rival the SOTA method at the time, BERT-flow. Additionally, BERT-whitening can reduce the dimensionality of sentence vectors, resulting in lower memory usage and faster retrieval speeds. However, in <a href="translation_8321.html">"Which Unsupervised Semantic Similarity Method is Stronger? A Comprehensive Evaluation"</a>, we also found that the whitening operation does not always bring improvements. Some models are inherently well-suited to the task (such as the supervised SimBERT), and in these cases, additional whitening often degrades performance.</p>
+
+<p>To address this deficiency, this article proposes introducing two hyperparameters $\beta$ and $\gamma$ into BERT-whitening. By adjusting these two hyperparameters, we can almost always obtain results that achieve "dimensionality reduction without performance loss." In other words, even for tasks where adding whitening originally caused a drop in performance, there is now a chance to maintain similar or even better results while benefiting from dimensionality reduction.</p>
+
+<h2 id="method-overview">Method Overview</h2>
+
+<p>The current BERT-whitening workflow is as follows:</p>
+
+\begin{equation}
+\begin{aligned}
+\tilde{\boldsymbol{x}}_i =&\, (\boldsymbol{x}_i - \boldsymbol{\mu})\boldsymbol{U}\boldsymbol{\Lambda}^{-1/2} \\
+\boldsymbol{\mu} =&\, \frac{1}{N}\sum\limits_{i=1}^N \boldsymbol{x}_i \\
+\boldsymbol{\Sigma} =&\, \frac{1}{N}\sum\limits_{i=1}^N (\boldsymbol{x}_i - \boldsymbol{\mu})^{\top}(\boldsymbol{x}_i - \boldsymbol{\mu}) = \boldsymbol{U}\boldsymbol{\Lambda}\boldsymbol{U}^{\top} \,\,(\text{SVD decomposition})
+\end{aligned}
+\end{equation}
+
+<p>Where $\boldsymbol{x}_i$ is the given sentence vector (vectors are row vectors by default unless otherwise stated), $\tilde{\boldsymbol{x}}_i$ is the transformed vector. In the SVD decomposition result, $\boldsymbol{U}$ is an orthogonal matrix, and $\boldsymbol{\Lambda}$ is a diagonal matrix with non-negative diagonal elements sorted from largest to smallest. As we can see, the current process is completely fixed, meaning there are no adjustable hyperparameters.</p>
+
+<p>To increase the tuning space, we can introduce two hyperparameters $\beta, \gamma$ (scalars), changing the process to:</p>
+
+\begin{equation}
+\begin{aligned}
+\tilde{\boldsymbol{x}}_i =&\, (\boldsymbol{x}_i - {\color{red}\beta}\boldsymbol{\mu})\boldsymbol{U}\boldsymbol{\Lambda}^{-{\color{red}\gamma}/2} \\
+\boldsymbol{\mu} =&\, \frac{1}{N}\sum\limits_{i=1}^N \boldsymbol{x}_i \\
+\boldsymbol{\Sigma} =&\, \frac{1}{N}\sum\limits_{i=1}^N (\boldsymbol{x}_i - {\color{red}\beta}\boldsymbol{\mu})^{\top}(\boldsymbol{x}_i - {\color{red}\beta}\boldsymbol{\mu}) = \boldsymbol{U}\boldsymbol{\Lambda}\boldsymbol{U}^{\top} \,\,(\text{SVD decomposition})
+\end{aligned}
+\end{equation}
+
+<h2 id="analysis">Analysis</h2>
+
+<p>As we can see, when $\beta=\gamma=1$, it is the original BERT-whitening. When $\beta=\gamma=0$, the net transformation is:</p>
+
+\begin{equation}\tilde{\boldsymbol{x}}_i = \boldsymbol{x}_i \boldsymbol{U}\end{equation}
+
+<p>Since $\boldsymbol{U}$ is an orthogonal matrix, it does not change the inner product result, i.e., $\tilde{\boldsymbol{x}}_i\tilde{\boldsymbol{x}}_i^{\top} = \boldsymbol{x}_i \boldsymbol{U} (\boldsymbol{x}_i \boldsymbol{U})^{\top} = \boldsymbol{x}_i\boldsymbol{x}_i^{\top}$. Therefore, when we use cosine similarity as the metric, it does not change the original results. In other words, after introducing these hyperparameters, it provides the possibility of results that are "no worse than before the transformation." By fine-tuning these parameters, it is possible to achieve better results than before. This is the design philosophy behind these two hyperparameters.</p>
+
+<p>Furthermore, with this modification, the original ability for dimensionality reduction is still preserved. We can view the transformation in two parts:</p>
+
+\begin{equation}\tilde{\boldsymbol{x}}_i = \color{red}{\underbrace{(\boldsymbol{x}_i - \beta\boldsymbol{\mu})\boldsymbol{U}}_{\text{part 1}}}\color{skyblue}{\underbrace{\boldsymbol{\Lambda}^{-\gamma/2}}_{\text{part 2}}}\end{equation}
+
+<p>The first part is primarily the orthogonal transformation $\boldsymbol{U}$. $\boldsymbol{U}$ is the result of the SVD decomposition of the $\boldsymbol{\Sigma}$ matrix. it transforms the vector $\boldsymbol{x}_i - \beta\boldsymbol{\mu}$ into a new vector where components are as independent as possible. The average fluctuation of each component of the new vector from 0 is measured by the diagonal elements of $\boldsymbol{\Lambda}^{1/2}$. If a corresponding fluctuation is very close to 0, we can treat it as practically 0. Discarding such a component will not significantly affect the calculation of cosine similarity; this is the principle of dimensionality reduction. Since the SVD result already sorts $\boldsymbol{\Lambda}$ from largest to smallest, we can implement dimensionality reduction to $k$ dimensions by simply keeping the first $k$ dimensions: $\tilde{\boldsymbol{x}}_i[:k]$.</p>
+
+<p>As for the second part $\boldsymbol{\Lambda}^{-\gamma/2}$, it can be understood as the current task's dependency on isotropy. If $\gamma=1$, it means every component is given equal weight, which serves as an unsupervised prior. However, this might not be optimal for all tasks, so we can adjust $\gamma$ to better adapt to the current task.</p>
+
+<h2 id="experimental-results">Experimental Results</h2>
+
+<p>The article <a href="translation_8321.html">"Which Unsupervised Semantic Similarity Method is Stronger? A Comprehensive Evaluation"</a> has already shown that on the ATEC, BQ, and LCQMC tasks, SimBERT combined with the default whitening operation (i.e., $\beta=\gamma=1$) leads to a performance drop. However, if we take $\beta=\gamma=0$, the results are different (two combinations are demonstrated below; other combinations yield similar results):</p>
+
+<div align="center">
+<p><b>BERT-P4 Performance Table</b></p>
+<table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; text-align: center;">
+  <tr>
+    <th></th>
+    <th>ATEC</th>
+    <th>BQ</th>
+    <th>LCQMC</th>
+    <th>PAWSX</th>
+    <th>STS-B</th>
+  </tr>
+  <tr>
+    <td>$\beta=\gamma=1$</td>
+    <td>24.51 / <span style="color:green">27.00</span> / <span style="color:green">27.91</span></td>
+    <td>38.81 / <span style="color:red">32.29</span> / <span style="color:red">37.67</span></td>
+    <td>64.75 / <span style="color:green">64.75</span> / <span style="color:green">65.65</span></td>
+    <td>15.12 / <span style="color:green">17.80</span> / <span style="color:green">15.34</span></td>
+    <td>61.66 / <span style="color:green">69.45</span> / <span style="color:green">69.37</span></td>
+  </tr>
+  <tr>
+    <td>$\beta=\gamma=0$</td>
+    <td>24.51 / 24.51 / <span style="color:green">24.59</span></td>
+    <td>38.81 / 38.81 / <span style="color:green">38.99</span></td>
+    <td>64.75 / 64.75 / <span style="color:red">63.45</span></td>
+    <td>15.12 / 15.12 / <span style="color:red">14.59</span></td>
+    <td>61.66 / 61.66 / <span style="color:green">62.30</span></td>
+  </tr>
+</table>
+
+<p><b>SimBERT-P1 Performance Table</b></p>
+<table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; text-align: center;">
+  <tr>
+    <th></th>
+    <th>ATEC</th>
+    <th>BQ</th>
+    <th>LCQMC</th>
+    <th>PAWSX</th>
+    <th>STS-B</th>
+  </tr>
+  <tr>
+    <td>$\beta=\gamma=1$</td>
+    <td>38.50 / <span style="color:red">23.64</span> / <span style="color:red">30.79</span></td>
+    <td>48.54 / <span style="color:red">31.78</span> / <span style="color:red">40.01</span></td>
+    <td>76.23 / <span style="color:red">75.05</span> / <span style="color:red">74.50</span></td>
+    <td>15.10 / <span style="color:green">18.49</span> / <span style="color:green">15.64</span></td>
+    <td>74.14 / <span style="color:red">73.37</span> / <span style="color:green">75.29</span></td>
+  </tr>
+  <tr>
+    <td>$\beta=\gamma=0$</td>
+    <td>38.50 / 38.50 / <span style="color:green">38.81</span></td>
+    <td>48.54 / 48.54 / <span style="color:green">48.66</span></td>
+    <td>76.23 / 76.23 / <span style="color:red">76.22</span></td>
+    <td>15.10 / 15.10 / <span style="color:red">14.88</span></td>
+    <td>74.14 / 74.14 / <span style="color:green">74.46</span></td>
+  </tr>
+</table>
+</div>
+
+<p>As in the previous article, each element in the table is in the form $a / b / c$, representing the score for that task under that model "without whitening" ($a$), "with whitening" ($b$), and "with whitening reduced to 256 dimensions" ($c$). If $b > a$, then $b$ is displayed in green, otherwise red; if $c > a$, then $c$ is displayed in green, otherwise red. As mentioned, if dimensionality reduction is not applied, the net transformation for $\beta=\gamma=0$ is just $\boldsymbol{U}$, which does not change the cosine similarity; thus $a$ and $b$ are equal when $\beta=\gamma=0$.</p>
+
+<p>In this table, we primarily look at the third result $c$ in $a/b/c$, which is the result of reducing the vector from 768 to 256 dimensions. It can be observed that when $\beta=\gamma=0$, whether it is the unsupervised BERT or the supervised SimBERT, this result is generally very close to the original vector result (i.e., $a$), and some results even show improvements. This implies that the combination $\beta=\gamma=0, k=256$ can almost be considered a "free lunch"—it essentially achieves dimensionality reduction without loss of performance.</p>
+
+<p>I also tried fine-tuning $\beta, \gamma$. On some tasks, it indeed yielded better results than the two combinations mentioned above. However, fine-tuning requires labeled data, which might be controversial in an unsupervised context, so I will not demonstrate that here. If the original sentence vector model was already obtained through supervised training and BERT-whitening is used solely for dimensionality reduction, then it is perfectly appropriate to fine-tune $\beta, \gamma,$ and $k$ using a validation set.</p>
+
+<h2 id="summary">Summary</h2>
+
+<p>This article introduces two hyperparameters to give BERT-whitening a degree of tuning space, making it possible to achieve results that are "no worse than before the transformation" while retaining the ability for dimensionality reduction. In other words, even for pre-trained sentence vector models, we can use the new BERT-whitening to reduce their dimensions while keeping the performance essentially unchanged, and sometimes even better!</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9079.html" style="color: #005fcc;">https://kexue.fm/archives/9079</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

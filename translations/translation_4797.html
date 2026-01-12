@@ -1,0 +1,283 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/4797">Enhancing Typecho's Search Functionality</a></h1>
+
+    <p>By 苏剑林 | January 09, 2018</p>
+
+
+<p>Scientific Spaces is a blog built using the Typecho program. The sidebar provides a search function; however, Typecho's built-in search is merely a string-based exact match search. As a result, many reasonable queries fail to return results—for example, "2018天象" (2018 Astronomical Phenomena) or "新词算法" (New Word Algorithm) cannot produce results simply because those exact strings do not appear in the articles.</p>
+
+<p>This led to the idea of strengthening the search function, an improvement that some readers had previously suggested. Over the past few days, I did some research. Initially, I planned to use the Whoosh library in Python to build a full-text search engine, but I felt the workload for integration and future maintenance was too high, so I abandoned that path. Later, I thought about enhancing Typecho's own search directly. With the help of a colleague (a "big shot") at my company, I completed this improvement.</p>
+
+<p>Since the improvement is implemented by directly modifying Typecho's source files, it might be overwritten if Typecho is upgraded. Therefore, I am making a note of it here as a memo.</p>
+
+<h2>Exploration <a href="https://kexue.fm/kexue.fm#%E6%8E%A2%E7%B4%A2">#</a></h2>
+
+<p>Through searching on <a href="https://github.com/typecho/typecho/">Github</a>, I discovered that Typecho's search function is implemented in <code>var/Widget/Archive.php</code>, specifically around lines 1185–1192:</p>
+
+<pre><code> if (!$hasPushed) {
+ $searchQuery = '%' . str_replace(' ', '%', $keywords) . '%';
+ /** Search cannot enter protected archives */
+
+ $select->where('table.contents.password IS NULL')
+ ->where('table.contents.title LIKE ? OR table.contents.text LIKE ?', $searchQuery, $searchQuery)
+ ->where('table.contents.type = ?', 'post');
+ }
+</code></pre>
+
+<p>Evidently, search results are returned by matching keywords in SQL, where <code>%</code> is the SQL wildcard character. Consequently, we also find that if the search query we input contains spaces, those spaces are replaced with wildcards, making the search a bit more flexible.</p>
+
+<p>Therefore, a natural thought is that regardless of whether the query contains spaces, we can manually perform word segmentation on the query and then connect the segments with wildcards. This allows for more flexible searching even when no spaces are provided. This was indeed the first approach I practiced. However, the problem with this method is that even after segmentation, the system still requires all words to match to produce a result. If even one word has never appeared in the blog, no match will be found. To do better, one needs to consider a method where each word is a candidate rather than a requirement.</p>
+
+<h2>Practice <a href="https://kexue.fm/kexue.fm#%E5%AE%9E%E8%B7%B5">#</a></h2>
+
+<p>To achieve the aforementioned goal, I wrote an HTTP interface in Python and placed it on the server. This HTTP interface is responsible for word segmentation and generating the SQL statement. I then replaced <code>$keywords = $this->request->filter('url', 'search')->keywords;</code> with <code>$keywords = $this->request->keywords;</code> and rewrote the code mentioned above to:</p>
+
+<pre><code> if (!$hasPushed) {
+ $url = 'http://127.0.0.1:7777/token?text=' . $keywords;
+ $url = str_replace(' ', '%20', $url);
+ $searchQuery = file_get_contents($url);
+
+ /** Use simple exact match if the interface fails */
+ if (!$searchQuery) {
+ $searchQuery = 'SIGN(INSTR(table.contents.title, "' . $keywords . '"))';
+ $searchQuery = $searchQuery . ' + SIGN(INSTR(table.contents.text, "' . $keywords . '"))';
+ }
+
+ /** Search cannot enter protected archives */
+ $select->where('table.contents.password IS NULL')
+ ->where($searchQuery . ' > 0')
+ ->where('table.contents.type = ?', 'post')
+ ->order($searchQuery, Typecho_Db::SORT_DESC);
+ }
+</code></pre>
+
+<p>The interface at <code>http://127.0.0.1:7777/token?text=</code> is a Python program:</p>
+
+<pre><code>#! -*- coding:utf-8 -*-
+
+import bottle
+import jieba
+jieba.initialize()
+
+def convert(s):
+ ws = jieba.cut(s)
+ search = []
+ for i in ws:
+ search.append('2*SIGN(INSTR(table.contents.title, "%s"))'%i)
+ search.append('SIGN(INSTR(table.contents.text, "%s"))'%i)
+ return '(%s)'%(' + '.join(search))
+
+@bottle.route('/token', method='GET')
+def token_home():
+ text = bottle.request.GET.get('text')
+ if not text:
+ text = ''
+ return convert(text)
+
+if __name__ == '__main__':
+ bottle.run(host='0.0.0.0', port=7777, server='gunicorn')
+</code></pre>
+
+<p>This interface returns the scoring part of the SQL statement. The specific algorithm is: first perform word segmentation; if an article title contains a word, it adds 2 points; if the article content contains a word, it adds 1 point. Finally, a total score is calculated. The functions used, such as <code>SIGN</code> and <code>INSTR</code>, can be easily looked up. I highly recommend using <code>bottle</code>, a lightweight library, as it makes writing HTTP interfaces very convenient.</p>
+
+<p>Another modification required is: because we modified the PHP part to use <code>order($searchQuery, Typecho_Db::SORT_DESC);</code> in hopes of sorting by score in descending order. However, this will not take effect immediately because Typecho defaults to sorting everything by time in descending order. Therefore, we must also modify lines 1396–1397 of the same file, changing the original:</p>
+
+<pre><code> $select->order('table.contents.created', Typecho_Db::SORT_DESC)
+ ->page($this->_currentPage, $this->parameter->pageSize);
+</code></pre>
+
+<p>to:</p>
+
+<pre><code> if (strpos($select, 'INSTR') === false) {
+ $select->page($this->_currentPage, $this->parameter->pageSize)
+ ->order('table.contents.created', Typecho_Db::SORT_DESC);
+ } else {
+ $select->page($this->_currentPage, $this->parameter->pageSize);
+ }
+</code></pre>
+
+<p>The general idea is to check if it is a search statement. If it is, then do not sort by time; if it isn't, then sort by time. Simply removing the time-based sorting is not viable because this line also controls the homepage output, and the homepage must be sorted by time.</p>
+
+<h2>Conclusion <a href="https://kexue.fm/kexue.fm#%E7%BB%93%E8%AF%AD">#</a></h2>
+
+<p>Why use this hybrid Python and PHP solution instead of writing it purely in PHP? It's true that a pure PHP version is possible—there is indeed a PHP version of Jieba segmentation—but the most important reason is that I don't know PHP! Furthermore, the PHP version of Jieba requires additional configuration, which is a bit troublesome. Using Python is much simpler for me; if I need to make improvements, I can just modify the Python script.</p>
+
+<p>Finally, some users might worry that such a "brute-force" solution might have efficiency issues. In fact, if there were hundreds of thousands of articles, the above approach would certainly have serious efficiency problems. However, for a blog with only a few hundred articles, this issue does not need to be considered.</p>
+
+<p>At last, I can search more freely. Further suggestions are welcome.</p>
+
+<hr />
+
+<p><em><strong>For more detailed reprinting matters, please refer to:</strong></em> <a href="https://kexue.fm/archives/6508#%E6%96%87%E7%AB%A0%E5%A6%82%E4%BD%95%E8%BD%AC%E8%BD%BD/%E5%BC%95%E7%94%A8">"Scientific Spaces FAQ"</a></p>
+
+<p><strong>If you have any doubts or suggestions, please continue the discussion in the comments section below.</strong></p>
+
+<p><strong>If you found this article helpful, you are welcome to <a href="https://kexue.fm/kexue.fm#share">share</a> or <a href="https://kexue.fm/kexue.fm#pay">reward</a> it. Rewards are not for profit, but to let me know how many readers truly care about Scientific Spaces. Of course, even if you ignore it, your reading experience will not be affected. Welcome and thank you once again!</strong></p>
+
+<p>Su Jianlin. (Jan. 09, 2018). "Enhancing Typecho's Search Functionality" [Blog post]. Retrieved from <a href="translation_4797.html">https://kexue.fm/archives/4797</a></p>
+
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_4797.html" style="color: #005fcc;">https://kexue.fm/archives/4797</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

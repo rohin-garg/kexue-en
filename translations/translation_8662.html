@@ -1,0 +1,223 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/8662">Globally Shuffle Hundreds of GBs of Files with Limited Memory (Python)</a></h1>
+
+<p>By 苏剑林 | September 08, 2021</p>
+
+<p>In this article, we will tackle a programming problem:</p>
+
+<blockquote>How to globally shuffle hundreds of gigabytes of text files randomly under limited memory?</blockquote>
+
+<p>The background of the problem is quite clear: modern pre-trained models often use dozens or even hundreds of gigabytes of corpora. To enable the model to pre-train better, it is necessary to perform a global random shuffle of the training data. However, for many people, a few hundred GBs of data is often larger than their available RAM. Therefore, how to achieve a global random shuffle within limited memory is a problem worth studying.</p>
+
+<h2>Existing Tools <a id="已有工具" href="https://kexue.fm/archives/8662#%E5%B7%B2%E6%9C%89%E5%B7%A5%E5%85%B7">#</a></h2>
+
+<p>Assuming our file is stored line-by-line, meaning one line represents one sample, our goal is to randomly shuffle the file by lines. If we only have one file and its size is significantly smaller than the memory, we can use the <code>shuf</code> command that comes with Linux:</p>
+
+<pre><code>shuf input.txt -o output.txt</code></pre>
+
+<p>The reason for emphasizing that the file size must be significantly smaller than memory is that <code>shuf</code> loads the entire file into memory before shuffling, which requires us to have enough RAM. To address this, an improved version called <code>terashuf</code> (<a href="https://github.com/alexandres/terashuf">Link</a>) exists. It uses disk space to substitute for memory by splitting files, allowing us to shuffle files larger than the memory.</p>
+
+<p>It seems that <code>terashuf</code> fully meets our needs. Theoretically, it does. However, sometimes we might have many personalized requirements, such as mixing multiple files together for a random shuffle, or splitting the shuffled output into multiple files, and so on. Therefore, it is better if we can implement it ourselves in Python to handle more complex custom requirements.</p>
+
+<h2>Shuffling Algorithm <a id="打乱算法" href="https://kexue.fm/archives/8662#%E6%89%93%E4%B9%B1%E7%AE%97%E6%B3%95">#</a></h2>
+
+<p>Now let's look at what the algorithm for global shuffling looks like under limited memory. Broadly speaking, the steps are as follows:</p>
+
+<blockquote>
+1. Suppose the file has a total of $mn$ lines; split it into $m$ files, with each file containing $n$ lines;<br>
+2. Randomly shuffle the interior of each $n$-line file. Since $n$ can be arbitrarily specified, this step can be completed in memory;<br>
+3. Read the first line of each file (obtaining $m$ lines of data) and write these $m$ lines randomly into the output file;<br>
+4. Sequentially read the $2, \cdots, n$ lines of each file and repeat step 3.
+</blockquote>
+
+<p>Simply put, you first shuffle vertically and then shuffle horizontally to get a sufficiently shuffled result that approaches a global shuffle, as shown in the figure below:</p>
+
+<p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2021/09/1660682245.png" alt="Shuffle Diagram" width="500" /><br>
+Left: Original data; Middle: Internal vertical shuffle for each column; Right: Based on the vertical shuffle, each row is horizontally shuffled.</p>
+
+<p>Note that this algorithm only guarantees a result that is as "messy" as possible, but it cannot guarantee that every possible permutation can occur. For example, the first two samples of the output cannot both happen to be the first two samples of the first file. To truly achieve equal probability for all permutations, we would need to sample based on the remaining number of lines in each file at every step, rather than reading the $k$-th line of every file at the same time and then reading the $(k+1)$-th line. However, sampling based on probability at every step increases the sampling cost, and for practical use, the difference in effect is not significant, so it is not particularly necessary.</p>
+
+<p>In practice, when splitting files by $n$ lines per file, the last file might have fewer than $n$ lines. If we don't care about this small detail, we can still follow the process above. When the last file finishes reading first, just continue returning empty lines; the whole process will not error out. Of course, this will cause the samples from the last file to be ordered slightly towards the front. For readers with "perfectionism" who find this unacceptable, you can consider introducing rejection sampling when reading the last file, with a rejection rate of $1-\frac{\text{remaining lines in the last file}}{\text{remaining lines in each of the others}}$.</p>
+
+<p>Reference Implementation (without rejection sampling):</p>
+
+<blockquote><strong>Github: <a href="https://github.com/bojone/shuffle">https://github.com/bojone/shuffle</a></strong></blockquote>
+
+<h2>Performance Test <a id="性能测试" href="https://kexue.fm/archives/8662#%E6%80%A7%E8%83%BD%E6%B5%8B%E8%AF%95">#</a></h2>
+
+<p>If it is just a combination of merging, shuffling, and splitting operations, it can actually be achieved using shell commands plus <code>terashuf</code>. The approximate command would be:</p>
+
+<pre><code>cat corpus/*.json | TMPDIR=/root/tmp MEMORY=20 ./terashuf | split -l 100000 -a 5 -d - corpus-</code></pre>
+
+<p>By comparison, in the same environment, for files with a total size of about 280GB, the total time for shuffling using <code>terashuf</code> is roughly 2.7 hours, while the Python code written by the author takes about 3.5 hours. It seems the Python code is not that much slower; it is acceptable, after all, <code>terashuf</code> is written in C++, and it's not embarrassing for Python to be slower than C++.</p>
+
+<p>In most cases, the bottleneck for this global shuffling algorithm is the disk I/O speed. Therefore, multi-processing/multi-threading are generally not particularly helpful.</p>
+
+<h2>Summary <a id="本文小结" href="https://kexue.fm/archives/8662#%E6%9C%AC%E6%96%87%E5%B0%8F%E7%BB%93">#</a></h2>
+
+<p>This article briefly introduced the idea of using disk space to perform global shuffling of large files under limited memory and provided a Python implementation. Readers in need can derive codes for more complex requirements themselves.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8662.html" style="color: #005fcc;">https://kexue.fm/archives/8662</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

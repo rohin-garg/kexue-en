@@ -1,0 +1,380 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    tags: 'ams',
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    ignoreHtmlClass: 'tex2jax_ignore',
+    processHtmlClass: 'tex2jax_process'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/7359">Extending "Softmax + Cross Entropy" to Multi-label Classification</a></h1>
+    <p>By 苏剑林 | April 25, 2020</p>
+
+    <p>
+        (Note: The relevant content of this article has been organized into a paper <a href="https://arxiv.org/abs/2009.14119">"ZLPR: A Novel Loss for Multi-label Classification"</a>. If you need to cite this, you can cite the English paper directly. Thank you.)
+    </p>
+
+    <p>
+        Generally speaking, when dealing with conventional multi-class classification problems, we use a fully connected layer at the end of the model to output scores for each class, then use softmax activation and cross-entropy as the loss function. In this article, we attempt to extend the "Softmax + Cross Entropy" scheme to multi-label classification scenarios, hoping to obtain a loss function for multi-label classification tasks that does not require special adjustment of class weights or thresholds.
+    </p>
+
+    <h3>Category Imbalance: From Single-label to Multi-label</h3>
+
+    <p>
+        Generally, multi-class classification refers to single-label classification, i.e., selecting $1$ target category from $n$ candidate categories. Assuming the scores for each class are $s_1, s_2, \dots, s_n$ and the target class is $t \in \{1, 2, \dots, n\}$, the loss used is:
+    </p>
+
+    \begin{equation}-\log \frac{e^{s_t}}{\sum\limits_{i=1}^n e^{s_i}}= - s_t + \log \sum\limits_{i=1}^n e^{s_i}\label{eq:log-softmax}\end{equation}
+
+    <p>
+        The optimization direction of this loss is to make the score of the target class $s_t$ the maximum among $s_1, s_2, \dots, s_n$. Regarding softmax-related content, you can also refer to articles like <a href="translation_3290.html">"Seeking a Smooth Maximum Function"</a> and <a href="translation_6620.html">"Chat on Function Smoothing: Differentiable Approximation of Non-differentiable Functions"</a>.
+    </p>
+
+    <p>
+        Now we move to the multi-label classification problem, i.e., selecting $k$ target categories from $n$ candidate categories. In this case, a naive approach is to use sigmoid activation, transforming it into $n$ binary classification problems, and using the sum of binary cross-entropy as the loss. Obviously, when $n \gg k$, this approach faces serious category imbalance problems, requiring balancing strategies such as manually adjusting the weights of positive and negative samples, Focal Loss, etc. After training is completed, it is also necessary to further determine the optimal threshold based on a validation set.
+    </p>
+
+    <p>
+        At this point, a natural confusion arises: <b>Why does "choose $k$ from $n$" require so much more work than "choose $1$ from $n$"?</b>
+    </p>
+
+    <p>
+        I believe this is quite unscientific. After all, intuitively, "choose $k$ from $n$" should just be a natural extension of "choose $1$ from $n$"; it shouldn't require significantly more effort. Even if "choose $k$ from $n$" is more complex, the difficulty should transition gradually. But if it turns into multiple binary classifications, "choose $1$ from $n$" actually becomes the most difficult because the category imbalance is at its most extreme. Formally, single-label classification is easier than multi-label classification because single-label has "Softmax + Cross Entropy" available, which does not suffer from category imbalance problems, whereas the "Sigmoid + Cross Entropy" in multi-label classification does.
+    </p>
+
+    <p>
+        Therefore, the ideal solution should be to extend "Softmax + Cross Entropy" to multi-label classification.
+    </p>
+
+    <h3>A Long Search Finally Yields Results</h3>
+
+    <p>
+        To consider this extension, I made several attempts and rejected many results, finally determining a relatively elegant scheme: constructing a combinatorial form of softmax as an extension of single-label softmax. In this part, we will first assume $k$ is a fixed constant, then discuss a scheme for automatically determining $k$ in general cases, eventually arriving at an effective extension form.
+    </p>
+
+    <h4>Combinatorial Softmax</h4>
+
+    <p>
+        First, we consider a scenario where $k$ is a fixed constant, which means that during prediction, we directly output the $k$ classes with the highest scores. What about training? As a natural extension of softmax, we can consider the following as the loss:
+    </p>
+
+    \begin{equation}-\log \frac{e^{s_{t_1}+s_{t_2}+\dots+s_{t_k}}}{\sum\limits_{1\leq i_1 < i_2 < \cdots < i_k\leq n}e^{s_{i_1}+s_{i_2}+\dots+s_{i_k}}}=\log Z_k - (s_{t_1}+s_{t_2}+\dots+s_{t_k})\end{equation}
+
+    <p>
+        Where $t_1, t_2, \dots, t_k$ are the $k$ target labels, and $Z_k = \sum\limits_{1\leq i_1 < i_2 < \cdots < i_k\leq n}e^{s_{i_1}+s_{i_2}+\dots+s_{i_k}}$ is the partition function. Clearly, the above formula is a softmax constructed using the total score of any $k$ categories $s_{i_1}+s_{i_2}+\dots+s_{i_k}$ as the basic unit, so it is a reasonable extension of single-label softmax. Or it can be understood as still being a single-label classification problem, but it is a "choose $1$ from $C_n^k$" problem.
+    </p>
+
+    <p>
+        The difficult part of this scheme is the calculation of $Z_k$, which is the sum of the exponentials of $C_n^k$ terms. However, we can use <a href="https://en.wikipedia.org/wiki/Newton%27s_sums">Newton's identities</a> to help us calculate it recursively. Let $S_k = \sum_{i=1}^n e^{k s_i}$, then:
+    </p>
+
+    \begin{equation}\begin{aligned} 
+    Z_1 =&\, S_1\\ 
+    2Z_2 =&\, Z_1 S_1 - S_2\\ 
+    3Z_3 = &\, Z_2 S_1 - Z_1 S_2 + S_3\\ 
+    \vdots\\ 
+    k Z_k = &\, Z_{k-1} S_1 - Z_{k-2} S_2 + \dots + (-1)^{k-2} Z_1 S_{k-1} + (-1)^{k-1} S_k 
+    \end{aligned}\end{equation}
+
+    <p>
+        Therefore, to calculate $Z_k$, we only need to calculate $k$ recursive steps, which can be computed within a reasonable amount of time. In the prediction stage, the $k$ classes with the highest scores are output directly.
+    </p>
+
+    <h4>Automatically Determining the Threshold</h4>
+
+    <p>
+        What was discussed above is a multi-label classification problem with a fixed number of outputs, but the target label count in general multi-label classification is uncertain. To this end, we define a maximum target label count $K \geq k$ and add a class $0$ as a padding label. At this time, the loss becomes:
+    </p>
+
+    \begin{equation}\log \overline{Z}_K - (s_{t_1}+s_{t_2}+\dots+s_{t_k}+\underbrace{s_0+\dots+s_0}_{K-k \text{ terms}})\end{equation}
+
+    <p>And</p>
+
+    \begin{equation}\begin{aligned} 
+    \overline{Z}_K =&\, \sum\limits_{1\leq i_1 < i_2 < \cdots < i_K\leq n}e^{s_{i_1}+s_{i_2}+\dots+s_{i_K}} + \sum\limits_{0 = i_1 = \dots = i_j < i_{j+1} < \cdots < i_K\leq n}e^{s_{i_1}+s_{i_2}+\dots+s_{i_K}}\\ 
+    =&\, Z_K + e^{s_0} \overline{Z}_{K-1} 
+    \end{aligned}\end{equation}
+
+    <p>
+        It looks complicated, but it is actually very simple. It still uses the total score of $K$ categories as the basic unit, but it allows and only allows class $0$ to appear repeatedly. During prediction, we still output the $K$ categories with the highest scores, but allow repeating class $0$. The equivalent effect is: <b>using $s_0$ as a threshold, only output categories with scores greater than $s_0$</b>. The final formula shows that $\overline{Z}_K$ can also be calculated recursively, so implementation is not difficult.
+    </p>
+
+    <h3>Suddenly, Looking Back...</h3>
+
+    <p>
+        It seemed that the "long search" finally bore fruit: the theory was there, and the implementation was not difficult. The next step seemed to be conducting experiments to see the results. If the results were good, I could even consider publishing a paper! It looked like a bright future. However...
+    </p>
+
+    <p>
+        Fortunately or unfortunately, while verifying its effectiveness, I consulted some senior experts. Prompted by them, I revisited the <a href="https://arxiv.org/abs/2002.10857">Circle Loss</a> paper, which I hadn't looked at closely before. I saw its unified loss form (formula (1) in the original paper) and realized that this unified form contained a much simpler extension scheme.
+    </p>
+
+    <p>
+        Thus, the unfortunate part is that such a simpler extension already existed, so no matter how much searching I did, it had lost much of its significance. The fortunate part is that I found this better scheme after all; otherwise, if I had rushed to publish the previous scheme as an article, only to find it wasn't as simple or effective as existing ones, that would have been quite embarrassing.
+    </p>
+
+    <h4>A Unified Loss Form</h4>
+
+    <p>
+        Let's look at the single-label classification cross-entropy $\eqref{eq:log-softmax}$ in another form:
+    </p>
+
+    \begin{equation}-\log \frac{e^{s_t}}{\sum\limits_{i=1}^n e^{s_i}}=-\log \frac{1}{\sum\limits_{i=1}^n e^{s_i-s_t}}=\log \sum\limits_{i=1}^n e^{s_i-s_t}=\log \left(1 + \sum\limits_{i=1,i\neq t}^n e^{s_i-s_t}\right)\end{equation}
+
+    <p>
+        Why is this loss effective? From the articles <a href="translation_3290.html">"Seeking a Smooth Maximum Function"</a> and <a href="translation_6620.html">"Chat on Function Smoothing"</a>, we know that $\text{logsumexp}$ is actually a smooth approximation of $\max$. So we have:
+    </p>
+
+    \begin{equation}\log \left(1 + \sum\limits_{i=1,i\neq t}^n e^{s_i-s_t}\right)\approx \max\begin{pmatrix}0 \\ s_1 - s_t \\ \vdots \\ s_{t-1} - s_t \\ s_{t+1} - s_t \\ \vdots \\ s_n - s_t\end{pmatrix}\end{equation}
+
+    <p>
+        The feature of this loss is that all non-target category scores $\{s_1, \dots, s_{t-1}, s_{t+1}, \dots, s_n\}$ are compared pairwise with the target category score $\{s_t\}$. The maximum of their differences must be as small as possible below zero, thus achieving the effect where "the target category score is greater than the score of every non-target category."
+    </p>
+
+    <p>
+        So, if there is a multi-label classification scenario with multiple target categories, we also hope that "<b>each target category score is not less than each non-target category score</b>." Thus, the following form of loss becomes obvious:
+    </p>
+
+    \begin{equation}\log \left(1 + \sum\limits_{i\in\Omega_{neg},j\in\Omega_{pos}} e^{s_i-s_j}\right)=\log \left(1 + \sum\limits_{i\in\Omega_{neg}} e^{s_i}\sum\limits_{j\in\Omega_{pos}} e^{-s_j}\right)\label{eq:unified}\end{equation}
+
+    <p>
+        Where $\Omega_{pos}, \Omega_{neg}$ are the sets of positive and negative category indices for the sample, respectively. The form of this loss is easy to understand: if we want $s_i < s_j$, we add $e^{s_i - s_j}$ to the $\log$. If we add a scaling factor $\gamma$ and a margin $m$, we get the unified form from the Circle Loss paper:
+    </p>
+
+    \begin{equation}\log \left(1 + \sum\limits_{i\in\Omega_{neg},j\in\Omega_{pos}} e^{\gamma(s_i-s_j + m)}\right)=\log \left(1 + \sum\limits_{i\in\Omega_{neg}} e^{\gamma (s_i + m)}\sum\limits_{j\in\Omega_{pos}} e^{-\gamma s_j}\right)\end{equation}
+
+    <p>
+        As a side note, the above is formula (1) in the Circle Loss paper, but formula (1) is not actually called Circle Loss; formula (4) is. However, I believe formula (1) is the most interesting part of the entire paper.
+    </p>
+
+    <h3>Application to Multi-label Classification</h3>
+
+    <p>
+        $\gamma$ and $m$ are generally considerations in metric learning, so here we still only care about formula $\eqref{eq:unified}$. If $k$ is fixed in "choose $k$ from $n$" multi-label classification, formula $\eqref{eq:unified}$ can be used directly as the loss, and the $k$ categories with the largest scores can be output during prediction.
+    </p>
+
+    <p>
+        For multi-label classification where $k$ is not fixed, we need a threshold to determine which categories to output. To this end, we similarly introduce an additional class $0$. We hope target category scores are all greater than $s_0$ and non-target category scores are all less than $s_0$. As mentioned before, "if we hope $s_i < s_j$, we add $e^{s_i - s_j}$ to the $\log$," so formula $\eqref{eq:unified}$ now becomes:
+    </p>
+
+    \begin{equation}\begin{aligned} 
+    &\log \left(1 + \sum\limits_{i\in\Omega_{neg},j\in\Omega_{pos}} e^{s_i-s_j}+\sum\limits_{i\in\Omega_{neg}} e^{s_i-s_0}+\sum\limits_{j\in\Omega_{pos}} e^{s_0-s_j}\right)\\ 
+    =&\log \left(e^{s_0} + \sum\limits_{i\in\Omega_{neg}} e^{s_i}\right) + \log \left(e^{-s_0} + \sum\limits_{j\in\Omega_{pos}} e^{-s_j}\right)\\ 
+    \end{aligned}\end{equation}
+
+    <p>If the threshold is specified as 0, it simplifies to:</p>
+
+    \begin{equation}\log \left(1 + \sum\limits_{i\in\Omega_{neg}} e^{s_i}\right) + \log \left(1 + \sum\limits_{j\in\Omega_{pos}} e^{-s_j}\right)\label{eq:final}\end{equation}
+
+    <p>
+        This is the final loss form we obtain—a natural and concise extension of "softmax + cross entropy" for multi-label classification tasks. It does not suffer from category imbalance because it does not transform multi-label classification into multiple binary classification problems. Instead, it turns it into pairwise comparisons between target category scores and non-target category scores, and automatically balances the weight of each term thanks to the properties of $\text{logsumexp}$.
+    </p>
+
+    <p>Here is a reference implementation in Keras:</p>
+
+<pre><code>def multilabel_categorical_crossentropy(y_true, y_pred):
+    """Multi-label cross-entropy
+    Note: y_true and y_pred have the same shape. y_true contains 0 or 1,
+    where 1 indicates the class is a target class and 0 otherwise.
+    Warning: Ensure that y_pred values are real numbers. In general,
+    y_pred should not have an activation function, especially not 
+    sigmoid or softmax! In the prediction stage, output classes 
+    where y_pred > 0.
+    """
+    y_pred = (1 - 2 * y_true) * y_pred
+    y_pred_neg = y_pred - y_true * 1e12
+    y_pred_pos = y_pred - (1 - y_true) * 1e12
+    zeros = K.zeros_like(y_pred[..., :1])
+    y_pred_neg = K.concatenate([y_pred_neg, zeros], axis=-1)
+    y_pred_pos = K.concatenate([y_pred_pos, zeros], axis=-1)
+    neg_loss = K.logsumexp(y_pred_neg, axis=-1)
+    pos_loss = K.logsumexp(y_pred_pos, axis=-1)
+    return neg_loss + pos_loss
+</code></pre>
+
+    <h3>Conclusion</h3>
+
+    <p>
+        The final conclusion is formula $\eqref{eq:final}$, which is the unified loss for multi-label classification problems sought in this article. Everyone is welcome to test it and report the results. I have experimented with several multi-label classification tasks, and they all matched the performance of binary classification schemes under fine-tuned weights.
+    </p>
+
+    <p>
+        It should be noted that in addition to standard multi-label classification problems, some common task formats can also be considered as multi-label classification, such as sequence labeling based on 0/1 tagging. A typical example is the author's <a href="translation_7161.html">"Semi-Pointer Semi-Tagging" design</a>. Therefore, from this perspective, there are many tasks that can be regarded as multi-label classification to test formula $\eqref{eq:final}$. I indeed tried $\eqref{eq:final}$ in previous triplet extraction examples like <code>task_relation_extraction.py</code> and achieved results <a href="https://github.com/bojone/bert4keras/blob/master/examples/task_relation_extraction.py">consistent with the previous ones</a>.
+    </p>
+
+    <p>
+        Of course, finally, it must be stated that although formula $\eqref{eq:final}$ can theoretically solve many problems automatically as a multi-label classification loss function, there is ultimately no absolutely perfect solution that guarantees improvement. Therefore, when you use it to replace your original multi-label classification scheme, there is no guarantee that there will be a boost, especially if you have already handled the category imbalance problem through fine-tuning weights. The gain from formula $\eqref{eq:final}$ may be very limited. After all, the original intention of formula $\eqref{eq:final}$ is to allow us to achieve most of the effect without excessive parameter tuning.
+    </p>
+
+    <hr />
+    <p>
+        Original link: <a href="translation_7359.html">https://kexue.fm/archives/7359</a>
+    </p>
+
+    <p>If you need to cite this article, please refer to:</p>
+    <p>苏剑林. (Apr. 25, 2020). 《将“Softmax+交叉熵”推广到多标签分类问题 》[Blog post]. Retrieved from https://kexue.fm/archives/7359</p>
+
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7359.html" style="color: #005fcc;">https://kexue.fm/archives/7359</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

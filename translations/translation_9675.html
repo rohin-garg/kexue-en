@@ -1,0 +1,324 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    macros: {
+      bm: ["\\boldsymbol{#1}", 1]
+    }
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of Array.from(document.querySelectorAll('script[type^="math/tex"]'))) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9675">Transformer Path to Upgrade: 10. RoPE is a $eta$-base Encoding</a></h1>
+
+<p>By 苏剑林 | July 6, 2023</p>
+
+<p>For readers concerned with how to extend the Context length of LLMs (Large Language Models), last week was undoubtedly an exciting week, with the open-source community continuously producing heartening results. First, the user <a href="https://www.reddit.com/user/kaiokendev">@kaiokendev</a> experimented with a "Positional Linear Interpolation" scheme in his project <a href="https://kaiokendev.github.io/til#extending-context-to-8k">SuperHOT</a>, showing that with very little fine-tuning on long texts, existing LLMs can handle a Long Context. Almost simultaneously, Meta proposed the same idea and published it with rich experimental results in the paper <a href="https://papers.cool/arxiv/2306.15595">"Extending Context Window of Large Language Models via Positional Interpolation"</a>. The surprises did not stop there—subsequently, the user <a href="https://www.reddit.com/user/bloc97">@bloc97</a> proposed <a href="https://www.reddit.com/r/LocalLLaMA/comments/14lz7j5/ntkaware_scaled_rope_allows_llama_models_to_have/">NTK-aware Scaled RoPE</a>, achieving the effect of extending the Context length without any fine-tuning!</p>
+
+<p>All these developments, especially NTK-aware Scaled RoPE, have forced me to re-think the meaning of <a href="translation_8265.html">RoPE</a>. After analysis, I discovered that the construction of RoPE can be viewed as a $\beta$-base encoding. From this perspective, these recent advances in the open-source community can be understood as different ways of expanding base encoding.</p>
+
+<h2>Base Representation</h2>
+
+<p>Suppose we have an integer $n$ less than 1000 (excluding 1000) that we want to input into a model as a condition. Which method would be best?</p>
+
+<p>The simplest idea is to input it directly as a one-dimensional floating-point vector. However, a range from 0 to 999 involves a span of nearly a thousand; for gradient-based optimizers, it is not easy to optimize. What about scaling it to between 0 and 1? That’s not great either, because the gap between adjacent numbers changes from 1 to 0.001, making it difficult for the model and the optimizer to distinguish adjacent digits. Generally speaking, gradient-based optimizers are somewhat "fickle"; they can only handle inputs that are neither too large nor too small—problems arise when values are extreme.</p>
+
+<p>Therefore, to avoid this problem, we need to devise a new input method. When we don't know how to let a machine handle it, we might as well think about how humans handle it. For an integer, like 759, this is a three-digit number in base 10, where each digit is 0–9. Since we ourselves use base 10 to represent numbers, why not input the base-10 representation directly into the model? That is, we input the integer $n$ as a three-dimensional vector $[a, b, c]$, where $a, b, c$ are the hundreds, tens, and units digits of $n$, respectively. In this way, we have reduced the span of the numbers without shrinking the gap between adjacent numbers, at the cost of increasing the input dimension—fortunately, neural networks are good at handling high-dimensional data.</p>
+
+<p>If we want to further reduce the span of the numbers, we can further reduce the base of the notation, such as using base 8, base 6, or even base 2, at the cost of further increasing the input dimension.</p>
+
+<h2>Direct Extrapolation</h2>
+
+<p>Suppose we trained a model using a three-dimensional base-10 representation, and the model performance is quite good. Then a new requirement suddenly arises: increase the upper limit of $n$ to 2000. How should we handle this?</p>
+
+<p>If we still use a base-10 representation for the vector input, then the input would now be a four-dimensional vector. However, the original model was designed and trained for three-dimensional vectors, so the model cannot handle the new dimension. Some readers might ask: "Why not pre-allocate enough dimensions in advance?" Yes, we could pre-allocate a few extra dimensions, set them to 0 during the training phase, and change them to other numbers during the inference phase. This is Extrapolation.</p>
+
+<p>However, the dimensions pre-allocated during the training phase are always 0. If they are changed to other numbers during inference, the effect may not be good because the model does not necessarily have the ability to adapt to situations it has never been trained on. In other words, because the training data for certain dimensions is insufficient, direct extrapolation usually leads to a serious degradation in model performance.</p>
+
+<h2>Linear Interpolation</h2>
+
+<p>Thus, someone thought of changing extrapolation to Interpolation. Simply put, this compresses the range of 2000 into the range of 1000. For example, by dividing by 2, 1749 becomes 874.5, which is then input into the original model as a three-dimensional vector $[8, 7, 4.5]$. From an absolute value perspective, the new $[7, 4, 9]$ actually corresponds to 1498, which is twice the original value—the mapping method is inconsistent. From a relative value perspective, the original gap between adjacent numbers was 1, and now it is 0.5; the last dimension becomes more "crowded." Therefore, after making interpolation modifications, fine-tuning is usually required so that the model can re-adapt to the crowded mapping relationship.</p>
+
+<p>Of course, some readers might say that the extrapolation scheme can also be fine-tuned. Yes, but the number of steps required for fine-tuning in the interpolation scheme is much smaller. This is because in many scenarios (such as position encoding), relative magnitude (or ordinal information) is more important. In other words, the model only needs to know that 874.5 is larger than 874; it doesn't need to know exactly how large the number it actually represents is. Since the original model has already learned that 875 is larger than 874, and the model itself has a certain generalization ability, it is not too difficult to learn that 874.5 is larger than 874.</p>
+
+<p>However, the interpolation scheme is not perfect. When the processing range increases further, the adjacent difference becomes even smaller, and this shrinkage is concentrated in the units place, while the remaining hundreds and tens places still maintain an adjacent difference of 1. In other words, the interpolation method makes the distribution across different dimensions inconsistent, making each dimension unequal, which increases the difficulty for the model to learn further.</p>
+
+<h2>Base Conversion</h2>
+
+<p>Is there a scheme that does not require adding new dimensions and can maintain the adjacent gap? Yes, one we might be very familiar with: base conversion! A three-digit base-10 encoding can represent 0–999. What if it's base 16? It can represent a maximum of $16^3 - 1 = 4095 > 1999$. Therefore, we only need to convert to base 16, so 1749 becomes $[6, 13, 5]$, and a three-dimensional vector can cover the target range. The cost is that the numbers in each dimension change from 0–9 to 0–15.</p>
+
+<p>If you think about it carefully, this is truly a brilliant idea. As just mentioned, the scenarios we are concerned with mainly utilize ordinal information. The originally trained model has already learned that $875 > 874$, and in base 16, $875 > 874$ still holds—the comparison rules are exactly the same (the model has no idea what base you are using for the input). The only concern is whether the model can still compare normally once each dimension exceeds 9 (i.e., 10–15), but in fact, models generally have a certain generalization ability, so extrapolating each dimension slightly is fine. Therefore, this idea of base conversion might even be effective without fine-tuning the original model! Furthermore, to narrow the range of extrapolation even more, we can use base $\lceil \sqrt[3]{2000} \rceil = 13$ instead of base 16.</p>
+
+<p>Next, we will see that this idea of base conversion actually corresponds to the NTK-aware scaled RoPE mentioned at the beginning of the article!</p>
+
+<h2>Position Encoding</h2>
+
+<p>To establish the connection between them, we first need to establish the following result:</p>
+
+<blockquote>The Rotary Positional Encoding (RoPE) of position $n$ is, in essence, a $\beta$-base encoding of the number $n$!</blockquote>
+
+<p>This may seem surprising because the two appear quite different. But in fact, the operations of both share the same key properties. To understand this, let's first recall a base-10 number $n$. If we want to find the $m$-th digit of its $\beta$-base representation (counting from right to left), the method is:
+\begin{equation}\left\lfloor\frac{n}{\beta^{m-1}}\right\rfloor\bmod\beta\label{eq:mod}\end{equation}
+That is, first divide by the $(m-1)$-th power of $\beta$, and then find the remainder (modulo). Now let's recall RoPE; its construction basis is <a href="translation_8231.html">Sinusoidal Position Encoding</a>, which can be rewritten as:
+\begin{equation}\left[\cos\left(\frac{n}{\beta^0}\right),\sin\left(\frac{n}{\beta^0}\right),\cos\left(\frac{n}{\beta^1}\right),\sin\left(\frac{n}{\beta^1}\right),\cdots,\cos\left(\frac{n}{\beta^{d/2-1}}\right),\sin\left(\frac{n}{\beta^{d/2-1}}\right)\right]\label{eq:sinu}\end{equation}
+where $\beta=10000^{2/d}$. Now, comparing with equation $\eqref{eq:mod}$, doesn't equation $\eqref{eq:sinu}$ also have the exact same $\frac{n}{\beta^{m-1}}$ term? As for the modulo operation, its most important characteristic is periodicity. Aren't $\cos$ and $\sin$ in equation $\eqref{eq:sinu}$ also periodic functions? Therefore, aside from the insignificant difference of the floor function, RoPE (or Sinusoidal position encoding) is actually a $\beta$-base encoding of the number $n$!</p>
+
+<p>After establishing this connection, the expansion schemes for the integer $n$ discussed in the previous sections can correspond to the various developments mentioned at the beginning of the article. Among them, the direct extrapolation scheme is to change nothing; the interpolation scheme is to replace $n$ with $n/k$, where $k$ is the factor by which the range is expanded. This is the Positional Interpolation experimented with in Meta's paper, where experimental results also proved that extrapolation indeed requires more fine-tuning steps than interpolation.</p>
+
+<p>As for base conversion, if we want to expand the representation range by $k$ times, then the original base $\beta$ must be expanded to at least base $\beta (k^{2/d})$ (although equation $\eqref{eq:sinu}$ is a $d$-dimensional vector, $\cos$ and $\sin$ appear in pairs, so it is equivalent to a $d/2$-digit $\beta$-base representation; hence we take the $(d/2)$-th root instead of the $d$-th root), or equivalently, the original base $10000$ is replaced with $10000k$. This is basically <a href="https://www.reddit.com/r/LocalLLaMA/comments/14lz7j5/ntkaware_scaled_rope_allows_llama_models_to_have/">NTK-aware Scaled RoPE</a>. As discussed earlier, because position encoding relies more on ordinal information, and base conversion basically does not change the rules for comparing order, NTK-aware Scaled RoPE can achieve good results on a longer Context even without fine-tuning.</p>
+
+<h2>Tracing to the Source</h2>
+
+<p>Some readers might be curious: what does this have to do with NTK? NTK stands for "Neural Tangent Kernel," which we briefly covered in <a href="translation_8009.html">"Optimization Algorithms from a Dynamical Perspective (7): SGD ≈ SVM?"</a>. The relationship between the above results and NTK stems more from the proposer's academic background. The proposer is familiar with results such as <a href="https://papers.cool/arxiv/2006.10739">"Fourier Features Let Networks Learn High Frequency Functions in Low Dimensional Domains,"</a> which uses NTK-related results to prove that neural networks cannot directly learn high-frequency signals. The solution is to transform them into Fourier features—whose form is similar to the Sinusoidal position encoding in equation $\eqref{eq:mod}$.</p>
+
+<p>Therefore, based on the intuition of NTK-related results, the proposer derived NTK-aware Scaled RoPE. I consulted the proposer about his derivation; it is actually quite simple—it combines extrapolation and interpolation: high-frequency extrapolation and low-frequency interpolation. Specifically, the lowest frequency term in equation $\eqref{eq:sinu}$ is $\frac{n}{\beta^{d/2-1}}$. Introducing a parameter $\lambda$, it becomes $\frac{n}{(\beta\lambda)^{d/2-1}}$, and we set it to be consistent with interpolation, i.e.:
+\begin{equation}\frac{n}{(\beta\lambda)^{d/2-1}} = \frac{n/k}{\beta^{d/2-1}}\end{equation}
+Then we solve for $\lambda=k^{2/(d-2)}$. As for the highest frequency term $\frac{n}{\beta}$, after introducing $\lambda$ it becomes $\frac{n}{\beta\lambda}$. Since $d$ is usually very large, $\lambda$ is very close to 1, so it is still close to $\frac{n}{\beta}$, which is equivalent to extrapolation.</p>
+
+<p>Thus, this scheme simply and ingeniously combines extrapolation and interpolation. Additionally, since $d$ is relatively large (64 for BERT, 128 for LLaMA), $k^{2/(d-2)}$ is not very different from $k^{2/d}$, so it is basically consistent with the $k^{2/d}$ solution I proposed based on the base-encoding idea. Furthermore, from the proposer's idea, any scheme that can achieve "high-frequency extrapolation, low-frequency interpolation" is acceptable, not just the scheme that introduces $\lambda$ mentioned above; readers can try this out for themselves.</p>
+
+<h2>Personal Testing</h2>
+
+<p>As a scheme that claims to increase the Context length of LLMs without fine-tuning, when I first saw NTK-aware Scaled RoPE, I was also shocked and couldn't wait to test it. After all, based on the experience from <a href="translation_9603.html">"Transformer Path to Upgrade: 9. A New Idea for Global Length Extrapolation,"</a> many mainstream schemes failed on the "GAU + Post Norm" combination I prefer. So how does this method fare?</p>
+
+<p>When $k=8$, the comparison results are as follows (for the difference between "repeated" and "non-repeated," please refer to <a href="https://kexue.fm/archives/9603#%E5%AE%9E%E9%AA%8C%E7%BB%93%E6%9E%9C">here</a>):</p>
+
+<table border="1" style="width:100%; text-align:center; border-collapse: collapse;">
+<thead>
+<tr>
+<th>Test Length</th>
+<th>512 (Train)</th>
+<th>4096 (Repeated)</th>
+<th>4096 (Non-repeated)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Baseline</td>
+<td>49.41%</td>
+<td>24.17%</td>
+<td>23.16%</td>
+</tr>
+<tr>
+<td>Baseline-$\log n$</td>
+<td>49.40%</td>
+<td>24.60%</td>
+<td>24.02%</td>
+</tr>
+<tr>
+<td>PI-RoPE</td>
+<td>49.41%</td>
+<td>15.04%</td>
+<td>13.54%</td>
+</tr>
+<tr>
+<td>PI-RoPE-$\log n$</td>
+<td>49.40%</td>
+<td>14.99%</td>
+<td>16.51%</td>
+</tr>
+<tr>
+<td>NTK-RoPE</td>
+<td>49.41%</td>
+<td>51.28%</td>
+<td>39.27%</td>
+</tr>
+<tr>
+<td>NTK-RoPE-$\log n$</td>
+<td>49.40%</td>
+<td>61.71%</td>
+<td>43.75%</td>
+</tr>
+</tbody>
+</table>
+
+<p>All results reported above are <strong>without</strong> long-text fine-tuning. Baseline refers to extrapolation; PI (Positional Interpolation) means modifying the Baseline to use interpolation; NTK-RoPE refers to modifying the Baseline to use NTK-aware Scaled RoPE. The options with $\log n$ refer to including the scale from <a href="translation_8823.html">"From Entropy Invariance to the Scale Operation of Attention"</a> during pre-training. I included this variant because I felt that although NTK-RoPE solves the length generalization problem of RoPE, it does not solve the problem of attention dispersion.</p>
+
+<p>The experimental results in the table fully meet expectations:</p>
+
+<blockquote>1. Direct extrapolation doesn't work very well;<br>
+2. Interpolation performed poorly without fine-tuning;<br>
+3. NTK-RoPE achieved non-trivial (though slightly degraded) extrapolation results without fine-tuning;<br>
+4. Adding $\log n$ to concentrate attention indeed helps.</blockquote>
+
+<p>Therefore, NTK-RoPE has successfully become the second scheme I have tested that can extend the Context length of LLMs without fine-tuning (the first is naturally <a href="translation_9617.html">NBCE</a>). Once again, a salute to the proposer's exceptional insight! Even better, NTK-RoPE performs significantly better on "repeated" extrapolation than on "non-repeated" extrapolation, indicating that the global dependence is preserved after this modification, rather than simply localizing attention.</p>
+
+<h2>Final Remarks</h2>
+
+<p>This article interprets RoPE from the perspective of $\beta$-base encoding and uses this to introduce some current developments in the open-source community regarding Long Context, including a modification scheme that increases Context length without fine-tuning.</p>
+
+<p>In just one week, the progress on Long Context in the open-source community has been overwhelming and gratifying, so much so that user <a href="https://www.reddit.com/r/LocalLLaMA/comments/14mrgpr/comment/jq3jqju/?utm_source=share&utm_medium=web2x&context=3">@ironborn123</a> commented:</p>
+
+<blockquote>Last week looked like the revenge of the interpolators :) ~~Open~~ ClosedAI better watch out.</blockquote>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9675.html" style="color: #005fcc;">https://kexue.fm/archives/9675</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

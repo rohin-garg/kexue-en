@@ -1,0 +1,257 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']},
+    tags: 'ams'
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/7912">Playing with the Currently Largest Chinese GPT-2 Model (bert4keras)</a></h1>
+    <p>By 苏剑林 | November 20, 2020</p>
+
+    <p>I believe many readers have seen the "Qingyuan Plan" launched by Tsinghua University and the Beijing Academy of Artificial Intelligence (BAAI) over the past few days (related link: <a href="https://mp.weixin.qq.com/s/oI2Ak-M57MSuycLVpVEiHw"><i>"Chinese version of GPT-3? BAAI Releases Qingyuan CPM — A Large-scale Pre-trained Model Centered on Chinese"</i></a>). It open-sourced CPM-LM (2.6 billion parameters), currently the largest Chinese GPT-2 model. It is said that in the future, they will open-source models with 20 billion or even 100 billion parameters to create a "Chinese version of GPT-3."</p>
+
+    <p><img src="https://img.kexue.fm/post/7912/cpm_lm_few_shot.png" alt="Official Few Shot effect demonstration of CPM-LM" /><br />
+    <em>Official Few Shot effect demonstration of CPM-LM</em></p>
+
+    <p>We know that GPT-3 can achieve Few Shot learning without fine-tuning. In the current demonstration examples of CPM-LM, the Few Shot performance is also quite impressive, which makes one eager to try it out. Naturally, I wanted to adapt it to my <a href="https://github.com/bojone/bert4keras">bert4keras</a> to make it easier to use. Thus, the adaptation work began. I originally thought it would be a simple task, but I ended up stumbling into pitfalls for nearly three days before getting it right. Here, I'm recording the process of troubleshooting and testing.</p>
+
+    <h2 id="model-introduction">Model Introduction</h2>
+    <p>The first model released under this plan is called CPM-LM, with approximately 2.6 billion parameters and pre-trained on 100GB of Chinese text data. It is a unidirectional language model. For other details, you can read more at the links below. With such a massive parameter count, we generally use it directly rather than considering fine-tuning. Its primary capability is unconditional random text generation. Of course, we can also provide it with some prompts and use it for text continuation; applications like Few Shot are essentially variants of text continuation.</p>
+
+    <blockquote>
+        <p>Homepage: <a href="https://cpm.baai.ac.cn/">https://cpm.baai.ac.cn/</a><br />
+        GitHub: <a href="https://github.com/TsinghuaAI/CPM-Generate">https://github.com/TsinghuaAI/CPM-Generate</a><br />
+        Official Account: <a href="https://mp.weixin.qq.com/s/oI2Ak-M57MSuycLVpVEiHw">https://mp.weixin.qq.com/s/oI2Ak-M57MSuycLVpVEiHw</a></p>
+    </blockquote>
+
+    <p>Regarding the model structure—which was the first pitfall I encountered during adaptation—the CPM-LM architecture is identical to OpenAI's GPT-2. So, in plain terms, this is a 2.6 billion parameter Chinese GPT-2 model. Initially, I didn't look closely enough and was slightly misled by the <a href="https://github.com/qhduan/CPM-LM-TF2/">CPM-LM-TF2 project</a>, which led me to believe its structure was like <a href="https://github.com/imcaspar/gpt2-ml">GPT2_ML</a> (GPT2_ML is neither GPT nor GPT-2; it sits somewhere in between). Consequently, I spent a long time unable to get reasonable results. Once I realized this issue, rebuilding the GPT-2 model and adapting the weights wasn't difficult. This included converting the weights to TF format, which wasn't hard given the reference from the CPM-LM-TF2 project.</p>
+
+    <h2 id="tokenizer">Tokenizer</h2>
+    <p>The second pitfall in the adaptation process concerned the tokenizer. I must say, the tokenizer written for CPM-LM is, in my view, quite unrefined, and it still bothers me. </p>
+
+    <p>The tokenizer is essentially a wrapper around Google's sentencepiece, but it is wrapped in a way that is particularly inelegant—a nightmare for anyone with OCD. Specifically, while tokenizers like BERT's or sentencepiece usually remove delimiters like spaces and newlines by default, CPM-LM wants to preserve them. So, before sending text to the tokenizer, it replaces them with other symbols (currently spaces are replaced with "▂" and newlines with "▃"), and then replaces them back before output. This is a common approach and is understandable. However, what I cannot understand is that the replacement symbol for the newline, "▃", is actually <i>not</i> in its sentencepiece model's vocabulary! To prevent "▃" from becoming an Unknown token (&lt;unk&gt;), CPM-LM performs a <i>second</i> replacement to turn it into a specific string, only then obtaining the newline ID...</p>
+
+    <p>When I first saw this design, my mind nearly collapsed: Is it that difficult to add one more character to the sentencepiece model? Why write it like this... Regardless, since the open-source model providers are the "bosses," I had to find a way to adapt to it. After much thought, I patched bert4keras's original <code>SpTokenizer</code> and managed to get it working.</p>
+
+    <h2 id="usage-test">Usage Test</h2>
+    <p>Enough complaining. Anyway, after more than two days of effort, bert4keras can now load the CPM-LM model starting from version 0.9.3. Running inference alone likely requires over 16GB of VRAM (I personally used a 24GB RTX card). The weight conversion process and basic loading scheme can be found here:</p>
+
+    <blockquote>
+        <p><strong>GitHub: <a href="https://github.com/bojone/CPM_LM_bert4keras">https://github.com/bojone/CPM_LM_bert4keras</a></strong></p>
+    </blockquote>
+
+    <p>Some Few Shot results (output can be random; if you only care about Few Shot performance, consider changing the decoding method to beam search):</p>
+
+<pre><code># Common Sense Reasoning
+# Result: Beijing
+query = u"""
+The capital of the USA is Washington
+The capital of France is Paris
+The capital of Japan is Tokyo
+The capital of China is
+"""
+print(text_expansion.generate(query[1:-1], 1)[0])
+
+# Word Translation
+# Result: bird
+query = u"""
+狗 dog
+猫 cat
+猪 pig
+鸟
+"""
+print(text_expansion.generate(query[1:-1], 1)[0])
+
+# Subject Extraction
+# Result: 杨振宁 (Chen-Ning Yang)
+query = u"""
+从1931年起，华罗庚在清华大学边学习边工作 华罗庚
+在一间简陋的房间里，陈景润攻克了“哥德巴赫猜想” 陈景润
+在这里，丘成桐得到IBM奖学金 丘成桐
+杨振宁在粒子物理学、统计力学和凝聚态物理等领域作出里程碑性贡献
+"""
+print(text_expansion.generate(query[1:-1], 1)[0])
+
+# Triplet Extraction
+# Result: 张红,体重,140斤 (Zhang Hong, weight, 140 jin)
+query = u"""
+姚明的身高是211cm，是很多人心目中的偶像。 ->姚明，身高，211cm
+虽然周杰伦在欧洲办的婚礼，但是他是土生土长的中国人->周杰伦，国籍，中国
+小明出生于武汉，但是却不喜欢在武汉生成，长大后去了北京。->小明，出生地，武汉
+吴亦凡是很多人的偶像，但是他却是加拿大人，另很多人失望->吴亦凡，国籍，加拿大
+武耀的生日在5月8号，这一天，大家都为他庆祝了生日->武耀，生日，5月8号
+《青花瓷》是周杰伦最得意的一首歌。->周杰伦，作品，《青花瓷》
+北京是中国的首都。->中国，首都，北京
+蒋碧的家乡在盘龙城，毕业后去了深圳工作。->蒋碧，籍贯，盘龙城
+上周我们和王立一起去了他的家乡云南玩昨天才回到了武汉。->王立，籍贯，云南
+昨天11月17号，我和朋友一起去了海底捞，期间服务员为我的朋友刘章庆祝了生日。->刘章，生日，11月17号
+张红的体重达到了140斤，她很苦恼。->
+"""
+print(text_expansion.generate(query[1:-1], 1)[0])
+</code></pre>
+
+    <h2 id="summary">Summary</h2>
+    <p>This article briefly introduced the new 2.6-billion-parameter GPT-2 model, CPM-LM, recently open-sourced by Tsinghua University, and adapted it into the bert4keras framework. I shared a few complaints about the pitfalls encountered during the conversion and finally demonstrated the impressive Few Shot performance of CPM-LM.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7912.html" style="color: #005fcc;">https://kexue.fm/archives/7912</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

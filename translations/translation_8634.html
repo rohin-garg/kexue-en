@@ -1,0 +1,278 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/8634">Gradient Accumulation Hidden in Momentum: Updating Fewer Steps Might Lead to Better Results?</a></h1>
+
+    <p>By 苏剑林 | August 24, 2021</p>
+
+
+<p>As we know, gradient accumulation is a common technique for achieving large batch size training under limited GPU memory. In a previous article, <a href="translation_7141.html">"Trading Time for Quality: Keras Gradient Accumulation Optimizer"</a> (Chinese), we briefly introduced the implementation of gradient accumulation. The general idea is to add a new set of parameters to cache gradients and then use the cached gradients to update the model. Unfortunately, adding a new set of parameters brings extra memory consumption. While thinking about optimizers these past few days, I suddenly realized: gradient accumulation can actually be built directly into optimizers with momentum! Based on this idea, I performed some derivations and experiments on the optimizers, eventually reaching an interesting but somewhat counter-intuitive conclusion: by updating parameters fewer times, the model's final performance might actually improve!</p>
+
+<h2>SGDM</h2>
+
+<p>Before the formal discussion, we define the function</p>
+\begin{equation}\chi_{t/k} = \left\{ \begin{aligned}&1,\quad t \equiv 0\,(\text{mod}\, k) \\ 
+&0,\quad t \not\equiv 0\,(\text{mod}\, k) 
+\end{aligned}\right.\end{equation}
+<p>That is to say, $t$ is an integer, and when it is a multiple of $k$, $\chi_{t/k}=1$; otherwise, $\chi_{t/k}=0$. This is essentially an indicator function for whether $t$ is divisible by $k$. In the following discussions, we will repeatedly use this function.</p>
+
+<p>Now, let's discuss Stochastic Gradient Descent with Momentum (SGDM). Its general form is:</p>
+\begin{equation}\left\{\begin{aligned} 
+m_t =&\, \beta m_{t-1} + \left(1 - \beta\right) g_t\\ 
+\theta_t =&\, \theta_{t-1} - \alpha_t m_t 
+\end{aligned}\right.\end{equation}
+<p>Here $g_t$ is the gradient at step $t$, $\theta$ represents the parameters, and $\beta$ is the sliding coefficient (momentum decay). Suppose we accumulate gradients for $k$ steps; this technically means we only update every $k$ steps, and each update uses the average of the gradients from those $k$ steps, namely:</p>
+\begin{equation}\left\{\begin{aligned} 
+m_{kt} =&\, \beta m_{k(t-1)} + \left(1 - \beta\right) \frac{1}{k}\sum_{i=1}^k g_{k(t-1) + i}\\ 
+\theta_{kt} =&\, \theta_{k(t-1)} - \alpha_{kt} m_{kt} 
+\end{aligned}\right.\end{equation}
+<p>We can decompose the update of the momentum $m$:</p>
+\begin{equation}\begin{aligned} 
+m_{k(t-1)+1} &\,= \beta m_{k(t-1)} + \frac{1}{k}\left(1 - \beta\right)g_{k(t-1) + 1}\\ 
+m_{k(t-1)+2} &\,= m_{k(t-1) + 1} + \frac{1}{k}\left(1 - \beta\right)g_{k(t-1) + 2} \\ 
+m_{k(t-1)+3} &\,= m_{k(t-1) + 2} + \frac{1}{k}\left(1 - \beta\right)g_{k(t-1) + 3} \\ 
+&\,\,\,\vdots \\ 
+m_{kt} &\,= m_{kt-1} + \frac{1}{k}\left(1 - \beta\right)g_{kt} \\ 
+\end{aligned}\label{eq:m-part}\end{equation}
+<p>Or write it as a general formula:</p>
+\begin{equation}m_t = \big[(\beta - 1)\chi_{(t - 1)/k} + 1\big] m_{t-1} + \frac{1}{k}\left(1 - \beta\right) g_t\end{equation}
+<p>Similarly, the update of parameters $\theta$ can also be decomposed:</p>
+\begin{equation}\begin{aligned} 
+\theta_{k(t-1)+1} &\,= \theta_{k(t-1)}\\ 
+\theta_{k(t-1)+2} &\,= \theta_{k(t-1) + 1}\\ 
+&\,\,\,\vdots \\ 
+\theta_{kt-1} &\,= \theta_{kt-2}\\ 
+\theta_{kt} &\,= \theta_{kt-1} - \alpha_{kt} m_{kt} \\ 
+\end{aligned}\end{equation}
+<p>Or written as a general formula:</p>
+\begin{equation}\theta_t = \theta_{t-1} - \chi_{t/k} \alpha_t m_t \end{equation}
+<p>Therefore, for SGD with momentum, if one wants to accumulate gradients for $k$ steps, they only need to update in the following manner:</p>
+\begin{equation}\left\{\begin{aligned} 
+m_t =&\, \big[(\beta - 1)\chi_{(t - 1)/k} + 1\big] m_{t-1} + \frac{1}{k}\left(1 - \beta\right) g_t\\ 
+\theta_t =&\, \theta_{t-1} - \chi_{t/k} \alpha_t m_t 
+\end{aligned}\right.\end{equation}
+<p>This does not require introducing a new set of parameters.</p>
+
+<h2>Adam</h2>
+
+<p>For Adam, the update formulas are as follows:</p>
+\begin{equation}\left\{\begin{aligned} 
+m_t =&\, \beta_1 m_{t-1} + \left(1 - \beta_1\right) g_t\\ 
+v_t =&\, \beta_2 v_{t-1} + \left(1 - \beta_2\right) g_t^2\\ 
+\hat{m}_t =&\, m_t\left/\left(1 - \beta_1^t\right)\right.\\ 
+\hat{v}_t =&\, v_t\left/\left(1 - \beta_2^t\right)\right.\\ 
+\theta_t =&\, \theta_{t-1} - \alpha_t \hat{m}_t\left/\sqrt{\hat{v}_t + \epsilon}\right. 
+\end{aligned}\right.\end{equation}
+<p>The handling of the first moment $m$ is consistent with the aforementioned SGDM, so the key lies in the second moment $v$. According to the definition, when accumulating gradients for $k$ steps, the update formula for $v$ is:</p>
+\begin{equation} 
+v_{kt} = \beta_2 v_{k(t-1)} + \left(1 - \beta_2\right) \left(\frac{1}{k}\sum_{i=1}^k g_{k(t-1) + i}\right)^2\end{equation}
+<p>Unfortunately, due to the existence of the square, $v$ cannot be decomposed in the same way as Equation $\eqref{eq:m-part}$. Therefore, strictly speaking, it is impossible to implement gradient accumulation for Adam without adding a set of cache parameters. However, if we assume that the "square of the average" can be estimated by the "average of the squares," i.e., assuming</p>
+\begin{equation}\left(\frac{1}{k}\sum_{i=1}^k g_{k(t-1) + i}\right)^2\sim \frac{1}{k}\sum_{i=1}^k g_{k(t-1) + i}^2\end{equation}
+<p>Here $\sim$ represents a relatively tight linear correlation, but not necessarily an approximate equality; for example, they could differ by a constant multiple. Then we can still modify the formula for $v$ just like we did for $m$:</p>
+\begin{equation}v_t = \big[(\beta_2 - 1)\chi_{(t - 1)/k} + 1\big] v_{t-1} + \frac{1}{k}\left(1 - \beta_2\right) g_t^2\end{equation}
+<p>Combining these, we get the modified Adam formula:</p>
+\begin{equation}\left\{\begin{aligned} 
+m_t =&\, \big[(\beta_1 - 1)\chi_{(t - 1)/k} + 1\big] m_{t-1} + \frac{1}{k}\left(1 - \beta_1\right) g_t\\ 
+v_t =&\, \big[(\beta_2 - 1)\chi_{(t - 1)/k} + 1\big] v_{t-1} + \frac{1}{k}\left(1 - \beta_2\right) g_t^2\\ 
+\hat{m}_t =&\, m_t\left/\left(1 - \beta_1^{t/k}\right)\right.\\ 
+\hat{v}_t =&\, v_t\left/\left(1 - \beta_2^{t/k}\right)\right.\\ 
+\theta_t =&\, \theta_{t-1} - \chi_{t/k}\alpha_t \hat{m}_t\left/\sqrt{\hat{v}_t + \epsilon}\right. 
+\end{aligned}\right.\end{equation}
+<p>Through experiments, I found that Adam modified in this way indeed achieves similar effects to gradient accumulation.</p>
+
+<h2>Reflections and Conclusion</h2>
+
+<p>In general, the two modified versions of the optimizers above primarily involve two changes:
+<br>1. Modifying the update formulas for $m$ and $v$;
+<br>2. Parameters are changed to update once every $k$ steps (or the learning rate is changed from $\alpha_t$ to $\chi_{t/k}\alpha_t$).</p>
+
+<p>The update formulas for $m, v$ were changed to (without loss of generality, taking $m$ as an example):</p>
+\begin{equation}m_t = \big[(\beta - 1)\chi_{(t - 1)/k} + 1\big] m_{t-1} + \frac{1}{k}\left(1 - \beta\right) g_t\end{equation}
+<p>If we want to map this back to the original format $m_t = \beta m_{t-1} + (1 - \beta) g_t$, we might guess that the above iteration is equivalent to replacing $\beta$ with $\tilde{\beta}=1 - \frac{1}{k}(1-\beta)$. In fact, this is indeed the case. We can prove that the exponential moving average momentum after replacing $\beta$ with $\tilde{\beta}=1 - \frac{1}{k}(1-\beta)$ is approximately equal to the exponential moving average momentum of $k$-step accumulated gradients with the original $\beta$:</p>
+\begin{equation}\begin{aligned} 
+m_{kt} =&\, \tilde{\beta}m_{kt-1} + (1 - \tilde{\beta})g_{kt} \\ 
+=&\, \tilde{\beta}^2 m_{kt-2} + \tilde{\beta}(1 - \tilde{\beta})g_{kt - 1} + (1 - \tilde{\beta})g_{kt}\\ 
+=&\,\cdots\\ 
+=&\, \tilde{\beta}^k m_{k(t-1)} + (1 - \tilde{\beta})\sum_{i=1}^k \tilde{\beta}^{i-1} g_{kt-i+1} 
+\end{aligned}\end{equation}
+<p>Since $\tilde{\beta}$ is typically very close to 1, we approximately assume that $\tilde{\beta}^{i-1}\approx 1, \forall i=1,2,\cdots,k$, and</p>
+\begin{equation}\tilde{\beta}^k = (1 - (1 - \tilde{\beta}))^k \approx 1 - k(1 - \tilde{\beta}) = \beta\end{equation}
+<p>So we have the approximation:</p>
+\begin{equation}\begin{aligned} 
+m_{kt} \approx &\, \beta m_{k(t-1)} + (1 - \tilde{\beta})\sum_{i=1}^k g_{kt-i+1} \\ 
+= &\, \beta m_{k(t-1)} + (1 - \beta) \frac{1}{k}\sum_{i=1}^k g_{kt-i+1} 
+\end{aligned}\end{equation}
+<p>This is the form of gradient accumulation.</p>
+
+<p>So, if you are facing performance issues caused by a small batch_size but don't want to implement gradient accumulation yourself or modify the optimizer, you can try the following operations:
+<br>1. Change all $\beta$ parameters to $1-\frac{1}{k}(1-\beta)$;
+<br>2. Multiply the learning rate by $\chi_{t/k}$, so that parameters are updated only once every $k$ steps.</p>
+
+<p>Interestingly, I found that point 2 is more important than point 1: even if we don't modify $\beta$ and simply change the parameter update frequency to once every $k$ steps, the results improve (provided that the small batch size is the current bottleneck of the model). This is the "counter-intuitive" phenomenon mentioned in the title: without changing much, simply updating fewer times actually leads to better results.</p>
+
+<h2>Summary</h2>
+
+<p>This article introduced a discovery made while debugging models—gradient accumulation is hidden within the momentum of optimizers. Then, a further simple analysis and experiments were conducted, finding that near-equivalent gradient accumulation effects can be achieved by adjusting sliding coefficients and learning rates, leading to the discovery of the counter-intuitive phenomenon that "fewer updates can result in better performance."</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8634.html" style="color: #005fcc;">https://kexue.fm/archives/8634</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

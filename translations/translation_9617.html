@@ -1,0 +1,289 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/9617">NBCE: Using Naive Bayes to Extend LLM Context Handling Length</a></h1>
+    <p>By 苏剑林 | May 23, 2023</p>
+
+    <blockquote>
+        Playing with Naive Bayes in the era of LLMs?
+    </blockquote>
+
+    <p>This might be the first thought for many readers upon seeing the title. Indeed, when ancient Naive Bayes meets cutting-edge LLMs, it produces surprising results—we can directly extend the context handling length of existing LLM models without fine-tuning, regardless of model architecture, with linear efficiency, and results that look quite good. This is the NBCE (<strong>N</strong>aive <strong>B</strong>ayes-based <strong>C</strong>ontext <strong>E</strong>xtension) method proposed in this article.</p>
+
+    <h2>Crossing the River by Feeling the Stones <a id="摸石过河" href="#摸石过河">#</a></h2>
+    <p>Assume $T$ is the token sequence to be generated, and $S_1, S_2, \cdots, S_n$ are several given, relatively independent Context sets (e.g., $n$ different paragraphs, at least not a single sentence split into two fragments). Suppose their total length has exceeded the training length, while a single $S_k$ plus $T$ remains within the training length. We need to generate $T$ based on $S_1, S_2, \cdots, S_n$, which means estimating $p(T|S_1, S_2, \cdots, S_n)$.</p>
+
+    <p>Simply put, Naive Bayes is "Bayes' theorem + independence assumption." According to Bayes' theorem:</p>
+    \begin{equation}p(T|S_1, S_2,\cdots,S_n) \propto p(S_1, S_2,\cdots,S_n|T)p(T)\end{equation}
+    <p>Here $\propto$ indicates that constant factors unrelated to $T$ are omitted. According to the (conditional) independence assumption:</p>
+    \begin{equation}p(S_1, S_2,\cdots,S_n|T) = \prod_{k=1}^n p(S_k|T)\end{equation}
+    <p>So we have</p>
+    \begin{equation}p(T|S_1, S_2,\cdots,S_n) \propto p(T)\prod_{k=1}^n p(S_k|T)\end{equation}
+    <p>Applying Bayes' theorem again, $p(S_k|T) \propto \frac{p(T|S_k)}{p(T)}$, we get</p>
+    \begin{equation}p(T|S_1, S_2,\cdots,S_n) \propto \frac{1}{p^{n-1}(T)}\prod_{k=1}^n p(T|S_k)\end{equation}
+    <p>Or in log space:</p>
+    \begin{equation}\log p(T|S_1, S_2,\cdots,S_n) = \color{red}{\sum_{k=1}^n \log p(T|S_k)} - \color{green}{(n-1)\log p(T)} + \color{skyblue}{\text{constant}}\label{eq:nbce-1}\end{equation}
+
+    <p>Here $\color{red}{p(T|S_k)}$ and $\color{green}{p(T)}$ can both be directly calculated using existing LLMs; any language model will work, regardless of architecture, and without the need for long-text fine-tuning. Specifically, $\color{red}{p(T|S_k)}$ is the probability predicted with a single Context, while $\color{green}{p(T)}$ is the probability with no Context (or an empty Context). Multiple Contexts can be placed in the same batch for parallel calculation, and the computational complexity grows linearly with the number of Contexts.</p>
+
+    <h2>Peeling the Onion <a id="抽丝剥茧" href="#抽丝剥茧">#</a></h2>
+    <p>Of course, Naive Bayes relies on the independence assumption, which limits its actual performance. To "surpass the master," we can further "peel the onion" of equation $\eqref{eq:nbce-1}$ to achieve better results.</p>
+
+    <p>First, let's denote $\log p(T|S) = [\log p(T|S_1), \cdots, \log p(T|S_n)]$, and</p>
+    \begin{equation}\overline{\log p(T|S)} = \frac{1}{n}\sum_{k=1}^n \log p(T|S_k)\end{equation}
+    <p>Setting $\beta = n - 1$, then equation $\eqref{eq:nbce-1}$ can be rewritten as</p>
+    \begin{equation}\log p(T|S_1, S_2,\cdots,S_n) = \color{red}{(\beta + 1)\overline{\log p(T|S)}} - \color{green}{\beta\log p(T)} + \color{skyblue}{\text{constant}}\label{eq:nbce-2}\end{equation}
+
+    <p>Rewriting it in this form naturally leads to two questions:</p>
+    <blockquote>
+        1. If $\beta$ is treated as a hyperparameter to be tuned, is it possible to achieve better effects?<br><br>
+        2. $\overline{\log p(T|S)}$ is just the Average Pooling of $\log p(T|S)$. Would changing it to other Pooling methods (denoted as $\mathcal{P}$) yield better results? i.e.,
+        \begin{equation}\log p(T|S_1, S_2,\cdots,S_n) = \color{red}{(\beta + 1)\mathcal{P}[\log p(T|S)]} - \color{green}{\beta\log p(T)} + \color{skyblue}{\text{constant}}\label{eq:nbce-3}\end{equation}
+    </blockquote>
+
+    <p>Consequently, I experimented with these two questions on a 7B model. The preliminary conclusion was: in reading comprehension scenarios, Max Pooling matched with $\beta=0.25$ generally performed well using Greedy Search; however, the results from Random Sampling were essentially unreadable.</p>
+
+    <h2>Final Solution <a id="最终方案" href="#最终方案">#</a></h2>
+    <p>Why does Greedy Search work well while Random Sampling fails? We know that Random Sampling follows the distribution; its poor performance indicates that the result of Max Pooling is not a reasonable distribution. Greedy Search only cares about the entity with the highest probability and not the rationality of the distribution; its success tells us that the token with the highest probability has high accuracy.</p>
+
+    <p>Higher probability indicates lower uncertainty. Therefore, to improve the performance of Random Sampling, we change the Pooling method to directly output the distribution with the lowest uncertainty:</p>
+    \begin{equation}\begin{aligned}
+    &\mathcal{P}[\log p(T|S)] = \log p(T|S_{\color{red}{k}}) \\[5pt]
+    &\color{red}{k} = \mathop{\text{argmin}} \big\{H_1,H_2,\cdots,H_n\big\} \\[5pt]
+    &H_i = -\sum_T p(T|S_i)\log p(T|S_i)
+    \end{aligned}\end{equation}
+    <p>Substituting this into equation $\eqref{eq:nbce-3}$ gives the final NBCE (<strong>N</strong>aive <strong>B</strong>ayes-based <strong>C</strong>ontext <strong>E</strong>xtension).</p>
+
+    <p>It is worth pointing out that although our starting point was Naive Bayes, the generalized equation $\eqref{eq:nbce-3}$ already exceeds the scope of conventional Naive Bayes, while retaining its interpretability. It is not hard to see that the form of equation $\eqref{eq:nbce-3}$ is very intuitive:</p>
+
+    <blockquote>
+        1. Prediction results from different Contexts are aggregated (or voted) together through method $\mathcal{P}$ (with weight $\beta+1$), and the result without Context is subtracted (with weight $\beta$);<br><br>
+        2. The subtraction of the no-Context prediction result is to make the model more inclined to combine the Context rather than answering purely based on its own knowledge base (Note: a paper appearing on Arxiv 3 days later, <a href="https://papers.cool/arxiv/2305.14739">"Trusting Your Evidence: Hallucinate Less with Context-aware Decoding"</a>, proposed the same trick to reduce hallucinations);<br><br>
+        3. Different $\beta$ can be chosen for different scenarios. For example, for reading comprehension requiring context integration, a larger $\beta$ can be considered; for creative writing, a smaller $\beta$ can be chosen. I believe $\beta \geq -1$ is reasonable.
+    </blockquote>
+
+    <h2>Reference Implementation <a id="参考实现" href="#参考实现">#</a></h2>
+    <p>Below is a reference implementation of NBCE:</p>
+    <blockquote>
+        <strong>Github: <a href="https://github.com/bojone/NBCE">https://github.com/bojone/NBCE</a></strong>
+    </blockquote>
+
+    <p>From the demo code, it can be seen that the implementation of NBCE is very simple—it only requires modifying the logits construction method in the decoding function, which does not conflict with the choice of decoding algorithm.</p>
+
+    <p style="text-align:center;"><img src="https://github.com/bojone/NBCE/raw/main/nbce.png" alt="Naive Bayes-based Context Extension (NBCE) Diagram" style="max-width:100%;"></p>
+
+    <p>The provided Demo includes 12 different Context segments, totaling over 9,000 characters, inputted into the model along with 8 questions at once (model training length is 2048, parameter size is 7B, available for download at <a href="https://openbuddy.ai/">OpenBuddy</a>). The model is able to correctly answer these 8 questions one by one based on the given Context. It is worth noting that all Contexts, questions, and answers combined exceed 10,000 characters! Additionally, some friends have briefly tried applications like resume matching and essay scoring, and the results were also acceptable. It is highly recommended that you try it out yourself.</p>
+
+    <h2>Related Work <a id="相关工作" href="#相关工作">#</a></h2>
+    <p>There are already several methods to extend the Context length of LLMs, but most shorten the sample's long context by combining retrieval or summarization, such as <a href="https://papers.cool/arxiv/2305.01625">Unlimiformer</a>. Since they do not directly process the long context, they usually cannot perform fine-grained reading comprehension, and these solutions often need to be considered during the training phase rather than being plug-and-play into existing LLM models afterwards.</p>
+
+    <p>Prior to NBCE, the solution capable of extending Context length without fine-tuning was Parallel Context Window (hereafter PCW), from the papers <a href="https://papers.cool/arxiv/2212.10947">"Parallel Context Windows for Large Language Models"</a> and <a href="https://papers.cool/arxiv/2212.06713">"Structured Prompting: Scaling In-Context Learning to 1,000 Examples"</a>. Both papers were published around the same time by different authors, proposing methods with only subtle differences, so they are both referred to here as PCW.</p>
+
+    <p>PCW is applicable to Self-Attention models. The main modifications include Position Encoding and Attention Mask, as shown in the figure below:</p>
+
+    <p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2023/05/193275723.png" alt="Parallel Context Window" style="max-width:100%;"></p>
+
+    <p>First, the maximum Context length $L$ is determined (6 in the figure). Then, the last position of each Context is encoded as $L-1$, the second to last as $L-2$, and so on. This encoding method is called "right-aligned" (or "left-indented"). On the other hand, for the Task Tokens part (Prompt + generated content), the position encodings are $L, L+1, L+2, \cdots$. Each Context is encoded separately, so the corresponding Attention Mask is a block-diagonal matrix; since it is a Language Model (LM), it is a block-diagonal lower-triangular matrix. As for the Task Tokens part, which needs to combine all Contexts, it needs to attend to all Contexts (and itself). In this way, if each Context is taken out individually and concatenated with the Task Tokens, its Attention pattern is consistent with the original LM.</p>
+
+    <p>Some readers might notice that NBCE and PCW share very similar characteristics, such as being unordered and egalitarian regarding Context. In fact, if NBCE is applied to a single-layer, single-head attention model, the result is roughly PCW. To demonstrate this, let's write a single-layer single-head attention language model as:</p>
+    \begin{equation}p(x_t|x_{< t}) = softmax\left(\sum_{i=1}^t a_{t,i}v_i W\right)\end{equation}
+    <p>So roughly $\log p(x_t|x_{< t}) \sim \sum\limits_{i=1}^t a_{t,i}v_i W$. Substituting this into equation $\eqref{eq:nbce-2}$ and setting $\beta=0$, we get:</p>
+    \begin{equation}\log p(T|S_1, S_2,\cdots,S_n) \sim \frac{1}{n}\sum_{k=1}^n\left(\sum_{i\in S_k} a_{T,i}v_i\right) W = \left(\sum_{i\in S_1\oplus\cdots\oplus S_n} \frac{a_{T,i}}{n}v_i\right) W \end{equation}
+    <p>Here it is assumed that $T$ is a single token, but this does not lose generality; $\oplus$ denotes concatenation. In the above formula, $S_k \oplus T$ is reasoned as a continuous segment (NBCE setup), so their position encodings are adjacent, and $a_{T,i}/n$ constitutes an overall Attention between $T$ and all $S_i$ (the sum is also 1). These characteristics are consistent with PCW. PCW is merely an elegant way to integrate this into every layer via Attention Masking.</p>
+
+    <p>Therefore, PCW is roughly the Average Pooling version of NBCE. Our practical tests also found that it shares the same disadvantage as the Average Pooling version of NBCE—as Context data increases, the output starts becoming inaccurate, specifically being topic-related but providing the wrong answer to the question.</p>
+
+    <h2>Further Thoughts <a id="延伸思考" href="#延伸思考">#</a></h2>
+    <p>A major disadvantage of NBCE is its lack of order; it cannot recognize the input order of the Context, which may lead to poor performance in scenarios like continuing a story. To alleviate this, one might consider adding a prefix that indicates order information before each Context, analogous to "Chapter 1" and "Chapter 2" in a novel.</p>
+
+    <p>Overall, my current tests on NBCE are limited to "reading comprehension" scenarios—"understanding" long texts. Whether this method can be used to "generate" long texts is still unknown, and I look forward to everyone's test results.</p>
+
+    <p>Additionally, an interesting question is:</p>
+    <blockquote>
+        Since Naive Bayes can be useful in the LLM field, can other traditional probabilistic models (like HMM) also find a place in the LLM field?
+    </blockquote>
+
+    <h2>Summary <a id="文章小结" href="#文章小结">#</a></h2>
+    <p>This article proposes NBCE (Naive Bayes-based Context Extension). It is based on the Naive Bayes idea to extend the Context handling length of LLMs. It has the advantages of being plug-and-play, model-agnostic, requiring no fine-tuning, linear efficiency, and simple implementation, and the results appear promising. Everyone is welcome to test it.</p>
+
+    <hr>
+    <p><em><strong>Reprint address:</strong> <a href="translation_9617.html">https://kexue.fm/archives/9617</a></em></p>
+    <p><em><strong>For more detailed reprinting matters, please refer to:</strong> <a href="https://kexue.fm/archives/6508#文章如何转载/引用">"Scientific Spaces FAQ"</a></em></p>
+    <p><strong>If you have any doubts or suggestions, please continue the discussion in the comments section below.</strong></p>
+    <p><strong>If you find this article good, welcome to share or reward this article. Rewards are not intended for profit, but to know how much sincere attention Scientific Spaces has received from readers. Of course, if you ignore it, it will not affect your reading. Welcome and thank you again!</strong></p>
+
+    <p>苏剑林. (May. 23, 2023). 《NBCE：使用朴素贝叶斯扩展LLM的Context处理长度 》[Blog post]. Retrieved from <a href="translation_9617.html">https://kexue.fm/archives/9617</a></p>
+
+    <pre>@online{kexuefm-9617,
+        title={NBCE：使用朴素贝叶斯扩展LLM的Context处理长度},
+        author={苏剑林},
+        year={2023},
+        month={May},
+        url={\url{https://kexue.fm/archives/9617}},
+}</pre>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9617.html" style="color: #005fcc;">https://kexue.fm/archives/9617</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

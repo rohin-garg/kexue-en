@@ -1,0 +1,226 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/11320">Why Add Short Conv to Linear Attention?</a></h1>
+
+<p>By 苏剑林 | October 05, 2025</p>
+
+<p>If you have been following the progress in model architectures, you will notice that newer Linear Attention (refer to <a href="translation_11033.html">"A Brief History of Linear Attention: From Imitation, Innovation to Feedback"</a>) models all add Short Conv to $\boldsymbol{Q}, \boldsymbol{K}, \boldsymbol{V}$, such as <a href="https://papers.cool/arxiv/2406.06484">DeltaNet</a> shown in the figure below:</p>
+
+<p><em>Short Conv in DeltaNet</em></p>
+
+<p>Why add this Short Conv? The intuitive understanding might be to increase model depth or enhance the model's Token-Mixing ability—essentially compensating for the decline in expressive power caused by linearization. While this explanation is more or less correct, it belongs to the "universal template" style of answers. We want to have a more accurate understanding of its actual mechanism of action.</p>
+
+<p>Next, I will provide my own interpretation (or more accurately, a conjecture).</p>
+
+<h2>Test-Time Training</h2>
+
+<p>From <a href="translation_11033.html">"A Brief History of Linear Attention: From Imitation, Innovation to Feedback"</a>, we know that the core idea behind current state-of-the-art linear attention is <a href="https://papers.cool/arxiv/2407.04620">TTT (Test Time Training)</a> or Online Learning. TTT is based on the similarity between optimizer updates and RNN iterations. It constructs an RNN model (which is not necessarily linear) through an optimizer. Linear attention mechanisms like DeltaNet, GDN, and Comba can all be seen as special cases of this.</p>
+
+<p>Specifically, TTT treats $\boldsymbol{K}, \boldsymbol{V}$ as pairs of training data $(\boldsymbol{k}_1, \boldsymbol{v}_1), (\boldsymbol{k}_2, \boldsymbol{v}_2), \cdots, (\boldsymbol{k}_t, \boldsymbol{v}_t)$. We use them to train a model $\boldsymbol{v} = \boldsymbol{f}(\boldsymbol{S}_t; \boldsymbol{k})$ and then output $\boldsymbol{o}_t = \boldsymbol{f}(\boldsymbol{S}_t; \boldsymbol{q}_t)$, where $\boldsymbol{S}_t$ represents the model parameters, updated with SGD:</p>
+
+\begin{equation} \boldsymbol{S}_t = \boldsymbol{S}_{t-1} - \eta_t\nabla_{\boldsymbol{S}_{t-1}}\mathcal{L}(\boldsymbol{f}(\boldsymbol{S}_{t-1};\boldsymbol{k}_t), \boldsymbol{v}_t)\end{equation}
+
+<p>Of course, if we wish, we can consider other optimizers; for instance, <a href="https://papers.cool/arxiv/2505.23884">"Test-Time Training Done Right"</a> experimented with the Muon optimizer. Besides changing the optimizer, other flexible areas include the architecture of model $\boldsymbol{v} = \boldsymbol{f}(\boldsymbol{S}_t; \boldsymbol{k})$ and the loss function $\mathcal{L}(\boldsymbol{f}(\boldsymbol{S}_{t-1}; \boldsymbol{k}_t), \boldsymbol{v}_t)$. Furthermore, we can consider Mini-batch TTT using chunks as units.</p>
+
+<p>It is not hard to imagine that, theoretically, the flexibility of TTT is very high, allowing for the construction of arbitrarily complex RNN models. When the architecture choice is a linear model $\boldsymbol{v} = \boldsymbol{S}_t\boldsymbol{k}$ and the loss function is the squared error, the result corresponds to DeltaNet; if we add some regularization terms, variants like GDN can be derived.</p>
+
+<h2>A Soul-Searching Question</h2>
+
+<p>Placing TTT at the beginning is mainly to show that the underlying logic of current mainstream linear attention is the same as TTT—the core is the Online Learning of corpus pairs $(\boldsymbol{k}_1, \boldsymbol{v}_1), (\boldsymbol{k}_2, \boldsymbol{v}_2), \cdots, (\boldsymbol{k}_t, \boldsymbol{v}_t)$. This naturally leads to a question: Why do we do this? What exactly is being learned?</p>
+
+<p>To answer this question, we must first reflect on "what we actually want." According to the characteristics of Softmax Attention, what we want is to calculate an $\boldsymbol{o}_t$ based on $(\boldsymbol{k}_1, \boldsymbol{v}_1), (\boldsymbol{k}_2, \boldsymbol{v}_2), \cdots, (\boldsymbol{k}_t, \boldsymbol{v}_t)$ and $\boldsymbol{q}_t$. Ideally, this process should depend on all $(\boldsymbol{k}, \boldsymbol{v})$ pairs. At the same time, we hope to achieve this goal with constant complexity, so an intuitive idea is to first compress $(\boldsymbol{k}, \boldsymbol{v})$ into a fixed-size State (independent of $t$) and then read this State.</p>
+
+<p>How do we achieve this compression? The idea of TTT is: design a model $\boldsymbol{v} = \boldsymbol{f}(\boldsymbol{S}_t; \boldsymbol{k})$ and then use these $(\boldsymbol{k}, \boldsymbol{v})$ pairs to "train" this model. Once training is complete, the model in some sense has "memorized" these $(\boldsymbol{k}, \boldsymbol{v})$ pairs. This is equivalent to compressing all $(\boldsymbol{k}, \boldsymbol{v})$ into the fixed-size model weights $\boldsymbol{S}_t$. As for how $\boldsymbol{q}_t$ utilizes $\boldsymbol{S}_t$, directly substituting it into the model to get $\boldsymbol{o}_t = \boldsymbol{f}(\boldsymbol{S}_t; \boldsymbol{q}_t)$ is a natural choice, though in principle we could design other ways of utilization.</p>
+
+<p>In other words, the core task of TTT is to utilize the fact that "training a model" is roughly equivalent to "memorizing the training set" to achieve the compression of $\boldsymbol{K}, \boldsymbol{V}$. However, the fact that "training a model" equals "memorizing the training set" is not so trivial; it has certain prerequisites.</p>
+
+<h2>Key-Value Homology</h2>
+
+<p>For example, if we set $\boldsymbol{K}=\boldsymbol{V}$, the TTT framework theoretically fails, because at this point the optimal solution for the model $\boldsymbol{v} = \boldsymbol{f}(\boldsymbol{S}_t; \boldsymbol{k})$ is the identity transform—a trivial solution that memorizes nothing. Online updates like DeltaNet might still be salvagable, but those based on exact solutions like <a href="https://papers.cool/arxiv/2506.05233">MesaNet</a> would simply output the identity matrix $\boldsymbol{I}$.</p>
+
+<p>Some readers might object: why consider such an unscientific choice as $\boldsymbol{K}=\boldsymbol{V}$ in the first place? Indeed, $\boldsymbol{K}=\boldsymbol{V}$ is an extreme choice, used here only as an example to show that "training a model" being equivalent to "memorizing the training set" is not something that holds arbitrarily. Secondly, we have already verified in <a href="translation_10907.html">"Transformer Upgrade Road: 20. Why is MLA Good? (Part 1)"</a> that for Softmax Attention, $\boldsymbol{K}=\boldsymbol{V}$ can still yield decent results.</p>
+
+<p>This shows that $\boldsymbol{K}=\boldsymbol{V}$ is not an inherent obstacle for the Attention mechanism, but it can cause model failure within the TTT framework because $\boldsymbol{K}$ and $\boldsymbol{V}$ overlap completely, leaving nothing to be learned from the regression between them. Similarly, we can imagine that the higher the information overlap between $\boldsymbol{K}$ and $\boldsymbol{V}$, the less there is to learn between them; in other words, the lower the degree of "training set" memorization by TTT.</p>
+
+<p>In a standard Attention mechanism, $\boldsymbol{q}_t, \boldsymbol{k}_t, \boldsymbol{v}_t$ are all obtained from the same input $\boldsymbol{x}_t$ through different linear projections. In other words, $\boldsymbol{k}_t, \boldsymbol{v}_t$ share the same source $\boldsymbol{x}_t$, which always has a sense of "predicting oneself," meaning what can be learned is limited.</p>
+
+<h2>Convolution to the Rescue</h2>
+
+<p>How can we make TTT learn more valuable results when keys and values are homologous or even $\boldsymbol{K}=\boldsymbol{V}$? Actually, the answer has been there for a long time—traceable back to Word2Vec or even earlier—which is: do not "predict yourself," but "predict your surroundings."</p>
+
+<p>Taking <a href="https://papers.cool/arxiv/1301.3781">Word2Vec</a> as an example, we know its training method is "center word predicts context"; for the previously popular <a href="https://papers.cool/arxiv/1810.04805">BERT</a>, the pre-training method was MLM, where some words are masked to predict those words, essentially "context predicts center word"; for current mainstream LLMs, the training task is NTP (Next Token Prediction), predicting the next word based on the preceding context. Clearly, their common feature is not predicting oneself, but predicting the context.</p>
+
+<p>Therefore, to improve TTT, we need to change the pairing method of $(\boldsymbol{k}_t, \boldsymbol{v}_t)$ which "predicts itself." Considering that current LLMs are primarily NTP-based, we can also consider NTP in TTT, for example using $(\boldsymbol{k}_{t-1}, \boldsymbol{v}_t)$ to build the corpus pairs—that is, using $\boldsymbol{k}_{t-1}$ to predict $\boldsymbol{v}_t$. This way, even if $\boldsymbol{K}=\boldsymbol{V}$, non-trivial results can be learned. At this point, TTT is NTP both internally and externally, possessing a beautiful consistency.</p>
+
+<p>However, if only $\boldsymbol{k}_{t-1}$ is used to predict $\boldsymbol{v}_t$, it seems like $\boldsymbol{k}_t$ is wasted. A further idea is to mix $\boldsymbol{k}_{t-1}$ and $\boldsymbol{k}_t$ in some way before predicting $\boldsymbol{v}_t$. At this point, everyone might have realized: "mixing $\boldsymbol{k}_{t-1}$ and $\boldsymbol{k}_t$ in some way" is exactly what a Conv with kernel_size=2 does! Thus, adding Short Conv to $\boldsymbol{K}$ transforms the TTT training objective from "self-prediction" to NTP, giving TTT at least the ability to learn an n-gram model.</p>
+
+<p>As for adding Short Conv to $\boldsymbol{Q}, \boldsymbol{V}$, it is entirely incidental. According to news from the Fla-Group (FLA group), adding it to $\boldsymbol{Q}, \boldsymbol{V}$ also has some effect, but it is far less significant than the improvement brought by adding Short Conv to $\boldsymbol{K}$. This can be considered corroboration for our conjecture.</p>
+
+<h2>Summary</h2>
+
+<p>This article provides a "behind closed doors" interpretation of the question "Why add Short Conv to Linear Attention?"</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_11320.html" style="color: #005fcc;">https://kexue.fm/archives/11320</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

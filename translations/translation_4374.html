@@ -1,0 +1,350 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/4374">Recording a Trial of Semi-supervised Sentiment Analysis</a></h1>
+    <p>By 苏剑林 | May 04, 2017</p>
+
+    <p>This article is a not-so-successful attempt at semi-supervised learning: on the IMDB dataset, a text sentiment classification model was trained using 1,000 randomly selected labeled samples, and achieved a test accuracy of 73.48% on the remaining 49,000 test samples.</p>
+
+    <h2 id="思路">Idea <a href="https://kexue.fm/archives/4374#思路">#</a></h2>
+
+    <p>The idea in this article originates from this OpenAI post: <a href="http://jiqizhixin.com/article/2612?from=singlemessage">"OpenAI Research Finds Unsupervised Sentiment Neuron: Can Directly Control Sentiment of Generated Text"</a>.</p>
+
+    <p>That article introduced a method for training unsupervised (actually semi-supervised) sentiment classification models with excellent experimental results. However, the experiments in that article were massive and nearly impossible for an individual to replicate (training for one month on 4 Pascal GPUs). Nevertheless, the underlying idea is simple, so we can create a "budget-friendly version." The logic is as follows:</p>
+
+    <p>When we use deep learning for sentiment classification, a conventional approach is an Embedding layer + LSTM layer + Dense layer (Sigmoid activation). What we usually call word vectors are essentially a pre-trained Embedding layer (this layer has the most parameters and is most prone to overfitting). OpenAI's idea is: why not pre-train the LSTM layer as well? The pre-training method also uses a language model. Of course, to ensure the pre-training results don't lose sentiment information, the number of hidden nodes in the LSTM needs to be larger.</p>
+
+    <p>If even the LSTM layer is pre-trained, the remaining parameters in the Dense layer are few, so the model can be fully trained using a small number of labeled samples. This is the entire strategy for semi-supervised learning. As for the "sentiment neuron" mentioned in the OpenAI article, that is merely a figurative description.</p>
+
+    <p>Admittedly, from the perspective of sentiment analysis tasks, the 73.48% accuracy in this article is hardly impressive; a standard "dictionary + rules" solution can easily achieve over 80% accuracy. I am merely verifying the feasibility of this experimental scheme. I believe that if the scale could match OpenAI's, the results would be much better. <strong>Furthermore, what this article aims to describe is a modeling strategy, not limited to sentiment analysis; the same idea can be applied to any binary or even multi-classification problem.</strong></p>
+
+    <h2 id="过程">Process <a href="https://kexue.fm/archives/4374#过程">#</a></h2>
+
+    <p>First, load the dataset and re-partition the training and test sets:</p>
+
+<pre><code>from keras.preprocessing import sequence
+from keras.models import Model
+from keras.layers import Input, Embedding, LSTM, Dense, Dropout
+from keras.datasets import imdb
+from keras import backend as K
+import numpy as np
+
+max_features = 10000 # Keep top max_features words
+maxlen = 100 # Pad/truncate to 100 words
+batch_size = 1000
+nb_grams = 10 # Train a 10-gram language model
+nb_train = 1000 # Number of training samples
+
+# Load the built-in IMDB dataset
+(x_train, y_train), (x_test, y_test) = imdb.load_data(num_words=max_features)
+x_lm_ = np.append(x_train, x_test)
+
+# Construct data for training the language model
+# Only existing data is used here; in a real environment, 
+# additional data can be supplemented for more thorough training.
+x_lm = []
+y_lm = []
+for x in x_lm_:
+    for i in range(len(x)):
+        x_lm.append([0]*(nb_grams - i + max(0,i-nb_grams))+x[max(0,i-nb_grams):i])
+        y_lm.append([x[i]])
+
+x_lm = np.array(x_lm)
+y_lm = np.array(y_lm)
+x_train = sequence.pad_sequences(x_train, maxlen=maxlen)
+x_test = sequence.pad_sequences(x_test, maxlen=maxlen)
+x = np.vstack([x_train, x_test])
+y = np.hstack([y_train, y_test])
+
+# Re-partition training and test sets
+# Merge original train/test sets, randomly pick 1000 samples as 
+# the new training set, and the rest as the test set.
+idx = range(len(x))
+np.random.shuffle(idx)
+x_train = x[idx[:nb_train]]
+y_train = y[idx[:nb_train]]
+x_test = x[idx[nb_train:]]
+y_test = y[idx[nb_train:]]
+</code></pre>
+
+    <p>Then building the model:</p>
+
+<pre><code>embedded_size = 100 # Word vector dimension
+hidden_size = 1000 # LSTM dimension, can be viewed as the encoded sentence vector dimension.
+
+# Encoder part
+inputs = Input(shape=(None,), dtype='int32')
+embedded = Embedding(max_features, embedded_size)(inputs)
+lstm = LSTM(hidden_size)(embedded)
+encoder = Model(inputs=inputs, outputs=lstm)
+
+# Train the encoder part entirely using the n-gram model
+input_grams = Input(shape=(nb_grams,), dtype='int32')
+encoded_grams = encoder(input_grams)
+softmax = Dense(max_features, activation='softmax')(encoded_grams)
+lm = Model(inputs=input_grams, outputs=softmax)
+lm.compile(loss='sparse_categorical_crossentropy', optimizer='adam')
+# Using sparse cross-entropy avoids pre-converting categories to one-hot form.
+
+# Sentiment analysis part
+# Freeze the encoder and attach a simple Dense layer (equivalent to logistic regression)
+# At this point, only hidden_size+1 = 1001 parameters are being trained
+# Therefore, theoretically, a small number of labeled samples should suffice.
+for layer in encoder.layers:
+    layer.trainable=False
+
+sentence = Input(shape=(maxlen,), dtype='int32')
+encoded_sentence = encoder(sentence)
+sigmoid = Dense(10, activation='relu')(encoded_sentence)
+sigmoid = Dropout(0.5)(sigmoid)
+sigmoid = Dense(1, activation='sigmoid')(sigmoid)
+model = Model(inputs=sentence, outputs=sigmoid)
+model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+</code></pre>
+
+    <p>Next, training the language model; this part is quite time-consuming:</p>
+
+<pre><code># Training the language model is time-consuming; usually 2 or 3 iterations are enough
+lm.fit(x_lm, y_lm,
+       batch_size=batch_size,
+       epochs=3)
+</code></pre>
+
+    <p>The training results for the language model were:</p>
+
+    <blockquote>
+        Epoch 1/3<br>
+        11737946/11737946 [==============================] - 2400s - loss: 5.0376<br>
+        Epoch 2/3<br>
+        11737946/11737946 [==============================] - 2404s - loss: 4.5587<br>
+        Epoch 3/3<br>
+        11737946/11737946 [==============================] - 2404s - loss: 4.3968
+    </blockquote>
+
+    <p>Then, we began training the sentiment analysis model with 1,000 samples. Since the pre-training was already done, there weren't many parameters to train. Combined with Dropout, 1,000 samples did not lead to severe overfitting.</p>
+
+<pre><code># Training the sentiment analysis model
+model.fit(x_train, y_train,
+          batch_size=batch_size,
+          epochs=200)
+</code></pre>
+
+    <p>The training results were:</p>
+
+    <blockquote>
+        Epoch 198/200<br>
+        1000/1000 [==============================] - 0s - loss: 0.2481 - acc: 0.9250<br>
+        Epoch 199/200<br>
+        1000/1000 [==============================] - 0s - loss: 0.2376 - acc: 0.9330<br>
+        Epoch 200/200<br>
+        1000/1000 [==============================] - 0s - loss: 0.2386 - acc: 0.9350
+    </blockquote>
+
+    <p>Now, let's evaluate the model:</p>
+
+<pre><code># Evaluate the model's performance
+model.evaluate(x_test, y_test, verbose=True, batch_size=batch_size)
+</code></pre>
+
+    <p>The accuracy was 73.04%, which is mediocre. Let's try transfer learning by training with the training set combined with the prediction results of the test set:</p>
+
+<pre><code># Retrain the model using the training set plus the test set's 
+# predicted results (which may contain errors).
+y_pred = model.predict(x_test, verbose=True, batch_size=batch_size)
+y_pred = (y_pred.reshape(-1) > 0.5).astype(int)
+xt = np.vstack([x_train, x_test])
+yt = np.hstack([y_train, y_pred])
+
+model.fit(xt, yt,
+          batch_size=batch_size,
+          epochs=10)
+
+# Evaluate the model's performance again
+model.evaluate(x_test, y_test, verbose=True, batch_size=batch_size)
+</code></pre>
+
+    <p>The training results were:</p>
+
+    <blockquote>
+        Epoch 8/10<br>
+        50000/50000 [==============================] - 27s - loss: 0.1455 - acc: 0.9561<br>
+        Epoch 9/10<br>
+        50000/50000 [==============================] - 27s - loss: 0.1390 - acc: 0.9590<br>
+        Epoch 10/10<br>
+        50000/50000 [==============================] - 27s - loss: 0.1349 - acc: 0.9600
+    </blockquote>
+
+    <p>This time we obtained 73.33% accuracy. It's not hard to see that this process can be iterated. Repeating it once more yielded 73.33% accuracy, the second time 73.47%... As expected, it converges to a stable value. I repeated it 5 more times, and it stabilized at 73.48%.</p>
+
+    <p>From the initial 73.04% to 73.48% after transfer learning, there is an improvement of about 0.44%. It doesn't look like much, but for students participating in competitions or writing papers, a 0.44% improvement is something worth writing about.</p>
+
+    <h2 id="点评">Review <a href="https://kexue.fm/archives/4374#点评">#</a></h2>
+
+    <p>As mentioned at the beginning of the article, this was a somewhat unsuccessful attempt—it is a "bootleg" version, after all—so please don't get too hung up on the low accuracy. Based on the experimental results of this article, this scheme is viable. Training a language model through vast amounts of sentiment-mixed corpora can indeed extract text features effectively, which is similar to the process of autoencoding in images.</p>
+
+    <p>This implementation was kept simple, without fine-tuning hyperparameters. The potential improvements roughly include: increasing the scale of the language model, adding more sentiment corpora (only sentiment reviews are needed, no labels required), and optimizing training details. I will leave that for now.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_4374.html" style="color: #005fcc;">https://kexue.fm/archives/4374</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

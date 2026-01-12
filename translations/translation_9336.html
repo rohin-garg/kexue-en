@@ -1,0 +1,228 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9336">Accelerating Retrieval of Interaction-based Similarity Models Using CUR Decomposition</a></h1>
+
+<p>By 苏剑林 | November 02, 2022</p>
+
+<p>In the field of text similarity, there are two common approaches: "interaction-based" and "representation-based." Many readers are likely familiar with these. I previously wrote an article, <a href="translation_8860.html">"CoSENT (Part 2): How Large Is the Gap Between Representation-based and Interaction-based Matching?"</a>, comparing their performance. In general, interaction-based similarity models usually deliver better results, but using them directly for large-scale retrieval is impractical. On the other hand, representation-based similarity models offer faster retrieval speeds but slightly inferior performance.</p>
+
+<p>Therefore, how to improve the retrieval speed of interaction-based similarity while maintaining its performance is a subject that the academic community has been studying for a long time. Recently, the paper <a href="https://papers.cool/arxiv/2210.12579">"Efficient Nearest Neighbor Search for Cross-Encoder Models using Matrix Factorization"</a> proposed a new solution: CUR decomposition.</p>
+
+<h2>Problem Analysis</h2>
+
+<p>In a retrieval scenario, we generally have a massive candidate set $\mathcal{K}$. Without loss of generality, we can assume $\mathcal{K}$ is constant. The task of retrieval is to find the several results $k \in \mathcal{K}$ most relevant to an arbitrary query $q \in \mathcal{Q}$. Interaction-based similarity models directly train a relevance scoring function $s(q,k)$. In theory, we could calculate $s(q,k)$ for all $k \in \mathcal{K}$ and then sort them in descending order. However, this means the computational complexity for each retrieval is $\mathcal{O}(|\mathcal{K}|)$, and since intermediate calculation results cannot be cached, the cost is unacceptable.</p>
+
+<p>Acceptable computational costs are achieved with similarity measures in the form of matrix factorization. For a single sample, this is similarity based on inner products and its variants. A classic implementation involves encoding $q$ and $k$ via an encoder $\boldsymbol{E}$ into two vectors $\boldsymbol{E}(q)$ and $\boldsymbol{E}(k)$, and then calculating the inner product $\boldsymbol{E}(q)^{\top}\boldsymbol{E}(k)$; this is the representation-based similarity approach. This scheme has several characteristics: 1. All $\boldsymbol{E}(k)$ can be pre-calculated and cached; 2. The inner product of $\boldsymbol{E}(q)$ with all $\boldsymbol{E}(k)$ can be converted into matrix multiplication, allowing for parallelized fast computation; 3. Tools like Faiss can be used to further improve retrieval speed using approximate algorithms.</p>
+
+<p>Thus, the idea for accelerating interaction-based similarity retrieval is to transform it into a matrix factorization form. A classic implementation is using a representation-based similarity model to distill the effects of an interaction-based similarity model. The ingenuity of this Google paper lies in the fact that it does not introduce any new models, but rather utilizes CUR decomposition directly on the original interaction-based similarity model to achieve acceleration. This scheme is named ANNCUR.</p>
+
+<h2>Matrix Factorization</h2>
+
+<p>CUR decomposition is a type of matrix factorization. When it comes to matrix factorization, many readers' first thought might be SVD. In fact, why everyone is so sensitive to SVD is not because it is particularly intuitive or easy to understand, but because it is frequently introduced. In terms of being intuitive and easy to understand, CUR decomposition is clearly superior.</p>
+
+<p>Actually, we can understand SVD and CUR decomposition from a unified perspective: for a scoring function $s(q,k)$, we hope to construct the following approximation:
+\begin{equation}s(q,k) \approx \sum_{u\in\mathcal{U},v\in\mathcal{V}} f(q, u) g(u, v) h(v, k)\label{eq:decom}\end{equation}
+Generally, there are constraints $\|\mathcal{U}\|,\|\mathcal{V}\|\ll \|\mathcal{Q}\|,\|\mathcal{K}\|$, making it a compressed decomposition. We can think of $\mathcal{U}$ as a "representative set" (or "clustering centers") of $\mathcal{K}$, and similarly $\mathcal{V}$ as a "representative set" of $\mathcal{Q}$. Then the above decomposition becomes very vivid:</p>
+
+<blockquote>The score $s(q,k)$ between $q$ and $k$ is approximated by first calculating the score $f(q, u)$ between $q$ and the "representatives" $u\in \mathcal{U}$ of $\mathcal{K}$, then calculating the score $h(v, k)$ between $k$ and the "representatives" $v\in \mathcal{V}$ of $\mathcal{Q}$, and finally performing a weighted summation through the weights $g(u, v)$.</blockquote>
+
+<p>In other words, the direct interaction between $q$ and $k$ is transformed into their respective interactions with "representatives," followed by a weighting of the results. The advantage is obvious: once $f, g, h$ are determined, all $g(u,v)$ and $h(v,k)$ can be pre-calculated and cached as a matrix. Then, for each retrieval, we only need to calculate $\|\mathcal{U}\|$ instances of $f(q,u)$ and then perform one matrix multiplication (inner product-based retrieval). Thus, the retrieval computation is converted from $\mathcal{O}(\|\mathcal{K}\|)$ to $\mathcal{O}(\|\mathcal{U}\|)$ (with tools like Faiss, inner product-based retrieval can be optimized to approximately $\mathcal{O}(1)$, and thus can be ignored).</p>
+
+<p>Assuming the request set $\mathcal{Q}$ is also finite, then all $s(q,k)$ constitute a $\|\mathcal{Q}\|\times \|\mathcal{K}\|$ matrix $\boldsymbol{S}$. Correspondingly, $f(q, u), g(u, v), h(v, k)$ correspond to a $\|\mathcal{Q}\|\times \|\mathcal{U}\|$ matrix $\boldsymbol{F}$, a $\|\mathcal{U}\|\times \|\mathcal{V}\|$ matrix $\boldsymbol{G}$, and a $\|\mathcal{V}\|\times \|\mathcal{K}\|$ matrix $\boldsymbol{H}$. Equation \eqref{eq:decom} then becomes a matrix factorization:
+\begin{equation}\begin{array}{ccccc}
+\boldsymbol{S} & \approx & \boldsymbol{F} & \boldsymbol{G} & \boldsymbol{H} \\
+\in\mathbb{R}^{\|\mathcal{Q}\|\times \|\mathcal{K}\|} & & \in\mathbb{R}^{\|\mathcal{Q}\|\times \|\mathcal{U}\|} & \in\mathbb{R}^{\|\mathcal{U}\|\times \|\mathcal{V}\|} & \in\mathbb{R}^{\|\mathcal{V}\|\times \|\mathcal{K}\|}
+\end{array}\label{eq:m-decom}\end{equation}</p>
+
+<h2>CUR Decomposition</h2>
+
+<p>If $\boldsymbol{G}$ is restricted to being a diagonal matrix and no special restrictions are placed on $\boldsymbol{F}$ and $\boldsymbol{H}$, the corresponding decomposition is SVD. SVD is equivalent to virtually creating several "representatives" so that the final fitting effect is relatively good. However, with "representatives" constructed by the algorithm itself, it is difficult for us to understand their specific meanings—meaning the interpretability is somewhat lacking.</p>
+
+<p>CUR decomposition is more direct. it posits that "representatives" should be members of the original population. That is, the "representatives" of $\mathcal{Q}$ and $\mathcal{K}$ should be subsets chosen from the sets themselves, i.e., $\mathcal{U}\subset \mathcal{K}, \mathcal{V}\subset\mathcal{Q}$. In this way, $(q,u)$ and $(v,k)$ are among the original $(q,k)$, and therefore we can continue to use the original scoring function $s$, namely:
+\begin{equation}s(q,k) \approx \sum_{u\in\mathcal{U},v\in\mathcal{V}} s(q, u) g(u, v) s(v, k)\end{equation}
+Consequently, only the function $g(u,v)$ remains to be determined. From the perspective of matrix decomposition, at this point $\boldsymbol{F}$ in Equation \eqref{eq:m-decom} is a submatrix composed of several columns of $\boldsymbol{S}$, and $\boldsymbol{H}$ is a submatrix composed of several rows of $\boldsymbol{S}$. The only thing left to calculate is matrix $\boldsymbol{G}$. The calculation of $\boldsymbol{G}$ is also straightforward. Let's first consider a very special case where $\mathcal{U}=\mathcal{K}, \mathcal{V}=\mathcal{Q}$ and $\|\mathcal{Q}\|=\|\mathcal{K}\|$. At this point, the CUR decomposition is $\boldsymbol{S}\approx \boldsymbol{S}\boldsymbol{G}\boldsymbol{S}$, where $\boldsymbol{S}$ and $\boldsymbol{G}$ are square matrices. Since we have taken the entirety of $\mathcal{Q}$ and $\mathcal{K}$ as representatives, we naturally hope for $=$ instead of $\approx$. If $=$ holds, we can directly solve for $\boldsymbol{G} = \boldsymbol{S}^{-1}$.</p>
+
+<p>However, this implies that $\boldsymbol{S}$ must be invertible, which is not always the case. In such instances, the matrix inverse operation must be generalized; we call this the "<a href="https://en.wikipedia.org/wiki/Moore%E2%80%93Penrose_inverse">pseudo-inverse</a>," denoted as $\boldsymbol{G}=\boldsymbol{S}^{\dagger}$. Specifically, the pseudo-inverse is also defined for non-square matrices, so when $\|\mathcal{Q}\|\neq\|\mathcal{K}\|$, we can similarly solve for $\boldsymbol{G}=\boldsymbol{S}^{\dagger}$. Finally, when $\mathcal{U}\neq\mathcal{K}$ or $\mathcal{V}\neq\mathcal{Q}$, the result is similar, except that the matrix for which the pseudo-inverse is calculated is replaced by the intersection matrix of $\boldsymbol{F}$ and $\boldsymbol{H}$ (i.e., the $\mathcal{U}\times \mathcal{V}$ matrix formed by the intersection elements of several rows and columns of $\boldsymbol{S}$):
+\begin{equation}
+\boldsymbol{S} \approx \boldsymbol{F} (\boldsymbol{F}\cap \boldsymbol{H})^{\dagger}\boldsymbol{H}\end{equation}</p>
+
+<p>The entire process is illustrated below:</p>
+<p>CUR Decomposition Diagram</p>
+
+<h2>Accelerating Retrieval</h2>
+
+<p>In fact, this is not the first time this blog has covered CUR decomposition. Last year's article <a href="translation_8180.html">"Nyströmformer: A Linearized Attention Scheme Based on Matrix Decomposition"</a> introduced Nyströmformer, which was also designed based on the idea of CUR decomposition; the original paper devoted quite a bit of space to introducing CUR decomposition. ANNCUR utilizes CUR decomposition for retrieval acceleration, showing that CUR applications are widespread.</p>
+
+<p>The principle of acceleration was briefly mentioned just now; let's summarize it. First, we select several representative $q\in \mathcal{V}\subset \mathcal{Q}$ and $k\in \mathcal{U}\subset \mathcal{K}$, calculate their pairwise scores to form the matrix $\boldsymbol{F}\cap\boldsymbol{H}$, and obtain matrix $\boldsymbol{G}$ after calculating the pseudo-inverse. Then, we calculate the scoring matrix $\boldsymbol{G}$ for $q\in \mathcal{V}$ and $k\in \mathcal{K}$ in advance and store $\boldsymbol{G}\boldsymbol{H}$. Finally, for every $q$ that needs to be queried, we calculate scores with every $k\in \mathcal{U}$ to get a $\|\mathcal{U}\|$-dimensional vector, then multiply this vector by the cached matrix $\boldsymbol{G}\boldsymbol{H}$ to get the scoring vector for $q$ with every $k\in \mathcal{K}$.</p>
+
+<p>The general principle of ANNCUR is as described. Specific details can be found by reading the original paper, such as why replacing the interaction-based similarity model with the "[EMB]-CE" version described in the paper yields better results. Some readers might ask, "How do we select representative $q$ and $k$?" In fact, in most cases, they are chosen randomly. This leaves room for improvement—for example, one could perform clustering and select the points closest to the cluster centers; these depend on one's own creativity. Additionally, it should be pointed out that CUR decomposition itself is an approximation and will inevitably have errors. Therefore, this acceleration scheme is primarily designed for retrieval scenarios. A characteristic of retrieval scenarios is that they care more about top-$k$ recall than top-1 precision. We can use CUR decomposition to accelerate the recall of several results and then use the exact $s(q,k)$ for a re-ranking to improve accuracy.</p>
+
+<p>Some experimental results diagrams from ANNCUR</p>
+
+<h2>Article Summary</h2>
+
+<p>This article reviewed the CUR decomposition in matrix factorization and introduced its application in accelerating the retrieval of interaction-based similarity models.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9336.html" style="color: #005fcc;">https://kexue.fm/archives/9336</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,277 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/7615">Mitigating Class Imbalance via Mutual Information Thinking</a></h1>
+    
+    <p>By 苏剑林 | July 19, 2020</p>
+
+    <p>Class imbalance, also known as the "long-tail problem," is one of the common challenges faced in machine learning, especially with datasets derived from real-world scenarios, which are almost always imbalanced. About two years ago, I also thought about this problem. At the time, I happened to have some insights into "mutual information," so I conceived a solution based on that idea. However, upon further reflection, the logic seemed too commonplace, so I didn't pursue it further. Yet, a few days ago, I came across an article from Google on arXiv titled <a href="https://papers.cool/arxiv/2007.07314">"Long-tail learning via logit adjustment"</a> and was surprised to find that it contained almost exactly the same method I had originally conceived. This made me realize that my initial idea could actually achieve SOTA (state-of-the-art) performance. Therefore, combining that paper with my original thought process, I have organized the following content, hoping readers won't dismiss it as "Monday morning quarterbacking."</p>
+
+    <h2 id="problem-description">Problem Description <a href="https://kexue.fm/archives/7615#problem-description">#</a></h2>
+
+    <p>The primary concern here is the single-label multi-classification problem. Suppose there are $K$ candidate categories $1, 2, \dots, K$. The training data is $(x, y) \sim \mathcal{D}$, and the modeled distribution is $p_{\theta}(y|x)$. Our optimization goal is maximum likelihood, or minimizing cross-entropy:</p>
+    \begin{equation}\mathop{\text{argmin}}_{\theta}\,\mathbb{E}_{(x,y)\sim\mathcal{D}}[-\log p_{\theta}(y|x)]\end{equation}
+    <p>Typically, the final step of our probability model is a softmax. Assuming the result before softmax is $f(x;\theta)$ (i.e., logits), then:</p>
+    \begin{equation}-\log p_{\theta}(y|x)=-\log \frac{e^{f_y(x;\theta)}}{\sum\limits_{i=1}^K e^{f_i(x;\theta)}}=\log\left[1 + \sum_{i\neq y}e^{f_i(x;\theta) - f_y(x;\theta)}\right]\label{eq:loss-1}\end{equation}
+    <p>The so-called class imbalance refers to certain categories having an exceptionally large number of samples, much like "20% of the people hold 80% of the wealth." The remaining categories are numerous, but their total sample count is small. If sorted from high to low, it looks like a long "tail," hence the name long-tail phenomenon. In this situation, when we sample a batch during training, there is rarely an opportunity to sample low-frequency categories; thus, the model easily ignores these classes. However, during evaluation, we usually care more about the recognition performance of these low-frequency categories. This is the root of the contradiction.</p>
+
+    <h2 id="common-approaches">Common Approaches <a href="https://kexue.fm/archives/7615#common-approaches">#</a></h2>
+
+    <p>You may have heard of common approaches, which generally fall into three directions:</p>
+
+    <blockquote>
+        <p>1. <strong>Starting from data:</strong> Using techniques like over-sampling or down-sampling to make each batch more balanced.</p>
+        <p>2. <strong>Starting from loss:</strong> A classic approach is to divide the loss of sample of category $y$ by the frequency of that category $p(y)$.</p>
+        <p>3. <strong>Starting from results:</strong> Modifying the prediction phase of a normally trained model to favor low-frequency categories. For example, if there are far fewer positive samples than negative samples, we might treat any prediction result greater than 0.2 (instead of 0.5) as positive.</p>
+    </blockquote>
+
+    <p>Google's original paper lists many references for these three directions. Interested readers can read the original paper directly. Additionally, the Zhihu article <a href="https://zhuanlan.zhihu.com/p/158638078">"Long-Tailed Classification (2): Latest Research on Classification under Long-Tailed Distribution"</a> also introduces this problem, and readers may refer to it as well.</p>
+
+    <h2 id="learning-mutual-information">Learning Mutual Information <a href="https://kexue.fm/archives/7615#learning-mutual-information">#</a></h2>
+
+    <p>Recall how we determine that a classification problem is imbalanced. Obviously, the general approach is to calculate the frequency $p(y)$ of each category from the entire training set and discover that $p(y)$ is concentrated in a few categories. Therefore, the key to solving the class imbalance problem is how to integrate this prior knowledge $p(y)$ into the model.</p>
+
+    <p>When I was previously conceiving word vector models (as in the article <a href="translation_4669.html">"A More Elegant Word Vector Model (2): Modeling Language"</a>), I emphasized that compared to fitting conditional probability, if a model can directly fit mutual information, it will learn more essential knowledge, as mutual information is the indicator that reveals core associations. However, fitting mutual information is not easy to train; what is easy to train is conditional probability, using cross-entropy $-\log p_{\theta}(y|x)$ directly. Thus, a more ideal idea is: how to make the model still use cross-entropy as the loss, while essentially fitting mutual information?</p>
+
+    <p>In Equation $\eqref{eq:loss-1}$, we modeled</p>
+    \begin{equation}p_{\theta}(y|x)=\frac{e^{f_y(x;\theta)}}{\sum\limits_{i=1}^K e^{f_i(x;\theta)}}\end{equation}
+    <p>Now we change to modeling mutual information, which means we hope</p>
+    \begin{equation}\log \frac{p_{\theta}(y|x)}{p(y)}\sim f_y(x;\theta)\quad \Leftrightarrow\quad \log p_{\theta}(y|x)\sim f_y(x;\theta) + \log p(y)\end{equation}
+    <p>According to the form on the right, normalizing with softmax again, we have $p_{\theta}(y|x)=\frac{e^{f_y(x;\theta)+\log p(y)}}{\sum\limits_{i=1}^K e^{f_i(x;\theta)+\log p(i)}}$, or written in loss form:</p>
+    \begin{equation}-\log p_{\theta}(y|x)=-\log \frac{e^{f_y(x;\theta)+\log p(y)}}{\sum\limits_{i=1}^K e^{f_i(x;\theta)+\log p(i)}}=\log\left[1 + \sum_{i\neq y}\frac{p(i)}{p(y)}e^{f_i(x;\theta) - f_y(x;\theta)}\right]\label{eq:loss-2}\end{equation}
+    <p>The original paper calls this "logit adjustment loss." More generally, a adjustment factor $\tau$ can be added:</p>
+    \begin{equation}-\log p_{\theta}(y|x)=-\log \frac{e^{f_y(x;\theta)+\tau\log p(y)}}{\sum\limits_{i=1}^K e^{f_i(x;\theta)+\tau\log p(i)}}=\log\left[1 + \sum_{i\neq y}\left(\frac{p(i)}{p(y)}\right)^{\tau}e^{f_i(x;\theta) - f_y(x;\theta)}\right]\label{eq:loss-3}\end{equation}
+    <p>Generally, $\tau=1$ already achieves near-optimal results. If the final layer of $f_y(x;\theta)$ has a bias term, the simplest implementation is to initialize the bias term as $\tau\log p(y)$. It can also be written within the loss function:</p>
+
+<pre><code class="language-python">import numpy as np
+import keras.backend as K
+
+def categorical_crossentropy_with_prior(y_true, y_pred, tau=1.0):
+    """Cross-entropy with prior distribution
+    Note: y_pred should not have softmax applied
+    """
+    prior = xxxxxx # Define your own prior, shape [num_classes]
+    log_prior = K.constant(np.log(prior + 1e-8))
+    for _ in range(K.ndim(y_pred) - 1):
+        log_prior = K.expand_dims(log_prior, 0)
+    y_pred = y_pred + tau * log_prior
+    return K.categorical_crossentropy(y_true, y_pred, from_logits=True)
+
+def sparse_categorical_crossentropy_with_prior(y_true, y_pred, tau=1.0):
+    """Sparse cross-entropy with prior distribution
+    Note: y_pred should not have softmax applied
+    """
+    prior = xxxxxx # Define your own prior, shape [num_classes]
+    log_prior = K.constant(np.log(prior + 1e-8))
+    for _ in range(K.ndim(y_pred) - 1):
+        log_prior = K.expand_dims(log_prior, 0)
+    y_pred = y_pred + tau * log_prior
+    return K.sparse_categorical_crossentropy(y_true, y_pred, from_logits=True)
+</code></pre>
+
+    <h2 id="result-analysis">Result Analysis <a href="https://kexue.fm/archives/7615#result-analysis">#</a></h2>
+
+    <p>Clearly, logit adjustment loss belongs to the category of loss adjustment schemes. The difference is that it adjusts weights <i>inside</i> the $\log$, whereas conventional ideas adjust <i>outside</i> the $\log$. As for its advantages, they are the advantages of mutual information: mutual information reveals truly important associations. By supplementing the logits with the bias of the prior distribution, the model is encouraged to "let the prior resolve what it can, and let the model resolve the essential parts that the prior cannot."</p>
+
+    <p>In the prediction phase, we can formulate different prediction schemes according to different evaluation metrics. From <a href="translation_6620.html">"Talk on Function Smoothing: Differentiable Approximation of Non-differentiable Functions"</a>, we know that for overall accuracy, we have the approximation:</p>
+    \begin{equation}\text{Overall Accuracy} \approx \frac{1}{N}\sum_{i=1}^N p_{\theta}(y_i|x_i)\end{equation}
+    <p>where $\{(x_i, y_i)\}_{i=1}^N$ is the validation set. So, if we do not consider class imbalance and pursue higher overall accuracy, for each $x$, we can simply output the category with the largest $p_{\theta}(y|x)$. But if we hope that the accuracy of each class is as high as possible, we rewrite the above formula as:</p>
+    \begin{equation}\text{Overall Accuracy} \approx \frac{1}{N}\sum_{i=1}^N \frac{p_{\theta}(y_i|x_i)}{p(y_i)}\times p(y_i)=\sum_{y=1}^K p(y)\left(\frac{1}{N}\sum_{x_i\in\Omega_y} \frac{p_{\theta}(y|x_i)}{p(y)}\right)\end{equation}
+    <p>where $\Omega_y=\{x_i|y_i=y, i=1,2,\dots,N\}$, the set of $x$ labeled $y$. The right side of the equals sign is essentially the result of merging terms with the same $y$. We know that "Overall Accuracy = weighted average of per-class accuracy," and the above formula has exactly the same form. Thus, the term in parentheses $\frac{1}{N}\sum\limits_{x_i\in\Omega_y} \frac{p_{\theta}(y|x_i)}{p(y)}$ is an approximation of "per-class accuracy." Therefore, if we want the accuracy of each class to be as high as possible, we should output the category that maximizes $\frac{p_{\theta}(y|x)}{p(y)}$ (unweighted). Combined with the form of $p_{\theta}(y|x)$, we have the conclusion:</p>
+    \begin{equation}y^{*}=\left\{\begin{aligned}&\mathop{\text{argmax}}\limits_y\, f_y(x;\theta)+\tau\log p(y),\quad(\text{Pursuing overall accuracy})\\
+    &\mathop{\text{argmax}}\limits_y\, f_y(x;\theta),\quad(\text{Desired balanced class accuracy})
+    \end{aligned}\right.\end{equation}
+    <p>The first strategy actually outputs the one with maximum conditional probability, while the second outputs the one with maximum mutual information, to be chosen based on specific needs.</p>
+
+    <p>As for detailed experimental results, readers can look at the paper. In short, it is surprisingly good:</p>
+
+    <p style="text-align: center;">
+        <img src="https://kexue.fm/usr/uploads/2020/07/399042576.png" alt="Experimental results from the original paper" style="max-width: 100%;">
+        <br>
+        <em>Experimental results from the original paper</em>
+    </p>
+
+    <h2 id="conclusion">Article Summary <a href="https://kexue.fm/archives/7615#conclusion">#</a></h2>
+
+    <p>This article briefly introduced a method for handling class imbalance based on mutual information. I had previously conceived this scheme but didn't pursue it. A recent paper from Google provided the same method, so I have simply recorded and analyzed it here. Finally, the experimental results provided by Google show that this method can reach SOTA levels.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7615.html" style="color: #005fcc;">https://kexue.fm/archives/7615</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,401 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/7259">Brief Analysis and Countermeasures for Exposure Bias in Seq2Seq</a></h1>
+
+<p>By 苏剑林 | March 09, 2020</p>
+
+<p>A few days ago, I wrote <a href="translation_7213.html">"Now that you've used CRF, why not learn about the faster MEMM?"</a>, which mentioned the advantages and disadvantages of MEMM's local normalization versus CRF's global normalization. At the same time, I thought of the Seq2Seq model, because the typical training scheme for Seq2Seq, Teacher Forcing, is a local normalization model, and therefore it also suffers from the problems brought by local normalization—what we often call "Exposure Bias." With this thought in mind, I continued to reflect on the matter and recorded my final thoughts in this article.</p>
+
+<p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2020/03/3052844222.png" alt="Classic Seq2Seq model illustration" /><br />The classic Seq2Seq model illustration</p>
+
+<p>This article is an advanced piece, suitable for readers who already have a certain understanding of Seq2Seq models and wish to further enhance their understanding or model performance. For introductory articles on Seq2Seq, you can read previous works <a href="translation_5861.html">"Playing with Keras: Seq2Seq for Automatic Title Generation"</a> and <a href="translation_6933.html">"From Language Models to Seq2Seq: Transformer is all about the Mask."</a></p>
+
+<p>The content of this article is roughly:</p>
+
+<blockquote>
+<p>1. Analysis of the causes of Exposure Bias and examples;<br />
+2. Simple and feasible strategies to mitigate the Exposure Bias problem.</p>
+</blockquote>
+
+<h2>Softmax <a id="Softmax" href="#Softmax">#</a></h2>
+
+<p>First, let's review content related to Softmax. As everyone knows, for a vector $(x_1, x_2, \dots, x_n)$, its Softmax is
+\begin{equation}(p_1, p_2, \dots, p_n) = \frac{1}{\sum_{i=1}^n e^{x_i}}\left(e^{x_1}, e^{x_2}, \dots, e^{x_n}\right)\end{equation}
+Since $e^t$ is a strictly monotonically increasing function with respect to $t$, if $x_k$ is the maximum among $x_1, x_2, \dots, x_n$, then $p_k$ is also the maximum among $p_1, p_2, \dots, p_n$.</p>
+
+<p>For classification problems, the loss we use is generally cross-entropy, which is
+\begin{equation}-\log p_t = \log\left(\sum_{i=1}^n e^{x_i}\right) - x_t\end{equation}
+where $t$ is the target class. As described in the article <a href="translation_3290.html">"Seeking a Smooth Maximum Function"</a>, the first term in the expression above is actually a smooth approximation of $\max(x_1, x_2, \dots, x_n)$, so to visually understand cross-entropy, we can write
+\begin{equation}-\log p_t \approx \max(x_1, x_2, \dots, x_n) - x_t\end{equation}
+That is to say, cross-entropy is essentially reducing the gap between the target class score $x_t$ and the global maximum. Obviously, this gap can only be at least 0, and at this point, the target class score is the maximum. Therefore, the effect of Softmax plus cross-entropy is to "hope the target class score becomes the maximum."</p>
+
+<h2>Teacher Forcing <a id="Teacher-Forcing" href="#Teacher-Forcing">#</a></h2>
+
+<p>Now, let's look at Seq2Seq, which models the joint probability distribution through conditional decomposition:
+\begin{equation}\begin{aligned}p(\boldsymbol{y}|\boldsymbol{x}) =& \, p(y_1, y_2, \dots, y_n|\boldsymbol{x}) \\
+=& \, p(y_1|\boldsymbol{x})p(y_2|\boldsymbol{x}, y_1) \dots p(y_n|\boldsymbol{x}, y_1, \dots, y_{n-1})
+\end{aligned}\end{equation}
+Each term is naturally modeled using Softmax, i.e.,
+\begin{equation}\begin{aligned}&p(y_1|\boldsymbol{x})=\frac{e^{f(y_1;\boldsymbol{x})}}{\sum_{y_1} e^{f(y_1;\boldsymbol{x})}}, \\
+&p(y_2|\boldsymbol{x},y_1)=\frac{e^{f(y_1,y_2;\boldsymbol{x})}}{\sum_{y_2} e^{f(y_1,y_2;\boldsymbol{x})}}, \\
+&\dots, \\
+&p(y_n|\boldsymbol{x},y_1,\dots,y_{n-1})=\frac{e^{f(y_1,y_2,\dots,y_n;\boldsymbol{x})}}{\sum_{y_n} e^{f(y_1,y_2,\dots,y_n;\boldsymbol{x})}}
+\end{aligned}\end{equation}
+Multiplying them together gives
+\begin{equation}p(\boldsymbol{y}|\boldsymbol{x})=\frac{e^{f(y_1;\boldsymbol{x})+f(y_1,y_2;\boldsymbol{x})+\dots+f(y_1,y_2,\dots,y_n;\boldsymbol{x})}}{\left(\sum_{y_1} e^{f(y_1;\boldsymbol{x})}\right)\left(\sum_{y_2} e^{f(y_1,y_2;\boldsymbol{x})}\right)\dots\left(\sum_{y_n} e^{f(y_1,y_2,\dots,y_n;\boldsymbol{x})}\right)}\label{eq:join-target}\end{equation}
+And the training objective is
+\begin{equation}-\log p(\boldsymbol{y}|\boldsymbol{x})=-\log p(y_1|\boldsymbol{x})-\log p(y_2|\boldsymbol{x},y_1)-\dots -\log p(y_n|\boldsymbol{x},y_1,\dots,y_{n-1})\end{equation}
+This direct training objective is called Teacher Forcing because, when calculating $-\log p(y_2|\boldsymbol{x},y_1)$, we need to know the ground truth $y_1$; when calculating $-\log p(y_3|\boldsymbol{x},y_1,y_2)$, we need to know the ground truth $y_1, y_2$, and so on. It is as if an experienced teacher has pre-paved most of the road for us, requiring us only to figure out the next step. This method is easy to train and can achieve parallel training when combined with models like CNN or Transformer, but it may bring about the Exposure Bias problem.</p>
+
+<h2>Exposure Bias <a id="Exposure-Bias" href="#Exposure-Bias">#</a></h2>
+
+<p>In fact, the name Teacher Forcing itself implies that it will inherently have the Exposure Bias problem. Think about the process of a teacher teaching a student to solve a problem; the general steps are:</p>
+
+<blockquote>
+<p>1. How to think about the first step;<br />
+2. After the first step is figured out, what options do we have for the second step;<br />
+3. Once the second step is determined, what can we do for the third step;<br />
+...<br />
+n. With these $n-1$ steps, the last step isn't hard to think of.</p>
+</blockquote>
+
+<p>This process is actually the same as the assumption of the Seq2Seq Teacher Forcing scheme. Readers with teaching experience know that, generally speaking, students can follow along and nod their heads, feeling like they understand everything, but when the student is asked to solve a problem independently after class, most are still completely lost. Why is this? One reason is Exposure Bias. To put it simply, the problem is that the teacher always assumes the student can think of several preceding steps and then teaches them the next step. But what if a step is misunderstood or can't be figured out? At that point, the process can't continue, meaning the correct answer cannot be obtained. This is the Exposure Bias problem.</p>
+
+<h2>Beam Search <a id="Beam-Search" href="#Beam-Search">#</a></h2>
+
+<p>In fact, when we actually solve problems, it isn't always like this. If we get stuck at a certain step and can't be sure, we traverse several options and continue pushing forward to see if the subsequent results can help us retrospectively determine the step we were unsure about. For Seq2Seq, this corresponds to the decoding process based on Beam Search.</p>
+
+<p>Regarding Beam Search, we should notice that the beam size is not necessarily better the larger it is. In some cases, it is even best when the beam size is equal to 1. This seems somewhat unreasonable because, theoretically, the larger the beam size, the closer the found sequence should be to the optimal sequence, and thus the more likely it should be to be correct. In fact, this is also one of the phenomena of Exposure Bias.</p>
+
+<p>From equation $\eqref{eq:join-target}$, we can see that Seq2Seq's scoring function for the target sequence $y_1, y_2, \dots, y_n$ is:
+\begin{equation}f(y_1;\boldsymbol{x})+f(y_1,y_2;\boldsymbol{x})+\dots+f(y_1,y_2,\dots,y_n;\boldsymbol{x})\end{equation}
+Normally, we hope the target sequence is the one with the highest score among all candidate sequences. According to the Softmax method introduced at the beginning of this article, the probability distribution we want to establish should be
+\begin{equation}p(\boldsymbol{y}|\boldsymbol{x})=\frac{e^{f(y_1;\boldsymbol{x})+f(y_1,y_2;\boldsymbol{x})+\dots+f(y_1,y_2,\dots,y_n;\boldsymbol{x})}}{\sum_{y_1,y_2,\dots,y_n}e^{f(y_1;\boldsymbol{x})+f(y_1,y_2;\boldsymbol{x})+\dots+f(y_1,y_2,\dots,y_n;\boldsymbol{x})}}\label{eq:ideal-target}\end{equation}
+But the denominator of the above expression requires traversing all paths for summation, which is difficult to implement. Thus, equation $\eqref{eq:join-target}$ has been widely used as a compromise. However, equation $\eqref{eq:join-target}$ is not equivalent to equation $\eqref{eq:ideal-target}$. Therefore, even if the model has been successfully optimized, the phenomenon where "the optimal sequence is not the target sequence" may still occur.</p>
+
+<h2>Simple Example <a id="Simple-Example" href="#Simple-Example">#</a></h2>
+
+<p>Let's look at a simple example. Suppose the sequence length is only 2, the candidate sequences are $(a, b)$ and $(c, d)$, and the target sequence is $(a, b)$. After training, the model's probability distribution is:
+\[\begin{array}{c|c}
+\hline
+p(a) & p(c)\\
+\hline
+0.6 & 0.4 \\
+\hline
+\end{array}\qquad \begin{array}{c|c|c|c}
+\hline
+p(b|a) & p(d|a) & p(b|c) & p(d|c)\\
+\hline
+0.55 & 0.45 & 0.1 & 0.9\\
+\hline
+\end{array}\]</p>
+
+<p>If the beam size is 1, then since $p(a) > p(c)$, the first step can only output $a$, followed by $p(b|a) > p(d|a)$, so the second step can only output $b$, successfully outputting the correct sequence $(a, b)$. But if the beam size is 2, then the first step outputs $(a, 0.6), (c, 0.4)$, and the second step traverses all combinations, obtaining:
+\[\begin{array}{c|c|c|c}
+\hline
+(a, b) & (a, d) & (c, b) & (c, d)\\
+\hline
+0.33 & 0.27 & 0.04 & 0.36\\
+\hline
+\end{array}\]
+Therefore, the incorrect sequence $(c, d)$ is output.</p>
+
+<p>Is that because the model wasn't trained well? No. As mentioned before, the goal of Softmax plus cross-entropy is to maximize the score of the target. For the first step, we have $p(a) > p(c)$, so the training goal for the first step is reached. For the second step, given that $a$ is known, we have $p(b|a) > p(d|a)$, which means the second step's training goal is also reached. Thus, the model is considered well-trained, but perhaps due to limitations in model capacity and other reasons, the score isn't particularly high; nonetheless, the goal of "making the target's score the maximum" has been completed.</p>
+
+<h2>Thinking about Countermeasures <a id="Thinking-about-Countermeasures" href="#Thinking-about-Countermeasures">#</a></h2>
+
+<p>From the above example, readers might see where the problem lies: it is mainly because $p(d|c)$ is too high, and $p(d|c)$ was not trained. There is no explicit mechanism to suppress the growth of $p(d|c)$, so the phenomenon of "the optimal sequence is not the target sequence" occurred.</p>
+
+<p>Seeing this, readers might think of a naive countermeasure: add an additional optimization target to lower the probability of those non-target sequences found through Beam Search. In fact, this is indeed an effective method. Related results were published in the 2016 paper <a href="https://papers.cool/arxiv/1606.02960">"Sequence-to-Sequence Learning as Beam-Search Optimization."</a> However, this almost requires performing a Beam Search for every sample before every step of training, which is computationally expensive. There are also newer results, such as the ACL 2019 Best Long Paper <a href="https://papers.cool/arxiv/1906.02448">"Bridging the Gap between Training and Inference for Neural Machine Translation,"</a> which focuses on solving the Exposure Bias problem. Additionally, methods like directly optimizing BLEU through reinforcement learning can also alleviate Exposure Bias to some extent.</p>
+
+<p>However, as far as I know, most of these methods dedicated to solving Exposure Bias make drastic changes to the training process, and may even sacrifice the original model's training parallelizability (e.g., needing to recursively sample negative samples; if the model is an RNN, it doesn't matter, but if it's a CNN or Transformer, the damage is significant). The increase in cost is often much larger than the improvement in effect.</p>
+
+<h2>Constructing Negative Samples <a id="Constructing-Negative-Samples" href="#Constructing-Negative-Samples">#</a></h2>
+
+<p>Looking at most papers solving Exposure Bias, and combining our previous examples and perceptions, it's not hard to see that the main idea is to construct representative negative samples and then reduce the probability of these negative samples during the training process. The question then becomes how to construct "representative" negative samples. Here I present a simple strategy I conceived. Experiments have shown it can mitigate Exposure Bias to some extent and improve the performance of text generation. Importantly, this strategy is quite simple and can basically be used "out of the box" with almost no loss in training performance.</p>
+
+<p>The method is simple: randomly replace some of the input words in the Decoder (the Decoder's input words have a specific name, "oracle words"), as shown in the following figure:</p>
+
+<p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2020/03/4006198948.png" alt="A simple strategy to mitigate Exposure Bias" /><br />A simple strategy to mitigate Exposure Bias: directly replace some of the Decoder's input words with other words randomly.</p>
+
+<p>Where the purple [R] represents the randomly replaced word. In fact, many Exposure Bias papers follow this line of thought, but the scheme for random word selection varies. The scheme I propose is simple:</p>
+
+<blockquote>
+<p>1. 50% probability of making no change;<br />
+2. 50% probability of replacing 30% of the words in the input sequence, with the replacement being any word from the original target sequence.</p>
+</blockquote>
+
+<p>That is, the probability of random replacement is 50%, the proportion of random replacement is 30%, and the random sampling space is the set of words in the target sequence. The inspiration for this strategy is: although Seq2Seq may not perfectly generate the target sequence, it usually generates most of the words from the target sequence (though the order might be wrong, or same words might repeat). Thus, an input sequence replaced in this way can usually serve as a representative negative sample. By the way, let me state that the 50% and 30% proportions were purely "pulled out of a hat" without careful parameter tuning, because training generation models once is simply too exhausting.</p>
+
+<p>How is the effect? I conducted two title (summary) generation experiments (the first two in <a href="https://github.com/CLUEbenchmark/CLGE">CLGE</a>), where the baseline is <a href="https://github.com/bojone/bert4keras/blob/master/examples/task_seq2seq_autotitle_csl.py">task_seq2seq_autotitle_csl.py</a>. The code is open-sourced at:</p>
+
+<blockquote>
+<p><strong>Github address:</strong> <a href="https://github.com/bojone/exposure_bias">https://github.com/bojone/exposure_bias</a></p>
+</blockquote>
+
+<p>The results are shown in the table below:</p>
+\[\begin{array}{c}
+\text{CSL Title Generation Experimental Results}\\
+{\begin{array}{c|c|cccc}
+\hline
+& \text{beam size} & \text{Rouge-L} & \text{Rouge-1} & \text{Rouge-2} & \text{BLEU} \\
+\hline
+\text{baseline} & 1 & 63.81 & 65.45 & 54.91 & 45.52 \\
+\text{Random Replacement} & 1 & \textbf{64.44} & \textbf{66.09} & \textbf{55.56} & \textbf{46.1} \\
+\hline
+\text{baseline} & 2 & 64.44 & 66.09 & 55.75 & 46.39 \\
+\text{Random Replacement} & 2 & \textbf{65.04} & \textbf{66.75} & \textbf{56.51} & \textbf{47.19} \\
+\hline
+\text{baseline} & 3 & 64.75 & 66.34 & 56.06 & 46.7 \\
+\text{Random Replacement} & 3 & \textbf{65.15} & \textbf{66.96} & \textbf{56.74} & \textbf{47.42} \\
+\hline
+\end{array}}\\
+\\
+\text{LCSTS Summary Generation Experimental Results}\\
+{\begin{array}{c|c|cccc}
+\hline
+& \text{beam size} & \text{Rouge-L} & \text{Rouge-1} & \text{Rouge-2} & \text{BLEU} \\
+\hline
+\text{baseline} & 1 & 27.99 & 29.57 & \textbf{18.04} & \textbf{11.72} \\
+\text{Random Replacement} & 1 & \textbf{28.61} & \textbf{29.92} & 17.72 & 11.23 \\
+\hline
+\text{baseline} & 2 & \textbf{29.2} & 30.7 & \textbf{19.17} & \textbf{12.64} \\
+\text{Random Replacement} & 2 & 29.15 & \textbf{30.79} & 18.56 & 11.75 \\
+\hline
+\text{baseline} & 3 & \textbf{29.45} & \textbf{30.95} & \textbf{19.5} & \textbf{12.93} \\
+\text{Random Replacement} & 3 & 29.14 & 30.88 & 18.76 & 11.91 \\
+\hline
+\end{array}}
+\end{array}\]
+
+<p>It can be found that in the CSL task, the strategy based on random replacement steadily improved all metrics for text generation. In the LCSTS task, the performance across various metrics was mixed. Considering LCSTS is inherently difficult and its metrics are already low, the CSL results should be more persuasive. This indicates that the strategy I proposed is indeed a scheme worth trying. (Note: All experiments were repeated twice and averaged, so the experimental results should be quite reliable.)</p>
+
+<h2>Adversarial Training <a id="Adversarial-Training" href="#Adversarial-Training">#</a></h2>
+
+<p>Thinking to this point, we might as well "let our imaginations fly": since one of the ideas for solving Exposure Bias is to construct representative negative samples as input—in other words, to let the model still predict correctly under perturbation—and didn't we just discuss a method for generating perturbation samples a few days ago? Exactly, that's <a href="translation_7234.html">Adversarial Training</a>. If we directly add adversarial training to the baseline model, can it improve the model's performance? For simplicity, I conducted an experiment adding gradient penalty (which is also a form of adversarial training) to the baseline model. The results are compared as follows:</p>
+
+\[\begin{array}{c}
+\text{CSL Title Generation Experimental Results}\\
+{\begin{array}{c|c|cccc}
+\hline
+& \text{beam size} & \text{Rouge-L} & \text{Rouge-1} & \text{Rouge-2} & \text{BLEU} \\
+\hline
+\text{baseline} & 1 & 63.81 & 65.45 & 54.91 & 45.52 \\
+\text{Random Replacement} & 1 & 64.44 & 66.09 & 55.56 & 46.1 \\
+\text{Gradient Penalty} & 1 & \textbf{65.41} & \textbf{67.29} & \textbf{56.64} & \textbf{47.37} \\
+\hline
+\text{baseline} & 2 & 64.44 & 66.09 & 55.75 & 46.39 \\
+\text{Random Replacement} & 2 & 65.04 & 66.75 & 56.51 & 47.19 \\
+\text{Gradient Penalty} & 2 & \textbf{65.94} & \textbf{67.84} & \textbf{57.38} & \textbf{48.16} \\
+\hline
+\text{baseline} & 3 & 64.75 & 66.34 & 56.06 & 46.7 \\
+\text{Random Replacement} & 3 & 65.15 & 66.96 & 56.74 & 47.42 \\
+\text{Gradient Penalty} & 3 & \textbf{66.1} & \textbf{68.08} & \textbf{57.7} & \textbf{48.56} \\
+\hline
+\end{array}}\\
+\\
+\text{LCSTS Summary Generation Experimental Results}\\
+{\begin{array}{c|c|cccc}
+\hline
+& \text{beam size} & \text{Rouge-L} & \text{Rouge-1} & \text{Rouge-2} & \text{BLEU} \\
+\hline
+\text{baseline} & 1 & 27.99 & 29.57 & 18.04 & 11.72 \\
+\text{Random Replacement} & 1 & 28.61 & 29.92 & 17.72 & 11.23 \\
+\text{Gradient Penalty} & 1 & \textbf{30.75} & \textbf{31.83} & \textbf{19.38} & \textbf{11.78} \\
+\hline
+\text{baseline} & 2 & 29.2 & 30.7 & 19.17 & \textbf{12.64} \\
+\text{Random Replacement} & 2 & 29.15 & 30.79 & 18.56 & 11.75 \\
+\text{Gradient Penalty} & 2 & \textbf{30.88} & \textbf{32.19} & \textbf{19.96} & 12.32 \\
+\hline
+\text{baseline} & 3 & 29.45 & 30.95 & 19.5 & \textbf{12.93} \\
+\text{Random Replacement} & 3 & 29.14 & 30.88 & 18.76 & 11.91 \\
+\text{Gradient Penalty} & 3 & \textbf{30.39} & \textbf{31.76} & \textbf{19.74} & 12.14 \\
+\hline
+\end{array}}
+\end{array}\]
+
+<p>As can be seen, adversarial training (gradient penalty) further improved all metrics for CSL generation. On LCSTS, it mainly improved the Rouge metrics, while BLEU decreased slightly. Therefore, adversarial training can also be included in the list of "potential techniques to improve text generation models."</p>
+
+<h2>Summary <a id="Summary" href="#Summary">#</a></h2>
+
+<p>This article discussed the Exposure Bias phenomenon in Seq2Seq, attempted to analyze the causes of Exposure Bias from both intuitive and theoretical perspectives, and provided simple and feasible countermeasures to solve the Exposure Bias problem. These include a random replacement strategy I conceived, as well as a strategy based on adversarial training. The advantage of these two strategies is that they are almost plug-and-play, and experiments show they can improve various metrics for text generation to some extent.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7259.html" style="color: #005fcc;">https://kexue.fm/archives/7259</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

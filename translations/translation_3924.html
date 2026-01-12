@@ -1,0 +1,248 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']},
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/3924">[Chinese Word Segmentation Series] 4. seq2seq Character Labeling Based on Bidirectional LSTM</a></h1>
+    
+    <p>By 苏剑林 | August 22, 2016</p>
+
+    <h3>About the Character Labeling Method <a href="https://kexue.fm/archives/3924#%E5%85%B3%E4%BA%8E%E5%AD%97%E6%A0%87%E6%B3%A8%E6%B3%95">#</a></h3>
+    <p>The previous article discussed the character labeling method for word segmentation. It is important to note that the character labeling method has great potential; otherwise, it would not have achieved top results in public tests. In my view, there are two main reasons why character labeling is effective. The first reason is that it transforms the word segmentation problem into a sequence labeling problem, and this labeling is aligned—meaning the input characters and output labels have a one-to-one correspondence, which is a mature problem in sequence labeling. The second reason is that this labeling method is actually a process of summarizing semantic patterns. Taking 4-tag labeling as an example, we know that the character "李" (Li) is a common surname and often serves as the first character of a multi-character word (a person's name), thus it is labeled as 'b'. Similarly, "想" (Xiang), due to words like "理想" (ideal), has a high proportion of being labeled as 'e'. Consequently, when "李想" appear together, even if the word "李想" is not in the original lexicon, we can correctly output 'be', thereby identifying "李想" as a word. It is precisely for this reason that even the HMM model, often regarded as the least precise, can produce good results.</p>
+    <p>Regarding labeling, there is another topic worth discussing: the number of tags. Commonly used is the 4-tag system; in fact, there are also 6-tag and 2-tag systems. The simplest way to mark segmentation results would be 2-tag, i.e., marking "split/don't split," but the effectiveness is poor. Why does a higher number of tags actually yield better results? Because more tags actually provide a more comprehensive summary of semantic patterns. For example, with 4-tag labeling, we can summarize which characters form words on their own, which are frequently used as beginnings, and which are used as endings. However, with only 2-tag labeling, one can only summarize which characters frequently serve as beginnings, which is insufficient from an inductive perspective. But how does 6-tag compare to 4-tag? I don't think it is necessarily better. 6-tag means summarizing which characters act as the second or third character, but is this summarized angle correct? I feel that there are few characters fixed specifically for the second or third position; the generalizability of this pattern is much weaker than the patterns for initial and final characters (though from a new word discovery perspective, 6-tag makes it easier to find long words).</p>
+
+    <h3>Bidirectional LSTM <a href="https://kexue.fm/archives/3924#%E5%8F%8C%E5%90%91LSTM">#</a></h3>
+    <p>Regarding Bidirectional LSTM, the way to understand it is: Bidirectional LSTM is an improvement over LSTM, and LSTM is an improvement over RNN. Therefore, one first needs to understand RNN.</p>
+    <p>In my humble work <a href="translation_3873.html">"From Boosting Learning to Neural Networks: Is Looking at a Mountain still Looking at a Mountain?"</a>, I mentioned that the output results of a model can, in fact, be viewed as a type of feature and can also be used as input for the model. RNN is precisely such a network structure. Ordinary multi-layer neural networks are a one-way propagation process from input to output. If high-dimensional inputs are involved, this could be done, but there are too many nodes, making it difficult to train and prone to overfitting. For example, if an image input is 1000x1000, it is difficult to process directly, which led to CNNs; or a sentence of 1000 words, where each word uses a 100-dimensional word vector, the input dimension is also not small. In this case, one solution to the problem is RNN (CNNs can also be used, but RNNs are more suitable for sequence problems).</p>
+
+    <p align="center">
+        <a href="https://kexue.fm/usr/uploads/2016/08/2787554479.png" title="Click to view original image"><img src="https://kexue.fm/usr/uploads/2016/08/2787554479.png" alt="RNN Process" /></a>
+        <br />
+        <em>The RNN Process</em>
+    </p>
+
+    <p><strong>The meaning of RNN is that in order to predict the final result, I first use the first word to make a prediction. Of course, a prediction using only the first word will not be precise. I take this result as a feature and use it together with the second word to predict the result; next, I use this new prediction result combined with the third word to make a new prediction; then I repeat this process until the last word. Thus, if there are n words in the input, we actually perform n predictions and provide n prediction sequences. Throughout the process, the model shares a single set of parameters. Therefore, RNN reduces the number of model parameters, preventing overfitting. At the same time, it is inherently designed for sequence problems and is thus particularly suitable for handling them.</strong></p>
+    <p>LSTM makes improvements to RNN, allowing it to capture longer-distance information. However, whether it is LSTM or RNN, there is a problem: they advance from left to right, meaning later words become more important than earlier ones. But for the task of word segmentation, this is inappropriate because every character in a sentence should have equal weight. Therefore, Bidirectional LSTM appeared. It performs one LSTM from left to right, then another LSTM from right to left, and finally combines the results of both.</p>
+
+    <h3>Application in Word Segmentation Tasks <a href="https://kexue.fm/archives/3924#%E5%9C%A8%E5%88%86%E8%AF%8D%E4%BB%BB%E5%8A%A1%E4%B8%AD%E7%9A%84%E5%BA%94%E7%94%A8">#</a></h3>
+    <p>Attempts at combining deep learning with word segmentation were made quite early, as seen in the following articles:</p>
+    <ul>
+        <li><a href="http://blog.csdn.net/itplus/article/details/13616045">http://blog.csdn.net/itplus/article/details/13616045</a></li>
+        <li><a href="https://github.com/xccds/chinese_wordseg_keras">https://github.com/xccds/chinese_wordseg_keras</a></li>
+        <li><a href="http://www.leiphone.com/news/201608/IWvc75oJglAIsDvJ.html">http://www.leiphone.com/news/201608/IWvc75oJglAIsDvJ.html</a></li>
+    </ul>
+    <p>In these articles, whether using simple neural networks or LSTM, their approach is the same as traditional models: they predict the label of the current character through context, where the context is a fixed window—for example, using five characters before and after plus the current character to predict the current character's label. There is nothing wrong with this approach, but it merely replaces previous methods for estimating probability, such as HMM, ME, CRF, etc., with neural networks; the entire framework remains unchanged, and it is <strong>essentially still an n-gram model</strong>. With LSTM, LSTM itself can perform sequence-to-sequence (seq2seq) output. Therefore, why not directly output the sequence of the original sentence? This way, wouldn't we truly utilize the context of the entire text? This is the attempt of this article.</p>
+    <p>LSTM can output a sequence based on the input sequence, and this sequence takes context connections into account. Thus, one can connect a softmax classifier to each output sequence to predict the probability of each label. Based on this sequence-to-sequence idea, we can directly predict the tags for the sentence.</p>
+
+    <h3>Keras Implementation <a href="https://kexue.fm/archives/3924#Keras%E5%AE%9E%E7%8E%B0">#</a></h3>
+    <p>Without further ado, hands-on practice is most important. The word vector dimension used is 128, and the sentence length is truncated to 32 (samples longer than 32 characters were discarded, which are very few; in fact, after splitting by natural delimiters like commas and periods, sentences rarely exceed 32 characters). This time, I used a 5-tag system. On top of the original 4 tags, an 'x' tag was added to represent portions shorter than 32 characters. For example, if a sentence is 20 characters long, then tags 21 through 32 are all 'x'.</p>
+    <p>Regarding the data, I used the portion provided by Microsoft Research (MSRA) from the <a href="http://sighan.cs.uchicago.edu/bakeoff2005/">Bakeoff 2005</a> corpus. The code is as follows; if anything is unclear, feel free to leave a comment.</p>
+
+<pre><code class="language-python">
+</code></pre>
+
+    <p>We can use <code>model.summary()</code> to look at the structure of the model.</p>
+    <blockquote>
+        &gt;&gt;&gt; model.summary()<br />
+        _________________________________________________________________<br />
+        Layer (type) Output Shape Param # Connected to<br />
+        =======================================================<br />
+        input_2 (InputLayer) (None, 32) 0<br />
+        _________________________________________________________________<br />
+        embedding_2 (Embedding) (None, 32, 128) 660864 input_2[0][0]<br />
+        _________________________________________________________________<br />
+        bidirectional_1 (Bidirectional) (None, 32, 64) 98816 embedding_2[0][0]<br />
+        _________________________________________________________________<br />
+        timedistributed_2 (TimeDistribute) (None, 32, 5) 325 bidirectional_1[0][0]<br />
+        =======================================================<br />
+        Total params: 760,005<br />
+        _________________________________________________________________
+    </blockquote>
+
+    <p>How are the final model results? I don't intend to compare them with those evaluation results; it is not difficult for current models to achieve over 90% accuracy in testing. What I care about is the recognition of new words and the handling of ambiguity. Below are some test results (randomly selected):</p>
+    <blockquote>
+        RNN 的 意思 是 ， 为了 预测 最后 的 结果 ， 我 先 用 第一个 词 预测 ， 当然 ， 只 用 第一个 预测 的 预测 结果 肯定 不 精确 ， 我 把 这个 结果 作为 特征 ， 跟 第二词 一起 ， 来 预测 结果 ； 接着 ， 我 用 这个 新 的 预测 结果 结合 第三词 ， 来 作 新 的 预测 ； 然后 重复 这个 过程 。<br /><br />
+        结婚 的 和 尚未 结婚 的<br /><br />
+        苏剑林 是 科学 空间 的 博主 。<br /><br />
+        广东省 云浮市 新兴县<br /><br />
+        魏则西 是 一 名 大学生<br /><br />
+        这 真是 不堪入目 的 环境<br /><br />
+        列夫·托尔斯泰 是 俄罗斯 一 位 著名 的 作家<br /><br />
+        保加利亚 首都 索非亚 是 全国 政治 、 经济 、 文化中心 ， 位于 保加利亚 中 西部<br /><br />
+        罗斯福 是 第二次世界大战 期间 同 盟国 阵营 的 重要 领导人 之一 。 1941 年 珍珠港 事件发生 后 ， 罗斯 福力 主对 日本 宣战 ， 并 引进 了 价格 管制 和 配给 。 罗斯福 以 租 借 法案 使 美国 转变 为 “ 民主 国家 的 兵工厂 ” ， 使 美国 成为 同 盟国 主要 的 军火 供应商 和 融资 者 ， 也 使得 美国 国内 产业 大幅 扩张 ， 实现 充分 就业 。 二战 后期 同 盟国 逐渐 扭转 形势 后 ， 罗斯福 对 塑造 战后 世界 秩序 发挥 了 关键 作用 ， 其 影响 力 在 雅尔塔 会议 及 联合国 的 成立 中 尤其 明显 。 后来 ， 在 美国 协助 下 ， 盟军 击败 德国 、 意大利 和 日本 。
+    </blockquote>
+
+    <p>It can be observed that the test results are very optimistic. Whether it is personal names (Chinese or foreign) or place names, the recognition effect is excellent. Regarding this model, that's all for now; I will continue to go deeper in the future.</p>
+
+    <h3>Finally <a href="https://kexue.fm/archives/3924#%E6%9C%80%E5%90%8E">#</a></h3>
+    <p>In fact, this article provides a framework that can directly perform sequence labeling through Bidirectional LSTM to provide a complete labeling sequence. This labeling approach can be used for many tasks, such as part-of-speech tagging and entity recognition. Therefore, the seq2seq labeling approach based on Bidirectional LSTM has very broad applications and is worth studying. Even the currently popular deep learning machine translation is implemented using this type of sequence-to-sequence model.</p>
+    <p><a href="https://kexue.fm/usr/uploads/2016/10/1372394625.zip">msr_train.txt.zip</a></p>
+
+    <p><em><strong>For more detailed reprinting matters, please refer to:</strong></em> <a href="https://kexue.fm/archives/6508#%E6%96%87%E7%AB%A0%E5%A6%82%E4%BD%95%E8%BD%AC%E8%BD%BD/%E5%BC%95%E7%94%A8" title="《Scientific Spaces FAQ》">"Scientific Spaces FAQ"</a></p>
+
+    <p>苏剑林. (Aug. 22, 2016). 《【中文分词系列】 4. 基于双向LSTM of seq2seq Character Labeling 》[Blog post]. Retrieved from <a href="translation_3924.html">https://kexue.fm/archives/3924</a></p>
+
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_3924.html" style="color: #005fcc;">https://kexue.fm/archives/3924</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

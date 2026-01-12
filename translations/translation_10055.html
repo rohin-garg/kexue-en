@@ -1,0 +1,314 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/10055">Generating Diffusion Model Conversations (23): SNR and Large Image Generation (Part 2)</a></h1>
+
+    <p>By 苏剑林 | April 17, 2024</p>
+
+
+    <p>In the <a href="translation_10041.html">previous article</a>, "Generating Diffusion Model Conversations (22): SNR and Large Image Generation (Part 1)", we introduced how to improve the noise schedule by aligning low-resolution signal-to-noise ratios (SNR), thereby enhancing the performance of diffusion models for high-resolution image generation trained directly in pixel space. The protagonist of this article is also SNR and high-resolution image generation (large image generation), but it achieves something even more astonishing—directly using a diffusion model trained on low-resolution images for high-resolution image generation without any additional training, with performance and inference costs comparable to models trained directly for large images!</p>
+
+    <p>This work comes from the recent paper <a href="https://arxiv.org/abs/2403.14548">"Upsample Guidance: Scale Up Diffusion Models without Training"</a>. It cleverly uses the upsampled output of a low-resolution model as a guidance signal and combines it with the translation invariance of CNNs for texture details, successfully achieving training-free high-resolution image generation.</p>
+
+    <h2>Conceptual Discussion</h2>
+    <p>We know that the training objective of a diffusion model is denoising (Denoise, which is the first 'D' in DDPM). According to our intuition, this denoising task should be resolution-independent. In other words, ideally, a denoising model trained on low-resolution images should also be applicable to high-resolution image denoising, meaning a low-resolution diffusion model should be directly usable for high-resolution image generation.</p>
+
+    <p>Is it truly that ideal? I tried using the 128*128 face image (CelebA-HQ) diffusion model I trained previously, directly using it as a 256*256 model during inference. The style of the generated result looks like this:</p>
+
+    <p><strong>[Generation effect of using a 128-resolution diffusion model at 256-resolution]</strong></p>
+
+    <p>As can be seen, the generated results have two characteristics:
+        <br>1. The results are no longer face images at all, indicating that a denoising model trained on 128*128 cannot be directly used as a 256*256 model.
+        <br>2. Although the results are not ideal, they are very clear, without obvious blurring or checkerboard effects, and they retain some texture details of a face.
+    </p>
+
+    <p>We know that directly enlarging a small image (upsampling) is the most basic large image generation model. However, depending on the upsampling algorithm, directly enlarged images usually suffer from blurriness or checkerboard artifacts—that is, they lack sufficient texture detail. At this point, a "whimsical" idea emerges: since enlarged small images lack detail, while directly inferring with a small-image model at a large-image resolution retains some details, can we use the latter to supplement the former with details?</p>
+
+    <p>This is the core idea of the method proposed in the original paper.</p>
+
+    <h2>Mathematical Description</h2>
+    <p>In this section, we will use formulas to reorganize this idea and see what needs to be done next.</p>
+
+    <p>First, let's unify the notation. Our target image resolution is $w \times h$, and the training image resolution is $w/s \times h/s$. Therefore, $\boldsymbol{x}, \boldsymbol{\varepsilon}$ below are of size $w \times h \times 3$ (images also have a channel dimension), while $\boldsymbol{x}^{\text{low}}, \boldsymbol{\varepsilon}^{\text{low}}$ are of size $w/s \times h/s \times 3$. $\mathcal{D}$ is the downsampling operator that performs average pooling from $w \times h$ resolution to $w/s \times h/s$, and $\mathcal{U}$ is the upsampling operator that uses nearest-neighbor interpolation (i.e., direct repetition) from $w/s \times h/s$ back to $w \times h$.</p>
+
+    <p>We know that a diffusion model requires a trained denoising model $\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$. Taking DDPM as an example (using the form from <a href="translation_9281.html">"Generating Diffusion Model Conversations (3): DDPM = Bayesian + Denoising"</a>, which is aligned with mainstream forms), its inference format is:</p>
+
+    \begin{equation}\boldsymbol{x}_{t-1} = \frac{1}{\alpha_t}\left(\boldsymbol{x}_t - \frac{\beta_t^2}{\bar{\beta}_t}\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)\right) + \sigma_t \boldsymbol{\varepsilon},\quad \boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})\end{equation}
+
+    <p>where the mainstream choice for $\sigma_t$ is $\frac{\bar{\beta}_{t-1}\beta_t}{\bar{\beta}_t}$ or $\beta_t$. However, we currently do not have a $\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ trained at $w \times h$ resolution; we only have a $\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{\text{low}}, t)$ trained at $w/s \times h/s$ resolution.</p>
+
+    <p>According to our experience, although shrinking a large image and then enlarging it leads to distortion, it can still be considered a relatively good approximation of the original image. This inspires us that the denoising model can similarly construct a "main term." Specifically, to denoise a $w \times h$ image, we can first shrink it (downsample, average pooling) to $w/s \times h/s$, send it into the denoising model trained at $w/s \times h/s$ resolution, and finally enlarge the denoising result (upsample) back to $w \times h$. While this isn't the ideal denoising result, it should already be a primary component of it.</p>
+
+    <p>Next, as demonstrated in the previous section, directly using a denoising model trained on low resolution for high resolution can preserve some texture details. Thus, we can consider that $\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ without any modification constitutes a "secondary term" depicting details. By finding a way to integrate these primary and secondary terms, we might obtain a sufficiently good approximation of an accurate denoising model, thereby achieving training-free high-resolution diffusion generation.</p>
+
+    <h2>Re-invoking SNR</h2>
+    <p>Now let's discuss the main term. First, we must clarify that this article does not intend to retrain a high-resolution model, but rather to reuse the original low-resolution model on high-resolution inputs. Therefore, the noise schedule remains the same $\bar{\alpha}_t, \bar{\beta}_t$. We assume we still have:</p>
+
+    \begin{equation}\boldsymbol{x}_t = \bar{\alpha}_t \boldsymbol{x}_0 + \bar{\beta}_t \boldsymbol{\varepsilon}\end{equation}
+
+    <p>where $\boldsymbol{\varepsilon}$ is a vector from a standard normal distribution. As mentioned, the main term requires downsampling before denoising. Let $\mathcal{D}$ represent the average pooling operation down to $w/s \times h/s$; then we have:</p>
+
+    \begin{equation}\mathcal{D}[\boldsymbol{x}_t] = \bar{\alpha}_t \mathcal{D}[\boldsymbol{x}_0] + \frac{\bar{\beta}_t}{s} \boldsymbol{\varepsilon}\label{eq:dx}\end{equation}
+
+    <p>The equality here refers to following the same distribution. In the previous article, we introduced the Signal-to-Noise Ratio $SNR(t)=\frac{\bar{\alpha}_t^2}{\bar{\beta}_t^2}$. From this, it is evident that the SNR of $\boldsymbol{x}_t$ is $\frac{\bar{\alpha}_t^2}{\bar{\beta}_t^2}$, but the SNR of $\mathcal{D}[\boldsymbol{x}_t]$ is $\frac{s^2\bar{\alpha}_t^2}{\bar{\beta}_t^2}$. According to the settings of this article, the denoising model $\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ was only trained on low-resolution images with a noise schedule of $\bar{\alpha}_t, \bar{\beta}_t$. This means at time $t$, $\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ is suitable for an input SNR of $\frac{\bar{\alpha}_t^2}{\bar{\beta}_t^2}$, but $\mathcal{D}[\boldsymbol{x}_t]$ has an SNR of $\frac{s^2\bar{\alpha}_t^2}{\bar{\beta}_t^2}$, so directly using the model at time $t$ is not optimal.</p>
+
+    <p>How to solve this? It's simple. SNR changes over time $t$. We can find another time $\tau$ such that its SNR is $\frac{s^2\bar{\alpha}_t^2}{\bar{\beta}_t^2}$—that is, solving the equation:</p>
+
+    \begin{equation}\frac{\bar{\alpha}_{\tau}^2}{\bar{\beta}_{\tau}^2} = \frac{s^2\bar{\alpha}_t^2}{\bar{\beta}_t^2}\end{equation}
+
+    <p>Once $\tau$ is solved, we find that the model at time $\tau$ is more suitable for an input with an SNR of $\frac{s^2\bar{\alpha}_t^2}{\bar{\beta}_t^2}$. Hence, the denoising of $\mathcal{D}[\boldsymbol{x}_t]$ should use the model at time $\tau$ rather than $t$. Furthermore, $\mathcal{D}[\boldsymbol{x}_t]$ itself can be slightly improved. From equation \eqref{eq:dx}, we see that when $s > 1$, the sum of the squares of the coefficients $\rho_t^2=\bar{\alpha}_t^2+\frac{\bar{\beta}_t^2}{s^2}$ is no longer 1, whereas the sum of the squares of the coefficients during training is always 1. Thus, we can divide by $\rho_t$ to make it closer to the form of the training results. Finally, the denoising model main term constructed from $\mathcal{D}[\boldsymbol{x}_t]$ should be:</p>
+
+    \begin{equation}\boldsymbol{\epsilon}_{\boldsymbol{\theta}}\left(\frac{\mathcal{D}[\boldsymbol{x}_t]}{\rho_t}, \tau\right)\label{eq:down-denoise}\end{equation}
+
+    <h2>Decomposition Approximation</h2>
+    <p>Now we have two denoising models available: one is $\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$, which directly uses the low-resolution model as a high-resolution one, and the other is the model constructed by downsampling followed by denoising from the previous section \eqref{eq:down-denoise}. Next, we can try to assemble them.</p>
+
+    <p>Suppose we have a perfect denoising model $\boldsymbol{\epsilon}^{\text{high}}(\boldsymbol{x}_t, t)$ trained on high-resolution images. We can decompose it as:</p>
+
+    \begin{equation}\boldsymbol{\epsilon}^{\text{high}}(\boldsymbol{x}_t, t) = \underbrace{\color{red}{\mathcal{U}\left[\mathcal{D}\left[\boldsymbol{\epsilon}^{\text{high}}(\boldsymbol{x}_t, t)\right]\right]}}_{\text{Low-resolution main term}} + \underbrace{\Big\{\color{green}{\boldsymbol{\epsilon}^{\text{high}}(\boldsymbol{x}_t, t) - \mathcal{U}\left[\mathcal{D}\left[\boldsymbol{\epsilon}^{\text{high}}(\boldsymbol{x}_t, t)\right]\right]}\Big\}}_{\text{High-resolution detail term}}\end{equation}
+
+    <p>At first glance, this decomposition is just a simple identity transformation. However, it has a very intuitive meaning: the first term takes the accurate reconstruction result, downsamples it, and then upsamples it. To put it simply, it shrinks then enlarges—a lossy transformation—but the result is sufficient to depict the main contours, so it is the main term. The second term subtracts the main contours from the accurate result, clearly representing local details.</p>
+
+    <p>Combining the ideas discussed earlier, we believe that equation \eqref{eq:down-denoise} provided in the previous section is a good approximation of the low-resolution main term, so we write:</p>
+
+    \begin{equation}\mathcal{D}\left[\boldsymbol{\epsilon}^{\text{high}}(\boldsymbol{x}_t, t)\right]\approx \frac{1}{s}\boldsymbol{\epsilon}_{\boldsymbol{\theta}}\left(\frac{\mathcal{D}[\boldsymbol{x}_t]}{\rho_t}, \tau\right)\end{equation}
+
+    <p>Note that the factor $1/s$ in front cannot be omitted. This is because denoising models usually predict standard normal noise (i.e., $\boldsymbol{\varepsilon}$), so the output itself approximately satisfies zero mean and unit variance. After downsampling $\mathcal{D}$, the variance becomes $1/s^2$. Since the output of $\boldsymbol{\epsilon}_{\boldsymbol{\theta}}$ is also unit variance, it must be divided by $s$ to make the variance $1/s^2$ to improve the approximation.</p>
+
+    <p>For the high-resolution detail term, we write:</p>
+
+    \begin{equation}\boldsymbol{\epsilon}^{\text{high}}(\boldsymbol{x}_t, t) - \mathcal{U}\left[\mathcal{D}\left[\boldsymbol{\epsilon}^{\text{high}}(\boldsymbol{x}_t, t)\right]\right]\approx \boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t) - \mathcal{U}\left[\mathcal{D}\left[\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)\right]\right]\end{equation}
+
+    <p>This is again based on the previously discussed idea—directly using the low-resolution denoising model as a high-resolution model preserves texture details well, so we believe that for high-resolution details, $\boldsymbol{\epsilon}_{\boldsymbol{\theta}}$ is a good approximation of $\boldsymbol{\epsilon}^{\text{high}}$.</p>
+
+    <p>Combining these two approximations, we can fully write:</p>
+
+    \begin{equation}\boldsymbol{\epsilon}^{\text{high}}(\boldsymbol{x}_t, t)\approx \frac{1}{s}\mathcal{U}\left[\boldsymbol{\epsilon}_{\boldsymbol{\theta}}\left(\frac{\mathcal{D}[\boldsymbol{x}_t]}{\rho_t}, \tau\right) \right]+ \Big\{\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t) - \mathcal{U}\left[\mathcal{D}\left[\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)\right]\right]\Big\}\triangleq \boldsymbol{\epsilon}_{\boldsymbol{\theta}}^{\text{approx}}(\boldsymbol{x}_t, t)\label{eq:high-key}\end{equation}
+
+    <p>This is the key approximation for the high-resolution denoising model we were looking for!</p>
+
+    <p>In fact, using equation \eqref{eq:high-key} directly to generate high-resolution images already yields good results. However, we can introduce an adjustable hyperparameter to make it even better. The specific idea is to mimic the approach of strengthening conditional generation via an unconditional model (from <a href="translation_9228.html">"Generating Diffusion Model Conversations (9): Condition Control"</a>). We treat $\boldsymbol{\epsilon}_{\boldsymbol{\theta}}^{\text{approx}}(\boldsymbol{x}_t, t)$ as a conditional denoising model, where the guidance signal is the upsampled low-resolution main term (referred to as "Upsample Guidance" in the paper title, or UG for short), and $\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ is treated as an unconditional denoising model. To strengthen the condition, we introduce an adjustable parameter $w > 0$, expressing the final denoising model used as:</p>
+
+    \begin{equation}\begin{aligned} 
+    \tilde{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t) =&\, (1 + w)\, \boldsymbol{\epsilon}_{\boldsymbol{\theta}}^{\text{approx}}(\boldsymbol{x}_t, t) - w\,\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t) \\ 
+    =&\, \boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t) + (1 + w)\mathcal{U}\left[\frac{1}{s}\boldsymbol{\epsilon}_{\boldsymbol{\theta}}\left(\frac{\mathcal{D}[\boldsymbol{x}_t]}{\rho_t}, \tau\right) - \mathcal{D}\left[\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)\right]\right] 
+    \end{aligned}\end{equation}
+
+    <p>According to the experimental results in the original paper, values of $w$ around 0.2 yield good results.</p>
+
+    <h2>LDM Extension</h2>
+    <p>While the aforementioned results do not seem to distinguish between pixel-space diffusion models and latent diffusion models (LDM) in form, from a theoretical perspective, they strictly apply to pixel-space diffusion models. LDMs have an additional non-linear Encoder. The features of a large image after passing through the Encoder, when pooled, might not equal the features of a small image passed through the Encoder. Therefore, our hypothesis of constructing the main term of the high-resolution denoising model via downsampling then upsampling might not hold.</p>
+
+    <p>To observe the differences in the LDM scenario, we can look at two experimental results from the original paper. The first is the reconstruction result after up/downsampling the Encoder's features and feeding them into the Decoder, as shown below. The results show that regardless of upsampling or downsampling, such operations directly in the feature space lead to image degradation. This implies that the weight of the main term constructed by downsampling then upsampling should perhaps be appropriately reduced.</p>
+
+    <p><strong>[Upsampling/downsampling Encoder features leads to degradation of Decoder results]</strong></p>
+
+    <p>The second experiment involves directly using a low-resolution LDM as a high-resolution model without modifications. The generation results after feeding this into the Decoder can be seen in the "w/o UG" part of the image below. It can be observed that, unlike pixel-space diffusion models, likely due to the robustness of the Decoder to features, the effect of directly using $\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ as a high-resolution model in the LDM scenario is much more ideal. Semantics and clarity are clearly guaranteed, with only some "deformities" appearing in specific areas.</p>
+
+    <p><strong>[Difference in generation effects for small-image LDMs used to generate large images with/without Upsample Guidance (UG)]</strong></p>
+
+    <p>Based on these two experimental conclusions, the original paper changes $w$ in the LDM scenario to a function dependent on time $t$:</p>
+
+    \begin{equation}w_t = \left\{\begin{aligned} 
+    w,\quad t \geq (1-\eta) T \\ 
+    -1,\quad t < (1-\eta) T 
+    \end{aligned}\right.\end{equation}
+
+    <p>When $w = -1$, Upsample Guidance is equivalent to non-existent. This means Upsample Guidance is only added during the early stages of diffusion. This prevents deformities in the early stages through Upsample Guidance and fully utilizes $\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ in the later stages to generate clearer and sharper results, while also saving computational costs—effectively "killing three birds with one stone."</p>
+
+    <h2>Effect Demonstration</h2>
+    <p>Finally, we reach the experimental phase. In fact, the "w/ UG" part of the images in the previous section already demonstrated the effect of Upsample Guidance in LDM scenarios. It can be seen that Upsample Guidance indeed corrects the deformities brought by using $\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ directly for high-resolution generation, while ensuring semantic correctness and image clarity.</p>
+
+    <p>As for the generation effects in pixel space, please refer to the following image:</p>
+
+    <p><strong>[Effect of Upsample Guidance on Pixel-space diffusion models demonstrated in the paper]</strong></p>
+
+    <p>Due to Upsample Guidance, the entire method behaves somewhat like generating a low-resolution image and then generating a high-definition image via super-resolution, but it is done in an unsupervised manner. Therefore, it basically guarantees that FID and other metrics are no worse than the low-resolution generation results:</p>
+
+    <p><strong>[Relationship between FID indicators and hyperparameters (here $w_t$ and $\theta$ equal $w$ plus 1 in this article)]</strong></p>
+
+    <p>Finally, I also tried using the 128*128 CelebA face diffusion model I trained previously, further confirming the effectiveness of Upsample Guidance:</p>
+
+    <p><strong>[Personal experimental results. Left: 128 resolution (training res); Center/Right: 256 and 512 resolution results generated with Upsample Guidance]</strong></p>
+
+    <p>In terms of quality, it is certainly not as good as a high-resolution model trained directly, but it is better than directly enlarging a low-resolution image. In terms of inference cost, compared to using $\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ trained on high-resolution images directly for generation, Upsample Guidance adds a low-resolution calculation. The increase in computational cost is roughly $1/s^2$. If LDM is used, since Upsample Guidance is not added in the later stages of generation, this ratio is even smaller. Overall, Upsample Guidance can be considered a "free lunch" for large image generation with reasonable costs.</p>
+
+    <h2>Thinking and Analysis</h2>
+    <p>After looking at the entire Upsample Guidance framework, what are your feelings? My feeling is that it is very much in the style of a physicist—bold assumptions and imaginative leaps, yet capturing the essence invisibly. A task like writing an interpretation of such work is fine for me, but it would have been impossible for me to think of it independently, as I have only a somewhat rigid mathematical mind at most.</p>
+
+    <p>A natural question about Upsample Guidance is: what is the fundamental reason for its effectiveness? Taking my CelebA face generation model trained in Pixel space as an example, it was only trained on 128*128 small images and has never seen a 256*256 large image. Why can it appropriately generate 256*256 large images that fit our cognition? Note that this is different from ImageNet. The ImageNet dataset is a multi-scale dataset—for example, a 128*128 image might be a fish, or it might be a person holding a fish. In other words, although the inputs are all 128*128, the model has seen fish of different proportions, allowing it to adapt better to different resolutions. CelebA is different; it is a single-scale dataset where all faces are aligned for size, position, and orientation. Yet even so, Upsample Guidance can successfully generalize it.</p>
+
+    <p>I believe this has some connection to DIP (Deep Image Prior). DIP roughly suggests that the CNN models commonly used in CV have architectures that have been highly selected and are inherently aligned with vision itself. Thus, even models not trained on real data can perform certain visual tasks like denoising, completion, and even simple super-resolution. Upsample Guidance allows a diffusion model that has never seen large images to generate cognitively plausible large images, which seems to benefit from the architectural priors of the CNN itself. Simply put, as experimented in the first section of this article, Upsample Guidance relies on the fact that directly using a low-resolution model as a high-resolution one produces results that retain at least some valid texture details. This is not a trivial property.</p>
+
+    <p>To verify this, I specifically tried with a pure Transformer diffusion model (somewhat like DiT + RoPE-2D) I trained previously and found that it could not reproduce the effects of Upsample Guidance at all. This indicates that it depends at least partly on the CNN-based U-Net model architecture. However, readers using Transformers need not be discouraged. While they cannot follow the path of Upsample Guidance, they can follow the path of <a href="translation_9645.html">length extrapolation</a> in NLP. The paper <a href="https://arxiv.org/abs/2402.17456">"FiT: Flexible Vision Transformer for Diffusion Model"</a> demonstrates that by combining Transformer + RoPE-2D to train diffusion models, one can reuse length extrapolation techniques like NTK and YaRN to generate high-resolution images with no training or very minimal fine-tuning.</p>
+
+    <h2>Article Summary</h2>
+    <p>This article introduced a technique called Upsample Guidance. it allows a trained low-resolution diffusion model to directly generate high-resolution images without additional fine-tuning costs. Experiments show it can basically double the resolution stably. Although the effect still lags behind diffusion models trained directly on high resolution, this nearly free lunch is still worth learning from. This article reorganized the ideas and derivation of the method from my perspective and provided thoughts on the reasons for its effectiveness.</p>
+
+    <p>(Postscript: in fact, according to the original plan, this article was to be published two days ago. The reason for the two-day delay is that during the writing process, I discovered many details I thought I understood were actually ambiguous. I spent two more days on derivation and experiments to gain a more precise understanding. From this, we can see that systematically and clearly restating what one intends to learn is itself a process of continuous self-perfection and improvement. This is probably the meaning of persistent writing.)</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10055.html" style="color: #005fcc;">https://kexue.fm/archives/10055</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

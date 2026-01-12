@@ -1,0 +1,404 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']},
+    tags: 'ams'
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/mathjax.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/10122">Transformer Upgrade Roadmap: 18. Principles for Choosing the Base of RoPE</a></h1>
+    <p>By 苏剑林 | May 29, 2024</p>
+
+    <p>We know that in <a href="translation_8265.html">RoPE</a>, the formula for calculating frequency is $\theta_i = b^{-2i/d}$, where the default value for the base $b$ is 10000. Currently, a mainstream approach for Long Context is to first pre-train on short text with $b=10000$, and then increase $b$ and fine-tune on long text. The starting point for this is NTK-RoPE, introduced in <a href="translation_9675.html">"Transformer Upgrade Roadmap: 10. RoPE is a β-进制 Encoding"</a>, which inherently possesses good length extrapolation properties. Using a larger $b$ for fine-tuning results in a smaller initial loss and faster convergence compared to fine-tuning without modifications. This process gives the impression that increasing $b$ is entirely due to the "short-then-long" training strategy. If one always trained on long text, would there still be a need to increase $b$?</p>
+
+    <p>A paper from last week, <a href="https://papers.cool/arxiv/2405.14591">"Base of RoPE Bounds Context Length"</a>, attempts to answer this question. It studies the lower bound of $b$ based on a certain desired property, pointing out that the training length itself necessitates choosing a larger base, regardless of the training strategy. The entire analytical approach is quite enlightening; let's examine it together.</p>
+
+    <h2>Desired Properties</h2>
+    <p>RoPE will not be introduced in detail here. Essentially, it is a block diagonal matrix:</p>
+
+    \begin{equation}
+    \boldsymbol{\mathcal{R}}_n = \scriptsize{\left(\begin{array}{cc:cc:cc:cc}
+    \cos n\theta_0 & -\sin n\theta_0 & 0 & 0 & \cdots & \cdots & 0 & 0 \\
+    \sin n\theta_0 & \cos n\theta_0 & 0 & 0 & \cdots & \cdots & 0 & 0 \\
+    \hdashline
+    0 & 0 & \cos n\theta_1 & -\sin n\theta_1 & \cdots & \cdots & 0 & 0 \\
+    0 & 0 & \sin n\theta_1 & \cos n\theta_1 & \cdots & \cdots & 0 & 0 \\
+    \hdashline
+    \vdots & \vdots & \vdots & \vdots & \ddots & \ddots & \vdots & \vdots \\
+    \vdots & \vdots & \vdots & \vdots & \ddots & \ddots & \vdots & \vdots \\
+    \hdashline
+    0 & 0 & 0 & 0 & \cdots & \cdots & \cos n\theta_{d/2-1} & -\sin n\theta_{d/2-1} \\
+    0 & 0 & 0 & 0 & \cdots & \cdots & \sin n\theta_{d/2-1} & \cos n\theta_{d/2-1} \\
+    \end{array}\right)}
+    \end{equation}
+
+    <p>It then utilizes the identity</p>
+
+    \begin{equation}
+    (\boldsymbol{\mathcal{R}}_m \boldsymbol{q})^{\top}(\boldsymbol{\mathcal{R}}_n \boldsymbol{k}) = \boldsymbol{q}^{\top} \boldsymbol{\mathcal{R}}_m^{\top}\boldsymbol{\mathcal{R}}_n \boldsymbol{k} = \boldsymbol{q}^{\top} \boldsymbol{\mathcal{R}}_{n-m} \boldsymbol{k}
+    \end{equation}
+
+    <p>to inject absolute position information into $\boldsymbol{q}, \boldsymbol{k}$ while automatically achieving the effect of relative positions. Here $\theta_i = b^{-2i/d}$, and the value of $b$ is the central issue of this article.</p>
+
+    <p>Beyond injecting position information, we expect RoPE to possess two ideal properties to achieve better results: 1. <strong>Long-range decay</strong>, meaning that nearby tokens, on average, receive more attention; 2. <strong>Semantic aggregation</strong>, meaning that semantically similar tokens, on average, receive more attention. We previously discussed the first point in <a href="translation_8265.html">"Transformer Upgrade Roadmap: 2. Rotary Position Embedding"</a>; RoPE indeed has certain long-range decay properties.</p>
+
+    <p>Now, let's analyze the second point.</p>
+
+    <h2>Inequality Relations</h2>
+    <p>Semantic aggregation implies that when $\boldsymbol{k}$ is similar to $\boldsymbol{q}$, their attention score $\boldsymbol{q}^{\top} \boldsymbol{\mathcal{R}}_{n-m} \boldsymbol{k}$ should be larger on average, regardless of the relative distance $n-m$ (at least larger than that of two random tokens). To obtain a quantitative conclusion, we simplify the problem by assuming each component of $\boldsymbol{q}$ is independent and identically distributed (i.i.d.), with mean $\mu$ and variance $\sigma^2$.</p>
+
+    <p>Now consider two different types of $\boldsymbol{k}$: one is based on $\boldsymbol{q}$ plus a zero-mean perturbation $\boldsymbol{\varepsilon}$, denoted as $\tilde{\boldsymbol{k}} = \boldsymbol{q} + \boldsymbol{\varepsilon}$, representing a token semantically similar to $\boldsymbol{q}$; the other assumes $\boldsymbol{k}$ is independent and identically distributed with $\boldsymbol{q}$, representing two random tokens. According to the second ideal property, we hope to have:</p>
+
+    \begin{equation}
+    \mathbb{E}_{\boldsymbol{q},\boldsymbol{k},\boldsymbol{\varepsilon}}\big[\boldsymbol{q}^{\top} \boldsymbol{\mathcal{R}}_{n-m} \tilde{\boldsymbol{k}} - \boldsymbol{q}^{\top} \boldsymbol{\mathcal{R}}_{n-m} \boldsymbol{k}\big] \geq 0
+    \end{equation}
+
+    <p>Note that we repeatedly emphasized "on average," meaning we only expect an average trend rather than strict compliance at every point, which is why we take the mathematical expectation $\mathbb{E}_{\boldsymbol{q},\boldsymbol{k},\boldsymbol{\varepsilon}}$. Using our assumptions and the definition of RoPE, we can calculate the above expression specifically:</p>
+
+    \begin{equation}
+    \begin{aligned}
+    & \mathbb{E}_{\boldsymbol{q},\boldsymbol{k},\boldsymbol{\varepsilon}}\big[\boldsymbol{q}^{\top} \boldsymbol{\mathcal{R}}_{n-m} (\boldsymbol{q} + \boldsymbol{\varepsilon}) - \boldsymbol{q}^{\top} \boldsymbol{\mathcal{R}}_{n-m} \boldsymbol{k}\big] \\[5pt]
+    =& \mathbb{E}_{\boldsymbol{q}}\big[\boldsymbol{q}^{\top} \boldsymbol{\mathcal{R}}_{n-m} \boldsymbol{q}\big] - \mathbb{E}_{\boldsymbol{q},\boldsymbol{k}}\big[\boldsymbol{q}^{\top} \boldsymbol{\mathcal{R}}_{n-m} \boldsymbol{k}\big] \\[5pt]
+    =& \mathbb{E}_{\boldsymbol{q}}\big[\boldsymbol{q}^{\top} \boldsymbol{\mathcal{R}}_{n-m} \boldsymbol{q}\big] - \mathbb{E}_{\boldsymbol{q}}[\boldsymbol{q}]^{\top}\boldsymbol{\mathcal{R}}_{n-m} \mathbb{E}_{\boldsymbol{k}}[\boldsymbol{k}] \\[5pt]
+    =& \mathbb{E}_{\boldsymbol{q}}\big[\boldsymbol{q}^{\top} \boldsymbol{\mathcal{R}}_{n-m} \boldsymbol{q}\big] - \mu^2\boldsymbol{1}^{\top}\boldsymbol{\mathcal{R}}_{n-m} \boldsymbol{1} \\[5pt]
+    =& \mathbb{E}_{\boldsymbol{q}}\left[\sum_{i=0}^{d/2-1} (q_{2i}^2 + q_{2i+1}^2)\cos (n-m)\theta_i\right] - \sum_{i=0}^{d/2-1} 2\mu^2\cos (n-m)\theta_i \\[5pt]
+    =& \sum_{i=0}^{d/2-1} 2(\mu^2 + \sigma^2)\cos (n-m)\theta_i - \sum_{i=0}^{d/2-1} 2\mu^2\cos (n-m)\theta_i \\[5pt]
+    =& \sum_{i=0}^{d/2-1} 2\sigma^2\cos (n-m)\theta_i \\
+    \end{aligned}
+    \end{equation}
+
+    <p>If the maximum training length is $L$, then $n-m \leq L-1$. Therefore, the second ideal property can be approximately described by the following inequality:</p>
+
+    \begin{equation}
+    \sum_{i=0}^{d/2-1} \cos m\theta_i \geq 0, \quad m \in \{0, 1, 2, \dots, L-1\}
+    \label{neq:base}
+    \end{equation}
+
+    <p>Where $L$ is the maximum length, which is a hyperparameter determined before training, and $d$ is the model's <code>head_size</code>. According to Llama's general settings, $d=128$, which means the only adjustable parameter in the above equation is $b$ in $\theta_i = b^{-2i/d}$. In <a href="translation_8231.html">"Transformer Upgrade Roadmap: 1. Tracing Sinusoidal Positional Encoding to Its Roots"</a>, we briefly explored this function. Its overall trend is decaying; a larger $b$ leads to a slower decay rate and a correspondingly larger continuous non-negative interval. Thus, there exists a minimum $b$ that makes the above inequality hold true for all $m$, namely:</p>
+
+    \begin{equation}
+    b^* = \inf\left\{\,\,b\,\,\,\left|\,\,\,f_b(m)\triangleq\sum_{i=0}^{d/2-1} \cos m b^{-2i/d} \geq 0,\,\, m\in\{0,1,2,\cdots,L-1\}\right.\right\}
+    \end{equation}
+
+    <h2>Numerical Solution</h2>
+    <p>Since $f_b(m)$ involves a sum of multiple trigonometric functions and $\theta_i$ is non-linear with respect to $i$, it is unlikely that this problem has an analytical solution; thus, we must resort to numerical methods. However, $f_b(m)$ oscillates more frequently and irregularly as $m$ increases, making even numerical solutions non-trivial.</p>
+
+    <p>I initially thought that if $b_0$ makes $f_{b_0}(m) \geq 0$ hold for all $m$, then for all $b \geq b_0$, $f_b(m) \geq 0$ would also hold, allowing the use of binary search. However, this assumption is false, rendered binary search ineffective. After thinking for a while without finding optimization ideas, I consulted the authors of the original paper. They used an inverse function method: for a given $b$, finding the maximum $L$ such that $f_b(m) \geq 0$ is relatively simple. Thus, one can obtain many $(b, L)$ pairs. Theoretically, if enough $b$ values are enumerated, the minimum $b$ for any $L$ can be found. However, there is a precision issue: the original paper calculated $L$ up to $10^6$, requiring $b$ to be enumerated up to at least $10^8$. If the enumeration interval is small, the computational cost is enormous; if it is large, many solutions might be missed.</p>
+
+    <p>Ultimately, I decided to use "Jax + GPU" for a brute-force search to obtain higher precision results. The process is roughly as follows:</p>
+
+    <blockquote>
+    <p>1. Initialize $b = 1000L$ (within $L=10^6$, $b=1000L$ ensures $f_b(m) \geq 0$ holds);</p>
+    <p>2. Traverse $k = 1, 2, 3, 4, 5$, performing the following operations:</p>
+    <p>2.1) Divide $[0, b]$ into $10^k$ equal parts, traverse the points, and check if $f_b(m) \geq 0$ holds;</p>
+    <p>2.2) Take the smallest point where $f_b(m) \geq 0$ holds and update $b$;</p>
+    <p>3. Return the final $b$.</p>
+    </blockquote>
+
+    <p>The final results are generally tighter than those in the original paper:</p>
+
+    <table style="border-collapse: collapse; width: 100%; text-align: center; font-size: 0.8em;" border="1">
+        <thead>
+            <tr>
+                <th>$L$</th>
+                <th>1k</th>
+                <th>2k</th>
+                <th>4k</th>
+                <th>8k</th>
+                <th>16k</th>
+                <th>32k</th>
+                <th>64k</th>
+                <th>128k</th>
+                <th>256k</th>
+                <th>512k</th>
+                <th>1M</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>$b^*$ (Original)</td>
+                <td>4.3e3</td>
+                <td>1.6e4</td>
+                <td>2.7e4</td>
+                <td>8.4e4</td>
+                <td>3.1e5</td>
+                <td>6.4e5</td>
+                <td>2.1e6</td>
+                <td>7.8e6</td>
+                <td>3.6e7</td>
+                <td>6.4e7</td>
+                <td>5.1e8</td>
+            </tr>
+            <tr>
+                <td>$b^*$ (This Post)</td>
+                <td>4.3e3</td>
+                <td><span style="color: red;">1.2e4</span></td>
+                <td>2.7e4</td>
+                <td>8.4e4</td>
+                <td><span style="color: red;">2.3e5</span></td>
+                <td><span style="color: red;">6.3e5</span></td>
+                <td>2.1e6</td>
+                <td><span style="color: red;">4.9e6</span></td>
+                <td><span style="color: red;">2.4e7</span></td>
+                <td><span style="color: red;">5.8e7</span></td>
+                <td><span style="color: red;">6.5e7</span></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <p>Reference code:</p>
+
+<pre><code>from functools import partial
+import numpy as np
+import jax.numpy as jnp
+import jax
+
+@partial(jax.jit, static_argnums=(2,))
+def f(m, b, d=128):
+    i = jnp.arange(d / 2)
+    return jnp.cos(m[:, None] * b ** (-2 * i[None] / d)).sum(axis=1)
+
+@np.vectorize
+def fmin(L, b):
+    return f(np.arange(L), b).min()
+
+def bmin(L):
+    B = 1000 * L
+    for k in range(1, 6):
+        bs = np.linspace(0, 1, 10**k + 1)[1:] * B
+        ys = fmin(L, bs)
+        for b, y in zip(bs, ys):
+            if y >= 0:
+                B = b
+                break
+    return B
+
+bmin(1024 * 128)
+</code></pre>
+
+    <h2>Asymptotic Estimation</h2>
+    <p>Besides numerical solutions, we can also use asymptotic analysis to obtain an analytical estimation. This estimation is smaller than the numerical results and essentially corresponds to the solution as $d \to \infty$, but it similarly concludes that "$b$ should increase as $L$ increases."</p>
+
+    <p>The idea of asymptotic estimation is to replace the sum with an integral:</p>
+
+    \begin{equation}
+    f_b(m) = \sum_{i=0}^{d/2-1} \cos m b^{-2i/d} \approx \int_0^1 \cos m b^{-s} ds \xlongequal{\text{Let } t = mb^{-s}} \int_{mb^{-1}}^m \frac{\cos t}{t \ln b}dt
+    \end{equation}
+
+    <p>Where we denote</p>
+
+    \begin{equation}
+    \text{Ci}(x) = -\int_x^{\infty} \frac{\cos t}{t} dt
+    \end{equation}
+
+    <p>This is a previously studied trigonometric integral (referenced as <a href="https://en.wikipedia.org/wiki/Trigonometric_integral">Trigonometric integral</a>). Using this notation, we can write:</p>
+
+    \begin{equation}
+    f_b(m) \approx \frac{\text{Ci}(m) - \text{Ci}(mb^{-1})}{\ln b}
+    \end{equation}
+
+    <p>The plot of $\text{Ci}(x)$ looks like this:</p>
+    <p style="text-align: center;"><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/Cosine_integral.svg/440px-Cosine_integral.svg.png" alt="Ci(x) plot" style="max-width: 100%;"></p>
+    <p style="text-align: center;">Ci(x) plot [from Wikipedia]</p>
+
+    <p>Its first zero point is $x_0 = 0.6165\dots$. For $m \geq 1$, it is evident that $|\text{Ci}(m)| \leq 1/2$, so $\text{Ci}(m)$ is relatively a small term and can be ignored for asymptotic estimation. Thus, the problem approximately becomes ensuring $\text{Ci}(mb^{-1}) \leq 0$ for all $m=1, 2, \dots, L$. We only need the corresponding $mb^{-1}$ to fall within the $[0, x_0]$ interval, which means $Lb^{-1} \leq x_0$, or:</p>
+
+    \begin{equation}
+    b \geq L / x_0 \approx 2L
+    \end{equation}
+
+    <p>Or simply $b^* = \mathcal{O}(L)$. Unsurprisingly, this result is smaller than the precise numerical result because it corresponds to $d \to \infty$. Superimposing infinite trigonometric functions makes the function plot less oscillatory and smoother (compared to finite $d$), so for a fixed $b$, the continuous non-negative interval of $f_b(m)$ is longer—or conversely, for a fixed $L$, the $b$ required to keep $f_b(m)$ non-negative for $m=0, 1, 2, \dots, L-1$ is smaller.</p>
+
+    <h2>Related Thoughts</h2>
+    <p>In <a href="translation_9675.html">"Transformer Upgrade Roadmap: 10. RoPE is a β-进制 Encoding"</a>, we likened RoPE to a $\beta$-base representation, where $\beta = b^{2/d}$. Then $b - 1= \beta^{d/2} - 1$ is exactly the maximum number that a $d/2$-digit $\beta$-base encoding can represent. Thus, to represent $L$ positional encodings $0, 1, 2, \dots, L-1$, at minimum $b \geq L$. This naive analogy again gives the conclusion that "$b$ should increase as $L$ increases," with results closer to the asymptotic analysis in the previous section.</p>
+
+    <p>On the other hand, Meta's latest Llama 3 has a training length of 8192, but for the RoPE base, it chose a staggering 500,000 (5e5). This is nearly an order of magnitude larger than the numerical result (8.4e4) mentioned earlier. No matter how you look at it, I consider this value to be on the high side; perhaps Llama 3's base was reserved for even larger context lengths. Regardless, choosing a larger RoPE base for larger text lengths seems to have become a consensus among many practitioners.</p>
+
+    <p>Actually, whether it's numerical results or asymptotic estimations, they are only reference values. In reality, for a given $L$, a wide range of $b$ values should yield similar effects. Therefore, the specific values are not important; the key contribution of the original paper is clarifying the conclusion and principle that "$b$ should increase as $L$ increases" through the starting point of semantic aggregation and a series of derivations.</p>
+
+    <p>Furthermore, the starting point and conclusion of semantic aggregation can also be used to explain <a href="https://papers.cool/arxiv/2306.15595">Position Interpolation</a> (PI). As we just said, for the same $b$, the continuous non-negative interval of $f_b(m)$ is fixed. If we want $0, 1, 2, \dots, L-1$ to all fall within the non-negative interval, we need to increase $b$ accordingly as $L$ increases. But conversely, we could also skip increasing $b$ and instead reduce the interval between adjacent positions (i.e., changing position IDs to $0, 1/k, 2/k, \dots$), thus representing $k$ times the positions within the same non-negative interval. This is Position Interpolation from the perspective of semantic aggregation.</p>
+
+    <h2>Partial Rotation</h2>
+    <p>RoPE was proposed in 2021. At that time, there was only one Chinese blog post. Later, it gained recognition and experimentation from the EleutherAI organization before gradually spreading to academia. At that time, EleutherAI's experiments found that applying RoPE to only a portion of the dimensions yielded slightly superior results. Related content can be found <a href="https://github.com/lucidrains/x-transformers/issues/40">here</a>, <a href="https://wandb.ai/eleutherai/neox/reports/Partial-Rotary-Tests--Vmlldzo2MjE1MjY">here</a>, and <a href="https://wandb.ai/eleutherai/neox/reports/Partial-Rotary-Tests-v2--Vmlldzo2MjE4MTQ">here</a>. This operation was later used in their <a href="https://github.com/EleutherAI/gpt-neox/blob/8b43196fbd832b797be9f3d88d54481171010507/megatron/model/transformer.py#L908">GPT-NeoX</a>.</p>
+
+    <p>Of course, partial rotation is not currently the mainstream choice for LLMs, but that doesn't stop us from studying it—perhaps it hasn't become mainstream simply because we don't understand it well enough. Why might partial rotation be better? I found that it can be explained to some extent using the conclusions of this article. Taking the example of rotating only half of the dimensions, it is mathematically equivalent to choosing $\theta_i$ as follows:</p>
+
+    \begin{equation}
+    \theta_i = \left\{\begin{aligned}&b^{-4i/d},& i < d/4 \\
+    &0,&i \geq d/4\end{aligned}\right.
+    \end{equation}
+
+    <p>In this case, we have:</p>
+
+    \begin{equation}
+    \sum_{i=0}^{d/2-1} \cos m\theta_i = \sum_{i=0}^{d/4-1} (1+\cos mb^{-4i/d}) \geq 0
+    \end{equation}
+
+    <p>This means that regardless of $m$ and $b$, the desired inequality $\eqref{neq:base}$ holds automatically. From the perspective of this article, partial rotation provides better semantic aggregation capabilities while assigning positional information, which may be more beneficial for model performance. At the same time, partial rotation might be better for the model's long-context capability because the inequality holds constantly; thus, following the view of this article, there would be no need to modify $b$ regardless of whether training on short or long text.</p>
+
+    <p>It is worth mentioning that DeepSeek's <a href="translation_10091.html">MLA</a> also applies partial rotation. Although in the original derivation of MLA, partial rotation was more of a necessary compromise to integrate RoPE, combined with previous experimental results on partial rotation, perhaps some of MLA's excellent performance can be credited to partial rotation.</p>
+
+    <h2>Summary</h2>
+    <p>This article briefly introduces the paper <a href="https://papers.cool/arxiv/2405.14591">"Base of RoPE Bounds Context Length"</a>, which discusses the lower bound of the RoPE base from the desired property of semantic aggregation. It points out that larger training lengths should use larger bases, rather than just as a compromise for "short-then-long" training strategies or to leverage NTK-RoPE to reduce initial loss.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10122.html" style="color: #005fcc;">https://kexue.fm/archives/10122</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

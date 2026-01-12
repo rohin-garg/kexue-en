@@ -1,0 +1,389 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']},
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/4245">[Chinese Word Segmentation Series] 7. Deep Learning Segmentation? All You Need is a Dictionary!</a></h1>
+    
+    <p>By 苏剑林 | March 06, 2017</p>
+
+    <p>As this series slowly reaches its 7th post, we have basically clarified various models for word segmentation, except for some minor adjustments (like swapping the final classifier with a CRF); the rest is just about how to play with it. Generally speaking, if you want speed, you use dictionary-based segmentation. If you want better resolution of combination ambiguities and out-of-vocabulary (OOV) word recognition, you use complex models like the previously introduced LSTM or FCN. However, the problem is that training a segmenter with deep learning requires annotated corpora, which is time-consuming and labor-intensive. The few publicly available annotated corpora cannot keep up with the times—for example, almost no public segmentation system can correctly segment "扫描二维码，关注微信号" (Scan the QR code, follow the WeChat account).</p>
+
+    <p>This article describes an experiment: <strong>using only a dictionary, I trained a deep learning segmenter, and the results were surprisingly good!</strong> This approach can be called semi-supervised or even unsupervised.</p>
+
+    <h2>Random Combinations are Enough</h2>
+    <p>The method is very simple: since deep learning needs a corpus, I will generate one myself. How? I simply combine words from the dictionary at random. Wait—won't random combinations result in something that isn't natural language? I suspected this at first, but after experimenting, I found that the effect was exceptionally good, sometimes even surpassing results from annotated corpora.</p>
+
+    <p>Without further ado, let's get to work. First, prepare a word list with word frequencies; frequencies are essential, or the results will be significantly diminished. Then, write a function to randomly pick words from the word list with a probability proportional to their frequency to form "sentences."</p>
+
+<pre><code>import numpy as np
+import pandas as pd
+
+class Random_Choice:
+    def __init__(self, elements, weights):
+        d = pd.DataFrame(zip(elements, weights))
+        self.elements, self.weights = [], []
+        for i, j in d.groupby(1):
+            self.weights.append(len(j) * i)
+            self.elements.append(tuple(j[0]))
+        self.weights = np.cumsum(self.weights).astype(np.float64) / sum(self.weights)
+
+    def choice(self):
+        r = np.random.random()
+        w = self.elements[np.where(self.weights >= r)[0][0]]
+        return w[np.random.randint(0, len(w))]
+</code></pre>
+
+    <p>Note that here, grouping by weights is used to implement random sampling. The speed of random sampling depends on the number of groups, so it is best to perform some preprocessing on the word frequencies to make them "cluster." For example, words appearing 10001, 10002, and 10003 times can be rounded to 10000, and words appearing 12001, 12002, 12003, and 12004 times can be rounded to 12000. This step is extremely important because if you are using a GPU, this part usually becomes the bottleneck in training speed.</p>
+
+    <p>Next, count the character table and write a generator. These are standard steps using the 4-tag character labeling method, adding an 'x' tag for padding. Readers who are unclear can refer back to the <a href="translation_3924.html">LSTM segmentation article</a>:</p>
+
+<pre><code>import pickle
+words = pd.read_csv('dict.txt', delimiter='\t', header=None, encoding='utf-8')
+words[0] = words[0].apply(unicode)
+words = words.set_index(0)[1]
+
+try:
+    char2id = pickle.load(open('char2id.dic'))
+except:
+    from collections import defaultdict
+    print u'fail to load old char2id.'
+    char2id = pd.Series(list(''.join(words.index))).value_counts()
+    char2id[:] = range(1, len(char2id) + 1)
+    char2id = defaultdict(int, char2id.to_dict())
+    pickle.dump(char2id, open('char2id.dic', 'w'))
+
+word_size = 128
+maxlen = 48
+batch_size = 1024
+
+def word2tag(s):
+    if len(s) == 1:
+        return 's'
+    elif len(s) >= 2:
+        return 'b' + 'm' * (len(s) - 2) + 'e'
+
+tag2id = {'s': [1,0,0,0,0], 'b': [0,1,0,0,0], 'm': [0,0,1,0,0], 'e': [0,0,0,1,0]}
+
+def data_generator():
+    wc = Random_Choice(words.index, words)
+    x, y = [], []
+    while True:
+        n = np.random.randint(1, 17)
+        seq = [wc.choice() for i in range(n)]
+        tag = ''.join([word2tag(i) for i in seq])
+        seq = [char2id[i] for i in ''.join(seq)]
+        if len(seq) > maxlen:
+            continue
+        else:
+            seq = seq + [0] * (maxlen - len(seq))
+            tag = [tag2id[i] for i in tag]
+            tag = tag + [[0,0,0,0,1]] * (maxlen - len(tag))
+            x.append(seq)
+            y.append(tag)
+        if len(x) == batch_size:
+            yield np.array(x), np.array(y)
+            x, y = [], []
+</code></pre>
+
+    <h2>The Same Old Model</h2>
+    <p>For the model, you can use the LSTM or CNN I wrote previously. Here, I used an LSTM, and the results show that LSTM has very strong memory capabilities.</p>
+
+<pre><code># Running on Keras 2.0 + Tensorflow 1.0
+
+from keras.layers import Dense, Embedding, LSTM, TimeDistributed, Input, Bidirectional
+from keras.models import Model
+
+sequence = Input(shape=(maxlen,), dtype='int32')
+embedded = Embedding(len(char2id) + 1, word_size, input_length=maxlen, mask_zero=True)(sequence)
+blstm = Bidirectional(LSTM(64, return_sequences=True))(embedded)
+output = TimeDistributed(Dense(5, activation='softmax'))(blstm)
+model = Model(inputs=sequence, outputs=output)
+model.compile(loss='categorical_crossentropy', optimizer='adam')
+
+try:
+    model.load_weights('model.weights')
+except:
+    print u'fail to load old weights.'
+
+for i in range(100):
+    print i
+    model.fit_generator(data_generator(), steps_per_epoch=100, epochs=10)
+    model.save_weights('model.weights')
+</code></pre>
+
+    <p>Using my GTX 1060 and my dictionary (500,000 distinct words), each round takes about 70s. The model is saved every 10 rounds. The 100 in <code>range(100)</code> is arbitrary; since it saves every 10 rounds, you can stop the program whenever you're satisfied with the results.</p>
+
+    <p>Regarding accuracy: note that because <code>mask_zero=True</code> is used, the 'x' tag is ignored during training. However, the final training accuracy displayed by Keras includes the 'x' tags, so the displayed accuracy won't exceed 0.3 (around 0.28). This isn't important; we can test the model after training is complete.</p>
+
+    <p>One final tip: larger character vector dimensions generally lead to better recognition of long words.</p>
+
+    <h2>Output via Dynamic Programming</h2>
+    <p>Now, we combine the Viterbi algorithm through dynamic programming to output the final results. Dynamic programming ensures the optimal result but reduces efficiency. Simply outputting the maximum result predicted by the classifier also yields similar results (though theoretically, it could produce invalid tag sequences like "bbbb"). It depends on the situation; since this is an experiment, I used Viterbi. In a production environment, for the sake of speed, you might skip it (sacrificing a bit of precision for a massive increase in speed).</p>
+
+<pre><code>zy = {'be': 0.5,
+      'bm': 0.5,
+      'eb': 0.5,
+      'es': 0.5,
+      'me': 0.5,
+      'mm': 0.5,
+      'sb': 0.5,
+      'ss': 0.5
+     }
+
+zy = {i: np.log(zy[i]) for i in zy.keys()}
+
+def viterbi(nodes):
+    paths = {'b': nodes[0]['b'], 's': nodes[0]['s']}
+    for l in range(1, len(nodes)):
+        paths_ = paths.copy()
+        paths = {}
+        for i in nodes[l].keys():
+            nows = {}
+            for j in paths_.keys():
+                if j[-1] + i in zy.keys():
+                    nows[j + i] = paths_[j] + nodes[l][i] + zy[j[-1] + i]
+            k = np.argmax(nows.values())
+            paths[nows.keys()[k]] = nows.values()[k]
+    return paths.keys()[np.argmax(paths.values())]
+
+def simple_cut(s):
+    if s:
+        s = s[:maxlen]
+        r = model.predict(np.array([[char2id[i] for i in s] + [0] * (maxlen - len(s))]), verbose=False)[0][:len(s)]
+        r = np.log(r)
+        nodes = [dict(zip(['s','b','m','e'], i[:4])) for i in r]
+        t = viterbi(nodes)
+        words = []
+        for i in range(len(s)):
+            if t[i] in ['s', 'b']:
+                words.append(s[i])
+            else:
+                words[-1] += s[i]
+        return words
+    else:
+        return []
+
+import re
+not_cuts = re.compile(u'([\da-zA-Z ]+)|[。，、？！\.\?,!“”]')
+def cut_word(s):
+    result = []
+    j = 0
+    for i in not_cuts.finditer(s):
+        result.extend(simple_cut(s[j:i.start()]))
+        result.append(s[i.start():i.end()])
+        j = i.end()
+    result.extend(simple_cut(s[j:]))
+    return result
+</code></pre>
+
+    <p>The code here is the same as before, basically unchanged. The efficiency is not very high, but as mentioned, this is an experiment. If you are interested in using it in production, find your own ways to optimize.</p>
+
+    <h2>Let's Test It</h2>
+    <p>Combined with the dictionary I organized myself, the final model <strong>reaches an accuracy of about 85% on the backoff2005 evaluation set</strong> (calculated by the score script provided by backoff2005). This accuracy depends on your dictionary.</p>
+
+    <p>Does it look bad? Not really. First, we did not use its training set; this was purely unsupervised training using only a dictionary. This accuracy is already quite satisfying. Second, the accuracy appears low, but the actual situation is better because much of the error comes from differences in corpus segmentation standards. For example:</p>
+
+    <blockquote>
+        1. The evaluation set's standard answer splits "古老的中华文化" (ancient Chinese culture) into "古老/的/中华/文化" (ancient / of / China / culture), whereas the model splits it as "古老/的/中华文化" (ancient / of / Chinese culture).<br><br>
+        2. The evaluation set's standard answer splits "在录入上走向中西文求同的道路" as "在/录入/上/走/向/中/西文/求/同/的/道路", whereas the model splits it as "在/录入/上/走向/中西文/求同/的/道路".<br><br>
+        3. The evaluation set's standard answer splits "更是教育学家关心的问题" as "更/是/教育学/家/关心/的/问题", whereas the model splits it as "更是/教育学家/关心/的/问题".
+    </blockquote>
+
+    <p>Scanning through like this, many more examples can be found. This indicates that the backoff2005 tagging itself is not perfectly standard. We shouldn't worry too much about this accuracy. Instead, we should notice that our model has better recognition effects for new words and long words, and achieving this effect only requires a dictionary—which is much easier than obtaining labeled data. This is very effective for customizing segmentation systems for specific domains (like medicine, tourism, etc.).</p>
+
+    <p>Below are some test examples; these results are generally even better than those from supervised training:</p>
+
+    <blockquote>
+        罗斯福 是 第二次世界大战 期间 同盟国 阵营 的 重要 领导人 之一 。 1941 年 珍珠港 事件 发生 后 ， 罗斯福 力主 对 日本 宣战 ， 并 引进 了 价格 管制 和 配给 。 罗斯福 以 租 借 法案 使 美国 转变 为 “ 民主 国家 的 兵工厂 ” ， 使 美国 成为 同盟国 主要 的 军火 供应商 和 融资者 ， 也 使得 美国 国内 产业 大幅 扩张 ， 实现 充分 就业 。 二战 后期 同盟国 逐渐 扭转 形势 后 ， 罗斯福 对 塑造 战后 世界 秩序 发挥 了 关键 作用 ， 其 影响力 在 雅尔塔 会议 及 联合国 的 成立 中 尤其 明显 。 后来 ， 在 美国 协助 下 ， 盟军 击败 德国 、 意大利 和 日本 。<br><br>
+        苏剑林 是 科学 空间 的 博主<br><br>
+        结婚 的 和 尚未 结婚 的<br><br>
+        大肠杆菌 是 人 和 许多 动物 肠道 中 最 主要 且 数量 最 多 的 一种 细菌<br><br>
+        九寨沟 国家级 自然保护区 位于 四川省 阿坝藏族羌族自治州 南坪县 境内 ， 距离 成都市 400 多 公里 ， 是 一条 纵深 40 余公里 的 山沟 谷地<br><br>
+        现代 内地 人 ， 因 莫高窟 而 知 敦煌 。 敦煌 因 莫高窟 也 在 近代 蜚声 海外 。 但 莫高窟 始 凿 于 四 世纪 ， 到 1900 年 才 为 世人 瞩目 ， 而 敦煌 早 从 汉武帝 时 ， 即 公元前 一百多年 起 ， 就 已 是 西北 名城 了<br><br>
+        从前 对 巴特农 神庙 怎么 干 ， 现在 对 圆明园 也 怎么 干 ， 只是 更 彻底 ， 更 漂亮 ， 以至于 荡然无存 。 我们 所有 大 教堂 的 财宝 加 在 一起 ， 也许 还 抵不上 东方 这座 了不起 的 富丽堂皇 的 博物馆 。 那儿 不仅仅 有 艺术 珍品 ， 还有 大堆 的 金银 制品 。 丰功伟绩 ！ 收获 巨大 ！ 两个 胜利者 ， 一个 塞满 了 腰包 ， 这 是 看得见 的 ， 另 一个 装满 了 箱子 。
+    </blockquote>
+
+    <p>Don't forget, this was done using only a dictionary. Many segments, especially names, are not even in the dictionary. This result should be satisfying enough!</p>
+
+    <h2>Thinking Why</h2>
+    <p>Returning to our initial doubt: why can random text combinations train a great segmenter? The reason is that our initial dictionary-based segmentation was based on an assumption: sentences are formed by random combinations of words. Thus, to segment a sentence, we must cut the string to maximize the following probability:</p>
+    $$p(w_1)p(w_2)\dots p(w_n)$$
+    <p>The final solving process uses dynamic programming.</p>
+
+    <p>Here, we follow the same assumption—that text is a random combination—which is not strictly true but generally suffices. The results show its effectiveness. What might be surprising is that this segmenter can even resolve combination ambiguity sentences like "结婚的和尚未结婚的" (the married ones and those not yet married). It's not hard to understand: when we combine randomly, we pick words based on their frequencies. This results in high-frequency words appearing more and low-frequency words less. After a large number of repeated operations, we are essentially training the LSTM to learn the process of dynamic programming!</p>
+
+    <p>This is startling. It means we can use LSTMs to learn traditional optimization algorithms! Furthermore, by improving RNNs to solve traditional CS problems—like convex hulls, Delaunay triangulation, and even the Traveling Salesman Problem (TSP)—it turns out these things work quite well, even better than some approximation algorithms (<a href="https://www.zhihu.com/question/47563637">https://www.zhihu.com/question/47563637</a>). Note that problems like TSP are NP-hard; in principle, there is no polynomial-time solution. But using an LSTM, we might potentially get a linear and effective solution. This is a huge impact on the field of traditional algorithms! Using neural networks to design optimization algorithms, and eventually using optimization algorithms to optimize neural networks to achieve self-optimization—now that's intelligence!</p>
+
+    <p>Well, I've strayed too far. Anyway, the result is the only standard.</p>
+
+    <h2>Pre-trained Model</h2>
+    <p>Finally, sharing a pre-trained model. Readers with Keras can download and test it:<br>
+    <del>seg.zip (This weight is no longer usable with the latest versions of TensorFlow + Keras; please train it yourself according to the code above~)</del></p>
+
+    <hr>
+    <p><em>Originally published at: <a href="translation_4245.html">https://kexue.fm/archives/4245</a></em></p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_4245.html" style="color: #005fcc;">https://kexue.fm/archives/4245</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

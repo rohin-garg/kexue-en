@@ -1,0 +1,214 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/3818">A Brief Exploration of OCR Technology: 4. Text Localization</a></h1>
+    <p>By 苏剑林 | June 24, 2016</p>
+
+    <p>After the first part, we have successfully extracted the text features of the image. Next, we will perform text localization. The main process is divided into two steps: 1. Proximity search, with the goal of circling single lines of text; 2. Text cutting, with the goal of segmenting single lines of text into individual characters.</p>
+
+    <h3>Proximity Search <a href="https://kexue.fm/kexue.fm#%E9%82%BB%E8%BF%91%E6%90%9C%E7%B4%A2">#</a></h3>
+    <p>We can perform a connected component search on the extracted feature map, treating each resulting connected component as a Chinese character. This works for most Chinese characters, but it is not suitable for some simpler characters such as "小" (small), "旦" (dawn), "八" (eight), and "元" (yuan). Because these characters lack connectivity, they end up being split apart, as shown in Figure 13. Therefore, we need to use a proximity search algorithm to integrate regions that likely form a single character and obtain single-line text regions.</p>
+
+    <p><img src="https://kexue.fm/usr/uploads/2016/06/3883733568.png" alt="Figure 13: Direct search for connected components will split characters like '元' apart" title="Figure 13: Direct search for connected components will split characters like '元' apart"><br>
+    Figure 13: Direct search for connected components will split characters like "元" apart</p>
+
+    <p>The purpose of a proximity search is to perform dilation to "stick" together regions that likely form a character. If dilation is performed without a search, it happens in all directions simultaneously, which might stick the upper and lower lines together. Therefore, we only allow a region to dilate in one specific direction. We determine the direction of dilation (up, down, left, right) by searching for neighboring regions:</p>
+
+    <blockquote>
+        <strong>Proximity Search*</strong> Starting from a connected component, find the horizontal bounding box of the connected component and expand the component to the entire rectangle. When the distance from this region to the nearest neighboring region is less than a certain range, consider dilating this rectangle. The direction of dilation is the direction of the nearest neighbor.
+    </blockquote>
+
+    <p>Since proximity is involved, we need a definition of distance. Below is a reasonable definition of distance.</p>
+
+    <h3>Distance <a href="https://kexue.fm/kexue.fm#%E8%B7%9D%E7%A6%BB">#</a></h3>
+    <p><img src="https://kexue.fm/usr/uploads/2016/06/663853151.png" alt="Figure 14: Two sample regions" title="Figure 14: Two sample regions"><br>
+    Figure 14: Two sample regions</p>
+
+    <p>As shown in the figure above, a rectangular region can be determined by the top-left coordinate $(x,y)$ and the bottom-right coordinate $(z,w)$, where the coordinates are calculated with the top-left corner as the origin. The center of this region is $\left(\frac{x+w}{2}, \frac{y+z}{2}\right)$. For the two regions $S$ and $S'$ in the figure, we can calculate the difference between their center vectors:
+    $$(x_c,y_c)=\left(\frac{x'+w'}{2}-\frac{x+w}{2},\frac{y'+z'}{2}-\frac{y+z}{2}\right)\tag{10}$$
+    It is unreasonable to directly use $\sqrt{x_c^2+y_c^2}$ as the distance because "proximity" here should be calculated according to the boundaries rather than the center points. Therefore, we need to subtract the length of the regions:
+    $$(x'_c,y'_c)=\left(x_c-\frac{w-x}{2}-\frac{w'-x'}{2},y_c-\frac{z-y}{2}-\frac{z'-y'}{2}\right)\tag{11}$$
+    The distance is defined as:
+    $$d(S,S')=\sqrt{[\max(x'_c,0)]^2+[\max(y'_c,0)]^2}\tag{12}$$
+    As for the direction, it can be determined by the argument (angle) of $(x_c,y_c)$.</p>
+
+    <p>However, according to the previous "Proximity Search*" method, it is easy to stick the upper and lower lines of text together. Therefore, based on our <strong>horizontal layout assumption</strong>, a better method is to only allow horizontal dilation:</p>
+
+    <blockquote>
+        <strong>Proximity Search</strong> Starting from a connected component, find the horizontal bounding box of the connected component and expand the component to the entire rectangle. When the distance from this region to the nearest neighboring region is less than a certain range, consider dilating this rectangle. The direction of dilation is the direction of the nearest neighbor, and the dilation is executed if and only if that direction is horizontal.
+    </blockquote>
+
+    <h3>Results <a href="https://kexue.fm/kexue.fm#%E7%BB%93%E6%9E%9C">#</a></h3>
+    <p>With the distance defined, we can calculate the distance between every two connected components and find the nearest neighbor for each region. We expand each region towards the direction of its nearest neighbor by one-fourth of its size. In this way, neighboring regions may merge into a new region, thereby integrating fragments.</p>
+
+    <p>Experiments show that the proximity search approach effectively integrates text fragments, as shown in Figure 15.</p>
+
+    <p><img src="https://kexue.fm/usr/uploads/2016/06/1579758547.png" alt="Figure 15: Text regions circled after proximity search" title="Figure 15: Text regions circled after proximity search"><br>
+    Figure 15: Text regions circled after proximity search</p>
+
+    <p><em><strong>Reproduction of this article must include the original address:</strong> <a href="translation_3818.html">https://kexue.fm/archives/3818</a></em></p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_3818.html" style="color: #005fcc;">https://kexue.fm/archives/3818</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

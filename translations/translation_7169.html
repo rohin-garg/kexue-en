@@ -1,0 +1,271 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['base', 'ams', 'noerrors', 'noundefined']}
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/7169">Self-Orthogonality Module: A Plug-and-play Kernel Orthogonalization Module</a></h1>
+    <p>By 苏剑林 | January 12, 2020</p>
+
+    <p>A few days ago, while browsing Arxiv, I saw a new paper titled <a href="https://papers.cool/arxiv/2001.01275">"Self-Orthogonality Module: A Network Architecture Plug-in for Learning Orthogonal Filters"</a> (hereinafter referred to as the "original paper"). It looked interesting, so I read through it. After finishing, I indeed gained some insights, which I will record and share here.</p>
+
+    <p>Adding regularization terms with an orthogonalization tendency to the kernels of fully connected or convolutional models is a requirement for many models. For example, the famous <a href="https://papers.cool/arxiv/1809.11096">BigGAN</a> incorporates similar regularization terms. This paper introduces a new regularization term. I find the entire analysis process quite interesting and worth a read.</p>
+
+    <h2 id="why-desire-orthogonality">Why Hope for Orthogonality?</h2>
+    <p>Before we begin, let us agree: all one-dimensional vectors appearing in this article represent column vectors. Now, suppose we have a $d$-dimensional input sample $\boldsymbol{x} \in \mathbb{R}^d$. When it passes through a fully connected or convolutional layer, the core operation is:</p>
+    \begin{equation}\boldsymbol{y}^{\top}=\boldsymbol{x}^{\top}\boldsymbol{W},\quad \boldsymbol{W}\triangleq (\boldsymbol{w}_1,\boldsymbol{w}_2,\dots,\boldsymbol{w}_k)\label{eq:k}\end{equation}
+    <p>where $\boldsymbol{W} \in \mathbb{R}^{d \times k}$ is a matrix, which is called the "kernel" (fully connected kernel / convolutional kernel), and $\boldsymbol{w}_1, \boldsymbol{w}_2, \dots, \boldsymbol{w}_k \in \mathbb{R}^{d}$ are the individual column vectors of this matrix.</p>
+
+    <p>The above equation can also be written as</p>
+    \begin{equation}\boldsymbol{y}=\begin{pmatrix}\boldsymbol{x}^{\top}\boldsymbol{w}_1 \\ \boldsymbol{x}^{\top}\boldsymbol{w}_2\\ \vdots \\ \boldsymbol{x}^{\top}\boldsymbol{w}_k\end{pmatrix}\end{equation}
+    <p>Intuitively, we can think of $\boldsymbol{w}_1, \boldsymbol{w}_2, \dots, \boldsymbol{w}_k$ as representing $k$ different perspectives, and $\boldsymbol{y}$ as the observation results of $\boldsymbol{x}$ from these $k$ perspectives.</p>
+
+    <p>Since there are $k$ perspectives, in order to reduce redundancy (and more fully utilize the parameters of all perspectives), we naturally hope that each perspective is uncorrelated with the others (to take an extreme example, if two perspectives were exactly the same, one of them would suffice). For vectors in linear space, being uncorrelated implies being orthogonal, so we hope that:</p>
+    \begin{equation}\boldsymbol{w}_i^{\top}\boldsymbol{w}_j=0,\,\forall i\neq j\end{equation}
+    <p>This is the origin of orthogonalization.</p>
+
+    <h2 id="common-orthogonalization-methods">Common Orthogonalization Methods</h2>
+    <p>Matrix orthogonalization is somewhat similar to vector normalization, but the difficulty is quite different. For a non-zero vector $\boldsymbol{w}$, to normalize it, one only needs $\boldsymbol{w}/\Vert\boldsymbol{w}\Vert_2$, but matrix orthogonalization has no similar simple means. Readers might think of "Gram-Schmidt orthogonalization," but its computational cost is substantial, and its asymmetry is a significant drawback.</p>
+
+    <p>Of course, in general, we don't necessarily require strict orthogonality, so the usual means of matrix orthogonalization is to add orthogonality-related regularization terms. For example, for an orthogonal matrix, we have $\boldsymbol{W}^{\top}\boldsymbol{W}=\boldsymbol{I}$, so we can add the regularization term:</p>
+    \begin{equation}\left\Vert\boldsymbol{W}^{\top}\boldsymbol{W}-\boldsymbol{I}\right\Vert^2\label{eq:reg0}\end{equation}
+    <p>The norm $\Vert\cdot\Vert$ here can be the Matrix 2-norm or the Matrix Frobenius-norm (for concepts regarding matrix norms, refer to <a href="translation_6051.html">"Lipschitz Constraint in Deep Learning: Generalization and Generative Models"</a>). Furthermore, the regularization term above does not only encourage orthogonalization but also normalization (each vector's length being 1). If only orthogonalization is required, the diagonal part can be masked out, i.e.:</p>
+    \begin{equation}\left\Vert\left(\boldsymbol{W}^{\top}\boldsymbol{W}-\boldsymbol{I}\right)\otimes (1 - \boldsymbol{I})\right\Vert^2\label{eq:reg00}\end{equation}
+    <p>BigGAN added exactly this regularizer.</p>
+
+    <h2 id="proposed-regularization-term">The Regularization Term Proposed in the Paper</h2>
+    <p>The original paper also proposes a new orthogonal regularization term, which involves some interesting discussions and derivations, and verifies its effectiveness through experiments.</p>
+
+    <h3>Locality Sensitive Hashing</h3>
+    <p>The starting point of the original paper is the following lemma:</p>
+    <blockquote>
+        Let $\boldsymbol{w}_i, \boldsymbol{w}_j \in \mathbb{R}^d$ be two given vectors, $\theta_{i,j} \in [0, \pi]$ be their angle, $\mathcal{X}$ be a $d$-dimensional unit hypersphere, and $\boldsymbol{x} \sim \mathcal{X}$ represent a vector randomly chosen on $\mathcal{X}$. We then have the following result:
+        \begin{equation}\vartheta_{i,j}\triangleq \mathbb{E}_{\boldsymbol{x}\sim\mathcal{X}}\left[\text{sgn}\left(\boldsymbol{x}^{\top}\boldsymbol{w}_i\right)\text{sgn}\left(\boldsymbol{x}^{\top}\boldsymbol{w}_j\right)\right]=1-\frac{2\theta}{\pi}\label{eq:lsh}\end{equation}
+    </blockquote>
+
+    <p>Where $\text{sgn}$ is the sign function, i.e., $\text{sgn}(x)=\left\{\begin{aligned}1,&\,x > 0\\ -1,&\, x\leq 0\end{aligned}\right.$. This lemma is a direct corollary of "Locality Sensitive Hashing" for cosine similarity, which originates from the paper <a href="https://www.cs.princeton.edu/courses/archive/spr04/cos598B/bib/CharikarEstim.pdf">"Similarity Estimation Techniques from Rounding Algorithms."</a> If one wishes to trace the proof, they can follow that route.</p>
+
+    <p>At first glance, $\eqref{eq:lsh}$ seems like an ordinary mathematical formula, but it actually contains richer meaning. It allows us to transform the similarity between two continuous real-valued vectors (approximately) into the similarity between two binary vectors (-1 and 1). Once transformed into binary vectors, it is equivalent to converting into a "Term-Document" matrix, allowing us to build indices to speed up retrieval. In other words, this can effectively improve the retrieval speed of real continuous vectors!</p>
+
+    <h3>Optimization Target Form</h3>
+    <p>Looking directly at the definition in equation $\eqref{eq:lsh}$, its derivative is zero everywhere, but we can obtain a smooth approximation of it. Assuming we have obtained a smooth approximation of $\vartheta$, we can use it to construct an orthogonal regularization term. The regularization term constructed in the original paper is:</p>
+    \begin{equation}\mathcal{R}_{\vartheta}\triangleq \lambda_1\left(\sum_{i\neq j}\vartheta_{i,j}\right)^2 + \lambda_2\sum_{i\neq j}\vartheta_{i,j}^2\label{eq:reg}\end{equation}
+    <p>Clearly, this regularization term wants $\vartheta_{i,j}=0$, and $\vartheta_{i,j}=0$ implies $\theta_{i,j}=\pi/2$, which means the vectors of $\boldsymbol{W}$ are pairwise perpendicular. Relatively speaking, the regularization term controlled by $\lambda_1$ is softer; it only expects the mean of $\vartheta_{i,j}$ to be 0, while $\lambda_2$ is more aggressive, expecting every $\theta_{i,j}$ to be 0.</p>
+
+    <p>Considering that practical problems may be complex, we should not impose overly rigid constraints on the model, so the original paper sets $\lambda_1 > \lambda_2$, specifically $\lambda_1 = 100, \lambda_2 = 1$.</p>
+
+    <h3>Insertion into the Model</h3>
+    <p>Now let us consider the practical estimation of $\vartheta_{i,j}$.</p>
+
+    <p>First, let's understand equation $\eqref{eq:lsh}$ from another angle. If we sample $b$ samples $\boldsymbol{x}_1, \boldsymbol{x}_2, \dots, \boldsymbol{x}_b$ to estimate $\vartheta_{i,j}$, we have</p>
+    \begin{align}
+    \vartheta_{i,j}\approx & \frac{1}{b}\sum_{\alpha=1}^b\left[\text{sgn}\left(\boldsymbol{x}_{\alpha}^{\top}\boldsymbol{w}_i\right)\text{sgn}\left(\boldsymbol{x}_{\alpha}^{\top}\boldsymbol{w}_j\right)\right] \nonumber \\ 
+    =& \left(\frac{\boldsymbol{y}_i}{\Vert\boldsymbol{y}_i\Vert_2}\right)^{\top}\left(\frac{\boldsymbol{y}_j}{\Vert\boldsymbol{y}_j\Vert_2}\right) \label{eq:lsh-2}
+    \end{align}
+    <p>Here</p>
+    \begin{equation}\boldsymbol{y}=\begin{pmatrix} \text{sgn}\left(\boldsymbol{x}_{1} ^{\top}\boldsymbol{w}\right)\\ \text{sgn}\left(\boldsymbol{x}_{2}^{\top}\boldsymbol{w}\right)\\ \vdots\\ \text{sgn}\left(\boldsymbol{x}_{b}^{\top}\boldsymbol{w}\right) \end{pmatrix}=\text{sgn}\left(\boldsymbol{X}^{\top}\boldsymbol{w}\right),\,\,\boldsymbol{X}=(\boldsymbol{x}_1,\boldsymbol{x}_2,\dots,\boldsymbol{x}_b)\in\mathbb{R}^{d\times b}\end{equation}
+    <p>The cleverest part of this formal transformation is that since the elements of $\boldsymbol{y}$ are either 1 or -1, the length of $\boldsymbol{y}$ is exactly $\sqrt{b}$. Therefore, the factor $1/b$ is exactly equivalent to normalizing both $\boldsymbol{y}_i$ and $\boldsymbol{y}_j$!</p>
+
+    <p>Furthermore, it is worth noting that neither $\eqref{eq:lsh}$ nor $\eqref{eq:lsh-2}$ is actually related to the length of each $\boldsymbol{x}_{\alpha}$, because $\text{sgn}(x)=\text{sgn}(|\lambda|x)$. The previous lemma required sampling on the "unit hypersphere" only to emphasize the uniformity of the sampling direction (rather than the magnitude).</p>
+
+    <p>Understanding this, we can clarify the estimation process for $\vartheta_{i,j}$:</p>
+
+    <blockquote>
+        <strong>$\vartheta_{i,j}$ Estimation Process</strong><br><br>
+        1. Randomly initialize a $d \times b$ matrix $\boldsymbol{X}$ (when viewed as $b$ vectors of $d$ dimensions, magnitude is unrestricted, but directions should be as uniform as possible);<br><br>
+        2. Calculate $\boldsymbol{X}^{\top}\boldsymbol{w}_i$ and $\boldsymbol{X}^{\top}\boldsymbol{w}_j$ to obtain two $b$-dimensional vectors, then activate them with the $\text{sgn}$ function, apply $l_2$ normalization to each, and finally calculate the inner product;<br><br>
+        3. If a smooth approximation is required, use $\text{sgn}(x)\approx \tanh(\gamma x)$. The original paper used $\gamma=10$.
+    </blockquote>
+
+    <p>How should $\boldsymbol{X}$ be chosen? The original paper chooses it as the input of the current batch. Returning to $\eqref{eq:k}$, generally, the input of the neural network is a $b \times d$ matrix, which we can treat as $\boldsymbol{X}^{\top}$. In this case, $b$ is the batch size, and the neural network proceeds to multiply it by $\boldsymbol{W} \in \mathbb{R}^{d \times k}$, yielding the output $\boldsymbol{Y} \in \mathbb{R}^{b \times k}$. This happens to correspond to the $k$ $b$-dimensional vectors $\boldsymbol{X}^{\top}\boldsymbol{w}_1, \boldsymbol{X}^{\top}\boldsymbol{w}_2, \dots, \boldsymbol{X}^{\top}\boldsymbol{w}_k$ calculated for the $k$ kernel vectors in the "$\vartheta_{i,j}$ estimation process." This way, we save most of the computational workload in the estimation process, directly estimating based on the current layer's output.</p>
+
+    <blockquote>
+        <strong>Note: If readers look at the original paper, they will find that the description in that section differs from this blog post (principally the two paragraphs above Section 3, Experiments). Based on my understanding of the paper's overall argument, I believe the description in that part of the original paper is erroneous (mostly due to confused meanings of $D$ and $d$), whereas the version in this blog is the correct interpretation.</strong>
+    </blockquote>
+
+    <p>In summary, the final scheme for estimating $\vartheta_{i,j}$ is:</p>
+
+    <blockquote>
+        1. The input of the current layer is $\boldsymbol{X}^{\top} \in \mathbb{R}^{b \times d}$, and the kernel matrix is $\boldsymbol{W} \in \mathbb{R}^{d \times k}$. After matrix multiplication, the output is $\boldsymbol{Y} \in \mathbb{R}^{b \times k}$;<br><br>
+        2. Apply $\tanh(\gamma x)$ activation to $\boldsymbol{Y} \in \mathbb{R}^{b \times k}$, then perform $l_2$ normalization along the $b$ dimension (the batch size dimension);<br><br>
+        3. Calculate $\boldsymbol{Y}^{\top}\boldsymbol{Y}$ to get a $k \times k$ matrix, which contains all $\vartheta_{i,j}$;<br><br>
+        4. With $\vartheta_{i,j}$, substitute them into equation $\eqref{eq:reg}$ to calculate the regularization term. Since the regularization term is built using the model's own output, it is called a "Self-Orthogonality Regularization term."
+    </blockquote>
+
+    <h3>Connection to BN</h3>
+    <p>Additionally, the authors of the original paper speculate that the operation of "performing $l_2$ normalization along the $b$ dimension" is somewhat similar to BN, so after adding the self-orthogonality regularization term, the model might not need to add BN anymore. Personally, I find this speculation a bit far-fetched, because this operation is only used in calculating the regularization term and does not affect the normal forward propagation process of the model; thus, it cannot rule out the necessity of BN. Furthermore, in the original "$\vartheta_{i,j}$ estimation process," we require the directions of each vector in $\boldsymbol{X}$ to be as uniform as possible, but we later directly select the current layer's input (transposed) as $\boldsymbol{X}$. We cannot effectively guarantee uniform directions, and adding BN theoretically helps make the directions of the vectors in the input more uniform, providing even more reason not to rule out BN. In fact, the experimental results in the original paper do not fully support the authors' speculation.</p>
+
+    <h2 id="experiments-and-analysis">Experiment and Personal Analysis</h2>
+    <p>Having written so much and derived a bunch of formulas, I have finally derived the regularization term from the original paper. The authors did indeed perform several experiments to verify the effectiveness of this regularization term. The general conclusion is that it indeed makes the distribution of angles between vectors in the kernel matrix closer to pairwise orthogonality. Furthermore, it brings a (slight) improvement, unlike existing orthogonal regularization terms that often ensure orthogonality but result in a drop in performance.</p>
+
+    <p>Readers should check the specific experimental results in the original paper themselves; putting them here wouldn't add much. Moreover, although the authors conducted many experiments, I still feel the experiments are insufficiently comprehensive, as most were done on point clouds, and conventional classification experiments were only done on CIFAR-10, which is too brief.</p>
+
+    <p>Finally, why is this orthogonal regularization term (seemingly) more effective? Personally, I think it might be the result of the new regularization term being softer. Whether it's $\eqref{eq:reg0}$ or $\eqref{eq:reg00}$, they both penalize individual inner products (angles), whereas $\eqref{eq:reg}$ in the original paper tends to achieve the orthogonality penalty from an overall perspective of the angular distribution. Additionally, the new regularization involves $\tanh$, which has a saturation region, meaning that like hinge loss, it provides a truncation for the penalty, further making the penalty softer.</p>
+
+    <h2 id="summary">Wrap-up Summary</h2>
+    <p>This article primarily introduced a recent paper from Arxiv. The paper points out that existing orthogonal regularization terms do not improve model accuracy, so the authors introduced a new orthogonal regularization term and conducted corresponding evaluations, concluding that their regularization term not only promotes orthogonality but also brings a certain improvement in results.</p>
+
+    <p><strong>Finally, as I had no prior knowledge of this specific topic (especially the "Locality Sensitive Hashing" part) and only happened upon this paper on Arxiv, finding it quite interesting, I have come to share it. Please excuse and kindly point out any improper omissions or errors.</strong></p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7169.html" style="color: #005fcc;">https://kexue.fm/archives/7169</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

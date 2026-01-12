@@ -1,0 +1,334 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/3908">[Chinese Word Segmentation Series] 1. Fast Word Segmentation Based on AC Automaton</a></h1>
+    
+    <p>By 苏剑林 | August 17, 2016</p>
+
+    <p>
+        <strong>Foreword:</strong> This summer, I spent a lot of time on Chinese word segmentation and language models. I hit walls countless times and gained a few scattered insights. I plan to write a series to share these experiences. Although it is a "series," it is more of a collection of notes rather than a systematic tutorial. I hope readers will understand.
+    </p>
+
+    <h3 id="Chinese-Word-Segmentation">Chinese Word Segmentation</h3>
+    <p>
+        I won't say much about the introduction and importance of Chinese word segmentation. <a href="http://www.matrix67.com/blog/archives/4212">matrix67 has a very clear introduction here</a> regarding segmentation and segmentation algorithms, which is well worth reading. In text mining, although many articles have explored processing methods without segmentation, such as the blog post <a href="translation_3863.html">"Text Sentiment Classification (3): To Segment or Not to Segment"</a>, segmentation is generally the first step for text mining. Therefore, an effective segmentation algorithm is crucial. Of course, as the first step, Chinese word segmentation has been explored for a long time. Much of the current work is summary-based or involves minor improvements rather than major shifts.
+    </p>
+    <p>
+        Currently, there are two main approaches to Chinese word segmentation: dictionary lookup and character tagging. First, dictionary-based methods include: mechanical maximum matching, minimum word count methods, maximum probability combinations based on Directed Acyclic Graphs (DAG), and maximum probability combinations based on language models, etc. Dictionary-based methods are simple and efficient (benefiting from the idea of dynamic programming), especially the maximum probability method combined with language models, which solves ambiguity well. However, they cannot solve a major difficulty in Chinese segmentation—Out-of-Vocabulary (OOV) words (the two main difficulties are ambiguity and OOV words). To address this, character tagging was proposed. Character tagging involves using several markers (e.g., the 4-tag set: <strong>single</strong>, a single character as a word; <strong>begin</strong>, the start of a multi-character word; <strong>middle</strong>, the middle part of words with three or more characters; and <strong>end</strong>, the end of a multi-character word) to represent the correct segmentation of a sentence. This is a sequence-to-sequence process (input sentence to tag sequence) that solves OOV issues relatively well but is slower. Furthermore, in scenarios where a complete dictionary already exists, character tagging might not perform as well as dictionary methods. In short, both have pros and cons. In practice, they are often combined; for example, "Jieba" segmentation uses maximum probability combinations on a DAG and uses an HMM model based on character tagging to identify sequences of single characters.
+    </p>
+
+    <h3 id="AC-Automaton">AC Automaton</h3>
+    <p>
+        The first thing this article implements is a dictionary-based segmentation method. The process of dictionary lookup involves: 1. Given a set of words, check if those words exist in a given sentence; 2. If they do, resolve ambiguity. Step 1 is known in computer science as "multi-pattern matching." This step looks simple, but implementing it efficiently is not easy. A complete dictionary has at least hundreds of thousands of words; enumerating each one to search would be computationally prohibitive. In fact, humans don't do this either. When looking up a word in a dictionary, we look at the first letter, search only the block with that starting letter, then compare the next letter, and so on. This requires two conditions: 1. A dictionary with a special sorting structure; 2. Efficient search techniques. For the first condition, we have the "Trie" (prefix tree). For the second, we have classic algorithms like the AC Automaton (Aho and Corasick).
+    </p>
+    <p>
+        I won't elaborate too much on these two conditions—not because I don't want to, but because my understanding ends there. My understanding of the AC Automaton is that it is an efficient multi-pattern matching algorithm using the Trie data structure. I don't need to implement it myself because Python already has a corresponding library: <a href="https://pypi.python.org/pypi/pyahocorasick/">pyahocorasick</a>. Therefore, we only need to care about how to use it. The official tutorial already details the basics of <code>pyahocorasick</code>, so I won't repeat it here. (Regrettably, while <code>pyahocorasick</code> supports both Python 2 and 3, in Python 2 it only supports <code>bytes</code> strings and not <code>unicode</code> strings, whereas in Python 3 it defaults to <code>unicode</code>. This brings some confusion when coding, though it's not fundamental. This article uses <strong>Python 2.7</strong>.)
+    </p>
+    <p>
+        To build an AC-automaton-based segmentation system, you first need a text dictionary. Suppose the dictionary has two columns: the word and its corresponding frequency, separated by a space. You can build an AC automaton using the following code:
+    </p>
+
+<pre><code>import ahocorasick
+
+def load_dic(dicfile):
+    from math import log
+    dic = ahocorasick.Automaton()
+    total = 0.0
+    with open(dicfile) as f:
+        words = []
+        for line in f:
+            line = line.split(' ')
+            words.append((line[0], int(line[1])))
+            total += int(line[1])
+        for i, j in words:
+            # Here, log probability is used to prevent overflow
+            dic.add_word(i, (i, log(j/total)))
+    dic.make_automaton()
+    return dic
+
+dic = load_dic('me.dic')</code></pre>
+
+    <p>
+        Building an AC automaton with <code>pyahocorasick</code> facilitates adding words in "key-comment" pairs (note the line <code>dic.add_word(i, (i, log(j/total)))</code>). This allows us to store information we want (like frequency or part-of-speech) in the comment, which will be returned during matching. With this AC automaton, we can easily build a full-mode segmentation—that is, scanning out every word present in the dictionary (which is actually the primary job of an AC automaton).
+    </p>
+
+<pre><code>def all_cut(sentence):
+    words = []
+    for i, j in dic.iter(sentence):
+        words.append(j[0])
+    return words</code></pre>
+
+    <p>For a long sentence, this might return many words; please use with caution.</p>
+
+    <h3 id="Maximum-Matching">Maximum Matching Method</h3>
+    <p>
+        The "full-mode segmentation" mentioned above isn't really segmentation; it's just a simple search. Next, let's implement a classic segmentation algorithm: the Maximum Matching method.
+    </p>
+    <p>
+        The Maximum Matching method refers to matching words from the dictionary from left to right, matching the longest possible word at each step. This is a relatively crude method. As mentioned in matrix67's article, it is easy to construct counterexamples. If the dictionary contains "不" (not), "不可" (not possible/cannot), "能" (ability), "可能" (possible), but does not contain "不可能" (impossible), then "不可能" would be split as "不可/能". Despite this, in cases where accuracy requirements are not high, this algorithm is acceptable because it is very fast. Below is an implementation of Maximum Matching based on the AC automaton:
+    </p>
+
+<pre><code>def max_match_cut(sentence):
+    sentence = sentence.decode('utf-8')
+    words = ['']
+    for i in sentence:
+        i = i.encode('utf-8')
+        if dic.match(words[-1] + i):
+            words[-1] += i
+        else:
+            words.append(i)
+    return words</code></pre>
+
+    <p>
+        The code is short and clear, primarily using the <code>match</code> function from <code>pyahocorasick</code>. In tests on my machine, the efficiency of this algorithm is about 4MB/s. According to the author of <code>hanlp</code>, doing something similar in Java can reach 20MB/s! Using Python imposes two limits: Python's own speed and the limitation of <code>pyahocorasick</code>, which does not support <code>unicode</code>. Consequently, the implementation above isn't the most efficient because it requires constant encoding conversions to handle Chinese character lengths.
+    </p>
+    <p>
+        The method described above is technically "Forward Maximum Matching." Similarly, there is "Reverse Maximum Matching," which scans the sentence from right to left. Its results are generally better than Forward Maximum Matching. To implement this with an AC automaton, the only way is to store all words in the dictionary in reverse order, reverse the input sentence, and then perform Forward Maximum Matching.
+    </p>
+
+    <h3 id="Maximum-Probability-Combination">Maximum Probability Combination</h3>
+    <p>
+        The method based on Maximum Probability Combination is currently a superior approach that balances speed and accuracy. It states: for a sentence, if the split into words $w_1, w_2, \dots, w_n$ is the optimal scheme, it should maximize the following probability:
+        $$P(w_1, w_2, \dots, w_n)$$
+        Directly estimating this probability is difficult. Usually, approximation schemes are used, such as:
+        $$P(w_1, w_2, \dots, w_n) \approx P(w_1)P(w_2|w_1)P(w_3|w_2)\dots P(w_n|w_{n-1})$$
+        Here, $P(w_k|w_{k-1})$ is called a language model, which begins to consider semantics. However, general segmentation tools find it hard to estimate $P(w_k|w_{k-1})$, so an even simpler approximation is often adopted:
+        $$P(w_1, w_2, \dots, w_n) \approx P(w_1)P(w_2)P(w_3)\dots P(w_n)$$
+        From a graph theory perspective, this is finding the maximum probability path in a DAG.
+    </p>
+    <p>
+        Below is the implementation of the latter scheme using an AC automaton combined with dynamic programming.
+    </p>
+
+<pre><code>def max_proba_cut(sentence):
+    paths = {0:([], 0)}
+    end = 0
+    for i, j in dic.iter(sentence):
+        start, end = 1 + i - len(j[0]), i + 1
+        if start not in paths:
+            last = max([i for i in paths if i < start])
+            paths[start] = (paths[last][0] + [sentence[last:start]], paths[last][1] - 10)
+        proba = paths[start][1] + j[1]
+        if end not in paths or proba > paths[end][1]:
+            paths[end] = (paths[start][0] + [j[0]], proba)
+    if end < len(sentence):
+        return paths[end][0] + [sentence[end:]]
+    else:
+        return paths[end][0]</code></pre>
+
+    <p>
+        The code is concise. Here, I assumed the frequency of unmatched parts is $e^{-10}$, which can be adjusted. Note that since the approach is different, this dynamic programming scheme differs from the typical DAG dynamic programming, though the logic is natural. Be aware that if you use this function directly on a sentence tens of thousands of characters long, it will be slow and memory-intensive because I am storing all temporary schemes during the dynamic programming process in a dictionary. Fortunately, there are many natural break markers in Chinese sentences, such as punctuation and line breaks. We can use these markers to split the sentence into parts and segment them step-by-step, as shown below.
+    </p>
+
+<pre><code>to_break = ahocorasick.Automaton()
+for i in ['，', '。', '！', '、', '？', ' ', '\n']:
+    to_break.add_word(i, i)
+
+to_break.make_automaton()
+
+def map_cut(sentence):
+    start = 0
+    words = []
+    for i in to_break.iter(sentence):
+        words.extend(max_proba_cut(sentence[start:i[0]+1]))
+        start = i[0] + 1
+    words.extend(max_proba_cut(sentence[start:]))
+    return words</code></pre>
+
+    <p>
+        On a server, I extracted 100,000 articles (over 100 million characters) and compared the speed with Jieba segmentation. I found that using the same dictionary and disabling Jieba's OOV discovery, the <code>map_cut</code> implemented with the AC automaton was about 2 to 3 times faster than Jieba, reaching approximately 1MB/s.
+    </p>
+    <p>
+        Finally, it is worth mentioning that the logic in <code>max_proba_cut</code> can be applied to other segmentation methods involving dynamic programming, such as the Minimum Word Count segmentation:
+    </p>
+
+<pre><code>def min_words_cut(sentence):
+    paths = {0:([], 0)}
+    end = 0
+    for i, j in dic.iter(sentence):
+        start, end = 1 + i - len(j[0]), i + 1
+        if start not in paths:
+            last = max([i for i in paths if i < start])
+            paths[start] = (paths[last][0] + [sentence[last:start]], paths[last][1] + 1)
+        num = paths[start][1] + 1
+        if end not in paths or num < paths[end][1]:
+            paths[end] = (paths[start][0] + [j[0]], num)
+    if end < len(sentence):
+        return paths[end][0] + [sentence[end:]]
+    else:
+        return paths[end][0]</code></pre>
+
+    <p>
+        This adopts a penalty rule: a point is penalized for every word, with an additional point for OOV words. The scheme with the lowest total penalty wins.
+    </p>
+
+    <h3 id="Summary">Summary</h3>
+    <p>
+        In fact, wherever dictionary lookups are involved, the AC automaton has a role to play. Using an AC automaton for word segmentation is a very natural application. We look forward to more data structures and algorithms with better support for Chinese, which might allow us to design even more efficient algorithms.
+    </p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_3908.html" style="color: #005fcc;">https://kexue.fm/archives/3908</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

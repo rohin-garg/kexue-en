@@ -1,0 +1,284 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']},
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.plugins.get('tex'), display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="MathJax-script" async></script>
+
+<h1><a href="https://kexue.fm/archives/9889">Can Attention Mechanisms Really "Focus Attention"?</a></h1>
+
+<p>By 苏剑林 | December 12, 2023</p>
+
+<p>Previously, in articles like <a href="https://kexue.fm/archives/8338#%E4%BD%8E%E7%A7%A9%E9%97%AE%E9%A2%98">"Pathways to Transformer Upgrades: 3. From Performer to Linear Attention"</a> and <a href="translation_9529.html">"Why are Current LLMs All Decoder-only Architectures?"</a>, we explored the Attention mechanism from the perspective of the "rank" of the Attention matrix. We once judged that the critical reason why Linear Attention is inferior to Standard Attention is the "low-rank bottleneck." However, while this explanation may hold for bidirectional Encoder models, it is difficult to apply to unidirectional Decoder models. This is because the upper triangular part of the Decoder's Attention matrix is masked, and the remaining lower triangular matrix is necessarily full-rank. Since it is already full-rank, the low-rank bottleneck problem seemingly no longer exists.</p>
+
+<p>Therefore, the "low-rank bottleneck" cannot completely explain the performance deficiencies of Linear Attention. In this article, I attempt to seek an explanation from another angle. Simply put, compared to Standard Attention, Linear Attention has a harder time "focusing attention," making it difficult to accurately locate key tokens. This is likely the main reason why its performance is slightly inferior.</p>
+
+<h2>Degree of Sparsity <a href="https://kexue.fm/archives/9889#%E7%A8%80%E7%96%8F%E7%A8%8B%E5%BA%A6">#</a></h2>
+
+<p>In the article <a href="translation_8823.html">"Looking at the Scale Operation of Attention from Entropy Invariance,"</a> we examined the Attention mechanism from the perspective of "focusing attention." At that time, we used information entropy as a measure of "degree of concentration"—the lower the entropy, the more likely the Attention is to concentrate on a specific token.</p>
+
+<p>However, for general Attention mechanisms, the Attention matrix may be non-normalized, such as the GAU module introduced in <a href="translation_8934.html">"FLASH: Perhaps the Most Interesting Efficient Transformer Design Recently"</a> and the $l_2$ normalized Attention introduced in <a href="https://kexue.fm/archives/9105#%E6%96%B0%E5%BD%92%E4%B8%80%E5%8C%96">"A Theoretical Flaw and Countermeasure for Relative Position Encoding Transformers."</a> Furthermore, from the more general <a href="https://papers.cool/arxiv/1711.07971">Non-Local Neural Networks</a> perspective, the Attention matrix is not even necessarily non-negative. These non-normalized or non-positive Attention matrices are naturally not suitable for information entropy, as information entropy is intended for probability distributions.</p>
+
+<p>To this end, we consider the $l_1/l_2$ form of the sparsity metric introduced in <a href="translation_9595.html">"How to Measure the Sparsity of Data?":</a></p>
+
+\begin{equation}S(x) = \frac{\mathbb{E}[|x|]}{\sqrt{\mathbb{E}[x^2]}}\end{equation}
+
+<p>This metric is similar to information entropy: a smaller $S(x)$ implies that the corresponding random vector is sparser. Greater sparsity means it is more likely for "one to dominate," which corresponds to a one-hot distribution in probability. Unlike information entropy, it is applicable to general random variables or vectors.</p>
+
+<h2>Simplified Form <a href="https://kexue.fm/archives/9889#%E7%AE%80%E5%8C%96%E5%BD%A2%E5%BC%8F">#</a></h2>
+
+<p>For the attention mechanism, we denote $\boldsymbol{a} = (a_1, a_2, \cdots, a_n)$, where $a_j \propto f(\boldsymbol{q}\cdot\boldsymbol{k}_j)$. Then:</p>
+
+\begin{equation}S(\boldsymbol{a}) = \frac{\mathbb{E}_{\boldsymbol{k}}[|f(\boldsymbol{q}\cdot\boldsymbol{k})|]}{\sqrt{\mathbb{E}_{\boldsymbol{k}}[f^2(\boldsymbol{q}\cdot\boldsymbol{k})]}}\end{equation}
+
+<p>Next, we consider the limit $n \to \infty$. Assume $\boldsymbol{k} \sim \mathcal{N}(\boldsymbol{\mu}, \sigma^2\boldsymbol{I})$, then we can set $\boldsymbol{k} = \boldsymbol{\mu} + \sigma \boldsymbol{\varepsilon}$, where $\boldsymbol{\varepsilon} \sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{I})$. Thus:</p>
+
+\begin{equation}S(\boldsymbol{a}) = \frac{\mathbb{E}_{\boldsymbol{\varepsilon}}[|f(\boldsymbol{q}\cdot\boldsymbol{\mu} + \sigma\boldsymbol{q}\cdot\boldsymbol{\varepsilon})|]}{\sqrt{\mathbb{E}_{\boldsymbol{\varepsilon}}[f^2(\boldsymbol{q}\cdot\boldsymbol{\mu} + \sigma\boldsymbol{q}\cdot\boldsymbol{\varepsilon})]}}\end{equation}
+
+<p>Note that the distribution $\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})$ followed by $\boldsymbol{\varepsilon}$ is an isotropic distribution. Following the same simplification logic derived in <a href="translation_7076.html">"Angular Distribution of Two Random Vectors in n-dimensional Space,"</a> due to isotropy, the mathematical expectation related to $\boldsymbol{q}\cdot\boldsymbol{\varepsilon}$ only depends on the norm of $\boldsymbol{q}$ and is independent of its direction. Therefore, we can simplify $\boldsymbol{q}$ to $(\Vert\boldsymbol{q}\Vert, 0, 0, \cdots, 0)$. Then the mathematical expectation over $\boldsymbol{\varepsilon}$ can be simplified to:</p>
+
+\begin{equation}S(\boldsymbol{a}) = \frac{\mathbb{E}_{\varepsilon}[|f(\boldsymbol{q}\cdot\boldsymbol{\mu} + \sigma\Vert\boldsymbol{q}\Vert\varepsilon)|]}{\sqrt{\mathbb{E}_{\varepsilon}[f^2(\boldsymbol{q}\cdot\boldsymbol{\mu} + \sigma\Vert\boldsymbol{q}\Vert\varepsilon)]}}\end{equation}
+
+<p>where $\varepsilon \sim \mathcal{N}(0, 1)$ is a random scalar.</p>
+
+<h2>Two Examples <a href="https://kexue.fm/archives/9889#%E4%B8%80%E4%B8%AA%E4%BE%8B%E5%AD%90">#</a></h2>
+
+<p>Now we can calculate and compare some common forms of $f$. Currently, the most commonly used Attention mechanism is $f=\exp$. In this case, calculating the expectation is just a routine one-dimensional Gaussian integral, which easily yields:</p>
+
+\begin{equation}S(\boldsymbol{a}) = \exp\left(-\frac{1}{2}\sigma^2\Vert\boldsymbol{q}\Vert^2\right)\end{equation}
+
+<p>As $\sigma \to \infty$ or $\Vert\boldsymbol{q}\Vert \to \infty$, $S(\boldsymbol{a}) \to 0$ in both cases. This means that, theoretically, Standard Attention can indeed become arbitrarily sparse to "focus attention." At the same time, this tells us how to make attention more concentrated: increase the norm of $\boldsymbol{q}$, or increase the variance between the different $\boldsymbol{k}$'s—in other words, increase the gap between $\boldsymbol{k}$'s.</p>
+
+<p>Another example is GAU (Gated Attention Unit), which I favor. When it was initially proposed, it used $f=\text{relu}^2$ (though I later reverted it back to Softmax when using it myself; refer to <a href="translation_8934.html">"FLASH: Perhaps the Most Interesting Efficient Transformer Design Recently"</a> and <a href="translation_9019.html">"It is Said that Attention and Softmax are a Better Match"</a>). In this case, the integral is not as simple as $f=\exp$, but it can be calculated explicitly using Mathematica. The result is:</p>
+
+\begin{equation}S(\boldsymbol{a}) =\frac{e^{-\frac{\beta ^2}{2 \gamma ^2}} \left(\sqrt{2} \beta \gamma +\sqrt{\pi } e^{\frac{\beta ^2}{2 \gamma ^2}} \left(\beta ^2+\gamma ^2\right) \left(\text{erf}\left(\frac{\beta }{\sqrt{2} \gamma }\right)+1\right)\right)}{\sqrt[4]{\pi } \sqrt{2 \sqrt{2} \beta \gamma e^{-\frac{\beta ^2}{2 \gamma ^2}} \left(\beta ^2+5 \gamma ^2\right)+2 \sqrt{\pi } \left(\beta ^4+6 \beta ^2 \gamma ^2+3 \gamma ^4\right) \left(\text{erf}\left(\frac{\beta }{\sqrt{2} \gamma }\right)+1\right)}}\end{equation}
+
+<p>where $\beta = \boldsymbol{q}\cdot\boldsymbol{\mu}, \gamma = \sigma\Vert\boldsymbol{q}\Vert$. The formula looks terrifying, but it doesn't matter; we can just plot it:</p>
+
+<p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2023/12/1525614182.png" alt="Sparsity curve for relu2 attention" /></p>
+<p style="text-align:center;">Sparsity curve for relu2 attention</p>
+
+<p>It can be seen that only when $\beta < 0$ does the sparsity of the original GAU have a chance to approach 0. This is also intuitive: only when the bias term is less than 0 is there a greater chance for the $\text{relu}$ result to be 0, thereby achieving sparsity. This result also indicates that, unlike the $f=\exp$ of standard attention, the bias term of $\boldsymbol{k}$ might have a positive effect for the $f=\text{relu}^2$ GAU.</p>
+
+<h2>Simplistic Linear <a href="https://kexue.fm/archives/9889#%E6%9E%81%E7%AE%80%E7%BA%BF%E6%80%A7">#</a></h2>
+
+<p>Now let's look at the simplest example: no $f$, or equivalently $f=\text{identical}$. This corresponds to the simplest type of Linear Attention. Similarly, using Mathematica for the calculation yields:</p>
+
+\begin{equation}S(\boldsymbol{a}) =\frac{\sqrt{\frac{2}{\pi }} \gamma e^{-\frac{\beta ^2}{2 \gamma ^2}}+\beta \text{erf}\left(\frac{\beta }{\sqrt{2} \gamma }\right)}{\sqrt{\beta ^2+\gamma ^2}}\end{equation}
+
+<p>Below are function plots for different values of $\beta$:</p>
+
+<p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2023/12/2153977202.png" alt="Sparsity curve for simplistic linear attention" /></p>
+<p style="text-align:center;">Sparsity curve for simplistic linear attention</p>
+
+<p>Note that here $S(\boldsymbol{a})$ is an even function with respect to $\beta$ (the reader might try to prove this), so the plot for $\beta < 0$ is the same as the plot for its opposite. Therefore, the figure only shows results for $\beta \geq 0$. As can be seen from the figure, the sparsity level of linear attention without any activation function cannot approach 0; instead, it has a high lower bound. This means that when the input sequence is long enough, this type of linear attention has no way to "focus attention" on key positions.</p>
+
+<h2>General Linear <a href="https://kexue.fm/archives/9889#%E4%B8%80%E8%88%AC%E7%BA%BF%E6%80%A7">#</a></h2>
+
+<p>From <a href="translation_7546.html">"Exploration of Linear Attention: Must Attention Have a Softmax?"</a> we know that the general form of linear attention is $a_j \propto g(\boldsymbol{q})\cdot h(\boldsymbol{k}_j)$, where $g, h$ are activation functions with non-negative ranges. Let $\tilde{\boldsymbol{q}}=g(\boldsymbol{q}), \tilde{\boldsymbol{k}}=h(\boldsymbol{k})$, then $a_j \propto \tilde{\boldsymbol{q}}^{\scriptscriptstyle\top}\tilde{\boldsymbol{k}}$. We can write:</p>
+
+\begin{equation}S(\boldsymbol{a}) = \frac{\mathbb{E}_{\boldsymbol{\varepsilon}}\left[\tilde{\boldsymbol{q}}^{\scriptscriptstyle\top}\tilde{\boldsymbol{k}}\right]}{\sqrt{\mathbb{E}_{\boldsymbol{\varepsilon}}\left[\tilde{\boldsymbol{q}}^{\scriptscriptstyle\top}\tilde{\boldsymbol{k}}\tilde{\boldsymbol{k}}^{\scriptscriptstyle\top}\tilde{\boldsymbol{q}}\right]}} = \frac{\tilde{\boldsymbol{q}}^{\scriptscriptstyle\top}\mathbb{E}_{\boldsymbol{\varepsilon}}\left[\tilde{\boldsymbol{k}}\right]}{\sqrt{\tilde{\boldsymbol{q}}^{\scriptscriptstyle\top}\mathbb{E}_{\boldsymbol{\varepsilon}}\left[\tilde{\boldsymbol{k}}\tilde{\boldsymbol{k}}^{\scriptscriptstyle\top}\right]\tilde{\boldsymbol{q}}}} = \frac{\tilde{\boldsymbol{q}}^{\scriptscriptstyle\top}\tilde{\boldsymbol{\mu}}}{\sqrt{\tilde{\boldsymbol{q}}^{\scriptscriptstyle\top}\left[\tilde{\boldsymbol{\mu}}\tilde{\boldsymbol{\mu}}^{\scriptscriptstyle\top} + \tilde{\boldsymbol{\Sigma}}\right]\tilde{\boldsymbol{q}}}} = \frac{1}{\sqrt{1 + \frac{\tilde{\boldsymbol{q}}^{\scriptscriptstyle\top}\tilde{\boldsymbol{\Sigma}}\tilde{\boldsymbol{q}}}{(\tilde{\boldsymbol{q}}^{\scriptscriptstyle\top}\tilde{\boldsymbol{\mu}})^2}}}\end{equation}
+
+<p>This is a general result for non-negative linear attention without any approximations, where $\tilde{\boldsymbol{\mu}}, \tilde{\boldsymbol{\Sigma}}$ are the mean vector and covariance matrix of the $\tilde{\boldsymbol{k}}$ sequence, respectively.</p>
+
+<p>From this result, it is clear that non-negative linear attention can also be arbitrarily sparse (i.e., $S(\boldsymbol{a}) \to 0$). This only requires the mean to approach 0 or the covariance to approach $\infty$, meaning the signal-to-noise ratio of the $\tilde{\boldsymbol{k}}$ sequence should be as small as possible. However, the $\tilde{\boldsymbol{k}}$ sequence is a non-negative vector sequence. A non-negative sequence with a very small signal-to-noise ratio means that most elements in the sequence are similar. Thus, the information such a sequence can express is limited. It also implies that linear attention usually can only represent the importance of absolute positions (for example, a column in the Attention matrix being all 1s), rather than expressing the importance of relative positions well. This is essentially another manifestation of the low-rank bottleneck of linear attention.</p>
+
+<p>To perceive the variation of $S(\boldsymbol{a})$ more vividly, let's assume a simplest case: each component of $\tilde{\boldsymbol{k}}$ is independent and identically distributed (i.i.d.). In this case, the mean vector simplifies to $\tilde{\mu}\boldsymbol{1}$ and the covariance matrix simplifies to $\tilde{\sigma}^2\boldsymbol{I}$. Then the formula for $S(\boldsymbol{a})$ further simplifies to:</p>
+
+\begin{equation}S(\boldsymbol{a}) = \frac{1}{\sqrt{1 + \left(\frac{\tilde{\sigma}}{\tilde{\mu}}\frac{\Vert\tilde{\boldsymbol{q}}\Vert_2}{\Vert\tilde{\boldsymbol{q}}\Vert_1}\right)^2}}\end{equation}
+
+<p>This result is much more intuitive to observe. To make linear attention sparse, one direction is to increase $\frac{\tilde{\sigma}}{\tilde{\mu}}$, i.e., lower the signal-to-noise ratio of the $\tilde{\boldsymbol{k}}$ sequence. The other direction is to increase $\frac{\Vert\boldsymbol{q}\Vert_2}{\Vert\boldsymbol{q}\Vert_1}$. The maximum value of this factor is $\sqrt{d}$, where $d$ is the dimension of $\boldsymbol{q}$ and $\boldsymbol{k}$. Therefore, increasing it means increasing $d$. Increasing $d$ means raising the upper bound on the rank of the attention matrix. This aligns with the conclusion from the low-rank bottleneck perspective: only by increasing $d$ can the deficiencies of Linear Attention be fundamentally alleviated.</p>
+
+<p>Notably, as analyzed in <a href="translation_8601.html">"Pathways to Transformer Upgrades: 5. Linear Attention as Infinite Dimensions,"</a> standard Attention can also be understood as a type of infinite-dimensional linear attention. This means that, theoretically, only by increasing $d$ to infinity can the gap between the two be completely bridged.</p>
+
+<h2>Linear Decay <a href="https://kexue.fm/archives/9889#%E7%BA%BF%E6%80%A7%E8%A1%B0%E5%87%8F">#</a></h2>
+
+<p>Finally, let's look at the linear RNN model series introduced in <a href="translation_9554.html">"Google's New Work Attempts to 'Resurrect' RNN: Can RNN Shine Again?"</a> Their characteristic is an explicit recursion, which can be viewed as a simple Attention:</p>
+
+\begin{equation}\boldsymbol{a} = (a_1, a_2, \cdots, a_{n-1}, a_n) = (\lambda^{n-1}, \lambda^{n-2}, \cdots, \lambda, 1)\end{equation}
+
+<p>where $\lambda \in (0, 1]$. We can calculate:</p>
+
+\begin{equation}S(\boldsymbol{a}) = \sqrt{\frac{1 - \lambda^n}{n(1-\lambda)}\frac{1+\lambda}{1+\lambda^n}} < \sqrt{\frac{1}{n}\frac{1+\lambda}{(1-\lambda)(1+\lambda^n)}}\end{equation}
+
+<p>When $\lambda < 1$, as long as $n \to \infty$, we always have $S(\boldsymbol{a}) \to 0$. Therefore, for linear RNN models with explicit decay, sparsity is not an issue. Its problem is that it can only express a fixed attention that decays as the relative distance increases, making it unable to adaptively focus on context that is sufficiently far away.</p>
+
+<h2>Summary <a href="https://kexue.fm/archives/9889#%E6%96%87%E7%AB%A0%E5%B0%8F%E7%BB%93">#</a></h2>
+
+<p>This article proposes the idea of examining the potential of different Attention mechanisms through the degree of sparsity of the Attention matrix. It concludes that quadratic Attention mechanisms have the potential to achieve arbitrarily sparse Attention matrices, while linear Attention is not easy to achieve such sparsity, or can only achieve absolute position-related sparsity. This may be one of the reasons why the capability of linear Attention is limited.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9889.html" style="color: #005fcc;">https://kexue.fm/archives/9889</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,345 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+<h1><a href="https://kexue.fm/archives/10180">Revisiting SSM (IV): A New Perspective of Rational Generating Functions</a></h1>
+
+<p>By 苏剑林 | June 27, 2024</p>
+
+<p>In the first three articles, we discussed most of the mathematical details of HiPPO and S4 in considerable depth. So, for this fourth article, what work do you expect us to discuss? S5, Mamba, or even Mamba2? None of the above. This series is primarily concerned with the mathematical foundations of SSMs, aiming to supplement our mathematical toolkit while understanding SSMs. In the previous article, we briefly mentioned S5 and Mamba. S5 is a simplified version of S4 and essentially introduces no new mathematical tricks. While the Mamba series performs excellently, it has already simplified $A$ to a diagonal matrix, requiring even fewer mathematical tricks; it reflects more on engineering capabilities.</p>
+
+<p>In this article, we will study a relatively new and not yet widely known work: <a href="https://papers.cool/arxiv/2405.06147">"State-Free Inference of State-Space Models: The Transfer Function Approach"</a> (referred to as RFT). It proposes a new scheme that completely shifts the training, inference, and even parameterization of SSMs into the space of generating functions, opening up a new perspective for understanding and applying SSMs.</p>
+
+<h2>Basic Review</h2>
+
+<p>First, let's briefly review the findings from our previous discussion on S4. S4 is based on the following linear RNN:
+\begin{equation}\begin{aligned}
+x_{k+1} =&\, \bar{A} x_k + \bar{B} u_k \\
+y_{k+1} =&\, \bar{C}^* x_{k+1} \\
+\end{aligned}\label{eq:linear}\end{equation}
+where $u, y \in \mathbb{R}, x \in \mathbb{R}^d, \bar{A} \in \mathbb{R}^{d \times d}, \bar{B}, \bar{C} \in \mathbb{R}^{d \times 1}$. This is a generalized discussion, so we bypass the relationship between $\bar{A}$ and $A$ and assume $\bar{A}$ is a general matrix. Setting the initial state to zero, direct iteration can be written as:
+\begin{equation}y_L = \sum_{k=0}^L \bar{C}^*\bar{A}^k \bar{B}u_{L-k} = \bar{K}_{< L} * u_{< L} \end{equation}
+where $*$ is the convolution operation, and
+\begin{equation}\bar{K}_k = \bar{C}^*\bar{A}^k\bar{B},\quad \bar{K}_{< L} = \big(\bar{K}_0,\bar{K}_1,\cdots,\bar{K}_{L-1}\big),\quad u_{< L} = (u_0,u_1,\cdots,u_{L-1})\end{equation}
+Since convolution can be efficiently computed via the Discrete Fourier Transform (DFT), the remaining problem is how to efficiently compute $\bar{K}$. This is the core contribution of S4. To achieve this, S4 introduces generating functions:
+\begin{align}\mathcal{G}(z|\bar{K}) =&\, \sum_{k=0}^{\infty} \bar{C}^*\bar{A}^k \bar{B}z^k = \bar{C}^*\left(I - z\bar{A}\right)^{-1}\bar{B} \\
+\mathcal{G}_L(z|\bar{K}) =&\, \sum_{k=0}^{L-1} \bar{C}^*\bar{A}^k \bar{B}z^k = \bar{C}^*(I - z^L\bar{A}^L)\left(I - z\bar{A}\right)^{-1}\bar{B} \end{align}
+If we can efficiently compute $\mathcal{G}_L(z|\bar{K})$, we can substitute $z=e^{-2i\pi l/L}, l=0,1,2,\dots,L-1$, the result of which is the DFT of $\bar{K}$. Then, via the Inverse Discrete Fourier Transform (IDFT), we can obtain $\bar{K}$. Since $z$ satisfies $z^L=1$ in this case, we can also set $\tilde{C}^* = \bar{C}^*(I - \bar{A}^L)$, making the form of $\mathcal{G}_L(z|\bar{K})$ identical to $\mathcal{G}(z|\bar{K})$:
+\begin{equation}\mathcal{G}_L(z|\bar{K}) = \tilde{C}^*\left(I - z\bar{A}\right)^{-1}\bar{B}\end{equation}</p>
+
+<p>How do we efficiently compute $\mathcal{G}(z|\bar{K})$ or $\mathcal{G}_L(z|\bar{K})$? S4 decomposes $\bar{A}$ into a "diagonal + low-rank" form and then uses the Woodbury identity for calculation. The final result is:
+\begin{equation}\mathcal{G}(z|\bar{K}) = \frac{2}{1+z}\bar{C}^* \left[R_z^{-1} - R_z^{-1}u(I + v^*R_z^{-1}u)^{-1} v^*R_z^{-1}\right]B\end{equation}
+where $R_z$ is a $d \times d$ diagonal matrix, and $u, v, B, \bar{C}$ are all $d \times 1$ column vectors. This implies that for a given $z$, the complexity of calculating $\mathcal{G}(z|\bar{K})$ is $\mathcal{O}(d)$. To compute this for $z=e^{-2i\pi l/L}, l=0,1,2,\dots,L-1$, a naive implementation would result in $\mathcal{O}(Ld)$. S4 proposes transforming this into a Cauchy kernel problem, further reducing the complexity to $\mathcal{O}((L+d)\log^2(L+d))$.</p>
+
+<p>Regardless of the method, the complexity depends not only on $L$ but also on $d$ (state size). RFT proposes a new approach that reduces the complexity directly to the ideal $\mathcal{O}(L\log L)$, independent of the state size. Furthermore, the derivation is significantly simpler than S4 and does not depend on the assumption that $\bar{A}$ is diagonal or "diagonal + low-rank."</p>
+
+<h2>Rational Functions</h2>
+
+<p>RFT stands for Rational Transfer Function, with its emphasis on Rational Functions (the ratio of two polynomials). What is its relationship with generating functions? The authors of RFT brilliantly observed that $\mathcal{G}_L(z|\bar{K})$ is actually a rational function! Specifically, we have:
+\begin{equation}\mathcal{G}_L(z|\bar{K}) = \tilde{C}^*\left(I - z\bar{A}\right)^{-1}\bar{B} = \frac{b_1 + b_2 z + b_3 z^2 + \cdots + b_dz^{d-1}}{1 + a_1 z + a_2 z^2 + \cdots + a_d z^d}\label{eq:gz-rf}\end{equation}
+where $a_1, a_2, \cdots, a_d, b_1, b_2, \cdots, b_d$ are scalars. If $\bar{A}, \bar{B}, \tilde{C}$ are real matrices, these are real numbers. To realize that such an equivalent form exists, one only needs to use a classic formula for matrix inversion:
+\begin{equation}M^{-1} = \frac{\text{adj}(M)}{\det(M)}\end{equation}
+where $\det(M)$ is the determinant of $M$, and $\text{adj}(M)$ is the <a href="https://en.wikipedia.org/wiki/Adjugate_matrix">adjugate matrix</a> of $M$. Since the adjugate matrix involves many determinant calculations, this inversion formula is usually of little value in actual computation but can work wonders in theoretical analysis. For example, substituting it into $\mathcal{G}_L(z|\bar{K})$, we get:
+\begin{equation}\mathcal{G}_L(z|\bar{K}) = \tilde{C}^*\left(I - z\bar{A}\right)^{-1}\bar{B} = \frac{\tilde{C}^*\text{adj}(I - z\bar{A})\bar{B}}{\det(I - z\bar{A})}\end{equation}
+We know that a $d$-th order determinant is the sum of products of $d$ elements, so $\det(I - z\bar{A})$ is a polynomial of degree $d$ in $z$. Following the definition of the adjugate matrix, each of its elements is a $(d-1)$-th order determinant, i.e., a polynomial of degree $d-1$. Left-multiplying by $\tilde{C}^*$ and right-multiplying by $\bar{B}$ is just a weighted sum of these elements, so the result is still a polynomial of degree $d-1$. Therefore, $\mathcal{G}_L(z|\bar{K})$ is a $(d-1)$-th degree determinant of $z$ divided by a $d$-th degree determinant of $z$. Standardizing the constant term coefficient of the denominator to $1$ yields equation $\eqref{eq:gz-rf}$.</p>
+
+<h2>Correspondence</h2>
+
+<p>Furthermore, we can use a determinant identity to determine the relationship between coefficients $a=(a_1,a_2,\cdots,a_d), b=(b_1,b_2,\cdots,b_d)$ and $\bar{A},\bar{B},\tilde{C}$. This identity is:
+\begin{equation}\det(I + UV) = \det(I + VU)\label{eq:det-iuv}\end{equation}
+Proving this identity directly is not difficult; it's a common exam problem. One only needs to notice:
+\begin{equation}\begin{pmatrix}I & U \\ -V & I\end{pmatrix} = \begin{pmatrix}I + UV & U \\ 0 & I\end{pmatrix}\begin{pmatrix}I & 0 \\ -V & I\end{pmatrix} = \begin{pmatrix}I & 0 \\ -V & I + VU\end{pmatrix}\begin{pmatrix}I & U \\ 0 & I\end{pmatrix}\end{equation}
+According to the definition and form of the determinant, the determinant of the middle term is $\det(I + UV)$, and the determinant of the far right is $\det(I + VU)$. They are the determinants of the same matrix, so they are equal. This result can be further generalized (when $A$ and $D$ are invertible) to:
+\begin{equation}\det\begin{pmatrix}A & B \\ C & D\end{pmatrix} = \det(A)\det(D-CA^{-1}B) = \det(D)\det(A-BD^{-1}C)\end{equation}
+Furthermore, this can be generalized to the "<a href="https://en.wikipedia.org/wiki/Schur_complement">Schur complement</a>" theory mentioned in <a href="translation_8512.html">"KL Divergence, Bhattacharyya Distance, and Wasserstein Distance of Two Multivariate Normal Distributions"</a>.</p>
+
+<p>Returning to the topic, note that in equation $\eqref{eq:det-iuv}$ and its derivation, we do not need to assume that $U$ and $V$ are square matrices. Thus, equation $\eqref{eq:det-iuv}$ actually holds for non-square matrices as long as the identity matrix $I$ matches the size of $UV$ and $VU$ automatically. In particular, if $U$ and $V$ are column and row vectors respectively, then $VU$ is a scalar, the corresponding $I$ is 1, and its determinant is itself, i.e., $\det(I + UV) = 1 + VU$. Using this special case, we have:
+\begin{equation}\begin{aligned}
+\mathcal{G}_L(z|\bar{K}) =&\, z^{-1}\left[1+\tilde{C}^*\left(z^{-1}I - \bar{A}\right)^{-1}\bar{B} - 1 \right]\\
+=&\, z^{-1}\left[\det\left(I + \left(z^{-1} I - \bar{A}\right)^{-1}\bar{B}\tilde{C}^*\right) - 1\right]\\
+=&\, z^{-1}\left\{\det\left[\left(z^{-1} I - \bar{A}\right)^{-1}\left(z^{-1} I - \bar{A} + \bar{B}\tilde{C}^*\right)\right] - 1\right\} \\
+=&\, z^{-1}\left[\frac{\det(z^{-1} I - \bar{A} + \bar{B}\tilde{C}^*)}{\det(z^{-1} I - \bar{A})} - 1\right] \\
+=&\, \frac{z^{d-1}\left[\det(z^{-1} I - \bar{A} + \bar{B}\tilde{C}^*)-\det(z^{-1} I - \bar{A})\right]}{z^d\det(z^{-1} I - \bar{A})} \\
+\end{aligned}\end{equation}
+The denominator $\det(z^{-1} I - \bar{A})$ is the characteristic polynomial of matrix $\bar{A}$ with variable $\lambda=z^{-1}$. It is a monic $d$-th degree polynomial in $z^{-1}$, which after multiplying by $z^d$ becomes a $d$-th degree polynomial in $z$ with a constant term of 1. Similarly, $\det(z^{-1} I - \bar{A} + \bar{B}\tilde{C}^*)$ in the numerator is the characteristic polynomial of $\bar{A} - \bar{B}\tilde{C}^*$ (a monic $d$-th degree polynomial in $z^{-1}$). Subtracting $\det(z^{-1} I - \bar{A})$ yields precisely a $(d-1)$-th degree polynomial in $z^{-1}$, which after multiplying by $z^{d-1}$ becomes a $(d-1)$-th degree polynomial in $z$. Thus, the vector $a$ consists of the coefficients of the polynomial $\det(\lambda I - \bar{A})$ except for the highest degree term, while vector $b$ consists of the coefficients of the polynomial $\det(\lambda I - \bar{A} + \bar{B}\tilde{C}^*) - \det(\lambda I - \bar{A})$ (sorted from high to low degree).</p>
+
+<h2>An Unexpected Surprise</h2>
+
+<p>Now let's slow down and consider what we have done and where we are going.</p>
+
+<p>Our starting point is the linear system $\eqref{eq:linear}$. To enable parallel training, we converted it into a convolution of $\bar{K}_{< L}$ and $u_{< L}$, which can be efficiently computed by first performing DFT, then multiplying, and finally performing IDFT. This step's efficiency is not an issue. Now $u_{< L}$ is ready, but $\bar{K}_{< L}$ is unknown. The problem becomes how to efficiently compute the convolution kernel $\bar{K}_{< L}=\{\tilde{C}^*\bar{A}^k\bar{B}\}_{k=0}^{L-1}$. For this, we introduced the generating function $\mathcal{G}_L(z|\bar{K})$. If we can efficiently compute $\mathcal{G}_L(z|\bar{K})$, then:
+\begin{equation}DFT(\bar{K}_{< L}) = \Big\{\mathcal{G}_L(z|\bar{K})\Big\}_{z=e^{-2i\pi l/L},l=0,1,2,\dots,L-1}\end{equation}
+Then IDFT can recover the original $\bar{K}_{< L}$. For $z=e^{-2i\pi l/L}$, we have $z^L=1$, so:
+\begin{equation}\mathcal{G}_L(z|\bar{K}) = \tilde{C}^*(I - z^L\bar{A}^L)\left(I - z\bar{A}\right)^{-1}\bar{B} = \underbrace{\bar{C}^*(I - \bar{A}^L)}_{\tilde{C}^*}\left(I - z\bar{A}\right)^{-1}\bar{B} \end{equation}
+That is, we can first treat the entire $\bar{C}^*(I - \bar{A}^L)$ as a training parameter $\tilde{C}^*$, and later solve for the corresponding $\bar{C}$ for inference.</p>
+
+<p>S4 calculates $\mathcal{G}_L(z|\bar{K})$ via "diagonal + low-rank" decomposition, whereas this paper points out that $\mathcal{G}_L(z|\bar{K})$ is actually a rational function, i.e., equation $\eqref{eq:gz-rf}$. If we substitute $z=e^{-2i\pi l/L}$ at this point, we discover some surprising results. For example, the denominator:
+\begin{equation}1 + a_1 z + a_2 z^2 + \cdots + a_d z^d = \sum_{k=0}^L a_k z^k = \sum_{k=0}^L a_k e^{-2i\pi kl/L} = DFT(\bar{a}_{< L})\end{equation}
+where $\bar{a}_{< L} = (a_0,a_1,a_2,\cdots,a_{L-1}) = (1, a_1,a_2, \cdots, a_d, 0, \cdots, 0)$. In other words, by definition, the denominator is the DFT of a sequence formed by padding $a$ with a 1 on the left and several 0s on the right to make $L$ numbers! Similarly, defining $\bar{b}_{< L} = (b_1,b_2,\cdots,b_d,0,0,\cdots,0)$, the numerator is $DFT(\bar{b}_{< L})$. Thus, we can simply write:
+\begin{equation}DFT(\bar{K}_{< L}) = \frac{DFT(\bar{b}_{< L})}{DFT(\bar{a}_{< L})} = \frac{DFT(b_1,b_2,\cdots,b_d,0,0,\cdots,0)}{DFT(1, a_1,a_2, \cdots, a_d, 0, \cdots, 0)}\end{equation}
+Then IDFT gives $\bar{K}_{< L}$, where the complexity for DFT and IDFT is $\mathcal{O}(L\log L)$, independent of $d$ (requiring only $d < L$)! This is the core idea of how RFT's complexity is independent of the state size $d$.</p>
+
+<h2>Starting Afresh</h2>
+
+<p>Following the order of introduction above, our calculation process should be: given $\bar{A},\bar{B},\tilde{C}$, compute the characteristic polynomial coefficients of $\bar{A}$ and $\bar{A}-\bar{B}\tilde{C}^*$, then get $a_1,a_2, \cdots, a_d$ and $b_1,b_2,b_3,\cdots,b_d$, and finally compute DFT, divide, and IDFT to get $\bar{K}_{< L}$. If it were pure calculation, this process would be fine. However, we are in a training scenario where $\bar{A},\bar{B},\tilde{C}$ contain trainable parameters. Calculating characteristic polynomials is not an easy step for backpropagation.</p>
+
+<p>For this problem, a more straightforward scheme is to "start afresh"—directly use the RTF form in equation $\eqref{eq:gz-rf}$ as the starting point and set $a=(a_1,a_2, \cdots, a_d)$ and $b=(b_1,b_2,b_3,\cdots,b_d)$ as trainable parameters. This way, we even skip the calculation of characteristic polynomials and can directly use DFT and IDFT to compute $\bar{K}_{\leq L}$. Not only that, while original $\bar{A},\bar{B},\tilde{C}$ have $d^2+2d$ parameters, $a$ and $b$ together only have $2d$ parameters, significantly reducing the parameter count. Since any $\bar{A},\bar{B},\tilde{C}$ can yield corresponding $a,b$, RFT's theoretical capacity is no worse than the original RNN form.</p>
+
+<p>Of course, RTF only provides an efficient way to train directly with $a,b$ as parameters. To perform step-by-step inference, we still need to switch back to the RNN form. This means given trained $a,b$, we need to find a set of $\bar{A},\bar{B},\tilde{C}$ and substitute them into equation $\eqref{eq:linear}$ for inference. Note that $a,b \to \bar{A},\bar{B},\tilde{C}$ is a mapping from $2d$ parameters to $d^2+2d$ parameters, so there are infinitely many solutions. we just need to find the simplest set of solutions.</p>
+
+<h2>Companion Matrix</h2>
+
+<p>How do we find this set of solutions? We previously proved that vector $a$ is the coefficients of the polynomial $\det(z I - \bar{A})$ except for the highest degree term. So, finding $\bar{A}$ given $a$ is the problem of finding a corresponding matrix given its characteristic polynomial. The simplest solution is a diagonal matrix. Assuming $\lambda_1,\lambda_2,\cdots,\lambda_d$ are the $d$ roots of $\lambda^d + a_1 \lambda^{d-1} + a_2 \lambda^{d-2} + \cdots + a_d = 0$, then let $\bar{A}=\text{diag}(\lambda_1,\lambda_2,\cdots,\lambda_d)$. However, this may result in complex roots, which might be less concise, and this purely formal solution doesn't directly show the connection between $\bar{A}$ and $a$.</p>
+
+<p>In fact, the problem of finding a real matrix whose characteristic polynomial is a given real-coefficient polynomial has long been studied. Its answer has an interesting name: "<a href="https://en.wikipedia.org/wiki/Companion_matrix">Companion matrix</a>." Its form is (to align with the original paper, this version is slightly flipped compared to Wikipedia's format):
+\begin{equation}\bar{A} = \begin{pmatrix}-a_1 & - a_2 & \cdots & -a_{d-1} & -a_d \\
+1 & 0 & \cdots & 0 & 0 \\
+0 & 1 & \cdots & 0 & 0 \\
+\vdots & \vdots & \ddots & \vdots & \vdots \\
+0 & 0 & \cdots & 1 & 0 \\
+\end{pmatrix}\label{eq:bar-A}\end{equation}
+Proving that this matrix satisfies:
+\begin{equation}\det(\lambda I-\bar{A})=\lambda^d + a_1 \lambda^{d-1} + a_2 \lambda^{d-2} + \cdots + a_d\end{equation}
+is not difficult; one can expand $\det(\lambda I-\bar{A})$ along the first row according to the definition of the determinant. A deeper question is how one thinks of this construction. Here, I offer my own thoughts. Constructing a matrix based on a characteristic polynomial is essentially gradually transforming the polynomial into a determinant where $\lambda$ only appears on the diagonal. For example, when $d=2$:
+\begin{equation}\lambda^2 + a_1 \lambda + a_2 = (\lambda + a_1)\lambda - (-1) \times a_2
+) = \det\begin{pmatrix} \lambda + a_1 & a_2 \\ -1 & \lambda\end{pmatrix}\end{equation}
+From this, the corresponding $\bar{A}$ can be extracted. For general $d$:
+\begin{equation}\lambda^d + a_1 \lambda^{d-1} + a_2 \lambda^{d-2} + \cdots + a_d = \det\begin{pmatrix} \lambda^{d-1} + a_1 \lambda^{d-2} + \cdots + a_{d-1} & a_d \\ -1 & \lambda\end{pmatrix}\end{equation}
+This is not yet the final answer, but it successfully reduces the degree of the polynomial by one. This suggests a recursive construction: using $\lambda^{d-1} + a_1 \lambda^{d-2} + \cdots + a_{d-1}$ as the characteristic polynomial to construct the upper-left matrix, and then adjusting the top-right and bottom-left rows and columns to form a block matrix. With some trial and error, one could construct the result in equation $\eqref{eq:bar-A}$.</p>
+
+<p>With $\bar{A}$, constructing $\bar{B}, \tilde{C}$ is much easier. Based on the previous conclusion:
+\begin{equation}\begin{gathered}
+\det(\lambda I - \bar{A} + \bar{B}\tilde{C}^*)-\det(\lambda I - \bar{A}) = b_1 \lambda^{d-1} + b_2 \lambda^{d-2} + \cdots + b_d \\
+\Downarrow \\
+\det(\lambda I - \bar{A} + \bar{B}\tilde{C}^*)= \lambda^d + (a_1 + b_1) \lambda^{d-1} + (a_2+b_2) \lambda^{d-2} + \cdots + (a_d + b_d)
+\end{gathered}\end{equation}
+This means the characteristic polynomial of $\bar{A} - \bar{B}\tilde{C}^*$ is the one above. Then, according to the construction of $\bar{A}$, a solution for $\bar{A} - \bar{B}\tilde{C}^*$ is:
+\begin{equation}\bar{A} - \bar{B}\tilde{C}^* = \begin{pmatrix}-a_1 - b_1 & - a_2 - b_2 & \cdots & -a_{d-1} - b_{d-1} & -a_d - b_d\\
+1 & 0 & \cdots & 0 & 0 \\
+0 & 1 & \cdots & 0 & 0 \\
+\vdots & \vdots & \ddots & \vdots & \vdots \\
+0 & 0 & \cdots & 1 & 0 \\
+\end{pmatrix}\end{equation}
+Thus:
+\begin{equation}\bar{B}\tilde{C}^* = \begin{pmatrix}b_1 & b_2 & \cdots & b_{d-1} & b_d\\
+0 & 0 & \cdots & 0 & 0 \\
+0 & 0 & \cdots & 0 & 0 \\
+\vdots & \vdots & \ddots & \vdots & \vdots \\
+0 & 0 & \cdots & 0 & 0 \\
+\end{pmatrix} = \begin{pmatrix}1 \\ 0 \\ \vdots \\ 0 \\ 0\end{pmatrix}\begin{pmatrix}b_1 & b_2 & \cdots & b_{d-1} & b_d\end{pmatrix}\end{equation}
+This means we can find a set of solutions $\bar{B} = [1, 0, \cdots, 0, 0], \tilde{C}^* = [b_1 , b_2 , \cdots , b_{d-1} , b_d]$, and then further solve $\bar{C}^* = \tilde{C}^*(I - \bar{A}^L)^{-1}$.</p>
+
+<h2>Initialization Method</h2>
+
+<p>Let's write out the recurrence form for $x_k$ completely:
+\begin{equation}
+x_{k+1} = \begin{pmatrix}-a_1 & - a_2 & \cdots & -a_{d-1} & -a_d \\
+1 & 0 & \cdots & 0 & 0 \\
+0 & 1 & \cdots & 0 & 0 \\
+\vdots & \vdots & \ddots & \vdots & \vdots \\
+0 & 0 & \cdots & 1 & 0 \\
+\end{pmatrix} x_k + \begin{pmatrix}1 \\ 0 \\ \vdots \\ 0 \\ 0\end{pmatrix} u_k = \begin{pmatrix} u_k - \langle a, x_k\rangle \\ x_{k,(0)} \\ x_{k,(1)} \\ \vdots \\ x_{k,(d-3)} \\ x_{k,(d-2)}\end{pmatrix}
+\end{equation}
+Due to the extreme sparsity of $\bar{A}$, each recursion step can be completed in $\mathcal{O}(d)$ rather than $\mathcal{O}(d^2)$. Specifically, when $a_1=a_2=\cdots=a_d=0$:
+\begin{equation}\begin{aligned}
+x_1 =&\, [u_0,0,\cdots,0] \\
+x_2 =&\, [u_1,u_0,0,\cdots,0] \\
+&\vdots \\
+x_d =&\, [u_{d-1},\cdots,u_1,u_0] \\
+x_{d+1} =&\, [u_d, u_{d-1},\cdots,u_1] \\
+&\vdots \\
+\end{aligned}\end{equation}
+In other words, the model continuously rolls and stores the most recent $d$ values of $u_k$. Without any other prior knowledge, this is clearly a very reasonable initial solution. Therefore, the original paper sets $a_1,a_2,\cdots,a_d$ to zero during the initialization phase.</p>
+
+<p>The original paper also provides an explanation for this initialization regarding numerical stability and preventing gradient explosion. As we know from the previous article, the linear system $\eqref{eq:linear}$ possesses similarity invariance, meaning its dynamics are mathematically consistent with the dynamics after diagonalizing $\bar{A}$. The diagonal matrix of $\bar{A}$ consists of all the zeros of its characteristic polynomial. If the modulus of any zero $\lambda_k$ is greater than 1, numerical/gradient explosion may occur after multiple recursion steps.</p>
+
+<p>In other words, it is best to constrain $a_1,a_2,\cdots,a_d$ such that the modulus of all zeros of the polynomial $\lambda^d + a_1 \lambda^{d-1} + a_2 \lambda^{d-2} + \cdots + a_d$ do not exceed 1, to achieve better numerical stability and avoid gradient explosion. Although the necessary and sufficient conditions for ensuring all zeros are within the unit circle remain unknown, a relatively simple sufficient condition is $\|a_1\| + \|a_2\| + \cdots + \|a_d\| < 1$.</p>
+
+<blockquote>
+<p><strong>Conclusion:</strong> When $\|a_1\| + \|a_2\| + \cdots + \|a_d\| < 1$, all zeros of the polynomial $\lambda^d + a_1 \lambda^{d-1} + a_2 \lambda^{d-2} + \cdots + a_d$ have a modulus not exceeding 1.</p>
+<p><strong>Proof:</strong> By contradiction. Assume the polynomial has a zero $\lambda_0$ with modulus greater than 1, so $\|\lambda_0^{-1}\| < 1$, then:
+\begin{equation}\begin{aligned}
+1 =&\, -a_1\lambda_0^{-1}-a_2\lambda_0^{-2}-\cdots-a_d \lambda_0^{-d} \\
+\leq &\, \|a_1\lambda_0^{-1}+a_2\lambda_0^{-2}+\cdots+a_d \lambda_0^{-d}\| \\
+\leq &\, \|a_1\lambda_0^{-1}\|+\|a_2\lambda_0^{-2}\|+\cdots+\|a_d \lambda_0^{-d}\| \\
+\leq &\, \|a_1\|+\|a_2\|+\cdots+\|a_d\| \\
+< &\, 1
+\end{aligned}\end{equation}
+This leads to the contradiction $1 < 1$. Thus, the assumption is false, and all zeros of the polynomial have a modulus not exceeding 1.</p>
+</blockquote>
+
+<p>However, RTF points out that directly constraining $a_1,a_2,\cdots,a_d$ to satisfy $\|a_1\| + \|a_2\| + \cdots + \|a_d\| < 1$ would significantly weaken the model's expressive capacity, doing more harm than good. RTF further discovered that it is sufficient to satisfy this condition as much as possible during initialization and let the model learn over time. The most satisfying values for this condition are $a_1=a_2=\cdots=a_d=0$, so RTF chose all-zero initialization.</p>
+
+<h2>Experimental Efficiency</h2>
+
+<p>Regarding the experiments, the following characteristic of RTF can be seen: RTF's complexity is essentially independent of state size, and because of this, RTF can improve performance by increasing state size (since it does not increase complexity).</p>
+
+<p>The first chart (in the paper) shows that RTF's computational complexity (time and space) has no obvious relationship with state size. Because of this, as shown in the second chart, RTF's performance can be improved by increasing the state size. For other experimental results, readers can refer to the original paper.</p>
+
+<h2>Summary</h2>
+
+<p>This article introduced a new work in SSM models, RTF. It observes that the generating function of the convolution kernel of a linear RNN can be represented as a rational function (fractional polynomial). Utilizing this feature, we can transfer all the parameterization of SSM to the space of generating functions and accelerate using Discrete Fourier Transforms, which significantly simplifies the entire calculation process. Compared to S4's "diagonal + low-rank" decomposition, RTF is also more concise and intuitive.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10180.html" style="color: #005fcc;">https://kexue.fm/archives/10180</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

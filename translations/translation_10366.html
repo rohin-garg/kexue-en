@@ -1,0 +1,335 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+
+<h1><a href="https://kexue.fm/archives/10366">Low-Rank Approximation Series (1): Pseudo Inverse</a></h1>
+
+    <p>By 苏剑林 | September 15, 2024</p>
+
+    <p>Many readers, like myself, may have a feeling about matrix low-rank approximation that is both familiar and yet somewhat distant. Familiar because the concept and significance of low-rank approximation are not difficult to understand, and with the current proliferation of low-rank approximation-based fine-tuning techniques like LoRA, the concept has become subtly ingrained in our minds through daily exposure. However, the content covered by low-rank approximation is vast; in papers related to it, we often see unfamiliar yet astounding new techniques, which leads to a sense of "knowing it without truly understanding it." Therefore, in this series of articles, I will attempt to systematically organize the theoretical content related to matrix low-rank approximation to complete our understanding. In this first article, we will primarily introduce a relatively simple concept in the low-rank approximation series—the pseudo inverse.</p>
+
+    <h3>Optimization Perspective</h3>
+    <p>The <b>Pseudo Inverse</b>, also known as the "Generalized Inverse," is, as the name suggests, a "generalized version of an inverse matrix." It is actually an extension of the concept of an "inverse matrix" to non-invertible matrices.</p>
+
+    <p>We know that for the matrix equation $\boldsymbol{A}\boldsymbol{B}=\boldsymbol{M}$, if $\boldsymbol{A}$ is a square matrix and is invertible, we can directly obtain $\boldsymbol{B}=\boldsymbol{A}^{-1}\boldsymbol{M}$. But what if $\boldsymbol{A}$ is not invertible or simply not a square matrix? In this case, we likely cannot find a $\boldsymbol{B}$ that satisfies $\boldsymbol{A}\boldsymbol{B}=\boldsymbol{M}$. If we still wish to proceed, we usually convert this into an optimization problem:</p>
+
+\begin{equation}\mathop{\text{argmin}}_\boldsymbol{B} \Vert \boldsymbol{A}\boldsymbol{B} - \boldsymbol{M}\Vert_F^2\label{eq:loss-ab-m}\end{equation}
+
+    <p>where $\boldsymbol{A}\in\mathbb{R}^{n\times r}, \boldsymbol{B}\in\mathbb{R}^{r\times m}, \boldsymbol{M}\in\mathbb{R}^{n\times m}$. Note that the number field is $\mathbb{R}$, indicating that this series focuses on real matrices. $\Vert\cdot\Vert_F$ is the <b>F-norm</b> (Frobenius Norm) of a matrix, used to measure the distance between the matrix $\boldsymbol{A}\boldsymbol{B} - \boldsymbol{M}$ and the zero matrix. Its definition is:</p>
+
+\begin{equation}\Vert \boldsymbol{M}\Vert_F = \sqrt{\sum_{i=1}^n\sum_{j=1}^m M_{i,j}^2}\end{equation}
+
+    <p>In short, we move from seeking an exact inverse matrix to minimizing the squared error between $\boldsymbol{A}\boldsymbol{B}$ and $\boldsymbol{M}$. Since the theme of this series is low-rank approximation, we assume below that $r \ll \min(n,m)$. Its machine learning significance is to reconstruct the full matrix $\boldsymbol{M}$ through a low-dimensional, lossy input matrix $\boldsymbol{A}$ and a linear transformation $\boldsymbol{B}$.</p>
+
+    <p>When $m=n$ and $\boldsymbol{M}$ is the identity matrix $\boldsymbol{I}_n$, we obtain a result that depends only on $\boldsymbol{A}$, denoted as:</p>
+
+\begin{equation}\boldsymbol{A}^{\dagger} = \mathop{\text{argmin}}_\boldsymbol{B} \Vert \boldsymbol{A}\boldsymbol{B} - \boldsymbol{I}_n\Vert_F^2\label{eq:loss-ab-m-b}\end{equation}
+
+    <p>Its role is similar to the inverse of $\boldsymbol{A}$, so it is called the "(right) pseudo inverse" of $\boldsymbol{A}$. Similarly, if the $\boldsymbol{B}$ matrix is given, we can change the optimization parameter to $\boldsymbol{A}$ to obtain the "(left) pseudo inverse" of $\boldsymbol{B}$:</p>
+
+\begin{equation}\boldsymbol{B}^{\dagger} = \mathop{\text{argmin}}_\boldsymbol{A} \Vert \boldsymbol{A}\boldsymbol{B} - \boldsymbol{I}_n\Vert_F^2\end{equation}
+
+    <h3>Norm Related</h3>
+    <p>Before further derivation, let's supplement the introduction to the $F$-norm. Many readers are already familiar with vector norms, the most classic being the "$p$-norm": for $\boldsymbol{x}=(x_1,x_2,\cdots,x_m)$, its $p$-norm is defined as:</p>
+
+\begin{equation}\Vert \boldsymbol{x}\Vert_p = \sqrt[\uproot{10}p]{\sum_{i=1}^m |x_i|^p}\end{equation}
+
+    <p>Among $p$-norms, the most common is the case where $p=2$, which is what we usually call the vector magnitude or "Euclidean norm." If the subscript of the norm is omitted and written simply as $\Vert \boldsymbol{x}\Vert$, $p=2$ is usually the default.</p>
+
+    <p>Matrix norms are slightly more complex. There are at least two different but commonly used norms. One is the $F$-norm mentioned in the previous section, which is calculated by flattening the matrix into a vector:</p>
+
+\begin{equation}\Vert \boldsymbol{M}\Vert_F = \Vert \text{vec}(\boldsymbol{M})\Vert_2 = \sqrt{\sum_{i=1}^n\sum_{j=1}^m M_{i,j}^2}\end{equation}
+
+    <p>Other matrix norms will be introduced when we encounter them. Due to the diversity of matrix norms, the subscript ${}_F$ in $\Vert \boldsymbol{M}\Vert_F$ usually cannot be omitted to avoid confusion. The $F$-norm is derived by treating the matrix as a vector and adopting the definition of the vector norm. This inspires us to try moving more vector operations into the matrix realm, such as the inner product:</p>
+
+\begin{equation}\langle \boldsymbol{P}, \boldsymbol{Q} \rangle_F = \langle \text{vec}(\boldsymbol{P}), \text{vec}(\boldsymbol{Q}) \rangle = \sum_{i=1}^n\sum_{j=1}^m P_{i,j} Q_{i,j}\end{equation}
+
+    <p>This is called the **F-inner product** (Frobenius Inner Product) of matrices $\boldsymbol{P}$ and $\boldsymbol{Q}$, where $\boldsymbol{P},\boldsymbol{Q}\in\mathbb{R}^{n\times m}$. it can be expressed using the trace operation of a matrix:</p>
+
+\begin{equation}\langle \boldsymbol{P}, \boldsymbol{Q} \rangle_F = \text{Tr}(\boldsymbol{P}^{\top} \boldsymbol{Q})\end{equation}
+
+    <p>This can be proved directly from the definitions of matrix multiplication and trace (readers are encouraged to try). When $\boldsymbol{P}$ and $\boldsymbol{Q}$ are formed by the product of multiple matrices, converting them to the equivalent trace operation usually helps in simplification. For example, we can use it to prove that orthogonal transformations do not change the $F$-norm: assuming $\boldsymbol{U}$ is an orthogonal matrix, using $\Vert \boldsymbol{M}\Vert_F^2 = \langle \boldsymbol{M}, \boldsymbol{M} \rangle_F$ and the relationship between the $F$-inner product and the trace, we get:</p>
+
+\begin{equation}\Vert \boldsymbol{U}\boldsymbol{M}\Vert_F^2 = \text{Tr}((\boldsymbol{U}\boldsymbol{M})^{\top} \boldsymbol{U}\boldsymbol{M})= \text{Tr}(\boldsymbol{M}^{\top} \boldsymbol{U}^{\top}\boldsymbol{U}\boldsymbol{M})=\text{Tr}(\boldsymbol{M}^{\top} \boldsymbol{M}) = \Vert \boldsymbol{M}\Vert_F^2\end{equation}
+
+    <h3>Matrix Derivatives</h3>
+    <p>Returning to the main topic, for an optimization objective, the most ideal result is naturally to find an analytical solution through differentiation. Equation $\eqref{eq:loss-ab-m}$ happens to allow this! This conclusion can be "visually inspected": $\boldsymbol{A}\boldsymbol{B}-\boldsymbol{M}$ is a linear function with respect to $\boldsymbol{B}$, so $\Vert \boldsymbol{A}\boldsymbol{B}-\boldsymbol{M}\Vert_F^2$ is a quadratic function with respect to $\boldsymbol{A}$ or $\boldsymbol{B}$. Quadratic functions have analytical solutions for their minima.</p>
+
+    <p>To find the derivative of $\mathcal{L}=\Vert \boldsymbol{A}\boldsymbol{B}-\boldsymbol{M}\Vert_F^2$ with respect to $\boldsymbol{B}$, we first need the derivative of $\mathcal{L}$ with respect to $\boldsymbol{E}=\boldsymbol{A}\boldsymbol{B}-\boldsymbol{M}$, then the derivative of $\boldsymbol{E}$ with respect to $\boldsymbol{B}$, and finally combine them using the chain rule:</p>
+
+\begin{equation}\frac{\partial \mathcal{L}}{\partial B_{i,j}} = \sum_{k,l}\frac{\partial \mathcal{L}}{\partial E_{k,l}}\frac{\partial E_{k,l}}{\partial B_{i,j}} \end{equation}
+
+    <p>According to the definition $\mathcal{L}=\Vert \boldsymbol{E}\Vert_F^2 = \sum_{i,j} E_{i,j}^2$, it is clear that among the many squares in the sum, the derivative with respect to $E_{k,l}$ is non-zero only when $(i,j)=(k,l)$. Thus, the derivative of $\mathcal{L}$ with respect to $E_{k,l}$ is the derivative of $E_{k,l}^2$ with respect to $E_{k,l}$, which is $\frac{\partial \mathcal{L}}{\partial E_{k,l}}=2E_{k,l}$. Next, according to the definition of matrix multiplication:</p>
+
+\begin{equation}E_{k,l} = \left(\sum_{\alpha} A_{k,\alpha}B_{\alpha,l}\right) - M_{k,l}\end{equation}
+
+    <p>Similarly, only when $(\alpha,l)=(i,j)$ will the derivative cover $B_{i,j}$ yield a non-zero result $A_{k,i}$. Thus we can write $\frac{\partial E_{k,l}}{\partial B_{i,j}}=A_{k,i}\delta_{l,j}$, where $\delta_{l,j}$ is the Kronecker delta indicating the condition $l=j$. Combining the results, we get:</p>
+
+\begin{equation}\frac{\partial \mathcal{L}}{\partial B_{i,j}} = 2\sum_{k,l}E_{k,l}A_{k,i}\delta_{l,j} = 2\sum_k E_{k,j}A_{k,i}\end{equation}
+
+    <p>If we adopt the convention that the shape of the gradient of a scalar with respect to a matrix matches the shape of the matrix itself, we can write:</p>
+
+\begin{equation}\frac{\partial \mathcal{L}}{\partial \boldsymbol{B}} = 2\boldsymbol{A}^{\top}(\boldsymbol{A}\boldsymbol{B}-\boldsymbol{M})\end{equation}
+
+    <p>Although the derivation process is somewhat laborious, fortunately, the result is quite intuitive: intuitively, $\frac{\partial \mathcal{L}}{\partial \boldsymbol{B}}$ is the product of $2(\boldsymbol{A}\boldsymbol{B}-\boldsymbol{M})$ and $\boldsymbol{A}$ (analogous to scalar differentiation). Since we agreed that the shape of $\frac{\partial \mathcal{L}}{\partial \boldsymbol{B}}$ matches $\boldsymbol{B}$ (i.e., $r\times m$), we must find a way to multiply $2(\boldsymbol{A}\boldsymbol{B}-\boldsymbol{M})\in\mathbb{R}^{n\times m}$ and $\boldsymbol{A}\in\mathbb{R}^{n\times r}$ to produce an $r\times m$ result, which yields only the form on the right side of the above equation. Using the same principle, we can quickly write:</p>
+
+\begin{equation}\frac{\partial \mathcal{L}}{\partial \boldsymbol{A}} = 2(\boldsymbol{A}\boldsymbol{B}-\boldsymbol{M})\boldsymbol{B}^{\top}\end{equation}
+
+    <h3>Basic Results</h3>
+    <p>Now that we have successfully solved for $\frac{\partial \mathcal{L}}{\partial \boldsymbol{B}}$ and $\frac{\partial \mathcal{L}}{\partial \boldsymbol{A}}$, setting them to zero allows us to solve for the corresponding optimal solutions:</p>
+
+\begin{align} 
+2\boldsymbol{A}^{\top}(\boldsymbol{A}\boldsymbol{B}-\boldsymbol{M})=0\quad\Rightarrow\quad (\boldsymbol{A}^{\top} \boldsymbol{A})^{-1}\boldsymbol{A}^{\top}\boldsymbol{M} = \mathop{\text{argmin}}_\boldsymbol{B} \Vert \boldsymbol{A}\boldsymbol{B} - \boldsymbol{M}\Vert_F^2 \\ 
+2(\boldsymbol{A}\boldsymbol{B}-\boldsymbol{M})\boldsymbol{B}^{\top}=0\quad\Rightarrow\quad \boldsymbol{M}\boldsymbol{B}^{\top}(\boldsymbol{B} \boldsymbol{B}^{\top})^{-1} = \mathop{\text{argmin}}_\boldsymbol{A} \Vert \boldsymbol{A}\boldsymbol{B} - \boldsymbol{M}\Vert_F^2 
+\end{align}
+
+    <p>Substituting $\boldsymbol{M}=\boldsymbol{I}_n$, we get:</p>
+
+\begin{align}\boldsymbol{A}^{\dagger} = (\boldsymbol{A}^{\top} \boldsymbol{A})^{-1}\boldsymbol{A}^{\top} \label{eq:p-inv-a}\\ 
+\boldsymbol{B}^{\dagger} = \boldsymbol{B}^{\top}(\boldsymbol{B} \boldsymbol{B}^{\top})^{-1}\label{eq:p-inv-b}\end{align}
+
+    <p>If $\boldsymbol{A}$ or $\boldsymbol{B}$ are invertible square matrices, it is easy to prove that the pseudo inverse is equal to the inverse matrix, i.e., $\boldsymbol{A}^{\dagger}=\boldsymbol{A}^{-1},\boldsymbol{B}^{\dagger}=\boldsymbol{B}^{-1}$. Furthermore, based on the above equations, we can verify:</p>
+    <p>1. $(\boldsymbol{A}^{\dagger})^{\dagger}=\boldsymbol{A}, (\boldsymbol{B}^{\dagger})^{\dagger}=\boldsymbol{B}$, meaning the pseudo inverse of a pseudo inverse is the matrix itself. This implies that while the pseudo inverse acts as an approximate inverse, it preserves its own information.</p>
+    <p>2. $\boldsymbol{A}\boldsymbol{A}^{\dagger}\boldsymbol{A}=\boldsymbol{A}, \boldsymbol{B}^{\dagger}\boldsymbol{B}\boldsymbol{B}^{\dagger}=\boldsymbol{B}^{\dagger}$. Although $\boldsymbol{A}\boldsymbol{A}^{\dagger}$ and $\boldsymbol{B}^{\dagger}\boldsymbol{B}$ cannot become the identity matrix $\boldsymbol{I}$, they function as the identity matrix for $\boldsymbol{A}$ and $\boldsymbol{B}^{\dagger}$.</p>
+
+    <p>By the way, the pseudo inverse of a matrix is actually a very broad concept with many different forms. What we introduced here is actually the most common "Moore-Penrose inverse." Besides this, there are the "Drazin inverse," "Bott-Duffin inverse," etc., but I am not familiar with those, so I won't expand on them. Readers can refer to the "Generalized inverse" entry on Wikipedia.</p>
+
+    <h3>General Form</h3>
+    <p>However, we are not finished yet. Equations $\eqref{eq:p-inv-a}$ and $\eqref{eq:p-inv-b}$ hold under the crucial premise that the corresponding $\boldsymbol{A}^{\top} \boldsymbol{A}$ or $\boldsymbol{B} \boldsymbol{B}^{\top}$ is invertible. What if they are not?</p>
+
+    <p>Taking $\boldsymbol{A}^{\dagger}$ as an example, if $\boldsymbol{A}^{\top} \boldsymbol{A}$ is not invertible, it means the rank of $\boldsymbol{A}$ is less than $r$. we can only find $s < r$ column vectors to form a maximal linearly independent set to construct the matrix $\boldsymbol{A}_s\in\mathbb{R}^{n\times s}$, and then $\boldsymbol{A}$ can be expressed as $\boldsymbol{A}_s \boldsymbol{P}$, where $\boldsymbol{P}\in\mathbb{R}^{s\times r}$ is the matrix transforming $\boldsymbol{A}_s$ to $\boldsymbol{A}$. In this case:</p>
+
+\begin{equation}\mathop{\text{argmin}}_\boldsymbol{B} \Vert \boldsymbol{A}\boldsymbol{B} - \boldsymbol{I}_n\Vert_F^2 = \mathop{\text{argmin}}_\boldsymbol{B} \Vert \boldsymbol{A}_s \boldsymbol{P}\boldsymbol{B} - \boldsymbol{I}_n\Vert_F^2\end{equation}
+
+    <p>If the optimal solution for $\boldsymbol{B}$ is still denoted as $\boldsymbol{A}^{\dagger}$, we can only determine that:</p>
+
+\begin{equation}\boldsymbol{P}\boldsymbol{A}^{\dagger} = \boldsymbol{A}_s^{\dagger} = (\boldsymbol{A}_s^{\top} \boldsymbol{A}_s)^{-1}\boldsymbol{A}_s^{\top}\end{equation}
+
+    <p>Since we assumed $\boldsymbol{A}_s$ is a maximal linearly independent set, $\boldsymbol{A}_s^{\top} \boldsymbol{A}_s$ must be invertible, thus the expression is well-defined. However, the mapping from $\boldsymbol{A}^{\dagger}$ to $\boldsymbol{P}\boldsymbol{A}^{\dagger}$ is a dimensionality reduction, which means there are multiple $\boldsymbol{A}^{\dagger}$ that satisfy $\boldsymbol{P}\boldsymbol{A}^{\dagger} = \boldsymbol{A}_s^{\dagger}$. That is, the optimal solution for the objective $\eqref{eq:loss-ab-m-b}$ is not unique when $\boldsymbol{A}^{\top} \boldsymbol{A}$ is not invertible. In other words, we cannot determine a unique pseudo inverse $\boldsymbol{A}^{\dagger}$ solely from the objective $\eqref{eq:loss-ab-m-b}$.</p>
+
+    <p>One possible approach is to supplement this with $(\boldsymbol{A}^{\dagger})^{\dagger}=\boldsymbol{A}$ or $\boldsymbol{A}^{\dagger}\boldsymbol{A}\boldsymbol{A}^{\dagger}=\boldsymbol{A}^{\dagger}$, which, combined with $\boldsymbol{P}\boldsymbol{A}^{\dagger} = \boldsymbol{A}_s^{\dagger}$, could uniquely determine $\boldsymbol{A}^{\dagger}$. However, this feels like applying "patches." Instead, there is a clever trick to handle this problem more elegantly and unified. The issue arises because the optimal solution to the objective function $\eqref{eq:loss-ab-m-b}$ is not unique when $\boldsymbol{A}^{\top} \boldsymbol{A}$ is singular. We can add a regularization term to make it unique and then let the weight of the regularization term tend to zero:</p>
+
+\begin{equation}\boldsymbol{A}^{\dagger} = \lim_{\epsilon\to 0}\,\mathop{\text{argmin}}_\boldsymbol{B} \Vert \boldsymbol{A}\boldsymbol{B} - \boldsymbol{I}_n\Vert_F^2 + \epsilon\Vert \boldsymbol{B}\Vert_F^2\end{equation}
+
+    <p>Here $\epsilon > 0$, and $\epsilon\to 0$ means approaching zero from the positive side. From the above, we can solve:</p>
+
+\begin{equation}\boldsymbol{A}^{\dagger} = \lim_{\epsilon\to 0}\,(\boldsymbol{A}^{\top} \boldsymbol{A} + \epsilon \boldsymbol{I}_r)^{-1}\boldsymbol{A}^{\top}\label{eq:a-pinv-lim}\end{equation}
+
+    <p>When $\epsilon > 0$, $\boldsymbol{A}^{\top} \boldsymbol{A} + \epsilon \boldsymbol{I}_r$ is necessarily invertible (reader, please prove this), so the expression is well-defined. Since the regularization term becomes negligible as $\epsilon\to 0$, this limit must exist. Note that this refers to the existence of the limit as a whole; when $\boldsymbol{A}^{\top} \boldsymbol{A}$ is non-invertible, the limit $\lim\limits_{\epsilon\to 0}\,(\boldsymbol{A}^{\top} \boldsymbol{A} + \epsilon \boldsymbol{I}_r)^{-1}$ does not exist (the result would involve infinity). Only after multiplying by $\boldsymbol{A}^{\top}$ does the overall limit become normal.</p>
+
+    <p>What are the advantages of Equation $\eqref{eq:a-pinv-lim}$ as a general extension of the pseudo inverse? First, we already have the expression for $\boldsymbol{A}^{\dagger}$ when $\boldsymbol{A}^{\top} \boldsymbol{A}$ is invertible in Equation $\eqref{eq:p-inv-a}$. Equation $\eqref{eq:a-pinv-lim}$, as its extension, possesses intuitive and formal theoretical elegance. Second, the formal consistency allows the properties of $\boldsymbol{A}^{\dagger}$ (like $(\boldsymbol{A}^{\dagger})^{\dagger}$) to be preserved, enabling us to discuss $\boldsymbol{A}^{\dagger}$ almost without considering the invertibility of $\boldsymbol{A}^{\top} \boldsymbol{A}$.</p>
+
+    <h3>Numerical Computation</h3>
+    <p>Of course, the current Equation $\eqref{eq:a-pinv-lim}$ is just a formal definition. If used directly for numerical computation, one would have to choose a sufficiently small $\epsilon$ and calculate $(\boldsymbol{A}^{\top} \boldsymbol{A} + \epsilon \boldsymbol{I}_r)^{-1}$, which inevitably leads to severe numerical instability. To obtain a stable calculation method, we leverage the fact that real symmetric matrices can always be orthogonally diagonalized (<b>Spectral Theorem</b>) to decompose $\boldsymbol{A}^{\top} \boldsymbol{A}$ as follows:</p>
+
+\begin{equation}\boldsymbol{A}^{\top} \boldsymbol{A} = \boldsymbol{U}\boldsymbol{\Lambda} \boldsymbol{U}^{\top}\end{equation}
+
+    <p>where $\boldsymbol{U}$ is an orthogonal matrix and $\boldsymbol{\Lambda}=\text{diag}(\lambda_1,\lambda_2,\cdots,\lambda_r)$ is a diagonal matrix composed of eigenvalues. Due to the positive semi-definiteness of $\boldsymbol{A}^{\top} \boldsymbol{A}$, its eigenvalues are always non-negative. Using this decomposition, we have:</p>
+
+\begin{equation}\begin{aligned} 
+(\boldsymbol{A}^{\top} \boldsymbol{A} + \epsilon \boldsymbol{I}_r)^{-1}\boldsymbol{A}^{\top} =&\, (\boldsymbol{U}\boldsymbol{\Lambda} \boldsymbol{U}^{\top} + \epsilon \boldsymbol{I}_r)^{-1} \boldsymbol{A}^{\top} \\ 
+=&\, [\boldsymbol{U}(\boldsymbol{\Lambda} + \epsilon \boldsymbol{I}_r) \boldsymbol{U}^{\top}]^{-1}\boldsymbol{A}^{\top} \\ 
+=&\, \boldsymbol{U}(\boldsymbol{\Lambda} + \epsilon \boldsymbol{I}_r)^{-1} \boldsymbol{U}^{\top}\boldsymbol{A}^{\top} 
+\end{aligned}\end{equation}
+
+    <p>For $(\boldsymbol{\Lambda} + \epsilon \boldsymbol{I}_r)^{-1}$, we have:</p>
+
+\begin{equation}(\boldsymbol{\Lambda} + \epsilon \boldsymbol{I}_r)^{-1} = \text{diag}\Big((\lambda_1 + \epsilon)^{-1},(\lambda_2 + \epsilon)^{-1},\cdots,(\lambda_r + \epsilon)^{-1}\Big)\end{equation}
+
+    <p>If $\lambda_i > 0$, then $\lim\limits_{\epsilon\to 0}\,(\lambda_i + \epsilon)^{-1}=\lambda_i^{-1}$, which is a finite result and poses no problem for calculation. The issue arises when $\lambda_i = 0$, where $\lim\limits_{\epsilon\to 0}\,(\lambda_i + \epsilon)^{-1}=\lim\limits_{\epsilon\to 0}\,\epsilon^{-1}\to\infty$. However, we know that as $\epsilon\to 0$, the effect of the regularization term disappears, and we've established that the limit $\eqref{eq:a-pinv-lim}$ will not produce infinite values. Therefore, if $\lambda_i=0$ exists, the factor multiplied by it in $\boldsymbol{U}^{\top}\boldsymbol{A}^{\top}$ on the right side must be able to cancel out the infinity brought by $\lim\limits_{\epsilon\to 0}\, \epsilon^{-1}$. The only way to cancel out this infinity is by "multiplying by 0," i.e., $\lim\limits_{\epsilon\to 0}\, \epsilon^{-1}\times 0 = 0$.</p>
+
+    <p>In other words, if $\lambda_i=0$, the factor multiplied by $(\lambda_i+\epsilon)^{-1}$ from $\boldsymbol{U}^{\top}\boldsymbol{A}^{\top}$ must be 0. Since "0 times any number is 0," the value of $(\lambda_i+\epsilon)^{-1}$ when $\lambda_i=0$ actually becomes unimportant; we can simply set it to 0. Consequently, we obtain a general and simple method for calculating $\boldsymbol{A}^{\dagger}$:</p>
+
+\begin{equation}\boldsymbol{A}^{\dagger} = \boldsymbol{U}\boldsymbol{\Lambda}^{\dagger}\boldsymbol{U}^{\top}\boldsymbol{A}^{\top}, \quad \boldsymbol{A}^{\top} \boldsymbol{A} = \boldsymbol{U}\boldsymbol{\Lambda} \boldsymbol{U}^{\top}\end{equation}
+
+    <p>where $\boldsymbol{\Lambda}^{\dagger}$ denotes the diagonal matrix where elements are unchanged if they are zero, and are replaced by their reciprocals if they are non-zero.</p>
+
+    <p>Some readers might wonder: since "0 times any number is 0," why should the zero $\lambda_i$ remain unchanged? Could it be any other value? In fact, taking any value here would not affect the result. However, since we used the notation $\boldsymbol{\Lambda}^{\dagger}$, we should maintain consistency with Equation $\eqref{eq:a-pinv-lim}$. That is, it should be consistent with the direct calculation of substituting the diagonal matrix $\boldsymbol{\Lambda}$ into Equation $\eqref{eq:a-pinv-lim}$:</p>
+
+\begin{equation}\boldsymbol{\Lambda}^{\dagger} = \lim_{\epsilon\to 0}\,(\boldsymbol{\Lambda}^{\top} \boldsymbol{\Lambda} + \epsilon \boldsymbol{I}_r)^{-1}\boldsymbol{\Lambda}^{\top} = \text{diag}(\kappa_1,\kappa_2,\cdots,\kappa_n),\quad \kappa_i = \left\{\begin{aligned}\lambda_i^{-1}, \,\,\lambda_i\neq 0 \\ 0, \,\,\lambda_i=0 \end{aligned} \right. \end{equation}
+
+    <h3>Summary</h3>
+    <p>In this article, we introduced the pseudo inverse from the perspective of low-rank approximation. This is an extension of the inverse matrix concept for non-square or non-invertible square matrices, allowing us to more effectively analyze and solve general matrix equations.</p>
+
+    <hr>
+    <p>Original Address: <a href="translation_10366.html">https://kexue.fm/archives/10366</a></p>
+
+    <p>If you have any doubts or suggestions, feel free to continue the discussion in the comments section below.</p>
+
+    <p>If you need to cite this article, please refer to:</p>
+    <p>Su Jianlin. (Sep. 15, 2024). "The Road to Low-Rank Approximation (1): Pseudo Inverse" [Blog post]. Retrieved from https://kexue.fm/archives/10366</p>
+
+<pre>
+@online{kexuefm-10366, 
+    title={Road to Low-Rank Approximation (1): Pseudo Inverse}, 
+    author={Su Jianlin}, 
+    year={2024}, 
+    month={Sep}, 
+    url={\url{https://kexue.fm/archives/10366}}, 
+}
+</pre>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10366.html" style="color: #005fcc;">https://kexue.fm/archives/10366</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

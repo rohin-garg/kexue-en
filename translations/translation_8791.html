@@ -1,0 +1,215 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['base', 'ams', 'noerrors', 'noundefined']}
+  },
+  options: {
+    ignoreHtmlClass: 'tex2jax_ignore',
+    processHtmlClass: 'tex2jax_process'
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/8791">Variational Autoencoder (8): Estimating Sample Probability Density</a></h1>
+    <p>By 苏剑林 | December 09, 2021</p>
+
+    <p>In the previous articles of this series, we have understood VAE from multiple perspectives. Generally, VAE is used to obtain a generative model or a better encoding model, which are the standard applications of VAE. However, besides these common uses, there are some "niche requirements," such as estimating the probability density of $x$, which is often used in tasks like compression.</p>
+
+    <p>This article will explore and derive the VAE model from the perspective of estimating probability density.</p>
+
+    <h2>Two Problems</h2>
+    <p>The estimation of probability density involves taking known samples $x_1, x_2, \dots, x_N \sim \tilde{p}(x)$ and using a parametric family of probability densities $q_{\theta}(x)$ to fit these samples. The general goal is to minimize the negative log-likelihood:</p>
+    \begin{equation}\mathbb{E}_{x\sim \tilde{p}(x)}[-\log q_{\theta}(x)] = -\frac{1}{N}\sum_{i=1}^N \log q_{\theta}(x_i)\label{eq:mle}\end{equation}
+    <p>But this is purely a theoretical form, and several problems remain to be solved, primarily categorized into two major questions:</p>
+    <blockquote>
+        1. What kind of $q_{\theta}(x)$ should be used for fitting?<br>
+        2. What method should be used to solve the objective?
+    </blockquote>
+
+    <h2>Mixture Models</h2>
+    <p>Regarding the first problem, we naturally hope that $q_{\theta}(x)$ has a fitting capability that is as strong as possible—ideally, it should be able to fit any probability distribution. Unfortunately, while neural networks theoretically have universal approximation capabilities for functions, that is for fitting functions, not probability distributions. A probability distribution must satisfy $q_{\theta}(x) \geq 0$ and $\int q_{\theta}(x) dx = 1$, the latter of which is often difficult to guarantee.</p>
+    <p>Since a direct approach is difficult, we consider an indirect perspective by constructing a mixture model:</p>
+    \begin{equation}q_{\theta}(x) = \int q_{\theta}(x|z)q(z)dz=\mathbb{E}_{z\sim q(z)}[q_{\theta}(x|z)]\label{eq:q}\end{equation}
+    <p>Where $q(z)$ is typically chosen as a simple distribution without parameters, such as the standard normal distribution; and $q_{\theta}(x|z)$ is a parametric simple distribution conditioned on $z$, such as a standard normal distribution whose mean and variance are related to $z$.</p>
+    <p>From the perspective of generative models, the above model is interpreted as a two-step operation: first sampling $z$ from $q(z)$, and then passing it to $q_{\theta}(x|z)$ to generate $x$. However, the focus of this article is on estimating probability density. We choose such a $q_{\theta}(x|z)$ because it provides sufficient capability to fit complex distributions. The final $q_{\theta}(x)$ is expressed as the average of multiple simple distributions $q_{\theta}(x|z)$. Readers familiar with Gaussian Mixture Models (GMM) should know that such a model can have very strong fitting capabilities, theoretically even fitting any distribution, so the capability to fit distributions is guaranteed.</p>
+
+    <h2>Importance Sampling</h2>
+    <p>However, the expression in Equation $\eqref{eq:q}$ cannot be integrated simply. Or rather, only distributions that cannot be expressed simply and explicitly have sufficiently strong fitting capabilities. Therefore, if we want to estimate it, we must follow the $\mathbb{E}_{z\sim q(z)}[q_{\theta}(x|z)]$ approach using sampling estimation. However, in practical scenarios, the dimensions of $z$ and $x$ are quite high, and high-dimensional spaces suffer from the "curse of dimensionality." This means that in high-dimensional space, even if we sample millions or tens of millions of samples, it is difficult to adequately cover the space, making it hard to accurately estimate $\mathbb{E}_{z\sim q(z)}[q_{\theta}(x|z)]$.</p>
+    <p>To this end, we need to find a way to narrow down the sampling space. First, we usually control the variance of $q_{\theta}(x|z)$ to be relatively small. As a result, for a given $x$, the values of $z$ that make $q_{\theta}(x|z)$ significantly large will not be many; for most $z$, the calculated $q_{\theta}(x|z)$ will be very close to zero. Thus, we only need to find a way to sample $z$ values that make $q_{\theta}(x|z)$ relatively large to obtain a good estimation of $\mathbb{E}_{z\sim q(z)}[q_{\theta}(x|z)]$.</p>
+    <p>Specifically, we introduce a new distribution $p_{\theta}(z|x)$, assuming that the $z$ values making $q_{\theta}(x|z)$ large follow this distribution. Thus, we have:</p>
+    \[q_{\theta}(x) = \int q_{\theta}(x|z)q(z)dz=\int q_{\theta}(x|z)\frac{q(z)}{p_{\theta}(z|x)}p_{\theta}(z|x)dz=\mathbb{E}_{z\sim p_{\theta}(z|x)}\left[q_{\theta}(x|z)\frac{q(z)}{p_{\theta}(z|x)}\right]\]
+    <p>In this way, we transform "purposeless" sampling from $q(z)$ into a more targeted sampling from $p_{\theta}(z|x)$. Because the variance of $q_{\theta}(x|z)$ is controlled to be small, the variance of $p_{\theta}(z|x)$ will naturally not be large, and the sampling efficiency increases. Note that in the generative model view, $p_{\theta}(z|x)$ is seen as an approximation of the posterior distribution, but from the perspective of estimating probability density, it is purely an importance weighting function; there is no need for a special interpretation of its meaning.</p>
+
+    <h2>Training Objective</h2>
+    <p>At this point, we have solved the first problem: what distribution to use and how to better calculate this distribution. The remaining question is how to train it.</p>
+    <p>In fact, once we have the concept of importance sampling, we don't need to consider things like ELBO. We can directly use the objective in Equation $\eqref{eq:mle}$. Substituting the expression for $q_{\theta}(x)$, we get:</p>
+    \[\mathbb{E}_{x\sim \tilde{p}(x)}\left[-\log \mathbb{E}_{z\sim p_{\theta}(z|x)}\left[q_{\theta}(x|z)\frac{q(z)}{p_{\theta}(z|x)}\right]\right]\]
+    <p>In fact, if we sample only one $z$ via reparameterization for the step $\mathbb{E}_{z\sim p_{\theta}(z|x)}$, the training objective becomes:</p>
+    \[\mathbb{E}_{x\sim \tilde{p}(x)}\left[-\log q_{\theta}(x|z)\frac{q(z)}{p_{\theta}(z|x)}\right],\quad z\sim p_{\theta}(z|x)\]
+    <p>This is already the training objective of a conventional VAE. If we sample $M > 1$ points, then it is:</p>
+    \[\mathbb{E}_{x\sim \tilde{p}(x)}\left[-\log \left(\frac{1}{M}\sum_{i=1}^M q_{\theta}(x|z_i)\frac{q(z_i)}{p_{\theta}(z_i|x)}\right)\right],\quad z_1,z_2,\dots,z_M\sim p_{\theta}(z|x)\]
+    <p>This is the "Importance Weighted Autoencoder," originating from <a href="https://papers.cool/arxiv/1509.00519">"Importance Weighted Autoencoders"</a>, which is considered an enhancement of VAE. In summary, through the lens of importance sampling, we can bypass the tedious derivations of traditional VAE such as ELBO, and we also do not need the joint distribution perspective introduced in <a href="translation_5343.html">"Variational Autoencoder (2): From a Bayesian Perspective"</a>; we can directly obtain the VAE model and even its improved versions.</p>
+
+    <h2>Summary</h2>
+    <p>This article introduced the Variational Autoencoder (VAE) from the starting point of estimating sample probability density. By combining importance sampling, we can obtain a rapid derivation of VAE, completely avoiding many tedious details like ELBO.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8791.html" style="color: #005fcc;">https://kexue.fm/archives/8791</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

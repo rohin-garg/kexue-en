@@ -1,0 +1,320 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        document.querySelectorAll('script[type^="math/tex"]').forEach(function(node) {
+          var display = !!node.type.match(/; *mode=display/);
+          var math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          var text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        });
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/5617">Gossip on "Noise Contrastive Estimation": The Beauty of the Winding Path</a></h1>
+
+<p>By 苏剑林 | June 13, 2018</p>
+
+<p>When mentioning Noise Contrastive Estimation, or "Negative Sampling," everyone likely thinks of Word2Vec immediately. In fact, its meaning goes far beyond that. Noise Contrastive Estimation (NCE) is a roundabout yet exceptionally exquisite technique. It allows us to estimate the parameters of a probability distribution when the normalization factor (also known as the partition function) is impossible to calculate directly. In this article, let us appreciate the subtle elegance of NCE's "winding path."</p>
+
+<p>Note: Due to different starting points, the "Noise Contrastive Estimation" introduced in this article is actually more inclined towards the so-called "Negative Sampling" technique, but the two are essentially the same and will not be distinguished here.</p>
+
+<h2>Origin of the Problem</h2>
+
+<p>The root of the problem lies in the inextricable exponential probability distributions.</p>
+
+<h3>Exponential Family Distributions</h3>
+
+<p>In many problems, exponential family distributions appear. That is, for the probability $p(\boldsymbol{x})$ of a variable $\boldsymbol{x}$, we write it as:
+\begin{equation}
+p(\boldsymbol{x}) = \frac{e^{G(\boldsymbol{x})}}{Z} \label{eq:1}
+\end{equation}
+where $G(\boldsymbol{x})$ is a certain "energy" function of $\boldsymbol{x}$, and $Z=\sum_{\boldsymbol{x}} e^{G(\boldsymbol{x})}$ is the normalization constant, also called the partition function. This type of distribution is also known as the "Boltzmann distribution."</p>
+
+<p>In machine learning, there are two main sources of exponential family distributions. The first source is softmax: when we make classification predictions, we usually use softmax as the final activation for the output of the fully connected layer; this is a discrete Boltzmann distribution on a finite number of points. The second source is the Principle of Maximum Entropy: when we introduce a feature and can already estimate its expected value, the maximum entropy model tells us its distribution should be in an exponential form of the features. (Refer to <a href="translation_3552.html">"Entropy is Unaffordable: From Entropy and the Principle of Maximum Entropy to Maximum Entropy Models (II)"</a>.)</p>
+
+<h3>The Difficult Partition Function</h3>
+
+<p>Overall, exponential family distributions are a very practical class of distributions. They can be found in machine learning, mathematics, and physics. However, they possess a significant problem: they are not easy to calculate—specifically, the partition function is difficult to compute.</p>
+
+<p>Precisely, there are two reasons why it is difficult to calculate. One is that the volume of computation is too large, such as in the scenario of language models (including Word2Vec). Because one needs to predict the current word's distribution based on context, it requires summing over hundreds of thousands or even millions of items (depending on vocabulary size) to calculate the normalization factor. In this case, it is not that it cannot be calculated, but that the computational cost is too high to bear. The other situation is that it simply cannot be calculated at all. For example, suppose $p(x)=\frac{e^{-ax^2-bx^4}}{Z}$, then:
+\begin{equation}
+Z = \int e^{-ax^2-bx^4} dx \label{eq:2}
+\end{equation}
+This integral cannot be solved analytically in a simple way, let alone for more complex functions. Now we might feel from this perspective why the Gaussian distribution is so commonly used; it is because, because, because... if we changed the distribution, we wouldn't be able to calculate it anymore...</p>
+
+<p>In machine learning, if the goal is only classification or prediction, it doesn't matter whether the normalization factor is calculated because we only need to compare relative values to pick the maximum. However, before prediction, we face the problem of training, which is parameter estimation. Specifically, $G(\boldsymbol{x})$ actually contains some unknown parameters $\boldsymbol{\theta}$. To be precise, it should be written as $G(\boldsymbol{x};\boldsymbol{\theta})$, so the probability distribution is:
+\begin{equation}
+p(\boldsymbol{x})=\frac{e^{G(\boldsymbol{x};\boldsymbol{\theta})}}{Z(\boldsymbol{\theta})} \label{eq:3}
+\end{equation}
+We need to infer $\boldsymbol{\theta}$ from samples of $\boldsymbol{x}$. Usually, we use maximum likelihood, but without calculating $Z(\boldsymbol{\theta})$, we cannot calculate the likelihood function, making it impossible to proceed.</p>
+
+<h2>NCE to the Rescue</h2>
+
+<p>Fortunately, NCE was born, and it successfully bypassed this difficulty. For cases where the partition function cannot be calculated, it provides a possibility to proceed; for cases where the volume of computation for the partition function is too large, it provides a scheme to reduce the computational cost.</p>
+
+<h3>Turning into a Binary Classification Problem</h3>
+
+<p>The idea of NCE is simple: it hopes that we compare real samples with a set of "noise samples" to discover the patterns of the real samples.</p>
+
+<p>Specifically, the energy is still the original $G(\boldsymbol{x};\boldsymbol{\theta})$, but this time we do not calculate the probability $p(\boldsymbol{x})$ directly because the normalization factor is hard to compute. Instead, we calculate:
+\begin{equation}
+p(1|\boldsymbol{x})=\sigma\Big(G(\boldsymbol{x};\boldsymbol{\theta})-\gamma\Big)=\frac{1}{1+e^{-G(\boldsymbol{x};\boldsymbol{\theta})+\gamma}} \label{eq:4}
+\end{equation}
+Here, $\boldsymbol{\theta}$ is still the original parameter to be optimized, while $\gamma$ is a newly introduced parameter to be optimized.</p>
+
+<p>Then, the loss function for NCE becomes:
+\begin{equation}
+\mathop{\text{argmin}}_{\boldsymbol{\theta},\gamma} - \mathbb{E}_{\boldsymbol{x}\sim \tilde{p}(\boldsymbol{x})}\log p(1|\boldsymbol{x})- \mathbb{E}_{\boldsymbol{x}\sim U(\boldsymbol{x})}\log p(0|\boldsymbol{x}) \label{eq:5}
+\end{equation}
+where $\tilde{p}(\boldsymbol{x})$ is the real distribution of samples, and $U(\boldsymbol{x})$ is a "uniform" distribution or another fixed distribution that is easy to sample from.</p>
+
+<p>In short, <strong>the approach of NCE is to transform it into a binary classification problem, classifying real samples as 1 and samples drawn from another distribution as 0.</strong></p>
+
+<h3>Equivalence to the Original Distribution</h3>
+
+<p>The question now is whether the $\boldsymbol{\theta}$ estimated from equation $\eqref{eq:5}$ is the same as the result of a direct maximum likelihood estimation from equation $\eqref{eq:3}$ (if it were theoretically possible).</p>
+
+<p><strong>The answer is essentially the same.</strong> We rewrite the loss in equation $\eqref{eq:5}$ as:
+\begin{equation}
+-\int \tilde{p}(\boldsymbol{x})\log p(1|\boldsymbol{x}) d\boldsymbol{x}- \int U(\boldsymbol{x})\log p(0|\boldsymbol{x})d\boldsymbol{x} \label{eq:6}
+\end{equation}
+Since $\tilde{p}(\boldsymbol{x})$ and $U(\boldsymbol{x})$ are independent of the parameters $\boldsymbol{\theta}$ and $\gamma$, changing the loss to the following form will not affect the optimization results:
+\begin{equation}
+\begin{aligned}&\int \big(\tilde{p}(\boldsymbol{x})+U(\boldsymbol{x})\big) \left(\tilde{p}(1|\boldsymbol{x}) \log \frac{\tilde{p}(1|\boldsymbol{x})}{p(1|\boldsymbol{x})} + \tilde{p}(0|\boldsymbol{x})\log \frac{\tilde{p}(0|\boldsymbol{x})}{p(0|\boldsymbol{x})}\right)d\boldsymbol{x}\\
+=&\int \big(\tilde{p}(\boldsymbol{x})+U(\boldsymbol{x})\big) KL\Big(\tilde{p}(y|\boldsymbol{x})\Big\Vert p(y|\boldsymbol{x})\Big) d\boldsymbol{x}\end{aligned} \label{eq:7}
+\end{equation}
+where
+\begin{equation}
+\tilde{p}(1|\boldsymbol{x})=\frac{\tilde{p}(\boldsymbol{x})}{\tilde{p}(\boldsymbol{x})+U(\boldsymbol{x})} \label{eq:8}
+\end{equation}
+Equation $\eqref{eq:7}$ is the integral of the KL divergence. Since KL divergence is non-negative, when "the hypothesized distribution form is satisfied and fully optimized," equation $\eqref{eq:7}$ should be 0, so that we have $\tilde{p}(y|\boldsymbol{x})= p(y|\boldsymbol{x})$, which is:
+\begin{equation}
+\frac{\tilde{p}(\boldsymbol{x})}{\tilde{p}(\boldsymbol{x})+U(\boldsymbol{x})}=\tilde{p}(1|\boldsymbol{x})=p(1|\boldsymbol{x})=\sigma\Big(G(\boldsymbol{x};\boldsymbol{\theta})-\gamma\Big) \label{eq:9}
+\end{equation}
+Solving for $\tilde{p}(\boldsymbol{x})$ gives:
+\begin{equation}
+\begin{aligned}\tilde{p}(\boldsymbol{x})=&\frac{p(1|\boldsymbol{x})}{p(0|\boldsymbol{x})}U(\boldsymbol{x})\\
+=&\exp\Big\{G(\boldsymbol{x};\boldsymbol{\theta})-\gamma\Big\}U(\boldsymbol{x})\\
+=&\exp\Big\{G(\boldsymbol{x};\boldsymbol{\theta})-\big(\gamma-\log U(\boldsymbol{x})\big)\Big\}\end{aligned} \label{eq:10}
+\end{equation}
+If $U(\boldsymbol{x})$ is chosen as a uniform distribution, then $U(\boldsymbol{x})$ is just a constant. Thus, the final effect indicates that $\gamma - \log U(\boldsymbol{x})$ plays the role of $\log Z$, while the distribution remains the original distribution $\eqref{eq:3}$ and $\boldsymbol{\theta}$ remains the original $\boldsymbol{\theta}$.</p>
+
+<p>This demonstrates that NCE is an ingenious indirect scheme for optimizing equation $\eqref{eq:3}$: seemingly roundabout, it results in equivalence, and the computational complexity of equation $\eqref{eq:5}$ is greatly reduced, as it only depends on the number of samples.</p>
+
+<h2>Some Interludes</h2>
+
+<p>Some topics related to NCE are collected here.</p>
+
+<h3>Brief Overview of NCE and Negative Sampling</h3>
+
+<p>The systematic proposal of NCE was in the 2010 paper <a href="http://proceedings.mlr.press/v9/gutmann10a/gutmann10a.pdf">"Noise-contrastive estimation: A new estimation principle for unnormalized statistical models"</a>. Subsequently, training large-scale neural language models basically adopted NCE or similar losses. The title of the paper actually reveals the key point of NCE: it is a "parameter estimation principle" for "unnormalized models," specifically designed to handle scenarios where the normalization factor is difficult to compute.</p>
+
+<p>But in fact, the idea of "Negative Sampling" had been used earlier. For example, at ICML 2008, Ronan Collobert and Jason Weston, in their paper <a href="https://ronan.collobert.com/pub/matos/2008_nlp_icml.pdf">"A Unified Architecture for Natural Language Processing: Deep Neural Networks with Multitask Learning"</a>, had already used the negative sampling method to train word vectors. You know, that was four or five years before Word2Vec was released! For the story of word vectors and language models, please refer to licstar's <a href="http://licstar.net/archives/328">"Word Vectors and Language Models"</a>.</p>
+
+<p>Based on the same need to reduce computational costs, Google's Word2Vec later also used negative sampling techniques. In many tasks, it even performed better than Huffman-based Softmax, especially in the "word analogy" experiments. We will analyze the wisdom behind this soon.</p>
+
+<h3>Word2Vec</h3>
+
+<p>Now let's apply this to Word2Vec to analyze a few things. Taking the Skip-gram model as an example, the goal of Word2Vec is:
+\begin{equation}
+p(w_j|w_i)=\frac{e^{\langle \boldsymbol{u}_i, \boldsymbol{v}_j\rangle}}{Z_i} \label{eq:11}
+\end{equation}
+where $\boldsymbol{u}_i, \boldsymbol{v}_j$ are parameters to be optimized, representing two different sets of word vector spaces for the center word and context. Obviously, the problem here is that the normalization factor calculation cost is massive. The solutions include Huffman Softmax and Negative Sampling. We are not concerned with Huffman Softmax here; we just need to know it is an approximation of the original standard Softmax. Let's look at Negative Sampling. Word2Vec changes the optimization target to:
+\begin{equation}
+\mathop{\text{argmin}}_{\boldsymbol{u},\boldsymbol{v}} - \mathbb{E}_{w_j\sim \tilde{p}(w_j|w_i)}\log \sigma\Big(\langle \boldsymbol{u}_i, \boldsymbol{v}_j\rangle\Big) - \mathbb{E}_{w_j\sim \tilde{p}(w_j)}\log \Big[1-\sigma\Big(\langle \boldsymbol{u}_i, \boldsymbol{v}_j\rangle\Big)\Big] \label{eq:12}
+\end{equation}
+This formula might look dizzying, but in short, it expresses the idea: "Skip-grams appearing in the corpus are treated as positive samples, and words sampled randomly are treated as negative samples."</p>
+
+<p>First and most obviously, compared to equations $\eqref{eq:4}$ and $\eqref{eq:5}$, equation $\eqref{eq:12}$ omits the introduction of $\gamma$ as a training parameter, essentially defaulting to $\gamma=0$. Is this allowed? It is said that someone has indeed conducted comparative experiments, and the results showed that the trained $\gamma$ does fluctuate around 0, so this default operation is basically reasonable.</p>
+
+<p>Secondly, for negative samples, Word2Vec does not "sample every word uniformly," but rather samples based on the total frequency of each word itself. In this way, equation $\eqref{eq:10}$ becomes:
+\begin{equation}
+\tilde{p}(w_j|w_i)=\frac{p(1|w_i, w_j)}{p(0|w_i, w_j)}p(w_j)=e^{\langle \boldsymbol{u}_i, \boldsymbol{v}_j\rangle}\tilde{p}(w_j) \label{eq:13}
+\end{equation}
+That is to say, the final fitting effect is:
+\begin{equation}
+\log \frac{\tilde{p}(w_j|w_i)}{\tilde{p}(w_j)} = \langle \boldsymbol{u}_i, \boldsymbol{v}_j\rangle \label{eq:14}
+\end{equation}
+As everyone can see, the left side is the mutual information of the two words! <strong>Originally, our fitting target was that the inner product of two words equals the (logarithm of the) conditional probability $\tilde{p}(w_j|w_i)$; now, through the Negative Sampling of Word2Vec, the inner product of two words is their mutual information.</strong></p>
+
+<p>Now we can roughly explain why Word2Vec's Negative Sampling works better than Huffman Softmax. Huffman Softmax is just an approximation of Softmax; it essentially still fits $\tilde{p}(w_j|w_i)$, while the Negative Sampling technique fits the mutual information $\log\frac{\tilde{p}(w_j|w_i)}{\tilde{p}(w_j)}$. We know that Word2Vec relies on co-occurrence to reflect word meaning, and mutual information can reflect the "true" co-occurrence relationship between words better than conditional probability $\tilde{p}(w_j|w_i)$. In other words, $\tilde{p}(w_j|w_i)$ might reflect a relationship like "I know Jay Chou, but Jay Chou doesn't know me," while mutual information reflects "You know me, and I know you," the latter being better at capturing semantic relationships.</p>
+
+<p>In another word vector model I constructed previously, <a href="translation_4671.html">"A More Elegant Word Vector Model (III): Models Describing Correlation"</a>, it was also shown that models constructed based on mutual information can theoretically explain many experimental results like "word analogy." This also indirectly confirms that the combination of "Skip-gram + Negative Sampling" based on mutual information is an excellent combination for Word2Vec. Therefore, the fundamental reason is not a question of which is inherently superior between Huffman Softmax and Negative Sampling, but rather that their optimization targets are already different.</p>
+
+<h2>The Train Has Reached the Final Station</h2>
+
+<p>The purpose of this article was to introduce NCE, an exquisite parameter estimation technique, and point out that it can be used to estimate parameters in probability distributions when it is difficult to complete normalization. In principle, this is a universal method, and it is likely that in some scenarios, it is the only possible solution.</p>
+
+<p>Finally, we used Word2Vec as a specific example for a simple analysis, discussed some detailed issues when using NCE, and coincidentally explained why Negative Sampling is good~</p>
+
+<p>Related link: <a href="https://mp.weixin.qq.com/s?__biz=MzA3MzI4MjgzMw==&mid=2650720050&idx=2&sn=9fedc937d3128462c478ef7911e77687&chksm=871b034cb06c8a5a8db8a10f708c81025fc62084d871ac5d184bab5098cb64e939c1c23a7369&mpshare=1&scene=1&srcid=0613xBLYGgZUw99YG99QMP6p#rd">"Word Embedding Series Blog Part 2: Comparing Several Methods of Approximating Softmax in Language Modeling"</a></p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_5617.html" style="color: #005fcc;">https://kexue.fm/archives/5617</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,229 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    macros: {
+      mathbb: ['{\\mathbb{#1}}', 1],
+      mathcal: ['{\\mathcal{#1}}', 1]
+    }
+  },
+  options: {
+    renderActions: {
+      addMenu: []
+    }
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/9098">How to Train Your Accuracy?</a></h1>
+    <p>By 苏剑林 | June 01, 2022</p>
+
+    <p>Recently, a paper on Arxiv titled <a href="https://papers.cool/arxiv/2205.09615">"EXACT: How to Train Your Accuracy"</a> caught my interest. As the name suggests, it introduces how to directly use accuracy as the training objective to train a model. Since I have previously done some analysis on this topic, such as in <a href="translation_6620.html">"Random Talk on Function Smoothing: Differentiable Approximations of Non-differentiable Functions"</a> and <a href="translation_7708.html">"Revisiting the Class Imbalance Problem: Comparison and Connection Between Adjusting Weights and Modifying Loss"</a>, I quickly finished reading the paper with my prior research experience and wrote this summary, along with some recent new thoughts on this subject.</p>
+
+    <h2 id="unrealistic-example">An Unrealistic Example</h2>
+    <p>The paper points out at the beginning that the classification loss functions we usually use, such as Cross-Entropy or Hinge Loss in SVM, do not fit the final evaluation metric—accuracy—very well. To illustrate this, the paper gives a very simple example: suppose the data consists of only three points $\{(-0.25,-1),(0,-1),(0.25,1)\}$, where $-1$ and $1$ represent the negative and positive classes respectively. The model to be fitted is $f(x)=x-b$, where $b$ is a parameter, and we hope to predict the category via $\text{sign}(f(x))$. If we use "sigmoid + Cross-Entropy," the loss function is $-\log \frac{1}{1+e^{-l \cdot f(x)}}$, where $(x,l)$ represents a pair of labeled data; if Hinge Loss is used, it is $\max(0, 1 - l\cdot f(x))$.</p>
+
+    <p>Since this is a one-dimensional model, we can directly perform a grid search for its optimal solution. It can be found that using "sigmoid + Cross-Entropy," the minimum of the loss function is reached at $b=0.7$, while for Hinge Loss, $b\in[0.75,1]$. However, to achieve complete classification accuracy through $\text{sign}(f(x))$, $b$ must be in $(0, 0.25)$. Therefore, this illustrates the inconsistency between Cross-Entropy or Hinge Loss and the final evaluation metric, accuracy.</p>
+
+    <p>This seems like a concise and elegant example, but I believe it is unrealistic. The biggest problem is the model's setting of the temperature parameter; typically, the model appears as $f(x)=k(x-b)$ rather than $f(x)=x-b$. Deliberately removing the temperature parameter to construct an unrealistic counterexample is unconvincing. In fact, after adding a tunable temperature parameter, both loss functions can learn the correct answer. Even more unfairly, when the authors later propose their solution, EXACT, it comes with its own temperature parameter, which is a key component. In other words, in this example, EXACT is better than the other two losses purely because EXACT has a temperature parameter.</p>
+
+    <h2 id="old-wine-in-new-bottles">Old Wine in New Bottles</h2>
+    <p>Now let's look at the proposed scheme—EXACT (EXpected ACcuracy opTimization). In hindsight, EXACT is somewhat mysterious because the authors directly, and without much explanation, redefine a conditional probability distribution $p(y|x)$ from the perspective of reparameterization:</p>
+\begin{equation}p(y|x) = P\left(y = \mathop{\text{argmax}}_i \frac{\mu(x)}{\sigma(x)}+\varepsilon\right)\end{equation}
+    <p>where $\mu(x)$ is a vector network, $\sigma(x)$ is a scalar network, and $\varepsilon$ has the same dimension as $\mu(x)$, with each component independently and identically distributed (i.i.d.) sampled from $\sim \mathcal{N}(0,1)$. We have already discussed the practice of defining probability distributions from a reparameterization perspective in the previous article <a href="translation_9085.html">"Constructing Discrete Probability Distributions from a Reparameterization Perspective"</a>, so I won't repeat it here.</p>
+
+    <p>Immediately after, with this new $p(y|x)$, the authors directly use</p>
+\begin{equation}-\mathbb{E}_{(x,y)\sim\mathcal{D}}[p(y|x)]\label{eq:soft-acc}\end{equation}
+    <p>as the loss function. The entire theoretical framework basically ends here.</p>
+
+    <p>From this, we can summarize the mysterious aspects of EXACT. From <a href="translation_9085.html">"Constructing Discrete Probability Distributions from a Reparameterization Perspective"</a>, we know that from a reparameterization view, the noise distribution corresponding to Softmax is the Gumbel distribution, while EXACT changed it to a Normal distribution. So, what is the benefit? Why is it better? These are not explained at all.</p>
+
+    <p>Furthermore, the negative of Equation $\eqref{eq:soft-acc}$ is a smooth approximation of accuracy, which is already "widely known." However, there is also a widely known conclusion that in the Softmax case, directly optimizing Equation $\eqref{eq:soft-acc}$ is usually inferior to optimizing Cross-Entropy. Now, it is just "old wine" (the same smooth approximation of accuracy) in a "new bottle" (a new method for constructing the probability distribution). Can it really provide an improvement?</p>
+
+    <h2 id="hard-to-reproduce">Experiments Hard to Reproduce</h2>
+    <p>The original paper presents very impressive experimental results, showing that EXACT is almost always SOTA:</p>
+
+    <p style="text-align:center;"><img src="https://api.kexue.fm/public/uploads/2022/06/01/1654050867-0.png" alt="Experimental results of the EXACT paper" style="max-width:100%;"></p>
+
+    <p>However, I tried to implement EXACT based on my own understanding and tested it on NLP tasks. The results showed that EXACT completely failed to reach the level of "Softmax + Cross-Entropy." Additionally, the original paper mentioned that optimizing $-\log\mathbb{E}_{(x,y)\sim\mathcal{D}}[p(y|x)]$ would be better than $\eqref{eq:soft-acc}$, but my results showed that this variant couldn't even match $\eqref{eq:soft-acc}$. Overall, my test conclusions are quite different from the original paper.</p>
+
+    <p>Since the original paper has not yet released open-source code, I cannot further judge the reliability of the paper's experiments. However, from my theoretical understanding and preliminary experimental results, it is very unlikely that directly optimizing Equation $\eqref{eq:soft-acc}$ can achieve the effect of optimizing Cross-Entropy. Simply modifying the method of constructing the probability distribution should be difficult to form a substantial improvement. If readers have new experimental results, they are welcome to share and exchange them.</p>
+
+    <h2 id="new-perspective">A New Perspective</h2>
+    <p>In terms of numerical values, Equation $\eqref{eq:soft-acc}$ is indeed closer to accuracy than the Cross-Entropy $\mathbb{E}_{(x,y)\sim\mathcal{D}}[-\log p(y|x)]$. But why does optimizing Cross-Entropy often yield better accuracy? I was also puzzled by this for a long time. In <a href="translation_7708.html">"Revisiting the Class Imbalance Problem: Comparison and Connection Between Adjusting Weights and Modifying Loss"</a>, I resorted to treating it as an "axiom," which was a compromise.</p>
+
+    <p>Until one day, I suddenly realized a relationship: as training progresses, most $p(y|x)$ gradually approach 1, so we can use the approximation $\log x \approx x - 1$ to obtain:</p>
+\begin{equation}\mathbb{E}_{(x,y)\sim\mathcal{D}}[-\log p(y|x)]\approx \mathbb{E}_{(x,y)\sim\mathcal{D}}[1 - p(y|x)] = 1 - \mathbb{E}_{(x,y)\sim\mathcal{D}}[p(y|x)]\end{equation}
+    <p>Thus, we can explain why optimizing Cross-Entropy also yields good accuracy, because from the above equation, we can see that in the middle and late stages of optimization, Cross-Entropy is basically equivalent to Equation $\eqref{eq:soft-acc}$, which means it is also optimizing a smooth approximation of accuracy!</p>
+
+    <p>What then is the benefit of Cross-Entropy compared to Equation $\eqref{eq:soft-acc}$? The difference lies in the gap between $-\log p(y|x)$ and $1 - p(y|x)$ when $p(y|x) \ll 1$. When $p(y|x) \ll 1$, i.e., the probability of the target class is very small, it means the classification is likely very inaccurate. In this case, $-\log p(y|x)$ gives a result that tends towards infinity, while $1 - p(y|x)$ can give at most $1$. With such a comparison, we find that the $-\log p(y|x)$ of Cross-Entropy gives a greater penalty to misclassified samples, so it will be more inclined to correct misclassified samples, while the final classification result remains close to direct optimization of the smooth approximation of accuracy.</p>
+
+    <p>From this, we can gain a new perspective on an excellent loss function:</p>
+
+    <blockquote>
+        <strong>First, find a smooth approximation of the evaluation metric, preferably expressed as an expected form for each sample. Then, stretch the error in the incorrect direction to infinity (to ensure the model focuses more on incorrect samples), but at the same time, ensure a first-order approximation with the original form in the correct direction.</strong>
+    </blockquote>
+
+    <h2 id="summary">Final Summary</h2>
+    <p>This article mainly discusses how to optimize accuracy. It first provides a brief introduction and review of the recent paper <a href="https://papers.cool/arxiv/2205.09615">"EXACT: How to Train Your Accuracy"</a> and then offers an personal analysis of "why optimizing Cross-Entropy can yield better accuracy results."</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9098.html" style="color: #005fcc;">https://kexue.fm/archives/9098</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

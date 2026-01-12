@@ -1,0 +1,261 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+<h1><a href="https://kexue.fm/archives/9969">Idempotent Generative Network IGN: A GAN Attempting to Unify Discrimination and Generation</a></h1>
+
+<p>By 苏剑林 | January 31, 2024</p>
+
+<p>A while ago, a generative model named "<a href="https://papers.cool/arxiv/2311.01462">Idempotent Generative Network (IGN)</a>" caught some attention. It claimed to be a new type of generative model independent of existing VAE, GAN, flow, and Diffusion models, and it features single-step sampling. Perhaps because everyone has grown weary of the multi-step sampling process of current mainstream diffusion models, any "rustle in the grass" claiming single-step sampling easily attracts attention. Furthermore, the word "idempotent" in the name IGN added a sense of mystery, further heightening expectations and successfully piquing my interest. However, I was busy with other things before, so I didn't have time to read the model details carefully.</p>
+
+<p>Recently, having some free time, I remembered IGN and pulled up the paper. But after reading it, I was quite puzzled: how is this a new model? Isn't it just a variant of GAN? The difference from a regular GAN is that it merges the generator and discriminator into one. Does this "merging into one" offer any special benefits, such as better training stability? Personally, I don't feel it does. Below, I will share my process and doubts in understanding IGN from a GAN perspective.</p>
+
+<h2>Generative Adversarial</h2>
+
+<p>Regarding GANs (Generative Adversarial Networks), I studied them systematically a few years ago (you can check the <a href="https://kexue.fm/tag/GAN/">GAN</a> tag for related articles), but I haven't followed them continuously in recent years. Therefore, I'll first give a brief review of GANs to facilitate a comparison between GANs and IGN in subsequent chapters.</p>
+
+<p>A GAN has two basic components: a Discriminator and a Generator. They can be described as a "judge" and a "counterfeiter." The discriminator is responsible for distinguishing between real samples and fake samples produced by the generator, while the generator is responsible for mapping simple random noise to target samples and uses signals from the discriminator to improve its generation quality. Through constant "attack and defense," the generator's quality improves until the discriminator can no longer distinguish between real and fake samples, achieving a realistic effect.</p>
+
+<p>Taking WGAN as an example, the training goal of the discriminator $D_\theta$ is to widen the score gap between real and fake samples:</p>
+
+\begin{equation}\max_{\theta} D_{\theta}(G_{\varphi}(z)) - D_{\theta}(x)\label{eq:d-loss}\end{equation}
+
+<p>where $x$ is a real sample from the training set, $z$ is random noise, $G_{\varphi}$ is the generator, and $G_{\varphi}(z)$ is the fake sample. The training goal of the generator is to narrow the score gap between real and fake samples, i.e., minimizing the above equation. However, for the generator, $x$ (which contains no parameters $\varphi$) is equivalent to a constant, so it can be simplified to:</p>
+
+\begin{equation}\min_{\varphi} D_{\theta}(G_{\varphi}(z))\label{eq:g-loss}\end{equation}
+
+<p>Besides this, there is also the matter of Lipschitz constraints, but those are details. For interested readers, you can further read articles like <a href="translation_4439.html">"The Art of Mutual Confrontation: WGAN-GP from Scratch"</a> and <a href="translation_6280.html">"From Wasserstein Distance and Duality Theory to WGAN"</a>.</p>
+
+<p>Generally, GANs are trained with two alternating losses. Sometimes they can be written as a single loss optimized in two directions—performing gradient descent on some parameters and gradient ascent on others. This training process involving opposing directions (i.e., $\min$-$\max$) is usually unstable and prone to collapsing, or if it does train, it may suffer from "Mode Collapse," where the generated results lack diversity.</p>
+
+<h2>Single Loss</h2>
+
+<p>Some readers might object: "You said GANs use two alternating losses, but IGN clearly uses a single loss; how can you say IGN is a special case of GAN?"</p>
+
+<p>In fact, IGN's single loss formulation is a bit of a "cheat." Using its logic, a GAN can also be written in a single loss form. How? It's simple. Assume $\theta', \varphi'$ are copies of the weights $\theta, \varphi$, such that $\theta' \equiv \theta$ and $\varphi' \equiv \varphi$, but they do not compute gradients. Then equations \eqref{eq:d-loss} and \eqref{eq:g-loss} can be merged into:</p>
+
+\begin{equation}\min_{\theta,\varphi} D_{\theta}(x) - D_{\theta}(G_{\varphi'}(z)) + D_{\theta'}(G_{\varphi}(z))\label{eq:pure-one-loss}\end{equation}
+
+<p>At this point, the gradients with respect to $\theta, \varphi$ are the same as when the two losses are separate, making it an equivalent implementation. But why is this a "cheat"? Because it involves no real technique; it purely replaces the $\min$-$\max$ notation. If implemented strictly this way, one would need to constantly clone $D_{\theta'}$ and $G_{\varphi'}$ and stop their gradients, which is very inefficient for training.</p>
+
+<p>In fact, to write GAN as a single loss and maintain practicality, one can refer to my previous article <a href="translation_6387.html">"Clever Gradient Cutting: Implementing GAN with a Single Loss"</a>. By using the framework's native <code>stop_gradient</code> operator along with some gradient calculation tricks, this can be achieved. Specifically, <code>stop_gradient</code> forces the gradient of a certain part of the model to be 0. For example:</p>
+
+\begin{equation}\nabla_{\theta,\varphi} D_{\theta}(G_{\varphi}(z)) = \left(\frac{\partial D_{\theta}(G_{\varphi}(z))}{\partial\theta},\frac{\partial D_{\theta}(G_{\varphi}(z))}{\partial\varphi}\right)\label{eq:full-grad}\end{equation}
+
+<p>After adding the <code>stop_gradient</code> operator (abbreviated as $\color{skyblue}{\text{sg}}$), we have:</p>
+
+\begin{equation}\nabla_{\theta,\varphi} D_{\theta}(\color{skyblue}{\text{sg}(}G_{\varphi}(z)\color{skyblue}{)}) = \left(\frac{\partial D_{\theta}(G_{\varphi}(z))}{\partial\theta},0\right)\label{eq:stop-grad}\end{equation}
+
+<p>Thus, through the <code>stop_gradient</code> operator, we can easily block the inner gradient of a nested function (i.e., the gradient of $\varphi$). What about blocking the outer gradient (the gradient of $\theta$), as required for the generator? There is no direct way, but we can use a trick: subtract equation \eqref{eq:stop-grad} from equation \eqref{eq:full-grad}:</p>
+
+\begin{equation}\nabla_{\theta,\varphi} D_{\theta}(G_{\varphi}(z)) - \nabla_{\theta,\varphi} D_{\theta}(\color{skyblue}{\text{sg}(}G_{\varphi}(z)\color{skyblue}{)}) = \left(0,\frac{\partial D_{\theta}(G_{\varphi}(z))}{\partial\varphi}\right)\end{equation}
+
+<p>This achieves the blocking of the outer gradient. By combining these, we get one way to train a GAN with a single loss:</p>
+
+\begin{equation}\begin{gathered}
+\min_{\theta,\varphi} \underbrace{D_{\theta}(x) - D_{\theta}(\color{skyblue}{\text{sg}(}G_{\varphi}(z)\color{skyblue}{)})}_{\text{Gradient of } \varphi \text{ removed}} + \underbrace{D_{\theta}(G_{\varphi}(z)) - D_{\theta}(\color{skyblue}{\text{sg}(}G_{\varphi}(z)\color{skyblue}{)})}_{\text{Gradient of } \theta \text{ removed}} \\[8pt]
+= \min_{\theta,\varphi} D_{\theta}(x) - 2 D_{\theta}(\color{skyblue}{\text{sg}(}G_{\varphi}(z)\color{skyblue}{)}) + D_{\theta}(G_{\varphi}(z))\end{gathered}\end{equation}
+
+<p>This way, there's no need to repeatedly clone the model, and gradient equivalence is achieved within a single loss.</p>
+
+<h2>Idempotent Generation</h2>
+
+<p>After all that, it's finally time for our main character—the Idempotent Generative Network (IGN)—to take the stage. But before its formal entrance, please wait a moment while we discuss the motivation behind IGN.</p>
+
+<p>A notable characteristic of GANs is that once training is successful, only the generator is usually kept; the discriminator is mostly "discarded." However, in a reasonable GAN, the generator and discriminator often have the same order of magnitude of parameters. Discarding the discriminator means half of the parameters are wasted, which is unfortunate. To address this, some work has tried incorporating encoders into GANs and sharing some parameters between the discriminator and encoder to improve parameter utilization. Among them, the most minimalist work is the <a href="translation_6409.html">O-GAN</a> I proposed, which only slightly modifies the discriminator's structure and adds an extra loss to turn the discriminator into an encoder without increasing parameters or computation. It is a work I am quite satisfied with.</p>
+
+<p>As the title suggests, IGN is a GAN that attempts to merge the discriminator and generator. The generator acts as "both the player and the referee," so from this perspective, IGN can also be seen as a way to improve parameter utilization. First, IGN assumes that $z$ and $x$ are the same size, so the input and output sizes of the generator $G_{\varphi}$ are the same, which differs from regular GANs where the dimensionality of $z$ is usually smaller than $x$. With input and output designed to be the same size, images themselves can be passed as input into the generator for further calculation. Thus, IGN designs the discriminator as a reconstruction loss:</p>
+
+\begin{equation}\delta_{\varphi}(x) = \Vert G_{\varphi}(x) - x\Vert^2\label{eq:ign-d}\end{equation}
+
+<p>$\delta_{\varphi}$ follows the notation from the original IGN paper and has no special meaning. This design fully reuses the generator's parameters and adds no extra parameters, which seems very elegant. Now, if we substitute this discriminator into equation \eqref{eq:pure-one-loss}, we get:</p>
+
+\begin{equation}\min_{\varphi}\underbrace{\delta_{\varphi}(x) - \delta_{\varphi}(G_{\varphi'}(z))}_{\text{Discriminator loss}} + \underbrace{\delta_{\varphi'}(G_{\varphi}(z))}_{\text{Generator loss}}\end{equation}
+
+<p>Doesn't this look exactly like the **Final optimization objective** in the original IGN paper? Of course, the original paper includes two adjustable coefficients. In fact, every term's coefficient in equation \eqref{eq:pure-one-loss} is adjustable, so that's nothing special. Thus, it's clear that IGN can be entirely derived from a GAN perspective; it is a special case of GAN—even though the authors stated they did not think of IGN from a GAN perspective.</p>
+
+<p>The term "idempotent" comes from the authors' belief that when IGN is successfully trained, the discriminator's score for real samples is 0, meaning $G_{\varphi}(x) = x$. From this, it can be inferred that:</p>
+
+\begin{equation}G_{\varphi}(\cdots G_{\varphi}(x)) = \cdots = G_{\varphi}(G_{\varphi}(x)) = G_{\varphi}(x) = x\end{equation}
+
+<p>In other words, applying $G_{\varphi}$ to a real sample $x$ multiple times leaves the result unchanged, which is the mathematical meaning of "idempotence." However, theoretically, we cannot guarantee that the GAN discriminator's loss (for real samples) will be exactly zero, so it is hard to achieve true idempotence. The experimental results in the original paper also reflect this.</p>
+
+<h2>Personal Analysis</h2>
+
+<p>A question worth considering is: **Why can the reconstruction loss \eqref{eq:ign-d} successfully serve as a discriminator? Or, given that many expressions can be constructed using $G_{\varphi}(x)$ and $x$, can any of them serve as a discriminator?**</p>
+
+<p>From the perspective of "reconstruction loss as a discriminator," IGN is very similar to <a href="https://papers.cool/arxiv/1609.03126">EBGAN</a>. However, this doesn't mean EBGAN's success explains IGN's, because EBGAN's generator is independent of the discriminator and lacks the constraint of fully shared parameters. Thus, EBGAN's success is "within expectations" and fits GAN's original design. But IGN is different because its discriminator and generator share parameters completely, and GAN training itself has significant instability, making it easy for both to "sink together."</p>
+
+<p>In my view, IGN has a chance not to fail because it happens to satisfy "self-consistency." First, the fundamental goal of a GAN is for $G_{\varphi}(z)$ to output a real image for input noise $z$. In IGN's design of "reconstruction loss as a discriminator," even if the discriminator's optimal loss isn't zero, it might be close, meaning $G_{\varphi}(x) \approx x$ is approximately satisfied. Thus, it simultaneously satisfies the condition: "for input image $x$, $G_{\varphi}(x)$ can output a real image." That is, regardless of the input, the output space is that of real samples. This self-consistency is crucial; otherwise, the generator might "fall apart" trying to generate in two different directions.</p>
+
+<p>That being said, what tangible improvement does IGN offer over a general GAN? Please forgive my dullness, but I really can't see the benefit of IGN. Regarding parameter utilization, it looks like IGN's parameter sharing increases efficiency, but in fact, to ensure the input and output of $G_{\varphi}$ are the same size, IGN uses an autoencoder structure. Its parameter count and computation amount are equal to the sum of a generator and discriminator in a typical GAN! In other words, IGN doesn't reduce the parameter count; instead, it increases the total computation because it enlarges the generator's volume.</p>
+
+<p>I also conducted a simple experiment with IGN and found that its training also suffers from instability—one could even say it's more unstable because hard constraints like "parameter sharing + Euclidean distance" are more likely to amplify instability, leading to "sinking together" rather than "rising together." Furthermore, because IGN's generator has identical input and output sizes, it loses the advantage of general GAN generators projecting from a low-dimensional manifold to high-dimensional data. IGN is also prone to mode collapse, and due to the use of Euclidean distance, the generated images tend to be blurry like those of a VAE.</p>
+
+<h2>Summary</h2>
+
+<p>This article introduced the Idempotent Generative Network (IGN), which recently gained attention, from a GAN perspective. It compared the connections and differences between IGN and GAN and shared an analysis of IGN.</p>
+
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9969.html" style="color: #005fcc;">https://kexue.fm/archives/9969</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,207 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9762">A Problem and Countermeasure for Large-Vocabulary Language Models in Text Continuation Tasks</a></h1>
+
+    <p>By 苏剑林 | September 13, 2023</p>
+
+
+<p>For LLMs, increasing the vocabulary size of the Tokenizer to improve the compression rate, thereby shortening sequence lengths and reducing decoding costs, is a development that everyone welcomes. After all, increasing the vocabulary only requires expanding the Embedding layer and the output Dense layer, parts where the added computational overhead is nearly imperceptible. However, the performance boost in decoding speed brought by shortening the sequence length is very tangible. Of course, increasing the vocabulary size may also have some negative impacts on model performance, so it cannot be increased without restraint. This article analyzes a problem that arises in language models on text continuation tasks after increasing the vocabulary and proposes a reference solution.</p>
+
+<h2>Pros and Cons Analysis</h2>
+
+<p>The benefits of increasing the vocabulary size are obvious. On one hand, since LLMs are autoregressive, decoding becomes progressively slower. "Increasing vocabulary → improving compression rate → shortening sequence length" means that the number of tokens corresponding to the same text decreases. In other words, the number of decoding steps is reduced, thereby increasing decoding speed. On the other hand, since language models are trained using Teacher Forcing, shortening the sequence length can alleviate the Exposure Bias problem caused by Teacher Forcing, potentially improving model performance.</p>
+
+<p>However, the disadvantages of increasing the vocabulary are also clear—the most direct being that it severs the connections between tokens at the character level, which may affect generalization or even result in the loss of ability to perform certain tasks. For example, if "Solar Energy" (太阳能) and "Solar" (太阳) are both individual tokens in the vocabulary, the model does not inherently know that "Solar Energy" is composed of "Solar" and "Energy," nor that "Solar" consists of specific characters. This makes it difficult to perform subword-related tasks, such as the classic question "How do you read 'Solar Energy' backwards?" The expected answer is "Energy Solar," but since the model does not perceive it as being composed of individual components, it is difficult to answer correctly.</p>
+
+<h2>The Continuation Problem</h2>
+
+<p>Recently, <a href="https://twitter.com/py_armen">@Armen Aghajanyan</a> shared another issue. They used an ultra-large vocabulary when training a code model, resulting in common commands like <code>import numpy as np</code> becoming a single token. They then discovered that when a user inputs <code>import numpy</code>, the model is unable to continue the sequence with <code> as np</code>. The reason is simple: <code>import numpy as np</code> was treated as a single token. When <code>import numpy</code> appears alone, the model finds that it is never followed by <code> as np</code> (since cases followed by <code> as np</code> were merged into the single <code>import numpy as np</code> token), and thus it cannot complete the continuation naturally.</p>
+
+<p>This phenomenon is indeed classic. It is not limited to code models; it also appears in common natural language models. For instance, when "Solar Energy" (太阳能) and "Solar" (太阳) both become independent tokens, if a user inputs "Solar," the next continued character will likely not be "Energy" (能), which may not match the user's distributional expectations. Similarly, if "White Cloud" (白云), "White Cloud Mountain" (白云山), and "White Cloud Airport" (白云机场) are all independent tokens, after a user inputs "Guangzhou's White Cloud," the model will almost never continue with "Guangzhou's White Cloud Airport" or "Guangzhou's White Cloud Mountain," and so on.</p>
+
+<h2>Reference Strategy</h2>
+
+<p>However, I believe that the phenomenon mentioned by Armen Aghajanyan does not necessarily constitute a disadvantage of large vocabularies; rather, with a bit of processing, it could actually become an advantage. This problem is quite simple. Before LLMs existed, we could perform certain completion tasks based on "vocabulary + prefix search." Now that we have LLMs, must we be confined by the LLM alone and not combine LLM-based continuation with vocabulary-based continuation?</p>
+
+<p>Returning to the previous example, suppose the user inputs "Guangzhou's White Cloud" (广州的白云). The Tokenizer splits it into "Guangzhou / of / White Cloud." Now, if these three tokens are converted directly into IDs and input into the model, it will be unable to continue with results like "Guangzhou / of / White Cloud Airport." This is essentially because the Tokenizer cannot predict future text in advance, leading to an incorrect tokenization result. (Of course, one could also consider using a stochastic tokenization algorithm during the training phase. In such a case, "White Cloud Airport" might appear as a single word or as "White Cloud / Airport." This prevents the tokenization result from severely impacting subsequent performance and can even enhance generalization; see <a href="https://arxiv.org/abs/1804.10959">"Subword Regularization: Improving Neural Network Translation Models with Multiple Subword Candidates"</a>).</p>
+
+<p>So, can we estimate the future text? Suppose that after tokenizing into "Guangzhou / of / White Cloud," we take one step back and use "White Cloud" to perform a prefix search in the vocabulary. Let's further assume the search results are "White Cloud," "White Cloud Airport," "White Cloud Mountain," and "White Cloud Road." This search step is performed purely based on the vocabulary, and its computational cost is negligible compared to the LLM. Once we have the search results, we use the LLM to calculate:</p>
+
+\begin{equation}\begin{aligned} 
+p(\text{White Cloud}|\text{Guangzhou},\text{of}) \\
+p(\text{White Cloud Airport}|\text{Guangzhou},\text{of}) \\ 
+p(\text{White Cloud Mountain}|\text{Guangzhou},\text{of}) \\ 
+p(\text{White Cloud Road}|\text{Guangzhou},\text{of}) \\ 
+\end{aligned}\end{equation} 
+
+<p>Since the inputs are identical, calculating these four conditional probabilities only requires running the LLM once. Once we have these four conditional probabilities, we re-normalize them and perform sampling. If the sampled result is "White Cloud," we continue the generation based on "Guangzhou / of / White Cloud." If we sample "White Cloud Airport," we can output "Airport" and continue based on "Guangzhou / of / White Cloud Airport," and so on. This easily solves the problem mentioned by Armen Aghajanyan and turns the disadvantage into an advantage (when the compression rate is high, even if we step back one token, the word found through prefix search might be very long, allowing for more text to be generated at once). Specifically, the backtrack operation only needs to be performed at the first step of sampling; it is only to avoid tokenization errors caused by incomplete input. From the second step onwards, no backtracking is needed, so the additional computational overhead is minimal.</p>
+
+<p>It is worth mentioning that Microsoft has a library called <a href="https://github.com/guidance-ai/guidance">"guidance"</a> which also proposes a similar trick. Furthermore, considering more general scenarios, sometimes backtracking one step is not enough. For example, in the <code>import numpy as np</code> case, the input <code>import numpy</code> might be split into <code>import / numpy</code>. In this situation, one might need to backtrack at least two steps to form a complete and logical sequence. However, there is no fundamental difference; the details are just slightly more complex. I will not expand on that here; readers can construct it themselves when deploying inference models.</p>
+
+<h2>Summary</h2>
+
+<p>This article introduced a problem that can occur with ultra-large vocabulary LLMs during text continuation tasks and shared a reference solution.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9762.html" style="color: #005fcc;">https://kexue.fm/archives/9762</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

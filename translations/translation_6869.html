@@ -1,0 +1,232 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    processEscapes: true,
+    packages: {'[+]': ['base', 'ams', 'noerrors', 'noundefined']}
+  },
+  options: {
+    ignoreHtmlClass: 'tex2jax_ignore',
+    processHtmlClass: 'tex2jax_process'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/6869">Keras Implementation of Two Optimizers: Lookahead and LazyOptimizer</a></h1>
+    <p>By 苏剑林 | July 30, 2019</p>
+
+    <p>Recently, I implemented two optimizers using Keras. They involve some interesting implementation tricks, so I've decided to write a brief article to introduce them (if it were just one, I might not have written it). The names of these two optimizers are quite interesting: one is "Lookahead" and the other is "Lazy". Do they represent completely different optimization strategies? Not necessarily—it's more that the inventors were very creative with their naming.</p>
+
+    <h2 id="Lookahead">Lookahead</h2>
+    <p>First up is the Lookahead optimizer, which originates from the paper <a href="https://papers.cool/arxiv/1907.08610">"Lookahead Optimizer: k steps forward, 1 step back"</a>. It is a recently proposed optimizer that features big names like Hinton and Jimmy Ba (one of the authors of Adam) in the author list. With the endorsement of these two giants, this optimizer has attracted significant attention.</p>
+    <p>The idea behind Lookahead is very simple. To be precise, it's not a standalone optimizer but rather a strategy for using existing optimizers. In simple terms, it executes the following three steps in a loop:</p>
+    <blockquote>
+        1. Back up the current model weights $\theta$;<br>
+        2. Starting from $\theta$, update for $k$ steps using a specified optimizer to obtain new weights $\tilde{\theta}$;<br>
+        3. Update the model weights as $\theta \leftarrow \theta + \alpha\left(\tilde{\theta} - \theta\right)$.
+    </blockquote>
+    <p>Below is my Keras implementation. The implementation style was mentioned in a previous article, <a href="translation_5879.html">"Making Keras even Cooler: Niche Custom Optimizers"</a>. It belongs to an "intrusive" style of writing:</p>
+    <blockquote>
+        <a href="https://github.com/bojone/keras_lookahead">https://github.com/bojone/keras_lookahead</a>
+    </blockquote>
+    <p>Usage is very simple:</p>
+<pre><code class="python">from keras_lookahead import Lookahead
+from keras.optimizers import Adam
+
+# Define your model first
+# ...
+
+# Wrap the optimizer with Lookahead
+optimizer = Lookahead(Adam(1e-3), k=5, alpha=0.5)
+model.compile(optimizer=optimizer, loss='mse')
+</code></pre>
+    <p>Regarding its effectiveness, the original paper conducted several experiments. Some showed slight improvements (on CIFAR-10 and CIFAR-100), while others showed more significant gains (using LSTM for language modeling). I did a simple experiment myself, and the results showed virtually no change. I've always felt that optimizers are somewhat mysterious entities; sometimes you must use SGD to reach the optimum, and other times only Adam will converge. In short, one shouldn't expect that simply switching an optimizer will drastically improve model performance. Lookahead's existence simply provides us with one more choice. Readers with sufficient training time should feel free to try it out.</p>
+    <p>Appendix: <a href="https://mp.weixin.qq.com/s/3J-28xd0pyToSy8zzKs1RA">"Machine Heart's Introduction to Lookahead"</a> (Chinese)</p>
+
+    <h2 id="LazyOptimizer">LazyOptimizer</h2>
+    <p>The LazyOptimizer is essentially prepared for NLP, or more accurately, for Embedding layers.</p>
+    <p>LazyOptimizer points out that all optimizers with momentum (which naturally includes Adam and SGD with momentum) share a problem: words (tokens) that are not sampled in the current batch are still updated using historical momentum. This can lead to overfitting of the Embedding layer (refer to the <a href="https://www.zhihu.com/question/265357659/answer/580469438">Zhihu discussion</a>). Specifically, once a word has been sampled, the gradient for its Embedding entry is non-zero, and this gradient is recorded in the momentum. In subsequent batches, even if the word is not sampled, its Embedding gradient is zero, but its momentum is not. Consequently, the word is still updated. Thus, even tokens that aren't repeatedly sampled have their corresponding Embeddings updated repeatedly, leading to overfitting.</p>
+    <p>Therefore, an improved plan is to update only when the word has been sampled. This is the basic principle of LazyOptimizer.</p>
+    <p>In terms of implementation, how do we determine if a word has been sampled? The ultimate method would be to pass the indices of the sampled words, but that is not very user-friendly. I used an approximation here: check whether the gradient corresponding to the word's Embedding is zero. If it's zero, it means it "likely" was not sampled in the current batch. The rationale is that if it wasn't sampled, the gradient must be zero; if it was sampled, the probability of the gradient being exactly zero is extremely small (given so many components), so this implementation is sufficient.</p>
+    <p>My Keras implementation is located at:</p>
+    <blockquote>
+        <a href="https://github.com/bojone/keras_lazyoptimizer">https://github.com/bojone/keras_lazyoptimizer</a>
+    </blockquote>
+    <p>The usage is also simple: wrap an optimizer that has momentum and pass in all the Embedding layers, making it a new "Lazy" version of the optimizer:</p>
+<pre><code class="python">from keras_lazyoptimizer import LazyOptimizer
+from keras.optimizers import Adam
+
+# Define your model and get your embedding layers
+# model = ...
+# embedding_layers = [model.get_layer('embedding_1')]
+
+# Wrap the optimizer
+optimizer = LazyOptimizer(Adam(1e-3), embedding_layers=embedding_layers)
+model.compile(optimizer=optimizer, loss='binary_crossentropy')
+</code></pre>
+    <p>The GitHub repository also includes an <a href="https://github.com/bojone/keras_lazyoptimizer/blob/master/imdb_lstm_test.py">IMDB example</a>. In this example, if you use <code>Adam(1e-3)</code> directly as the optimizer, the highest validation accuracy is around 83.7%. However, if you use <code>LazyOptimizer(Adam(1e-3), embedding_layers)</code>, the optimal validation accuracy can consistently reach above 84.9%. The effect is quite evident. In general, I think models with very large Embedding layers (especially word-based models) are worth a try. Essentially, because the parameter count of the Embedding layer is so large, reducing the update frequency allows the model to focus its optimization on the remaining parts.</p>
+    <blockquote>
+        Note: This LazyOptimizer is slightly different from the standard LazyOptimizer. In the standard version, for tokens that aren't sampled, all related cached quantities (like momentum, etc.) are also not updated. However, in my implementation, even if the token isn't sampled, its corresponding cached quantities are still updated. Some evaluations suggest that this approach actually yields better results.
+    </blockquote>
+
+    <h2 id="Conclusion">Summary</h2>
+    <p>There isn't much else to add. I've implemented two optimizers in Keras to let Keras users try them out early or make their Keras experience a bit more interesting.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6869.html" style="color: #005fcc;">https://kexue.fm/archives/6869</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

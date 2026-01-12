@@ -1,0 +1,372 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']],
+      processEscapes: true,
+      tags: 'ams',
+      packages: {'[+]': ['ams']}
+    }
+  };
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/7737">Policy Gradient and Zeroth-Order Optimization: Different Paths to the Same Destination</a></h1>
+
+    <p>By 苏剑林 | September 15, 2020</p>
+
+    <p>A huge reason for the immense success of deep learning is that gradient-based optimization algorithms (SGD, Adam, etc.) can effectively solve most neural network models. However, since they are based on gradients, they require the model to be differentiable. As research progresses, we often find ourselves needing to solve non-differentiable models. Typical examples include directly optimizing metrics like accuracy, F1, or BLEU, or incorporating non-differentiable modules (such as "skip-reading" operations) within a neural network.</p>
+
+    <p align="center">
+        <img src="https://kexue.fm/usr/uploads/2020/09/1660999553.png" alt="Gradient" />
+    </p>
+
+    <p>This article will briefly introduce two effective methods for solving non-differentiable models: Policy Gradient, one of the most important methods in reinforcement learning, and Zeroth-Order Optimization, which requires no gradients at all. On the surface, these two optimization methods seem to have completely different approaches, but this article will further demonstrate that for a large class of optimization problems, the two are essentially equivalent.</p>
+
+    <h2>Formal Description <a id="形式描述" href="#形式描述">#</a></h2>
+
+    <p>First, let us formally define the problem we need to solve. Taking supervised learning as an example, assume training data $(x_t, y_t) \sim \mathcal{D}$, the model is $p_{\theta}(y|x)$, and $\theta$ is the parameter to be optimized with dimension $d$. Suppose the model itself is differentiable, and its general form is $softmax(f_{\theta}(y|x)/\tau)$, where $\tau$ is the temperature parameter (defaulting to $\tau=1$ unless otherwise specified). If the true label is $y_t$ and the predicted label is $y_p$, then the score for a single sample is denoted as $r(y_t, y_p)$. The training objective is to maximize the total score:</p>
+    
+    \begin{equation}\theta = \mathop{\text{argmax}}_{\theta}\mathbb{E}_{(x_t,y_t)\sim\mathcal{D}}\left[r\left(y_t, \mathop{\text{argmax}}_y p_{\theta}(y|x_t)\right)\right]\label{eq:base}\end{equation}
+
+    <p>This looks quite complex, but its meaning is actually intuitive and clear: we want to find the parameter $\theta$ such that the score $r(y_t, y_p)$ over the entire dataset is as high as possible, where $y_p = \mathop{\text{argmax}}_y p_{\theta}(y|x_t)$ means the model outputs the $y$ with the highest probability during prediction. Simply put, we want "the $y$ with the highest predicted probability to be the $y$ with the highest evaluation score."</p>
+
+    <p>This formulation corresponds to a considerable number of machine learning tasks. In NLP, this includes text classification, sequence labeling, text generation, etc.; even regression problems can be mapped onto this. It is highly representative. The fundamental difficulty is that the $\mathop{\text{argmax}}_y$ step does not provide a useful gradient, making it difficult to use gradient-based optimization algorithms directly.</p>
+
+    <h2>Policy Gradient <a id="策略梯度" href="#策略梯度">#</a></h2>
+
+    <p>The idea behind Policy Gradient is straightforward: since the original objective $\eqref{eq:base}$ cannot be differentiated, we replace it with a strongly related objective that is differentiable, such as:</p>
+    
+    \begin{equation}\theta = \mathop{\text{argmax}}_{\theta}\mathbb{E}_{(x_t,y_t)\sim\mathcal{D}}\left[\sum_y p_{\theta}(y|x_t) r\left(y_t, y\right)\right]\label{eq:policy}\end{equation}
+
+    <h3>Rearrangement Inequality <a id="排序不等式" href="#排序不等式">#</a></h3>
+
+    <p>Clearly, the objective defined above does not contain operators like $\mathop{\text{argmax}}_y$, so it is differentiable. So, what is the relationship between this equation and the original objective $\eqref{eq:base}$? What are the differences? This can be answered by the "Rearrangement Inequality" in mathematics:</p>
+
+    <blockquote>
+        <p><strong>Rearrangement Inequality</strong>: For $a_1 \geq a_2 \geq \dots \geq a_n$ and $b_1 \geq b_2 \geq \dots \geq b_n$, and assuming $(c_1, c_2, \dots, c_n)$ is any permutation of $(b_1, b_2, \dots, b_n)$, then:</p>
+        \begin{equation}\sum_{i=1}^n a_i b_i \geq \sum_{i=1}^n a_i c_i \geq \sum_{i=1}^n a_i b_{n+1-i}\end{equation}
+        <p>In other words, "the sum of products of similarly ordered sequences ≥ sum of products of mixed sequences ≥ sum of products of oppositely ordered sequences."</p>
+    </blockquote>
+
+    <p>The rearrangement inequality is a classic inequality. Its proof (usually via mathematical induction) can be easily found online, so we omit it here. Based on the rearrangement inequality, we know that if the objective $\eqref{eq:policy}$ reaches its maximum, then $p_{\theta}(y|x_t)$ and $r(y_t, y)$ must be ordered similarly. This means we indeed achieve the goal of "the $y$ with the <strong>highest</strong> predicted probability being the $y$ with the <strong>highest</strong> score." However, it also simultaneously strives for goals like "the $y$ with the <strong>second highest</strong> predicted probability being the $y$ with the <strong>second highest</strong> score," which is not strictly required by the original objective. Therefore, objective $\eqref{eq:policy}$ is strongly related to the original objective but imposes more requirements.</p>
+
+    <p>Notably, the rearrangement inequality does not require $a_i, b_i$ to be non-negative, so the actual scoring function $r(y_t, y)$ could potentially take negative values.</p>
+
+    <h3>Sampling Estimated Gradient <a id="采样估计梯度" href="#采样估计梯度">#</a></h3>
+
+    <p>Once we have determined that objective $\eqref{eq:policy}$ is feasible, we can calculate its gradient:</p>
+    
+    \begin{equation}\mathbb{E}_{(x_t,y_t)\sim\mathcal{D}}\left[\sum_y \nabla_{\theta} p_{\theta}(y|x_t) r\left(y_t, y\right)\right]\label{eq:policy-grad-base}\end{equation}
+
+    <p>In general, calculating the gradient $\nabla_{\theta} p_{\theta}(y|x_t)$ is not difficult, but $\sum_y$ is the main bottleneck because it requires summing over all candidate categories, and the number of candidates in practice might be prohibitively large. Related discussions appeared in the previous post <a href="translation_6705.html">"A Discussion on Reparameterization: From Normal Distribution to Gumbel Softmax"</a>. Therefore, a better approach is to convert it into a sampling estimate form:</p>
+    
+    \begin{equation}\begin{aligned}
+    &\mathbb{E}_{(x_t,y_t)\sim\mathcal{D}}\left[\sum_y p_{\theta}(y|x_t)\frac{\nabla_{\theta} p_{\theta}(y|x_t)}{p_{\theta}(y|x_t)} r\left(y_t, y\right)\right]\\
+    =& \mathbb{E}_{(x_t,y_t)\sim\mathcal{D}}\left[\sum_y p_{\theta}(y|x_t)r\left(y_t, y\right)\nabla_{\theta} \log p_{\theta}(y|x_t)\right]\\
+    =& \mathbb{E}_{(x_t,y_t)\sim\mathcal{D}, y\sim p_{\theta}(y|x_t)}\left[r\left(y_t, y\right)\nabla_{\theta}\log p_{\theta}(y|x_t)\right]
+    \end{aligned}\end{equation}
+
+    <p>In principle, we only need to sample an appropriate number of $y$'s to estimate the above expression. The result is what is known as the "Policy Gradient." With the gradient in hand, we can use standard optimizers to complete the optimization.</p>
+
+    <h3>Reducing Variance <a id="降低方差" href="#降低方差">#</a></h3>
+
+    <p>As mentioned earlier, adding a constant to $r(y_t, y)$ does not change the final theoretical result. However, it can change the efficiency of the sampling estimation. In statistical terms, it changes the variance of the samples. For a simple example, consider $[4, 5, 6]$ and $[-10, 10, 15]$. Both have a mean of 5 (representing the target we want to estimate), but their variances are 0.67 and 116.67, respectively. If we only take one sample, the maximum error for the former is 1, while for the latter, it could reach 15. Thus, although the theoretical means are the same, the former's estimation efficiency is much higher (fewer samples for higher precision).</p>
+
+    <p>This simple example tells us that to improve estimation efficiency, we must find a way to obtain an estimator with smaller variance. We can subtract a constant $b$ (called a baseline; "constant" here means it does not depend on $y$, though it can depend on $x$) from $r(y_t, y)$:</p>
+    
+    \begin{equation}\mathbb{E}_{y\sim p_{\theta}(y|x_t)}\left[(r\left(y_t, y\right)-b)\nabla_{\theta}\log p_{\theta}(y|x_t)\right]\label{eq:var-reduce}\end{equation}
+
+    <p>The final result (the mean) does not change:</p>
+    
+    \begin{equation}\begin{aligned}
+    &\mathbb{E}_{y\sim p_{\theta}(y|x_t)}\left[(r\left(y_t, y\right)-b)\nabla_{\theta}\log p_{\theta}(y|x_t)\right]\\
+    =&\mathbb{E}_{y\sim p_{\theta}(y|x_t)}\left[r\left(y_t, y\right)\nabla_{\theta}\log p_{\theta}(y|x_t)\right]-b\mathbb{E}_{y\sim p_{\theta}(y|x_t)}\left[\nabla_{\theta}\log p_{\theta}(y|x_t)\right]\\
+    =&\mathbb{E}_{y\sim p_{\theta}(y|x_t)}\left[r\left(y_t, y\right)\nabla_{\theta}\log p_{\theta}(y|x_t)\right]-b\sum_y \nabla_{\theta} p_{\theta}(y|x_t)\\
+    =&\mathbb{E}_{y\sim p_{\theta}(y|x_t)}\left[r\left(y_t, y\right)\nabla_{\theta}\log p_{\theta}(y|x_t)\right]-b \nabla_{\theta} \sum_y p_{\theta}(y|x_t)\\
+    =&\mathbb{E}_{y\sim p_{\theta}(y|x_t)}\left[r\left(y_t, y\right)\nabla_{\theta}\log p_{\theta}(y|x_t)\right]-b \nabla_{\theta} 1\\
+    =&\mathbb{E}_{y\sim p_{\theta}(y|x_t)}\left[r\left(y_t, y\right)\nabla_{\theta}\log p_{\theta}(y|x_t)\right]\\
+    \end{aligned}\end{equation}
+
+    <p>However, the variance may change. We want to minimize the variance. Since $\mathbb{Var}[x]=\mathbb{E}[x^2]-\mathbb{E}[x]^2$, minimizing variance is equivalent to minimizing the second moment:</p>
+    
+    \begin{equation}\mathbb{E}_{y\sim p_{\theta}(y|x_t)}\left[(r\left(y_t, y\right)-b)^2\Vert\nabla_{\theta}\log p_{\theta}(y|x_t)\Vert^2\right]\end{equation}
+
+    <p>This is a simple quadratic minimization problem. The optimal $b$ is found to be:</p>
+    
+    \begin{equation}b = \frac{\mathbb{E}_{y\sim p_{\theta}(y|x_t)}\left[r\left(y_t, y\right)\Vert\nabla_{\theta}\log p_{\theta}(y|x_t)\Vert^2\right]}{\mathbb{E}_{y\sim p_{\theta}(y|x_t)}\left[\Vert\nabla_{\theta}\log p_{\theta}(y|x_t)\Vert^2\right]}\end{equation}
+
+    <p>That is, a weighted expectation of $r(y_t, y)$ with weights $\Vert\nabla_{\theta}\log p_{\theta}(y|x_t)\Vert^2$. However, acquiring the gradient for every candidate is computationally expensive. We usually ignore these weights and use a simplified version:</p>
+    
+    \begin{equation}b = \mathbb{E}_{y\sim p_{\theta}(y|x_t)}\left[r\left(y_t, y\right)\right]\end{equation}
+
+    <p>Combined with Eq. $\eqref{eq:var-reduce}$, the ideology is quite intuitive: sample several $y$'s from $p_{\theta}(y|x_t)$, compute the average score $b$ for $r(y_t, y)$, perform gradient ascent for those $y$'s above the average (reinforcement) and gradient descent for those below (weakening).</p>
+
+    <h3>In a Nutshell <a id="一言以蔽之" href="#一言以蔽之">#</a></h3>
+
+    <p>In simple terms, Policy Gradient replaces non-differentiable objectives (like those with $\mathop{\text{argmax}}$) with a differentiable objective $\eqref{eq:policy}$. In reinforcement learning terms, $y$ is the "policy," $p_{\theta}(y|x_t)$ is the "policy model," and $r(y_t, y)$ is the "reward." By combining sampling estimation and variance reduction techniques, one obtains an effective gradient estimate for the original model, thus completing the optimization.</p>
+
+    <h2>Zeroth-Order Optimization <a id="零阶优化" href="#零阶优化">#</a></h2>
+
+    <p>Zeroth-order optimization refers to all optimization methods that do not require gradient information. In general contexts, it specifically refers to optimization algorithms that estimate the parameter update direction based on parameter sampling and finite difference principles. Formally, it samples directly in the parameter space and does not depend on any form of gradient. Theoretically, it can solve an extremely wide variety of objectives. However, because it samples directly in the parameter space (acting like a more intelligent grid search), its efficiency is quite low in high-dimensional parameter spaces (such as deep learning scenarios), thus its application scope is limited.</p>
+
+    <p>Nevertheless, it is worth learning the ideas behind zeroth-order optimization. Having more skills never hurts. Furthermore, while deep learning models often have many parameters, we usually design them such that most modules are differentiable, with only a small part being non-differentiable. Therefore, it might be possible to optimize the differentiable parts using gradient-based optimizers and only the non-differentiable parts using zeroth-order optimization. This idea has appeared in many NAS (Neural Architecture Search) papers.</p>
+
+    <h3>Zeroth-Order Gradient <a id="零阶梯度" href="#零阶梯度">#</a></h3>
+
+    <p>Zeroth-order optimization does not require the gradient as we usually define it, but it defines a "substitute" based on sampling and differences, which we will call the "Zeroth-Order Gradient":</p>
+
+    <blockquote>
+        <p>For a scalar function $f(x)$, we define its zeroth-order gradient at $x$ as:</p>
+        \begin{equation}\tilde{\nabla}_{x}f(x)=\mathbb{E}_{u\sim p(u)}\left[\frac{f(x + \varepsilon u) - f(x)}{\varepsilon}u\right]\label{eq:zero-grad}\end{equation}
+        <p>where $\varepsilon$ is a pre-defined small positive number, and $p(u)$ is a pre-specified distribution with mean 0 and identity covariance matrix (usually the standard normal distribution).</p>
+    </blockquote>
+
+    <p>As seen, by sampling several points from $p(u)$, one can estimate the zeroth-order gradient. Once the zeroth-order gradient is obtained, it can be treated as a regular gradient for standard optimizers. This is the basic idea of zeroth-order optimization. Specifically, if $f(x)$ itself is differentiable, then $f(x + \varepsilon u)=f(x)+\varepsilon u^{\top}\nabla_x f(x) + \mathcal{O}(\varepsilon^2)$, so as $\varepsilon \to 0$:</p>
+    
+    \begin{equation}\tilde{\nabla}_{x}f(x)=\int p(u) u \left(u^{\top}\nabla_x f(x)\right)du=\int p(u) \left(u u^{\top}\right)\nabla_x f(x)du=\nabla_x f(x)\end{equation}
+
+    <p>Thus, $\tilde{\nabla}_{x}f(x)$ is equal to the ordinary gradient, meaning $\tilde{\nabla}_{x}f(x)$ is indeed a reasonable generalization of the ordinary gradient.</p>
+
+    <h3>Also Has a Baseline <a id="也有basline" href="#也有basline">#</a></h3>
+
+    <p>Attentive readers might notice that in definition $\eqref{eq:zero-grad}$, since the mean of $p(u)$ is 0, the term $-f(x)$ does not actually affect the final theoretical result, i.e.:</p>
+    
+    \begin{equation}\tilde{\nabla}_{x}f(x)=\mathbb{E}_{u\sim p(u)}\left[\frac{f(x + \varepsilon u)}{\varepsilon}u\right] - \mathbb{E}_{u\sim p(u)}\left[\frac{f(x)}{\varepsilon}u\right]=\mathbb{E}_{u\sim p(u)}\left[\frac{f(x + \varepsilon u)}{\varepsilon}u\right]\label{eq:zero-grad-equal}\end{equation}
+
+    <p>So what is the point of $-f(x)$? Just like Policy Gradient earlier, its purpose is to reduce variance. We can similarly introduce $b$ and minimize the second moment (equivalent to minimizing variance):</p>
+    
+    \begin{equation}\mathbb{E}_{u\sim p(u)}\left[\left(\frac{f(x + \varepsilon u)-b}{\varepsilon}\right)^2\Vert u\Vert^2\right]\end{equation}
+
+    <p>Solving for the optimal $b$ yields:</p>
+    
+    \begin{equation}b=\frac{\mathbb{E}_{u\sim p(u)}\left[f(x + \varepsilon u)\Vert u\Vert^2\right]}{\mathbb{E}_{u\sim p(u)}\left[\Vert u\Vert^2\right]}\end{equation}
+
+    <p>In practice, one can use a finite number of samples to estimate this expression. In fact, if $f(x)$ is differentiable, using a Taylor expansion to approximate the integral gives $f(x) + \mathcal{O}(\epsilon^2)$. From this perspective, choosing $b=f(x)$ is a reasonable choice, justifying the inclusion of the $-f(x)$ term.</p>
+
+    <h3>In a Nutshell <a id="一言以蔽之-1" href="#一言以蔽之">#</a></h3>
+
+    <p>Zeroth-order optimization primarily uses differences to define a reasonable generalization of the gradient. Since calculating differences does not require function differentiability, it naturally applies to both differentiable and non-differentiable objectives. Of course, as the dimension of $u$ matches the dimension of all parameters $\theta$, for deep learning models with massive parameters, the variance during updates is very large, making convergence difficult. Therefore, zeroth-order optimization is usually used only for a small portion of the model parameters or as an auxiliary means (e.g., alternating between "differentiable objective + normal gradient + large learning rate" and "non-differentiable objective + zeroth-order gradient + small learning rate"). There is also research on applying zeroth-order optimization directly in high-dimensional spaces (e.g., <a href="https://papers.cool/arxiv/1911.06317">"Gradientless Descent: High-Dimensional Zeroth-Order Optimization"</a>), but they have not yet been widely adopted.</p>
+
+    <p>Furthermore, the unified perspective introduced in <a href="translation_7521.html">"Optimization from Sampling: A Unified View of Differentiable and Non-Differentiable Optimization"</a> can also be seen as a form of zeroth-order optimization. It is a more general extension of common optimization ideas (from which one can derive gradient descent, Newton's method, zeroth-order gradients, etc.), but in principle, it suffers from the same "common ailments" like high variance that affect zeroth-order gradients.</p>
+
+    <h2>Unity in Diversity <a id="貌离神合" href="#貌离神合">#</a></h2>
+
+    <p>On the surface, Policy Gradient and Zeroth-Order Optimization do share many similarities, such as both needing random sampling to estimate gradients and both needing variance reduction. Of course, differences also abound: Policy Gradient samples from the policy space, while Zeroth-Order Optimization samples from the parameter space. Furthermore, Policy Gradient is essentially still based on gradients, whereas Zeroth-Order Optimization theoretically requires no gradients at all.</p>
+
+    <p>So, what exactly is the relationship between the two? Next, we will demonstrate that for the optimization problem $\eqref{eq:base}$ proposed at the start of this article, the two are essentially equivalent. The proof strategy involves calculating the zeroth-order gradient for objective $\eqref{eq:base}$ and finding that, after a series of simplifications, it is fundamentally the Policy Gradient.</p>
+
+    <h3>Partitioning the Full Space <a id="划分全空间" href="#划分全空间">#</a></h3>
+
+    <p>Let us denote:</p>
+    \begin{equation}\mathcal{R}_{\theta}=\mathbb{E}_{(x_t,y_t)\sim\mathcal{D}}\left[r\left(y_t, \mathop{\text{argmax}}_y p_{\theta}(y|x_t)\right)\right]\end{equation}
+    
+    <p>Then, according to equation $\eqref{eq:zero-grad-equal}$, its zeroth-order gradient is:</p>
+    \begin{equation}\begin{aligned}
+    \tilde{\nabla}_{\theta}\mathcal{R}_{\theta}=&\frac{1}{\varepsilon}\int \mathbb{E}_{(x_t,y_t)\sim\mathcal{D}}\left[r\left(y_t, \mathop{\text{argmax}}_y p_{\theta + \varepsilon u}(y|x_t)\right)\right] p(u) u du\\
+    =&\mathbb{E}_{(x_t,y_t)\sim\mathcal{D}}\left[\frac{1}{\varepsilon}\int r\left(y_t, \mathop{\text{argmax}}_y p_{\theta + \varepsilon u}(y|x_t)\right)p(u) u du\right]
+    \end{aligned}\end{equation}
+    
+    <p>This can be transformed into:</p>
+    \begin{equation}\begin{aligned}
+    \tilde{\nabla}_{\theta}\mathcal{R}_{\theta}=& \mathbb{E}_{(x_t,y_t)\sim\mathcal{D}}\left[\frac{1}{\varepsilon}\sum_y\int_{\Omega_{y|x_t}} r\left(y_t, y\right)p(u) u du\right]\\
+    \Omega_{y|x_t} =& \left\{u\left|u\in\mathbb{R}^d, y=\mathop{\text{argmax}}_{\hat{y}} p_{\theta + \varepsilon u}(\hat{y}|x_t)\right.\right\}
+    \end{aligned}\end{equation}
+
+    <p>This looks complex, but the idea is simple: different $u$ values result in different prediction outcomes $\mathop{\text{argmax}}_{y} p_{\theta + \varepsilon u}(y|x_t)$. We group all $u$ that produce the same prediction $y$ into a set $\Omega_{y|x_t}$. In this way, the entire space $\mathbb{R}^d$ is partitioned into disjoint subsets $\Omega_{y|x_t}$. Integrals without specified regions are over the whole space $\mathbb{R}^d$. After partitioning, it equals the sum of integrals over the subsets $\Omega_{y|x_t}$.</p>
+
+    <h3>Indicator Function <a id="示性函数" href="#示性函数">#</a></h3>
+
+    <p>Next, we use an "indicator function" trick, defining:</p>
+    \begin{equation}\chi(y|x_t, u)=\left\{\begin{aligned}1, & u\in\Omega_{y|x_t}\\
+    0, & u\not\in\Omega_{y|x_t}\end{aligned}\right.\end{equation}
+    
+    <p>Then:</p>
+    \begin{equation}\begin{aligned}
+    \frac{1}{\varepsilon}\sum_y\int_{\Omega_{y|x_t}} r\left(y_t, y\right)p(u) u du=\frac{1}{\varepsilon}\sum_y\int \chi(y|x_t, u) r\left(y_t, y\right)p(u) u du
+    \end{aligned}\end{equation}
+
+    <p>Recalling the meaning of $\Omega_{y|x_t}$, for any $u \in \Omega_{y|x_t}$, the model $p_{\theta + \varepsilon u}(\cdot|x_t)$'s prediction is $y$, and the indicator output is 1. We can see that essentially:</p>
+    \begin{equation}\chi(y|x_t, u)=\lim_{\tau\to 0} p_{\theta + \varepsilon u}(y|x_t)\end{equation}
+    
+    <p>where $\tau$ is the temperature parameter in simple softmax (explained at the beginning of the article). Based on this conclusion, we can approximately replace $\chi(y|x_t, u)$ with $p_{\theta + \varepsilon u}(y|x_t)$ and substitute it into the expression:</p>
+    \begin{equation}
+    \tilde{\nabla}_{\theta}\mathcal{R}_{\theta} \approx \mathbb{E}_{(x_t,y_t)\sim\mathcal{D}}\left[\frac{1}{\varepsilon}\sum_y\int p_{\theta + \varepsilon u}(y|x_t) r\left(y_t, y\right)p(u) u du\right]
+    \end{equation}
+
+    <h3>Approximate Integration <a id="近似求积分" href="#近似求积分">#</a></h3>
+
+    <p>Finally, since $p_{\theta + \varepsilon u}(y|x_t)$ is differentiable, we use the expansion $p_{\theta + \varepsilon u}(y|x_t) \approx p_{\theta}(y|x_t) + \varepsilon u^{\top}\nabla_{\theta}p_{\theta}(y|x_t)$ to perform the integration over $u$:</p>
+    \begin{equation}
+    \tilde{\nabla}_{\theta}\mathcal{R}_{\theta} \approx \mathbb{E}_{(x_t,y_t)\sim\mathcal{D}}\left[\sum_y r\left(y_t, y\right)\nabla_{\theta}p_{\theta}(y|x_t)\right]
+    \end{equation}
+
+    <p>Comparing this to equation $\eqref{eq:policy-grad-base}$, we find that the right side of the above expression is exactly the Policy Gradient.</p>
+
+    <p>Thus, the zeroth-order gradient, despite its starkly different appearance, points in a direction fundamentally similar to the Policy Gradient. It is truly a case of "different roads leading to the same destination," reinforcing the feeling that "there is only one correct answer." This reminds me of Leo Tolstoy's famous quote:</p>
+
+    <blockquote>
+        <p>Happy families are all alike; every unhappy family is unhappy in its own way.</p>
+    </blockquote>
+
+    <p>The same applies to the update direction of parameters (correct update directions are all similar)!</p>
+
+    <h2>Summary <a id="文末小结" href="#文末小结">#</a></h2>
+
+    <p>This article introduced two schemes for dealing with non-differentiable optimization objectives: Policy Gradient and Zeroth-Order Optimization. They define new "gradients" as parameter update directions from two different perspectives. While they seemingly take different paths, my investigation shows that when dealing with optimization problems like those for which Policy Gradient is usually used, the update direction provided by Zeroth-Order Optimization is essentially equivalent. Furthermore, this article can serve as an introductory reference for reinforcement learning for beginners.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7737.html" style="color: #005fcc;">https://kexue.fm/archives/7737</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

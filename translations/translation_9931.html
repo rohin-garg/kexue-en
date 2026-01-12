@@ -1,0 +1,272 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['base', 'ams', 'noerrors', 'noundefined']}
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9931">If Local Cosine Similarity is High, Does the Global Cosine Similarity Have to Be High as Well?</a></h1>
+
+<p>By 苏剑林 | January 09, 2024</p>
+
+<p>
+  When analyzing model parameters, there are scenarios where we treat all parameters of a model as a single holistic vector, while in other cases, we analyze different sets of parameters separately. For instance, in a 7B-parameter LLaMA model, we might sometimes view it as "one 7-billion-dimensional vector." At other times, following the implementation of the model, we may view it as "it several hundred vectors of varying dimensions." In the most extreme case, we could even view it as "7 billion 1-dimensional vectors." Since there are different ways to view these parameters, different methods exist for calculating statistical indicators—namely, local calculation and global calculation. This raises the question: what is the relationship between indicators computed locally and those computed globally?
+</p>
+
+<p>
+  In this article, we focus on the cosine similarity of two vectors. If the dimensions of two large vectors are partitioned into several groups, and the cosine similarities of the sub-vectors corresponding to the same groups are all very high, does the cosine similarity of the two large vectors necessarily have to be high? The answer is no. Interestingly, this is related to the famous "Simpson's Paradox."
+</p>
+
+<h2 id="problem-background">Problem Background <a href="#problem-background">#</a></h2>
+
+<p>
+  This question originated from the author's analysis of the change in the loss function caused by parameter increments in an optimizer. Specifically, assume the update rule of the optimizer is:
+\begin{equation}\boldsymbol{\theta}_{t+1} = \boldsymbol{\theta}_t - \eta_t \boldsymbol{u}_t\end{equation}
+where $\boldsymbol{u}_t$ is the vector specifying the update direction (the negative direction). A first-order Taylor expansion yields:
+\begin{equation}\mathcal{L}(\boldsymbol{\theta}_{t+1}) = \mathcal{L}(\boldsymbol{\theta}_t - \eta_t \boldsymbol{u}_t)\approx \mathcal{L}(\boldsymbol{\theta}_t) - \eta_t \langle\boldsymbol{u}_t,\boldsymbol{g}_t\rangle\end{equation}
+where $\boldsymbol{g}_t$ is the gradient $\nabla_{\boldsymbol{\theta}_t}\mathcal{L}(\boldsymbol{\theta}_t)$. Thus, the change in the loss function is approximately:
+\begin{equation}- \eta_t \langle\boldsymbol{u}_t,\boldsymbol{g}_t\rangle = - \eta_t \Vert\boldsymbol{u}_t\Vert \Vert\boldsymbol{g}_t\Vert \cos(\boldsymbol{u}_t,\boldsymbol{g}_t)\end{equation}
+Therefore, the author thought to observe the cosine similarity between $\boldsymbol{u}_t$ and $\boldsymbol{g}_t$, which represents the directional consistency between the update vector and the gradient.
+</p>
+
+<p>
+  However, as mentioned at the beginning of this article, model parameters can be split in various ways. Should we calculate the cosine similarity between the update vector and the gradient by treating all parameters as one large vector (global), or should we calculate it for each layer or each individual parameter separately (local)? The author did both and applied a truncation to the local cosine similarities (ensuring that the cosine similarity for each parameter set was greater than a certain positive threshold). Surprisingly, it was discovered that the global cosine similarity could actually be smaller than that threshold. At first glance, this was unexpected, leading to the following simple analysis.
+</p>
+
+<h2 id="simple-analysis">Simple Analysis <a href="#simple-analysis">#</a></h2>
+
+<p>
+  The problem can be abstracted as follows:
+</p>
+
+<blockquote>
+  If the local cosine similarities of two vectors are all no less than $\lambda > 0$, is the global cosine similarity of these two vectors necessarily no less than $\lambda$?
+</blockquote>
+
+<p>
+  As we already know, the answer is no. To disprove it, we only need to provide a counterexample. Suppose $\boldsymbol{x}=(1,1)$ and $\boldsymbol{y}=(1,2)$. Obviously, $\boldsymbol{x}\neq\boldsymbol{y}$, so $\cos(\boldsymbol{x},\boldsymbol{y})\neq 1$. However, their sub-vectors—the individual components—are both positive numbers. When positive numbers are treated as 1-dimensional vectors, their cosine similarity is always 1. Thus, we have a counterexample where all local cosine similarities are 1, but the global similarity is less than 1.
+</p>
+
+<p>
+  For a more general analysis, let $\boldsymbol{x}=[\boldsymbol{x}_1,\boldsymbol{x}_2]$ and $\boldsymbol{y}=[\boldsymbol{y}_1,\boldsymbol{y}_2]$. Then:
+\begin{equation}\begin{aligned}
+\cos(\boldsymbol{x},\boldsymbol{y}) =&\, \frac{\langle \boldsymbol{x}, \boldsymbol{y}\rangle}{\Vert\boldsymbol{x}\Vert \Vert\boldsymbol{y}\Vert}
+= \frac{\langle \boldsymbol{x}_1, \boldsymbol{y}_1\rangle + \langle \boldsymbol{x}_2, \boldsymbol{y}_2\rangle}{\sqrt{\Vert\boldsymbol{x}_1\Vert^2 + \Vert\boldsymbol{x}_2\Vert^2} \sqrt{\Vert\boldsymbol{y}_1\Vert^2 + \Vert\boldsymbol{y}_2\Vert^2}} \\[6pt]
+=&\, \frac{\cos(\boldsymbol{x}_1, \boldsymbol{y}_1) \Vert\boldsymbol{x}_1\Vert \Vert\boldsymbol{y}_1\Vert+ \cos(\boldsymbol{x}_2, \boldsymbol{y}_2)\Vert\boldsymbol{x}_2\Vert \Vert\boldsymbol{y}_2\Vert}{\sqrt{\Vert\boldsymbol{x}_1\Vert^2 + \Vert\boldsymbol{x}_2\Vert^2} \sqrt{\Vert\boldsymbol{y}_1\Vert^2 + \Vert\boldsymbol{y}_2\Vert^2}}
+\end{aligned}\label{eq:cos}\end{equation}
+If we let $\Vert\boldsymbol{x}_1\Vert, \Vert\boldsymbol{y}_2\Vert \to 0$, while $\Vert\boldsymbol{x}_2\Vert, \Vert\boldsymbol{y}_1\Vert$ remain greater than zero (without loss of generality, let $\Vert\boldsymbol{x}_2\Vert = \Vert\boldsymbol{y}_1\Vert = 1$), then we can obtain $\cos(\boldsymbol{x},\boldsymbol{y}) \to 0$. This means that no matter how large $\cos(\boldsymbol{x}_1,\boldsymbol{y}_1)$ and $\cos(\boldsymbol{x}_2,\boldsymbol{y}_2)$ are, there is always a case where $\cos(\boldsymbol{x},\boldsymbol{y})$ can be arbitrarily close to 0. In other words, $\cos(\boldsymbol{x}_1,\boldsymbol{y}_1)$ and $\cos(\boldsymbol{x}_2,\boldsymbol{y}_2)$ cannot provide a lower bound for $\cos(\boldsymbol{x},\boldsymbol{y})$.
+</p>
+
+<p>
+  As for the upper bound, it can be proven that:
+\begin{equation}\cos(\boldsymbol{x},\boldsymbol{y})\leq \max\big\{\cos(\boldsymbol{x}_1,\boldsymbol{y}_1),\cos(\boldsymbol{x}_2,\boldsymbol{y}_2)\big\}\label{eq:cos-ul}\end{equation}
+The proof is simple because this bound is quite loose. Assuming without loss of generality that $\cos(\boldsymbol{x}_1,\boldsymbol{y}_1) \leq \cos(\boldsymbol{x}_2,\boldsymbol{y}_2)$, then according to equation $\eqref{eq:cos}$:
+\begin{equation}
+\cos(\boldsymbol{x},\boldsymbol{y}) \leq\left[\frac{\Vert\boldsymbol{x}_1\Vert \Vert\boldsymbol{y}_1\Vert+ \Vert\boldsymbol{x}_2\Vert \Vert\boldsymbol{y}_2\Vert}{\sqrt{\Vert\boldsymbol{x}_1\Vert^2 + \Vert\boldsymbol{x}_2\Vert^2} \sqrt{\Vert\boldsymbol{y}_1\Vert^2 + \Vert\boldsymbol{y}_2\Vert^2}}\right]\cos(\boldsymbol{x}_2, \boldsymbol{y}_2)
+\end{equation}
+The term in the brackets is exactly the cosine similarity between the two-dimensional vectors $(\Vert\boldsymbol{x}_1\Vert,\Vert\boldsymbol{x}_2\Vert)$ and $(\Vert\boldsymbol{y}_1\Vert,\Vert\boldsymbol{y}_2\Vert)$, which must be no greater than 1. Hence, $\cos(\boldsymbol{x},\boldsymbol{y})\leq\cos(\boldsymbol{x}_2,\boldsymbol{y}_2)$, proving inequality $\eqref{eq:cos-ul}$.
+</p>
+
+<p>
+  (Again, the above proofs are conducted under the assumption that $\cos(\boldsymbol{x}_1,\boldsymbol{y}_1) \geq 0$ and $\cos(\boldsymbol{x}_2,\boldsymbol{y}_2) \geq 0$. If negative values occur, the conclusion may require slight adjustments.)
+</p>
+
+<h2 id="related-paradox">Related Paradox <a href="#related-paradox">#</a></h2>
+
+<p>
+  Does the result above correspond to anything in reality? Yes, when applied to correlation analysis, it leads to the famous "<a href="https://en.wikipedia.org/wiki/Simpson%27s_paradox">Simpson's Paradox</a>."
+</p>
+
+<p>
+  We know there is a coefficient for measuring linear correlation called the "Pearson Coefficient," defined as:
+\begin{equation}r = \frac{\sum\limits_{i=1}^n (x_i-\bar{x})(y_i - \bar{y})}{\sqrt{\sum\limits_{i=1}^n (x_i-\bar{x})^2}\sqrt{\sum\limits_{i=1}^n(y_i - \bar{y})^2}}\end{equation}
+Looking closely, if we denote $\boldsymbol{x} = (x_1,x_2,\cdots,x_n)$ and $\boldsymbol{y} = (y_1,y_2,\cdots,y_n)$, then the expression is simply:
+\begin{equation}r = \cos(\boldsymbol{x}-\bar{x},\boldsymbol{y}-\bar{y})\end{equation}
+Thus, the Pearson correlation coefficient is essentially the cosine similarity of the data points after subtracting their means. Given this relationship with cosine similarity, the results from the previous section apply: even if two sets of data both show clear linear correlation ($\cos > 0$), when combined, they could be linearly uncorrelated ($\cos \to 0$).
+</p>
+
+<p>
+  Simpson's Paradox goes even further, stating that while each batch of data might show a positive correlation, the combined data could not only be linearly uncorrelated but could even be negatively correlated. This is because the correlation coefficient has additional parameters $\bar{x}$ and $\bar{y}$ compared to pure cosine similarity, allowing for greater degrees of freedom. The geometric intuition is very clear, as shown in the following figure:
+</p>
+
+<p style="text-align:center;">
+  <img src="https://kexue.fm/usr/uploads/2024/01/1703666070.png" alt="Visual Illustration of Simpson's Paradox" /><br />
+  Intuitive illustration of Simpson's Paradox
+</p>
+
+<p>
+  In the figure above, the blue data points lie entirely on a single straight line with a positive slope, so their correlation coefficient is 1. The same applies to the red data points. Within their respective groups, they both exhibit "perfect positive linear correlation." However, when the data is combined, if one must fit a single straight line to all of them, it would be the dashed line, which has a negative slope—meaning the correlation becomes negative. This constitutes a classic example of Simpson's Paradox.
+</p>
+
+<h2 id="article-summary">Article Summary <a href="#article-summary">#</a></h2>
+
+<p>
+  This article briefly discusses the relationship between the local cosine similarity and the global cosine similarity of high-dimensional vectors and further explores its connection to Simpson's Paradox.
+</p>
+
+<hr />
+
+<p>
+  <em><strong>Reprinting notice:</strong> Please include the original address of this article: <a href="translation_9931.html">https://kexue.fm/archives/9931</a></em><br />
+  <em><strong>For more detailed reprinting information, please refer to:</strong> <a href="https://kexue.fm/archives/6508#%E6%96%87%E7%AB%A0%E5%A6%82%E4%BD%95%E8%BD%AC%E8%BD%BD/%E5%BC%95%E7%94%A8">Scientific Space FAQ</a></em>
+</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9931.html" style="color: #005fcc;">https://kexue.fm/archives/9931</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

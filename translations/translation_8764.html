@@ -1,0 +1,313 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/8764">ChildTuning: Trying to add Dropout to Gradients?</a></h1>
+
+<p>By 苏剑林 | Nov 22, 2021</p>
+
+<p>Dropout is a classic approach to prevent overfitting, and most readers are likely familiar with it. Interestingly, Dropout has recently seen something of a "second spring," with new and intriguing variations emerging. For instance, <a href="translation_8348.html">SimCSE</a> and <a href="translation_8496.html">R-Drop</a> have recently sparked heated discussions. In the article <a href="translation_8496.html">"Dropout Twice Again! This Time It Achieved SOTA in Supervised Tasks"</a>, we discovered that simple R-Drop can even rival adversarial training, which is quite surprising.</p>
+
+<p>Generally, Dropout is added to the output of each layer or to the model parameters—these are the two classic uses of Dropout. However, I recently learned about a novel use from the paper <a href="https://papers.cool/arxiv/2109.05687">"Raise a Child in Large Language Model: Towards Effective and Generalizable Fine-tuning"</a>: adding it to the gradients.</p>
+
+<p>Adding Dropout to gradients? Most readers have probably never heard of this. So, how effective is it? Let's take a closer look.</p>
+
+<h2>General Idea</h2>
+
+<p>In short, this paper proposes an approach called "ChildTuning" to improve the performance of pre-trained models during fine-tuning. "Child" stands for "Children Network," referring to selecting a sub-network from the pre-trained model for optimization, thereby mitigating the risk of overfitting caused by optimizing the entire model. Regarding sub-network selection, there are two methods: ChildTuning-D and ChildTuning-F.</p>
+
+<h3>ChildTuning-D</h3>
+
+<p>ChildTuning-D (Task-Dependent) is a task-related selection method that requires the downstream task's training data for calculation. Specifically, suppose the training data is $(x_1, y_1), (x_2, y_2), \dots, (x_n, y_n)$, and the model is $p(y|x; \theta)$, where $\theta$ represents all parameters of the model and $\theta_i$ is the $i$-th parameter. We calculate parameter importance using the following form of Fisher Information:</p>
+
+\begin{equation}F_i = \frac{1}{n}\sum_{j=1}^n \left(\frac{\partial \log p(y_j|x_j;\theta)}{\partial\theta_i}\right)^2\end{equation}
+
+<p>After obtaining the importance metrics, we can rank each parameter and select the top-$p$ most important ones (e.g., the top 20%, where $p=0.2$). During model updates, only these parameters are optimized. Since fewer parameters are updated, the risk of overfitting is reduced. In practice, ChildTuning-D determines the parameters to be optimized before fine-tuning and keeps them fixed thereafter.</p>
+
+<p>Note that parameter selection here is done on a per-component basis. That is, within a single parameter matrix, only some parts might be selected. Thus, rather than selecting which parameter matrices to optimize, a corresponding 0/1 mask matrix $M$ is constructed to mask out the gradients: $g \leftarrow g \otimes M / p$, where dividing by $p$ maintains the overall scale of the updates. The gradients for parameters not selected remain 0, so they are never updated. While the number of parameters being updated is reduced in theory, this method does not save on computational costs; the authors position it solely as a method to improve fine-tuning performance.</p>
+
+<h3>ChildTuning-F</h3>
+
+<p>ChildTuning-F (Task-Free) is a task-independent selection method, which can be more vividly described as "Gradient Dropout." Unlike ChildTuning-D, which uses task data to construct a fixed 0/1 matrix $M$ and modifies the gradient to $g \otimes M / p$, ChildTuning-F aims to be task-independent by randomly constructing a 0/1 matrix $M$ at each update step, where the proportion of 1s is $p$, and then modifying the gradient to $g \otimes M / p$. This is effectively applying Dropout to the gradients.</p>
+
+<p>It is important to note that if the current gradient of a parameter is 0, it doesn't necessarily mean the current update amount for that parameter is 0. This is because we typically use optimizers with momentum, such as SGDM and Adam. For these optimizers, the update amount is proportional to the momentum, which is a moving average of historical gradients: $m_t = \beta m_{t-1} + (1-\beta)g_t$. If the historical gradients of a parameter were not 0, the momentum (and thus the update) will likely remain non-zero even if the current gradient is 0.</p>
+
+<p>This raised a question for me: based on the design philosophy of ChildTuning, it seems intended to select a sub-network for update at each step—meaning only a $p$ proportion of parameters should be updated. However, based on the analysis above, applying Gradient Dropout doesn't actually achieve this. To achieve that goal, one should apply Dropout to the per-step update amount $\Delta\theta$. Yet, I repeatedly checked the original paper and even cross-referenced the open-source code; the authors definitely mean applying Dropout to the gradients.</p>
+
+<h2>Experimental Results</h2>
+
+<p>From the experimental results provided in the paper, ChildTuning's "track record" is quite stellar, with improvements in almost every case, some reaching as high as 8%—</p>
+
+<p style="text-align:center;"><img src="https://files.kexue.fm/illustration/2021/8764/ct1.png" alt="ChildTuning Performance-1" style="max-width:100%;"></p>
+<p style="text-align:center;"><em>ChildTuning's "Track Record" - 1</em></p>
+
+<p style="text-align:center;"><img src="https://files.kexue.fm/illustration/2021/8764/ct2.png" alt="ChildTuning Performance-2" style="max-width:100%;"></p>
+<p style="text-align:center;"><em>ChildTuning's "Track Record" - 2</em></p>
+
+<p>From the tables, we can see that ChildTuning-D achieved improvements in almost all tasks, while ChildTuning-F was also effective in many tasks. Furthermore, the paper clarifies that the results shown are for the large versions of the models. In private communication with the authors, they mentioned that the base versions also show improvements, though they were omitted for brevity.</p>
+
+<h2>Theoretical Reflection</h2>
+
+<p>ChildTuning-D ranks parameters based on Fisher Information, an approach with a long history; its effectiveness is not surprising. Similar works include <a href="https://papers.cool/arxiv/2111.09839">"Training Neural Networks with Fixed Sparse Masks"</a>. In contrast, the performance of the task-independent ChildTuning-F—Gradient Dropout—is quite interesting and warrants deeper thought.</p>
+
+<p>Coincidentally, there was another paper on Gradient Dropout last year titled <a href="https://papers.cool/arxiv/2004.05859">"Regularizing Meta-Learning via Gradient Dropout"</a>. This suggests that Gradient Dropout indeed has some utility. Why does it work?</p>
+
+<h3>Paper Derivation</h3>
+
+<p>The original paper provides an explanation based on SGD, stating that Gradient Dropout can expand the variance during the update process, thereby helping the model escape from sub-optimal local minima.</p>
+
+<p>Specifically, since we use SGD, the gradient calculated at each step has some randomness. Assume it follows a Gaussian distribution with mean $\mu$ and variance $\sigma^2$. For ChildTuning-F, we introduce a random variable $\varepsilon$ that is 1 with probability $p$ and 0 with probability $1-p$. Then we have:</p>
+
+\begin{equation}\begin{aligned}&\mathbb{E}[g\varepsilon/p]=\mathbb{E}[g]\mathbb{E}[\varepsilon]/p=\mu \\
+&\mathbb{E}[(g\varepsilon/p)^2]=\mathbb{E}[g^2]\mathbb{E}[\varepsilon^2]/p^2 = (\mu^2+\sigma^2)/p
+\end{aligned}\end{equation}
+
+<p>Therefore:</p>
+
+\begin{equation}\mathbb{V}ar[g\varepsilon/p] = \mathbb{E}[(g\varepsilon/p)^2] - \mathbb{E}[g\varepsilon/p]^2=\sigma^2 + \frac{1-p}{p}(\mu^2+\sigma^2) > \sigma^2\end{equation}
+
+<p>In other words, Gradient Dropout maintains the mean of the gradient while expanding the variance. In SGD, the update amount is proportional to the gradient; thus, Gradient Dropout expands the variance of the update amount. The paper argues this helps the model reach better convergence results.</p>
+
+<h3>A Misaligned Explanation?</h3>
+
+<p>This explanation seems reasonable and aligns with many people's intuition, as many subconsciously believe SGD is better than full-batch gradient descent because of the noise. However, upon closer inspection, this explanation is somewhat "misaligned."</p>
+
+<p>The reason is simple: the analysis above applies to SGD, but in NLP, we almost always use Adam (or its variants). Does the conclusion still hold for Adam? Unfortunately, no—it's actually the opposite. In Adam, in the long term, the update amount can be approximated as ($\eta$ is the learning rate):</p>
+
+\begin{equation}\Delta\theta = \eta\frac{\mathbb{E}[g]}{\sqrt{\mathbb{E}[g^2]}}\end{equation}
+
+<p>With Gradient Dropout, the update amount becomes:</p>
+
+\begin{equation}\eta\frac{\mathbb{E}[g\varepsilon/p]}{\sqrt{\mathbb{E}[(g\varepsilon/p)^2]}}=\eta\sqrt{p}\frac{\mathbb{E}[g]}{\sqrt{\mathbb{E}[g^2]}}\end{equation}
+
+<p>As we can see, in the long run, adding Gradient Dropout to Adam is equivalent simply to reducing the learning rate by a factor of $\sqrt{p}$! Moreover, because the learning rate is reduced—and thus the update amount—the variance of the update amount also decreases. In other words, if you use the Adam optimizer, the actual situation is exactly the opposite of the paper's explanation: the variance of the update amount not only fails to increase but actually decreases.</p>
+
+<p>The root cause of this phenomenon is that when using an optimizer with a moving average, the update amount is no longer proportional to the gradient. Consequently, gradient changes do not necessarily correspond to update amount changes. This brings us back to my earlier question: why not apply Dropout directly to the update amount? If it were Update Dropout, the derivation based on SGD could be applied directly.</p>
+
+<h3>Personal Interpretation</h3>
+
+<p>However, I believe that even if the optimizer were limited to SGD, or if Dropout were applied directly to the update amount, the paper's derivation still wouldn't fully explain its effectiveness. The reason is simple: there are too many operations that achieve "unchanged mean, expanded variance"—for example, just adding Gaussian noise to the gradient. Is it likely that all such operations achieve the same effect? It seems improbable. I believe the explanation for Gradient Dropout or Update Dropout must focus on the sparsity brought by Dropout.</p>
+
+<p>On this point, I am reminded of an article I wrote previously: <a href="translation_8009.html">"Optimization Algorithms from a Dynamic Perspective (VII): SGD ≈ SVM?"</a>. That article tells us that the solution of any model trained with SGD is essentially similar to an SVM model:</p>
+
+\begin{equation}f_{\theta_T}(x) = \beta(x) + \sum_i \alpha_i (x) K(x, x_i)\end{equation}
+
+<p>Where $x_i$ is the $i$-th training sample. What are its characteristics? $K(x, x_i)$ acts like a "similarity function." The above form implies that the model effectively "memorizes" the training set and, during prediction, retrieves samples from the training set based on their similarity $K(x, x_i)$ to provide a result. Of course, this is a conceptual explanation; we don't actively design the model this way. However, from this perspective, we see that gradient descent is essentially memorizing samples and providing predictions in a manner similar to KNN. This makes it easy to understand the conclusion that "more training samples usually lead to better results."</p>
+
+<p>Returning to ChildTuning-F: we sample a batch and apply Dropout to the resulting gradients or updates. Combined with the "memorization" explanation, we can intuitively imagine that this is essentially "using only a small portion of the parameters to memorize a small portion of the samples," rather than using all parameters to memorize every batch. Thus, this is similar to the principle of "not putting all your eggs in one basket." By distributing samples more evenly across the parameters, the risk of overfitting is reduced.</p>
+
+<h2>Give it a Try</h2>
+
+<p>For ChildTuning-F, if you know how to modify an optimizer, implementing either Gradient Dropout or Update Dropout is just one line of code. It's worth a try. What if it actually works?</p>
+
+<p>I conducted tests on several CLUE tasks. The results are shown in the table below. The baseline code comes from <a href="translation_8739.html">"With bert4keras in Hand, I Have the Baseline: CLUE Benchmark Code"</a>. "grad drop" refers to Dropout on gradients, and "incre drop" refers to Dropout on the update amount (increments). Green indicates an improvement over the baseline, and red indicates a decline. Due to limited time and computing power, all results are from a single run and are subject to random fluctuation.</p>
+
+$$\begin{array}{c}
+\text{Comparison Experiment on CLUE Classification Tasks (Validation Set)} \\
+{\begin{array}{c|ccccccc}
+\hline
+& \text{IFLYTEK} & \text{TNEWS} & \text{AFQMC} & \text{OCNLI} & \text{CMNLI} & \text{WSC} & \text{CSL} \\
+\hline
+\text{BERT} & 60.06 & 56.80 & 72.41 & 73.93 & 79.56 & 78.62 & 83.93 \\
+\text{BERT}_{\text{-grad drop}} & \color{green}{60.56} & \color{green}{56.97} & \color{red}{72.13} & \color{green}{74.88} & \color{green}{80.09} & \color{red}{75.99} & \color{red}{83.83} \\
+\text{BERT}_{\text{-incre drop}} & \color{red}{59.99} & \color{red}{56.78} & \color{green}{72.66} & \color{green}{74.51} & \color{red}{79.36} & \color{red}{77.30} & \color{green}{84.20} \\
+\hline
+\text{RoBERTa} & 60.64 & 58.06 & 74.05 & 76.00 & 81.24 & 87.50 & 84.50\\
+\text{RoBERTa}_{\text{-grad drop}} & \color{green}{60.72} & \color{red}{57.91} & \color{red}{74.03} & \color{red}{75.19} & \color{red}{80.52} & \color{red}{84.54} & \color{green}{84.73}\\
+\text{RoBERTa}_{\text{-incre drop}} & \color{green}{60.87} & \color{red}{57.99} & \color{red}{74.03} & \color{red}{75.97} & \color{red}{81.02} & \color{red}{84.87} & \color{green}{84.73}\\
+\hline
+\end{array}}
+\end{array}$$
+
+<p>From the table, we can broadly observe:</p>
+
+<blockquote>
+    <p>1. Gradient Dropout and Update Dropout are generally comparable, each with its own pros and cons.</p>
+    <p>2. The effect is more noticeable on BERT, while there is almost no effect on RoBERTa. This aligns with the English experimental results provided in the paper.</p>
+</blockquote>
+
+<p>This result is somewhat frustrating. One cannot say it's ineffective, but normally, who would choose BERT—which has the same speed but worse results—over the better-performing RoBERTa? If RoBERTa doesn't really work with this, it seems there might not be much value in trying it. Of course, the paper showed the largest gains on Electra, which I haven't tested. Interested readers are welcome to try it and let me know the results.</p>
+
+<p>Additionally, I didn't have much interest in ChildTuning-D, and its implementation is slightly more complex, so I didn't test it. Readers who have experimented with it are also welcome to share their findings.</p>
+
+<h2>Conclusion</h2>
+
+<p>This article introduced the practice of adding Dropout to gradients to improve fine-tuning performance and provided a personal theoretical analysis. Overall, my feeling is: it's worth a try and might be effective, but don't set your expectations too high.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8764.html" style="color: #005fcc;">https://kexue.fm/archives/8764</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

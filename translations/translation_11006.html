@@ -1,0 +1,276 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']},
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="MathJax-script" async></script>
+
+<h1><a href="https://kexue.fm/archives/11006">Calculating Singular Value Clipping (mclip) via msign (Part 1)</a></h1>
+
+<p>By 苏剑林 | June 07, 2025</p>
+
+<p>Previously, we used two articles, <a href="translation_10922.html">"Newton-Schulz Iteration for the msign Operator (Part 1)"</a> and <a href="translation_10996.html">"Newton-Schulz Iteration for the msign Operator (Part 2)"</a>, to discuss the numerical computation of the $\newcommand{msign}{\mathop{\text{msign}}}\newcommand{sign}{\mathop{\text{sign}}}\newcommand{clip}{\mathop{\text{clip}}}\newcommand{mclip}{\mathop{\text{mclip}}}\msign$ operator for matrices. In this article, we shift our focus to the "Singular Value Clipping" operation. This operation recently sparked heated discussions on <a href="https://x.com/_arohan_/status/1929945590366122037">@_arohan_'s</a> Twitter, and we also touched upon it in <a href="translation_10795.html">"Higher-Order MuP: A Simpler yet Smarter Spectral Condition Scaling."</a> In the following, we will refer to it simply as $\mclip$.</p>
+
+<h2>Basic Concepts</h2>
+
+<p>For a scalar $x$, the $\clip$ operation is defined as:
+\begin{equation}\clip(x) = \max(\min(x, 1), -1) = \left\{\begin{aligned}1, &\quad x\geq 1 \\
+x, &\quad x\in(-1, 1)\\
+-1, &\quad x\leq -1
+\end{aligned}\right.\end{equation}
+That is, values greater than $1$ or less than $-1$ are truncated; otherwise, the value remains unchanged. For a matrix $\boldsymbol{M}\in\mathbb{R}^{n\times m}$, we define its $\mclip$ as:
+\begin{equation}\mclip(\boldsymbol{M}) = \boldsymbol{U}\clip(\boldsymbol{\Sigma})\boldsymbol{V}^{\top} \end{equation}
+where $\boldsymbol{M}=\boldsymbol{U}\boldsymbol{\Sigma}\boldsymbol{V}^{\top}$ is the SVD of matrix $\boldsymbol{M}$, $\boldsymbol{U}\in\mathbb{R}^{n\times n}$ and $\boldsymbol{V}\in\mathbb{R}^{m\times m}$ are orthogonal matrices, and $\boldsymbol{\Sigma}\in\mathbb{R}^{n\times m}$ is the diagonal matrix of singular values. Applying $\clip$ to a diagonal matrix means applying $\clip$ to each of its diagonal elements individually. Note that since $\boldsymbol{\Sigma}$ is a diagonal matrix where diagonal elements are always non-negative, we also have:
+\begin{equation}\mclip(\boldsymbol{M}) = \boldsymbol{U}\min(\boldsymbol{\Sigma}, 1)\boldsymbol{V}^{\top} \end{equation}
+</p>
+
+<p>Naturally, SVD is the standard way to calculate $\mclip$, but SVD is not particularly efficient. Given our experience with $\msign$, it is natural to consider finding a Newton-Schulz iteration for $\mclip$ as well. This line of thought is sound, but based on $\msign$, we can adopt an even smarter approach.</p>
+
+<h2>Standing on the Shoulders of Giants</h2>
+
+<p>This clever idea comes from <a href="https://x.com/leloykun">@leloykun</a>. In his blog post <a href="https://leloykun.github.io/ponder/spectral-clipping/">"Numerically Stable Spectral Clipping Via Newton-Schulz Iteration"</a>, he proposed that we can stand on the shoulders of $\msign$ and express $\mclip$ using $\msign$, thereby avoiding the need to find a separate Newton-Schulz iteration specifically for $\mclip$. He proposed an ingenious solution in his blog, but personally, I find it somewhat unintuitive and not highly efficient. Below, I present my own derivation.</p>
+
+<p>My starting point is a scalar identity (provided by Kimi):
+$$\min(x, 1) = \frac{1}{2} [x + 1 - (x-1)\sign(x-1)] $$
+For simplicity, let's first assume $\boldsymbol{M}$ is a full-rank square matrix. Then:
+\begin{equation}\begin{aligned}
+2\mclip(\boldsymbol{M}) =&\, \boldsymbol{U} [2\min(\boldsymbol{\Sigma},1)] \boldsymbol{V}^{\top} \\[6pt]
+=&\, \boldsymbol{U} [\boldsymbol{\Sigma} + \boldsymbol{I} - (\boldsymbol{\Sigma} - \boldsymbol{I})\sign(\boldsymbol{\Sigma} - \boldsymbol{I})] \boldsymbol{V}^{\top} \\[6pt]
+=&\, \boldsymbol{U} [\boldsymbol{\Sigma} + \boldsymbol{I} - (\boldsymbol{\Sigma} - \boldsymbol{I})\msign(\boldsymbol{\Sigma} - \boldsymbol{I})] \boldsymbol{V}^{\top} \\[6pt]
+=&\, \boldsymbol{M} + \boldsymbol{U}\boldsymbol{V}^{\top} - \boldsymbol{U}(\boldsymbol{\Sigma} - \boldsymbol{I})\msign(\boldsymbol{\Sigma} - \boldsymbol{I}) \boldsymbol{V}^{\top}
+\end{aligned}\label{eq:2-mclip-M}\end{equation}
+Note that:
+\begin{equation}\begin{aligned}
+&\, \boldsymbol{U}(\boldsymbol{\Sigma} - \boldsymbol{I})\msign(\boldsymbol{\Sigma} - \boldsymbol{I}) \boldsymbol{V}^{\top} \\[6pt]
+=&\, \boldsymbol{U}(\boldsymbol{\Sigma} - \boldsymbol{I}) \boldsymbol{U}^{\top} \boldsymbol{U}\msign(\boldsymbol{\Sigma} - \boldsymbol{I}) \boldsymbol{V}^{\top} \\[6pt]
+=&\, (\boldsymbol{U}\boldsymbol{\Sigma} \boldsymbol{U}^{\top} - \boldsymbol{I}) \msign(\boldsymbol{M} - \boldsymbol{U}\boldsymbol{V}^{\top}) \\[6pt]
+=&\, (\boldsymbol{U}\boldsymbol{\Sigma} \boldsymbol{V}^{\top} (\boldsymbol{U}\boldsymbol{V}^{\top})^{\top} - \boldsymbol{I}) \msign(\boldsymbol{M} - \boldsymbol{U}\boldsymbol{V}^{\top}) \\[6pt]
+=&\, (\boldsymbol{M} (\boldsymbol{U}\boldsymbol{V}^{\top})^{\top} - \boldsymbol{I}) \msign(\boldsymbol{M} - \boldsymbol{U}\boldsymbol{V}^{\top}) \\[6pt]
+\end{aligned}\end{equation}
+where the second equality uses the property that for any orthogonal matrices $\boldsymbol{P}, \boldsymbol{Q}$, the identity $\boldsymbol{P}\msign(\boldsymbol{R})\boldsymbol{Q} = \msign(\boldsymbol{P}\boldsymbol{R}\boldsymbol{Q})$ holds. Substituting this back into Equation $\eqref{eq:2-mclip-M}$, we get:
+\begin{equation}2\mclip(\boldsymbol{M}) = \boldsymbol{M} + \boldsymbol{U}\boldsymbol{V}^{\top} + (\boldsymbol{I} - \boldsymbol{M}(\boldsymbol{U}\boldsymbol{V}^{\top})^{\top}) \msign(\boldsymbol{M} - \boldsymbol{U}\boldsymbol{V}^{\top})\label{eq:mclip-M-core}\end{equation}
+If $\boldsymbol{M}$ is a general matrix of rank $r$, then $\boldsymbol{U}\boldsymbol{V}^{\top}$ is replaced by $\boldsymbol{U}_{[:,:r]}\boldsymbol{V}_{[:,:r]}^{\top}$. We can directly substitute $\boldsymbol{M} = \boldsymbol{U}_{[:,:r]}\boldsymbol{\Sigma}_{[:r,:r]}\boldsymbol{V}_{[:,:r]}^{\top}$ into the above equation to verify that the equality still holds.</p>
+
+<p>(Note: I would like to thank <a href="https://x.com/YouJiacheng">@YouJiacheng</a> for the discussions regarding this section.)</p>
+
+<h2>Reference Implementation</h2>
+
+<p>We know that $\boldsymbol{U}\boldsymbol{V}^{\top}=\msign(\boldsymbol{M})$, so using Equation $\eqref{eq:mclip-M-core}$ to calculate $\mclip$ only requires calculating $\msign$ twice:
+\begin{equation}2\mclip(\boldsymbol{M}) = \boldsymbol{M} + \msign(\boldsymbol{M}) + (\boldsymbol{I} - \boldsymbol{M}\msign(\boldsymbol{M})^{\top}) \msign(\boldsymbol{M} - \msign(\boldsymbol{M}))\end{equation}
+The computational cost is roughly twice that of $\msign$. In contrast, the method in <a href="https://leloykun.github.io/ponder/spectral-clipping/">"Numerically Stable Spectral Clipping Via Newton-Schulz Iteration"</a> requires calculating $\msign$ for a matrix about four times the size, which makes the computational cost roughly eight times that of a single $\msign$ call.</p>
+
+<p>Building upon $\msign$, the implementation of Equation $\eqref{eq:mclip-M-core}$ requires only two lines of code. A reference is provided below:</p>
+
+<pre><code>import numpy as np
+
+def msign(m):
+    u, s, vh = np.linalg.svd(m, full_matrices=False)
+    return u @ vh
+
+def mclip(m):
+    ms2 = msign(m - (ms := msign(m)))
+    return (m + ms + ms2 - m @ ms.mT @ ms2) / 2
+
+m = np.random.randn(10, 20)
+u, s, vh = np.linalg.svd(m, full_matrices=False)
+
+result1 = u @ np.diag(s.clip(0, 1)) @ vh
+result2 = mclip(m)
+print(np.abs(result1 - result2).mean())
+</code></pre>
+
+<p>Here, SVD is used directly to calculate $\msign$ to quickly verify the correctness of Equation $\eqref{eq:mclip-M-core}$. In actual computations, readers can replace the <code>msign</code> function with the corresponding Newton-Schulz iteration.</p>
+
+<h2>Other Functions</h2>
+
+<p>We can use the same logic to calculate matrix versions of other functions, such as the step function. We define the scalar step function $\newcommand{mstep}{\mathop{\text{mstep}}}\newcommand{step}{\mathop{\text{step}}}$ as:
+\begin{equation}\step(x) = \frac{1}{2}[\sign(x - 1) + 1]\end{equation}
+This means if it's greater than 1, it becomes 1; if it's less than 1, it becomes 0. Consequently, we can define:
+\begin{equation}\mstep(\boldsymbol{M}) = \boldsymbol{U}\step(\boldsymbol{\Sigma})\boldsymbol{V}^{\top}\end{equation}
+This operation preserves singular values greater than 1 (clipping them to 1) and zeros out those less than 1. Following the same steps, we obtain:
+\begin{equation}\mstep(\boldsymbol{M}) = \frac{1}{2}[\msign(\boldsymbol{M}) + \msign(\boldsymbol{M} - \msign(\boldsymbol{M}))]\end{equation}
+We can even represent even functions. For example, define:
+\begin{equation}\mathop{\text{msquare}}(\boldsymbol{M}) = \boldsymbol{U} \boldsymbol{\Sigma}^2\boldsymbol{V}^{\top} = \boldsymbol{U}\boldsymbol{V}^{\top}(\boldsymbol{V}\boldsymbol{\Sigma}\boldsymbol{U}^{\top})(\boldsymbol{U} \boldsymbol{\Sigma}\boldsymbol{V}^{\top}) = \msign(\boldsymbol{M})\boldsymbol{M}^{\top}\boldsymbol{M}\end{equation}
+This is different from the matrix square defined directly by $\boldsymbol{M}^2$. The latter is only valid for square matrices and squares the eigenvalues under eigenvalue decomposition. The formula above squares the singular values under singular value decomposition. More generally, we have:
+\begin{equation}\boldsymbol{U} \boldsymbol{\Sigma}^{2n}\boldsymbol{V}^{\top} = \msign(\boldsymbol{M})(\boldsymbol{M}^{\top}\boldsymbol{M})^n,\quad \boldsymbol{U} \boldsymbol{\Sigma}^{2n+1}\boldsymbol{V}^{\top} = \boldsymbol{M}(\boldsymbol{M}^{\top}\boldsymbol{M})^n\end{equation}
+This indicates that for any polynomial $f(x)$ (not just odd polynomials), $\boldsymbol{U}f(\boldsymbol{\Sigma})\boldsymbol{V}^{\top}$ can be obtained from $\boldsymbol{M}$ and $\msign(\boldsymbol{M})$ through a finite number of matrix additions and multiplications.</p>
+
+<h2>Summary</h2>
+
+<p>This article introduced an approach for performing general operations on the singular values of a matrix using the matrix itself and its $\msign$, including singular value clipping, step functions, and arbitrary degree polynomials (not just odd polynomials).</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_11006.html" style="color: #005fcc;">https://kexue.fm/archives/11006</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

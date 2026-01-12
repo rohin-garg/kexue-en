@@ -1,0 +1,406 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/6163">A GAN without Lipschitz constraints and without vanishing gradients, interested?</a></h1>
+
+    <p>By 苏剑林 | November 20, 2018</p>
+
+    <p>I don't know when it started, but I found that I have also fallen into the huge pit of GANs. Sigh, I'll try to jump out as soon as possible...</p>
+
+    <p>This blog post introduces a new GAN framework that I recently submitted to arXiv. It primarily presents a new understanding of probability divergence and derives a new GAN based on this understanding. The entire article is theoretical, providing a complete demonstration of the relevant properties of this GAN. I believe it is a theoretically complete result.</p>
+
+    <p>Article link: <a href="https://papers.cool/arxiv/1811.07296">https://papers.cool/arxiv/1811.07296</a></p>
+
+    <p>Main conclusions first:</p>
+
+    <blockquote>
+        <p>1. The paper provides a direct approach for analyzing and constructing probability divergences, thereby simplifying the process of building new GAN frameworks.</p>
+        <p>2. A GAN framework called GAN-QP is derived in \eqref{eq:gan-gp-gd}. This GAN does not require Lipschitz constraints like WGAN, nor does it suffer from the vanishing gradient problem of SGAN. Experiments show that its performance is at least as good as, and sometimes superior to, WGAN.</p>
+    </blockquote>
+
+    <p><em>GAN-QP effect image</em></p>
+
+    <p>The paper's experiments scaled up to 512x512 face generation (CelebA HQ), fully demonstrating the model's effectiveness (while the results are not perfect, the model is exceptionally simple). Interested friends are welcome to continue reading.</p>
+
+    <h2>Directly Facing the Dual Space</h2>
+
+    <p>To build a GAN framework, we generally follow three steps:</p>
+
+    <blockquote>
+        <p>1. Seek a favorable probability divergence;<br>
+        2. Find its dual form;<br>
+        3. Convert it into a min-max game.</p>
+    </blockquote>
+
+    <p>The issue is: only the second and third steps are truly useful for the training process; the first step is not strictly necessary.</p>
+
+    <p>In fact, it is difficult to define a new divergence from the original space, and even after definition, it is not always easy to convert to a dual form. However, we can analyze the dual space directly. This reveals a set of new, well-behaved divergences. In other words, we can directly argue whether an expression in the dual space satisfies the definition of a divergence, thereby directly providing an optimizable target without concerning ourselves with whether it is specifically JS divergence or W-distance.</p>
+
+    <p>Below is an example of this approach.</p>
+
+    <h3>Divergence</h3>
+
+    <p>First, let's define a divergence:</p>
+
+    <blockquote>
+        <p>If $\mathcal{D}[p, q]$ is a scalar function of $p, q$ and satisfies:<br>
+        1. $\mathcal{D}[p, q] \geq 0$ always holds;<br>
+        2. $\mathcal{D}[p, q] = 0 \Leftrightarrow p = q$.</p>
+        <p>Then $\mathcal{D}[p, q]$ is called a divergence between $p$ and $q$. The main difference between a divergence and a "distance" is that a divergence does not need to satisfy the triangle inequality or symmetry. However, a divergence retains the most fundamental property of measuring a gap, so we can use it to measure the degree of difference between $p$ and $q$.</p>
+    </blockquote>
+
+    <h3>SGAN</h3>
+
+    <h4>Basic Definition</h4>
+
+    <p>Let's first look at the discriminator loss in SGAN, defined as:</p>
+    \begin{equation}\mathcal{D}[p(x),q(x)] = \max_T\, \frac{1}{2}\mathbb{E}_{x\sim p(x)}[\log \sigma(T(x))] + \frac{1}{2}\mathbb{E}_{x\sim q(x)}[\log (1 - \sigma(T(x)))] + \log 2\label{eq:js-dual-2}\end{equation}
+    <p>This is actually the dual form of the JS divergence. However, we can prove it is a divergence directly from this definition and then discuss the properties of the divergence itself without needing to know it is specifically JS divergence.</p>
+
+    <p>How to prove it? We only need to show that this result satisfies the two requirements of a divergence mentioned above. Note that according to our logic, we don't know it's JS divergence, but we can mathematically prove it is a divergence.</p>
+
+    <p>If the reader truly understands the meaning of formula \eqref{eq:js-dual-2}, the proof is not difficult. Formula \eqref{eq:js-dual-2} first defines an expectation expression and then takes the maximum over $T$ (more accurately, the "supremum"). The result of taking the maximum is the divergence. To emphasize again: "the result after taking the maximum is the divergence"; the expression $\frac{1}{2}\mathbb{E}_{x\sim p(x)}[\log \sigma(T(x))] + \frac{1}{2}\mathbb{E}_{x\sim q(x)}[\log (1 - \sigma(T(x)))] + \log 2$ itself is not the divergence.</p>
+
+    <p>The specific proof process is somewhat long and won't be laid out here in full; readers are encouraged to check the appendix of the original paper. Alternatively, look at the WGAN section below, as it is relatively simpler.</p>
+
+    <h4>Generative Adversarial Network</h4>
+
+    <p>Once we have a divergence, we can train a generative model by minimizing the divergence between two probability distributions. That is, the next step is:</p>
+    \begin{equation}\min_{G} \mathcal{D}[p(x),q(x)]\end{equation}
+    <p>Note that $\mathcal{D}[p(x),q(x)]$ is achieved through the $\max_{T}$ operation, so combining them results in a min-max process. For example, the previous instance is equivalent to:</p>
+    \begin{equation}G,T = \mathop{\text{argmin}}_G\mathop{\text{argmax}}_T\, \mathbb{E}_{x\sim p(x)}[\log \sigma(T(x))]+ \mathbb{E}_{x=G(z),z\sim q(z)}[\log (1 - \sigma(T(x)))]\label{eq:js-min-max}\end{equation}
+    <p>This is SGAN.</p>
+
+    <p>Thus, we find that the GAN process essentially consists of two steps: 1. Defining a divergence through $\max$; 2. Reducing the divergence between two distributions through $\min$. The new perspective here is treating the $\max$ operation directly as part of the divergence definition.</p>
+
+    <h4>Performance Analysis</h4>
+
+    <p>We know SGAN has a risk of vanishing gradients. Why is this? Let's consider an extreme case:</p>
+    \begin{equation}p(x)=\delta(x-\alpha),q(x)=\delta(x-\beta)\end{equation}
+    <p>Where $\alpha \neq \beta$. Thus, the two distributions are single-point distributions with absolutely no overlap. In this case, substituting into \eqref{eq:js-dual-2} yields:</p>
+    \begin{equation}\mathcal{D}[p(x),q(x)] = \max_T\, \frac{1}{2}[\log \sigma(T(\alpha))] + \frac{1}{2}[\log (1 - \sigma(T(\beta)))] + \log 2\end{equation}
+    <p>Since we have no constraints on $T$, to reach the maximum, we can let $T(\alpha) \to +\infty$ and $T(\beta) \to -\infty$, resulting in a supremum that is the constant $\log 2$. That is, in this case, $\mathcal{D}[p(x),q(x)] = \log 2$.</p>
+
+    <p>This means that for two distributions with almost no overlap, the divergence defined by \eqref{eq:js-dual-2} gives a constant measurement of $\log 2$. A constant implies the gradient is 0, making optimization impossible. The two WGAN papers showed that "no overlap" is theoretically very common in GANs, so this is an inherent flaw of SGAN.</p>
+
+    <h4>General f-divergence</h4>
+
+    <p>The previous sections have completely presented the workflow of this understanding:</p>
+
+    <blockquote>
+        <p>1. We define a mathematical expression through $\max$, and then we can directly prove from a mathematical perspective that it is a divergence without worrying about its name;<br>
+        2. By minimizing this divergence through $\min$, the combined min-max process yields a type of GAN;<br>
+        3. To check the performance of this divergence under extreme conditions, we can test it using $p(x)=\delta(x-\alpha),q(x)=\delta(x-\beta)$.</p>
+    </blockquote>
+
+    <p>The aforementioned SGAN discussion can be extended in parallel to all f-GANs (refer to <a href="translation_6016.html">"Introduction to f-GAN: The Production Workshop for GAN Models"</a>). The various f-divergences have no essential difference; they share the same inherent flaws (either vanishing gradients or exploding gradients).</p>
+
+    <h3>WGAN</h3>
+
+    <h4>Basic Definition</h4>
+
+    <p>Now we turn to a new class of divergence: Wasserstein distance. Note that Wasserstein distance is a strict distance satisfying axiomatic definitions, but here we are only concerned with its divergence properties. Define:</p>
+    \begin{equation}\mathcal{W}[p(x),q(x)] = \max_{T,\,\| T\|_L \leq 1}\, \mathbb{E}_{x\sim p(x)}[T(x)] - \mathbb{E}_{x\sim q(x)}[T(x)]\label{eq:wd-dual}\end{equation}
+    <p>where</p>
+    \begin{equation}\| T\|_L = \max_{x\neq y} \frac{|T(x)-T(y)|}{d(x,y)}\end{equation}
+    <p>and $d(x, y)$ is any existing distance.</p>
+
+    <p>It can be directly proven that this is a divergence. This proof is quite classic, so it is written here:</p>
+
+    <blockquote>
+        <p>1. Regardless of what $p(x), q(x)$ are, if we simply let $T(x) \equiv 0$, we get $\mathbb{E}_{x\sim p(x)}[T(x)] - \mathbb{E}_{x\sim q(x)}[T(x)] = 0$. Since the definition of divergence requires searching over all $T$ to find the maximum, it will at least not be less than 0, proving non-negativity.</p>
+        <p>2. Proving that when $p(x) = q(x)$, $\mathcal{W}[p(x), q(x)] = 0$, i.e., $\mathcal{W}[p(x), p(x)] = 0$, is almost obvious.</p>
+        <p>3. Proving that when $p(x) \neq q(x)$ (strictly speaking, when the measure of their inequality is greater than 0), $\mathcal{W}[p(x), q(x)] > 0$. This is relatively harder but still simple. We only need to set $T_0(x) = \text{sign}(p(x) - q(x))$, then clearly:</p>
+        \begin{equation}\begin{aligned}&\mathbb{E}_{x\sim p(x)}[T_0(x)] - \mathbb{E}_{x\sim q(x)}[T_0(x)] \\
+        =&\int (p(x)-q(x))\cdot \text{sign}(p(x) - q(x)) dx > 0\end{aligned}\end{equation}
+        <p>Thus, we have directly proven that $\mathcal{W}[p(x), q(x)]$ satisfies the definition of a divergence.</p>
+    </blockquote>
+
+    <h4>Generative Adversarial Network</h4>
+
+    <p>Similarly, with the new divergence, we can define a new GAN:</p>
+    \begin{equation}G,T = \mathop{\text{argmin}}_G\mathop{\text{argmax}}_{T,\,\| T\|_L \leq 1}\, \mathbb{E}_{x\sim p(x)}[T(x)] - \mathbb{E}_{x=G(z),z\sim q(z)}[T(x)]\label{eq:wd-min-max}\end{equation}
+    <p>This is WGAN. References from this blog include <a href="translation_4439.html">"The Art of Mutual Confrontation: Directing Towards WGAN-GP from Zero"</a> and <a href="translation_6139.html">"WGAN-div: An Obscure WGAN Pit-Filler"</a>.</p>
+
+    <h4>Performance Analysis</h4>
+
+    <p>Similarly, testing the $\mathcal{W}[p(x),q(x)]$ divergence performance with $p(x)=\delta(x-\alpha),q(x)=\delta(x-\beta)$, we get:</p>
+    \begin{equation}\mathcal{W}[p(x),q(x)] = \max_{T,\,\| T\|_L \leq 1} T(\alpha) - T(\beta)\end{equation}
+    <p>Note that we have the Lipschitz constraint $\| T\|_L \leq 1$, which means $|T(\alpha) - T(\beta)| \leq d(\alpha, \beta)$. The equality can be reached, so:</p>
+    \begin{equation}\mathcal{W}[p(x),q(x)] = d(\alpha,\beta)\end{equation}
+    <p>The result is not a constant, so even in this extreme case, we can pull the distance between the two distributions closer. Thus, from this perspective, WGAN is better than SGAN.</p>
+
+    <h4>Lipschitz Constraint</h4>
+
+    <p>The remaining issue for WGAN is how to add the Lipschitz constraint to the discriminator. Currently, there are three solutions: weight clipping, gradient penalty, and spectral normalization. Please refer to <a href="translation_6051.html">"Lipschitz Constraint in Deep Learning: Generalization and Generative Models"</a> and <a href="translation_6139.html">"WGAN-div: An Obscure WGAN Pit-Filler"</a>.</p>
+
+    <p>Weight clipping is basically deprecated. Gradient penalty is in principle just an empirical method with its own irrationalities, and calculating gradients is usually slow. Spectral normalization appears to be the most elegant and currently works well, though there is a possibility it restricts the model too tightly. For further discussion, see <a href="translation_6139.html">"WGAN-div: An Obscure WGAN Pit-Filler"</a>.</p>
+
+    <h2>New Divergence, New GAN</h2>
+
+    <p>The conclusion now is: SGAN may have a risk of vanishing gradients, and while WGAN is good, it requires an additional Lipschitz constraint. Naturally, one might ask: is there a GAN that doesn't need Lipschitz constraints and doesn't suffer from vanishing gradients? Can one have their cake and eat it too?</p>
+
+    <p>It turns out you can. Let's find one. Actually, more than one; I can show you a whole batch.</p>
+
+    <h3>Quadratic Potential Divergence</h3>
+
+    <h4>Basic Definition</h4>
+
+    <p>The form of the divergence we are about to present is as follows:</p>
+    \begin{equation}\begin{aligned}&\mathcal{L}[p(x),q(x)] \\
+    = & \max_{T}\, \mathbb{E}_{(x_r,x_f)\sim p(x_r)q(x_f)}\left[T(x_r,x_f)-T(x_f,x_r) - \frac{(T(x_r,x_f)-T(x_f,x_r))^2}{2\lambda d(x_r,x_f)}\right]\end{aligned}\label{eq:qp-dual}\end{equation}
+    <p>where $\lambda > 0$ is a hyperparameter and $d$ can be any distance.</p>
+
+    <p>This form looks like it adds a quadratic potential energy term on top of WGAN, so it is named Quadratic Potential Divergence (QP-div).</p>
+
+    <p>The appendix of the paper proves that formula \eqref{eq:qp-dual} is indeed a divergence.</p>
+
+    <h4>Performance Analysis</h4>
+
+    <p>Testing this divergence with $p(x)=\delta(x-\alpha),q(x)=\delta(x-\beta)$ yields:</p>
+    \begin{equation}\mathcal{L}[p(x),q(x)] = \max_{T}\, T(\alpha, \beta)-T(\beta, \alpha) - \frac{(T(\alpha, \beta)-T(\beta, \alpha))^2}{2\lambda d(\alpha, \beta)}\end{equation}
+    <p>By settting $z = T(\alpha, \beta)-T(\beta, \alpha)$, we get $z - \frac{z^2}{2\lambda d(\alpha, \beta)}$. Does this look familiar? This is just a maximum value problem for a quadratic function. The maximum value is $\frac{1}{2}\lambda d(\alpha, \beta)$, so we have:</p>
+    \begin{equation}\mathcal{L}[p(x),q(x)] = \frac{1}{2}\lambda d(\alpha,\beta)\end{equation}
+    <p>This is similar to WGAN; even for extreme distributions, there is no risk of vanishing gradients. One can indeed have both.</p>
+
+    <h3>GAN-QP</h3>
+
+    <h4>Generative Adversarial Network</h4>
+
+    <p>With the divergence, we can construct an adversarial network. The final form we present is:</p>
+    \begin{equation}\begin{aligned}&T= \mathop{\text{argmax}}_T\, \mathbb{E}_{(x_r,x_f)\sim p(x_r)q(x_f)}\left[T(x_r,x_f)-T(x_f,x_r) - \frac{(T(x_r,x_f)-T(x_f,x_r))^2}{2\lambda d(x_r,x_f)}\right] \\
+    &G = \mathop{\text{argmin}}_G\,\mathbb{E}_{(x_r,x_f)\sim p(x_r)q(x_f)}\left[T(x_r,x_f)-T(x_f,x_r)\right]
+    \end{aligned}\label{eq:gan-gp-gd}\end{equation}
+    <p>I refer to this in the paper as GAN-QP.</p>
+
+    <p>Note: do not include the quadratic term $-\frac{(T(x_r,x_f)-T(x_f,x_r))^2}{2\lambda d(x_r,x_f)}$ in the generator's loss (theoretically it's not a problem, but there will be issues when optimizing using gradient descent). Because the denominator of this term is $d(x_r,x_f)$, once you minimize the quadratic term, it is equivalent to minimizing $d(x_r,x_f)$, which means measuring image differences using $d(x_r,x_f)$, which is not scientifically sound.</p>
+
+    <h4>Analysis of the Solution</h4>
+
+    <p>Using variational methods, it can be proven (also in the appendix) that the optimal solution for the discriminator is:</p>
+    \begin{equation}\frac{p(x_r)q(x_f) - p(x_f)q(x_r)}{p(x_r)q(x_f) + p(x_f)q(x_r)} = \frac{T(x_r,x_f)-T(x_f,x_r)}{\lambda d(x_r, x_f)}\label{eq:opt-t}\end{equation}
+
+    <p>From this optimal solution, we can draw two conclusions. First, it is not difficult to prove that the optimal solution satisfies:</p>
+    \begin{equation}-1 \leq \frac{T(x_r,x_f)-T(x_f,x_r)}{\lambda d(x_r, x_f)}\leq 1\end{equation}
+    <p>In other words, the optimal solution automatically satisfies the Lipschitz constraint. Thus, we can consider GAN-QP to be a scheme with an adaptive Lipschitz constraint.</p>
+
+    <p>Secondly, by substituting the optimal solution into the generator's loss, we find that the total objective is:</p>
+    \begin{equation}\lambda\iint p(x_r)q(x_f)\frac{p(x_r)q(x_f) - p(x_f)q(x_r)}{p(x_r)q(x_f) + p(x_f)q(x_r)} d(x_r, x_f) dx_r dx_f\end{equation}
+    <p>This is also a probability divergence, and we have theoretically proven that it does not suffer from vanishing or exploding gradients (related to the Cauchy-Schwarz inequality). Additionally, it can be seen that $\lambda$ is just a scaling factor and is not actually important, which makes GAN-QP robust to $\lambda$; $\lambda$ will not significantly affect the model's performance.</p>
+
+    <h2>Experimental Results</h2>
+
+    <p>In the paper, we compared the effects of various GANs and GAN-QP on the CelebA HQ dataset, showing that GAN-QP can rival or even surpass current state-of-the-art models.</p>
+
+    <p>Note that in model \eqref{eq:gan-gp-gd}, $T$ is a binary function of $(x_r, x_f)$. However, experiments show that taking the simplest unary special case $T(x_r, x_f) \equiv T(x_r)$ is sufficient. That is, using $T(x_r) - T(x_f)$ instead of $T(x_r, x_f) - T(x_f, x_r)$ is enough; changing to a binary function did not provide significant improvements (though this might also be because I didn't tune it well). In this way, the format is very similar to WGAN-GP, but the theory is more complete.</p>
+
+    <p>Open source code: <a href="https://github.com/bojone/gan-qp">https://github.com/bojone/gan-qp</a></p>
+
+    <h3>128x128</h3>
+
+    <p>On the 128x128 resolution, we conducted quite a comprehensive comparison, with FID as the quantitative indicator. The results are as follows:</p>
+
+    <p><em>Quantitative FID curves for different GANs</em></p>
+
+    <p>And the table below:</p>
+    $$\begin{array}{c|ccccc}
+    \hline
+    \hline
+    & \text{GAN-QP-L1/L2} & \text{WGAN-GP} & \text{WGAN-SN} & \text{SGAN-SN} & \text{LSGAN-SN} \\
+    \hline
+    \text{Best FID} & 45.0 / 44.7 & 55.5 & 47.8 & 44.5 & 45.8\\
+    \hline
+    \text{Speed} & 1\text{x} / 1\text{x} & 1.5\text{x} & 1\text{x} & 1\text{x} & 1\text{x}\\
+    \hline
+    \hline
+    \end{array}$$
+
+    <h3>256 and 512</h3>
+
+    <p>At 128 resolution, the best performers were GAN-QP and SGAN-SN, but at 256x256 resolution, their performance diverged:</p>
+    $$\begin{array}{c|ccccc}
+    \hline
+    \hline
+    & \text{GAN-QP} & \text{SGAN-SN} \\
+    \hline
+    \text{Best FID} & 22.7 & 27.9\\
+    \hline
+    \hline
+    \end{array}$$
+    <p>I pushed GAN-QP experiments up to 512x512 face generation, and the results were quite good, with a final FID of 26.44:</p>
+
+    <p><em>512x512 face performance image</em></p>
+
+    <h2>Paper Summary</h2>
+
+    <p>This article originated from my thinking on probability divergence, attempting to find a more direct approach to understanding probability divergence, partly inspired by <a href="translation_6139.html">WGAN-div</a>.</p>
+
+    <p>Fortunately, I eventually managed to pave this path and obtained some new results, which I then submitted to arXiv for everyone's reference. I hope to receive guidance from seniors and experts. In fact, based on similar ideas, we can construct many similar divergences, such as replacing the square with 4th or 6th powers, although the theoretical analysis would be much more difficult.</p>
+
+    <p>Limited by computing power, and since I am not specifically a GAN researcher, the experimental side may not be perfect. It basically serves to demonstrate the conclusions; please understand. Of course, all guidance is welcome.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6163.html" style="color: #005fcc;">https://kexue.fm/archives/6163</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

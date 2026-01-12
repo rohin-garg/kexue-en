@@ -1,0 +1,251 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/10588">Looking at Adaptive Learning Rate Optimizers from the Perspective of Hessian Approximation</a></h1>
+
+<p>By 苏剑林 | November 29, 2024</p>
+
+<p>Recently, I have been revisiting a Meta paper from last year titled <a href="https://arxiv.org/abs/2304.09871">"A Theory on Adam Instability in Large-Scale Machine Learning"</a>, which presents a fresh perspective on looking at adaptive learning rate optimizers like Adam: it points out that the moving average of squared gradients approximates, in some sense, the square of the Hessian matrix. Thus, optimizers such as Adam and RMSprop are actually approximations of the second-order Newton's method. This perspective is quite novel and appears to differ significantly from some previous Hessian approximations, so it is well worth our study and reflection.</p>
+
+<h3>Newton's Method</h3>
+
+<p>Suppose the loss function is $\mathcal{L}(\boldsymbol{\theta})$, where the parameters to be optimized are $\boldsymbol{\theta}$. Our optimization goal is
+\begin{equation}\boldsymbol{\theta}^* = \mathop{\text{argmin}}_{\boldsymbol{\theta}} \mathcal{L}(\boldsymbol{\theta})\label{eq:loss}\end{equation}
+Assuming the current value of $\boldsymbol{\theta}$ is $\boldsymbol{\theta}_t$, Newton's method seeks $\boldsymbol{\theta}_{t+1}$ by expanding the loss function to the second order:
+\begin{equation}\mathcal{L}(\boldsymbol{\theta})\approx \mathcal{L}(\boldsymbol{\theta}_t) + \boldsymbol{g}_t^{\top}(\boldsymbol{\theta} - \boldsymbol{\theta}_t) + \frac{1}{2}(\boldsymbol{\theta} - \boldsymbol{\theta}_t)^{\top}\boldsymbol{\mathcal{H}}_t(\boldsymbol{\theta} - \boldsymbol{\theta}_t)\end{equation}
+where $\boldsymbol{g}_t = \nabla_{\boldsymbol{\theta}_t}\mathcal{L}(\boldsymbol{\theta}_t)$ is the gradient and $\boldsymbol{\mathcal{H}}_t=\nabla_{\boldsymbol{\theta}_t}^2\mathcal{L}(\boldsymbol{\theta}_t)$ is the Hessian matrix. Assuming the positive definiteness of the Hessian matrix, there exists a unique minimum for the right side of the above equation at $\boldsymbol{\theta}_t - \boldsymbol{\mathcal{H}}_t^{-1}\boldsymbol{g}_t$. Newton's method takes this as the next step $\boldsymbol{\theta}_{t+1}$:
+\begin{equation}\boldsymbol{\theta}_{t+1} = \boldsymbol{\theta}_t-\boldsymbol{\mathcal{H}}_t^{-1}\boldsymbol{g}_t = \boldsymbol{\theta}_t - (\nabla_{\boldsymbol{\theta}_t}^2\mathcal{L})^{-1} \nabla_{\boldsymbol{\theta}_t}\mathcal{L}\end{equation}
+Note that the above formula has no additional learning rate parameter, so Newton's method is inherently an adaptive learning rate algorithm. Of course, since the complexity of the Hessian matrix is proportional to the square of the number of parameters, the full Newton's method is basically of only theoretical value in deep learning. To actually apply Newton's method, one must make significant simplifying assumptions about the Hessian matrix, such as assuming it is a diagonal or low-rank matrix.</p>
+
+<p>In the perspective of Newton's method, SGD assumes $\boldsymbol{\mathcal{H}}_t=\eta_t^{-1}\boldsymbol{I}$, while Adam assumes $\boldsymbol{\mathcal{H}}_t=\eta_t^{-1}\text{diag}(\sqrt{\hat{\boldsymbol{v}}_t} + \epsilon)$, where
+\begin{equation}\text{Adam}:=\left\{\begin{aligned} 
+&\boldsymbol{m}_t = \beta_1 \boldsymbol{m}_{t-1} + \left(1 - \beta_1\right) \boldsymbol{g}_t\\ 
+&\boldsymbol{v}_t = \beta_2 \boldsymbol{v}_{t-1} + \left(1 - \beta_2\right) \boldsymbol{g}_t\odot\boldsymbol{g}_t\\ 
+&\hat{\boldsymbol{m}}_t = \boldsymbol{m}_t\left/\left(1 - \beta_1^t\right)\right.\\ 
+&\hat{\boldsymbol{v}}_t = \boldsymbol{v}_t\left/\left(1 - \beta_2^t\right)\right.\\ 
+&\boldsymbol{\theta}_t = \boldsymbol{\theta}_{t-1} - \eta_t \hat{\boldsymbol{m}}_t\left/\left(\sqrt{\hat{\boldsymbol{v}}_t} + \epsilon\right)\right. 
+\end{aligned}\right.\end{equation}
+Next, we want to prove that $\eta_t^{-1}\text{diag}(\sqrt{\hat{\boldsymbol{v}}_t})$ is a better approximation of $\boldsymbol{\mathcal{H}}_t$.</p>
+
+<h3>Gradient Approximation</h3>
+
+<p>The key point of the proof is to use the first-order approximation of the gradient:
+\begin{equation}\boldsymbol{g}_{\boldsymbol{\theta}} \approx \boldsymbol{g}_{\boldsymbol{\theta}^*} + \boldsymbol{\mathcal{H}}_{\boldsymbol{\theta}^*}(\boldsymbol{\theta} - \boldsymbol{\theta}^*)\end{equation}
+where $\boldsymbol{g}_{\boldsymbol{\theta}^*}$ and $\boldsymbol{\mathcal{H}}_{\boldsymbol{\theta}^*}$ indicate that we are expanding at $\boldsymbol{\theta}=\boldsymbol{\theta}^*$. Here $\boldsymbol{\theta}^*$ is the target we are looking for in $\eqref{eq:loss}$, where the model gradient is zero, so the above equation can be simplified to
+\begin{equation}\boldsymbol{g}_{\boldsymbol{\theta}} \approx \boldsymbol{\mathcal{H}}_{\boldsymbol{\theta}^*}(\boldsymbol{\theta} - \boldsymbol{\theta}^*)\end{equation}
+Thus
+\begin{equation}\boldsymbol{g}_{\boldsymbol{\theta}}\boldsymbol{g}_{\boldsymbol{\theta}}^{\top} \approx \boldsymbol{\mathcal{H}}_{\boldsymbol{\theta}^*}(\boldsymbol{\theta} - \boldsymbol{\theta}^*)(\boldsymbol{\theta} - \boldsymbol{\theta}^*)^{\top}\boldsymbol{\mathcal{H}}_{\boldsymbol{\theta}^*}^{\top}\end{equation}
+Assuming that after the training gets "on track," the model will remain in a state of "circling" around $\boldsymbol{\theta}^*$, converging slowly and spirally. To some extent, we can treat $\boldsymbol{\theta} - \boldsymbol{\theta}^*$ as a random variable following a normal distribution $\mathcal{N}(\boldsymbol{0},\sigma^2\boldsymbol{I})$, then
+\begin{equation}\mathbb{E}[\boldsymbol{g}_{\boldsymbol{\theta}}\boldsymbol{g}_{\boldsymbol{\theta}}^{\top}] \approx \boldsymbol{\mathcal{H}}_{\boldsymbol{\theta}^*}\mathbb{E}[(\boldsymbol{\theta} - \boldsymbol{\theta}^*)(\boldsymbol{\theta} - \boldsymbol{\theta}^*)^{\top}]\boldsymbol{\mathcal{H}}_{\boldsymbol{\theta}^*}^{\top} = \sigma^2\boldsymbol{\mathcal{H}}_{\boldsymbol{\theta}^*}\boldsymbol{\mathcal{H}}_{\boldsymbol{\theta}^*}^{\top}\label{eq:hessian-2}\end{equation}
+Assuming the Hessian matrix is diagonal, we can retain only the diagonal elements in the above equation:
+\begin{equation}\text{diag}(\mathbb{E}[\boldsymbol{g}_{\boldsymbol{\theta}}\odot\boldsymbol{g}_{\boldsymbol{\theta}}]) \approx \sigma^2\boldsymbol{\mathcal{H}}_{\boldsymbol{\theta}^*}^2\quad\Rightarrow\quad \boldsymbol{\mathcal{H}}_{\boldsymbol{\theta}^*} = \frac{1}{\sigma}\text{diag}(\sqrt{\mathbb{E}[\boldsymbol{g}_{\boldsymbol{\theta}}\odot\boldsymbol{g}_{\boldsymbol{\theta}}]})\end{equation}
+Does this look familiar? Adam's $\hat{\boldsymbol{v}}_t$ is a moving average of the squared gradient, which can be seen as an approximation of $\mathbb{E}[\boldsymbol{g}_{\boldsymbol{\theta}}\odot\boldsymbol{g}_{\boldsymbol{\theta}}]$. Finally, assuming that $\boldsymbol{\mathcal{H}}_{\boldsymbol{\theta}_t}$ does not change much compared to $\boldsymbol{\mathcal{H}}_{\boldsymbol{\theta}^*}$, we can arrive at the conclusion that $\eta_t^{-1}\text{diag}(\sqrt{\hat{\boldsymbol{v}}_t})$ is an approximation of $\boldsymbol{\mathcal{H}}_t$.</p>
+
+<p>This also explains why Adam's $\beta_2$ is usually greater than $\beta_1$. To estimate the Hessian more accurately, the moving average of $\hat{\boldsymbol{v}}_t$ should be as "long-term" as possible (approaching a uniform average), so $\beta_2$ should be very close to 1. On the other hand, the momentum $\hat{\boldsymbol{m}}_t$ is a moving average of the gradient; if the average of the gradient is too long-term, the result will approach $\boldsymbol{g}_{\boldsymbol{\theta}^*}=\boldsymbol{0}$, which is actually undesirable. Therefore, the moving average of momentum needs to be more localized.</p>
+
+<h3>Related Work</h3>
+
+<p>For readers familiar with Hessian matrix theory, the first reaction upon seeing the above conclusion might be confusion rather than familiarity. This is because a classic approximation of the Hessian matrix is the outer product of the Jacobi matrix (similar to the gradient), whereas the Hessian approximation here is the square root of the outer product of the gradient. The two differ by a square root.</p>
+
+<p>Specifically, let's take the mean squared error loss as an example:
+\begin{equation}\mathcal{L}(\boldsymbol{\theta}) = \frac{1}{2}\mathbb{E}_{(\boldsymbol{x},\boldsymbol{y})\sim\mathcal{D}}[\Vert \boldsymbol{y} - \boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x})\Vert^2]\label{eq:loss-2}\end{equation}
+Expanding at $\boldsymbol{\theta}_t$, we have $\boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x})\approx \boldsymbol{f}_{\boldsymbol{\theta}_t}(\boldsymbol{x}) + \boldsymbol{\mathcal{J}}_{\boldsymbol{\theta}_t}^{\top} (\boldsymbol{\theta} - \boldsymbol{\theta}_t)$, where $\boldsymbol{\mathcal{J}}_{\boldsymbol{\theta}_t}=\nabla_{\boldsymbol{\theta}_t} \boldsymbol{f}_{\boldsymbol{\theta}_t}(\boldsymbol{x})$ is the Jacobi matrix. Substituting this into the above formula gives:
+\begin{equation}\mathcal{L}(\boldsymbol{\theta}) \approx \frac{1}{2}\mathbb{E}_{(\boldsymbol{x},\boldsymbol{y})\sim\mathcal{D}}[\Vert \boldsymbol{y} - \boldsymbol{f}_{\boldsymbol{\theta}_t}(\boldsymbol{x}) - \boldsymbol{\mathcal{J}}_{\boldsymbol{\theta}_t}^{\top} (\boldsymbol{\theta} - \boldsymbol{\theta}_t)\Vert^2]\end{equation}
+The simplified expression above is just a quadratic form with respect to $\boldsymbol{\theta}$, so its Hessian matrix can be directly written as:
+\begin{equation}\boldsymbol{\mathcal{H}}_{\boldsymbol{\theta}_t} \approx \mathbb{E}_{(\boldsymbol{x},\boldsymbol{y})\sim\mathcal{D}}[\boldsymbol{\mathcal{J}}_{\boldsymbol{\theta}_t}\boldsymbol{\mathcal{J}}_{\boldsymbol{\theta}_t}^{\top}]\end{equation}
+This is the Hessian approximation based on the outer product of the Jacobi matrix, which is the theoretical foundation of the "<a href="https://en.wikipedia.org/wiki/Gauss%E2%80%93Newton_algorithm">Gauss–Newton method</a>." Of course, $\boldsymbol{\mathcal{J}}$ is not yet $\boldsymbol{g}$. We try to relate the result to $\boldsymbol{g}$. Differentiating equation $\eqref{eq:loss-2}$ directly gives:
+\begin{equation}\boldsymbol{g}_{\boldsymbol{\theta}} = \mathbb{E}_{(\boldsymbol{x},\boldsymbol{y})\sim\mathcal{D}}[\boldsymbol{\mathcal{J}}_{\boldsymbol{\theta}}(\boldsymbol{y} - \boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}))]\end{equation}
+Thus
+\begin{equation}\begin{aligned} 
+\boldsymbol{g}_{\boldsymbol{\theta}} \boldsymbol{g}_{\boldsymbol{\theta}}^{\top} =&\, \big(\mathbb{E}_{(\boldsymbol{x},\boldsymbol{y})\sim\mathcal{D}}[\boldsymbol{\mathcal{J}}_{\boldsymbol{\theta}}(\boldsymbol{y} - \boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}))]\big)\big(\mathbb{E}_{(\boldsymbol{x},\boldsymbol{y})\sim\mathcal{D}}[\boldsymbol{\mathcal{J}}_{\boldsymbol{\theta}}(\boldsymbol{y} - \boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}))]\big)^{\top} \\[5pt] 
+=&\, \big(\mathbb{E}_{(\boldsymbol{x},\boldsymbol{y})\sim\mathcal{D}}[\boldsymbol{\mathcal{J}}_{\boldsymbol{\theta}}(\boldsymbol{y} - \boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}))]\big)\big(\mathbb{E}_{(\boldsymbol{x},\boldsymbol{y})\sim\mathcal{D}}[(\boldsymbol{y} - \boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}))^{\top}\boldsymbol{\mathcal{J}}_{\boldsymbol{\theta}}^{\top}]\big) \\[5pt] 
+\approx&\, \mathbb{E}_{(\boldsymbol{x},\boldsymbol{y})\sim\mathcal{D}}\big[\boldsymbol{\mathcal{J}}_{\boldsymbol{\theta}}(\boldsymbol{y} - \boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}))(\boldsymbol{y} - \boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}))^{\top}\boldsymbol{\mathcal{J}}_{\boldsymbol{\theta}}^{\top}\big] \\[5pt] 
+\approx&\, \mathbb{E}_{(\boldsymbol{x},\boldsymbol{y})\sim\mathcal{D}}\Big[\boldsymbol{\mathcal{J}}_{\boldsymbol{\theta}}\mathbb{E}_{(\boldsymbol{x},\boldsymbol{y})\sim\mathcal{D}}\big[(\boldsymbol{y} - \boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}))(\boldsymbol{y} - \boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}))^{\top}\big]\boldsymbol{\mathcal{J}}_{\boldsymbol{\theta}}^{\top}\Big] \\[5pt] 
+\end{aligned}\end{equation}
+The two approximation signs here do not have much rigorous justification; they can be loosely seen as a mean-field approximation. Since $\boldsymbol{y} - \boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x})$ is the residual of the regression prediction, we usually assume it follows $\mathcal{N}(\boldsymbol{0},\sigma^2\boldsymbol{I})$, hence:
+\begin{equation}\boldsymbol{g}_{\boldsymbol{\theta}} \boldsymbol{g}_{\boldsymbol{\theta}}^{\top} \approx \sigma^2\mathbb{E}_{(\boldsymbol{x},\boldsymbol{y})\sim\mathcal{D}}\big[\boldsymbol{\mathcal{J}}_{\boldsymbol{\theta}}\boldsymbol{\mathcal{J}}_{\boldsymbol{\theta}}^{\top}\big] \approx \sigma^2 \boldsymbol{\mathcal{H}}_{\boldsymbol{\theta}_t}\label{eq:hessian-t}\end{equation}
+This reveals the connection between $\boldsymbol{\mathcal{H}}_{\boldsymbol{\theta}_t}$ and $\boldsymbol{g}_{\boldsymbol{\theta}} \boldsymbol{g}_{\boldsymbol{\theta}}^{\top}$. Comparing this with equation $\eqref{eq:hessian-2}$ in the previous section, it can be found that on the surface they differ exactly by a square root.</p>
+
+<p>Looking at the derivation process, both results seem to have no obvious errors. How should we understand this inconsistency? We can understand it like this: Equation $\eqref{eq:hessian-t}$ provides a Hessian approximation at time $t$, which is an "instantaneous approximation," while equation $\eqref{eq:hessian-2}$ is the "long-term average" result over time steps. The long-term average effect cancels out some of the intensity (though theoretically, it also makes the estimation more accurate), thus requiring an additional square root to be taken.</p>
+
+<p>A similar effect also appears in the SDE introduced in <a href="translation_9072.html">"Talk on Generative Diffusion Models (V): SDE Perspective of the General Framework"</a>. The intensity of the noise term in an SDE needs to be half an order higher than the non-noise term. This is similarly because the noise term cancels out under long-term averaging, so the noise needs to be of a higher order to manifest its effect in the final result.</p>
+
+<h3>More Connections</h3>
+
+<p>In the previous derivation, we assumed $\boldsymbol{\theta}^*$ is the theoretical optimum, such that $\boldsymbol{g}_{\boldsymbol{\theta}^*} = \boldsymbol{0}$. What if $\boldsymbol{\theta}^*$ is any arbitrary point? Then equation $\eqref{eq:hessian-2}$ becomes:
+\begin{equation}\mathbb{E}[(\boldsymbol{g}_{\boldsymbol{\theta}}-\boldsymbol{g} _{\boldsymbol{\theta}^*})(\boldsymbol{g}_{\boldsymbol{\theta}}-\boldsymbol{g} _{\boldsymbol{\theta}^*})^{\top}] \approx \sigma^2\boldsymbol{\mathcal{H}}_{\boldsymbol{\theta}^*}\boldsymbol{\mathcal{H}}_{\boldsymbol{\theta}^*}^{\top}\end{equation}
+In other words, as long as our moving average is of the covariance instead of the second moment, we can obtain a local Hessian approximation. This exactly corresponds to the approach of the <a href="https://arxiv.org/abs/2010.07468">AdaBelief optimizer</a>, where its $\boldsymbol{v}$ moving average is the square of the difference between $\boldsymbol{g}$ and $\boldsymbol{m}$:
+\begin{equation}\text{AdaBelief}:=\left\{\begin{aligned} 
+&\boldsymbol{m}_t = \beta_1 \boldsymbol{m}_{t-1} + \left(1 - \beta_1\right) \boldsymbol{g}_t\\ 
+&\boldsymbol{v}_t = \beta_2 \boldsymbol{v}_{t-1} + \left(1 - \beta_2\right) (\boldsymbol{g}_t - \boldsymbol{m}_t)\odot(\boldsymbol{g}_t - \boldsymbol{m}_t)\\ 
+&\hat{\boldsymbol{m}}_t = \boldsymbol{m}_t\left/\left(1 - \beta_1^t\right)\right.\\ 
+&\hat{\boldsymbol{v}}_t = \boldsymbol{v}_t\left/\left(1 - \beta_2^t\right)\right.\\ 
+&\boldsymbol{\theta}_t = \boldsymbol{\theta}_{t-1} - \eta_t \hat{\boldsymbol{m}}_t\left/\left(\sqrt{\hat{\boldsymbol{v}}_t} + \epsilon\right)\right. 
+\end{aligned}\right.\end{equation}</p>
+
+<h3>Conclusion</h3>
+
+<p>This article introduced a perspective on adaptive learning rate optimizers like Adam from the view of Newton's method and Hessian approximation, and discussed related results regarding Hessian approximation.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10588.html" style="color: #005fcc;">https://kexue.fm/archives/10588</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

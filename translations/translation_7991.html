@@ -1,0 +1,365 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/7991">Mitchell Approximation: Turning Multiplication into Addition, with Error no more than 1/9</a></h1>
+
+<p>By 苏剑林 | December 14, 2020</p>
+
+<p>Today, I would like to introduce a very interesting paper from 1962 titled <a href="https://ieeexplore.ieee.org/document/5219391">"Computer Multiplication and Division Using Binary Logarithms"</a>, authored by John N. Mitchell. In it, he proposed a quite fascinating algorithm: in binary, multiplication of two numbers can be approximated entirely through addition, with a maximum relative error of no more than 1/9. The entire algorithm is quite ingenious, and even more interestingly, it has a very concise programming implementation that is simply marvelous. However, I found that there are almost no webpages introducing this algorithm online, so I am presenting it here.</p>
+
+<p>Do you think this is just obsolete stuff? You would be wrong. Not long ago, someone used it to publish a paper at NeurIPS 2020! So, are you sure you don't want to learn about it?</p>
+
+<h2>Fast Logarithms and Exponents</h2>
+
+<p>When talking about turning multiplication into addition, one naturally thinks of logarithms and exponents, namely:</p>
+
+\begin{equation}pq = a^s, \quad s = \log_a p + \log_a q\end{equation}
+
+<p>This article is based on binary, so $a=2$. The problem is that while the above formula does indeed convert multiplication into addition, calculating the logarithms $\log_2 p, \log_2 q$ and the converted exponent $2^s$ is not an easy task. Therefore, to use this identity for multiplication, the key lies in implementing fast logarithm and exponentiation operations.</p>
+
+<p>For a non-negative decimal number $p$, let's assume its binary representation is:</p>
+
+\begin{equation}z_n z_{n-1} \cdots z_1 z_0 . z_{-1} z_{-2} \cdots z_{-(m-1)} z_{-m}\end{equation}
+
+<p>where $z_n = 1$ and each $z_i \in \{0, 1\}$. Then we have:</p>
+
+\begin{equation}p = 2^n + \sum_{i=-m}^{n-1} z_i 2^i = 2^n \left(1 + \sum_{i=-m}^{n-1} z_i 2^{i-n}\right)\end{equation}
+
+<p>Let $x = \sum\limits_{i=-m}^{n-1} z_i 2^{i-n}$. We get:</p>
+
+\begin{equation}\log_2 p = n + \log_2(1 + x)\end{equation}
+
+<p>Here, Mitchell made a quite bold and beautiful approximation, which is $\log_2(1 + x) \approx x$ (we will perform an error analysis later). Thus, we obtain:</p>
+
+\begin{equation}\log_2 p \approx n + x\end{equation}
+
+<p>What makes this result so wonderful? First, $n$ is an integer equal to the number of digits in the integer part of $p$ minus 1; its binary conversion is naturally an integer. What about $x$? From the definition of $x$, it's not hard to see that the binary representation of $x$ is actually:</p>
+
+\begin{equation}0 . z_{n-1} \cdots z_1 z_0 z_{-1} z_{-2} \cdots z_{-(m-1)} z_{-m}\end{equation}
+
+<p>In other words, $x$ is the fractional part of the approximation, and its binary representation is simply a modification of the binary representation of $p$ (a decimal point shift).</p>
+
+<p>In summary, we obtain the Mitchell approximation algorithm for logarithms:</p>
+
+<blockquote>
+    1. Input the decimal number $p$;<br>
+    2. Convert $p$ to binary $z_n z_{n-1} \cdots z_1 z_0 . z_{-1} z_{-2} \cdots z_{-(m-1)} z_{-m}$, where $z_n=1$;<br>
+    3. Convert $n$ to binary $y_k y_{k-1} \cdots y_1 y_0$;<br>
+    4. Then the binary approximation of $\log_2 p$ is $y_k y_{k-1} \cdots y_1 y_0 . z_{n-1} \cdots z_1 z_0 z_{-1} z_{-2} \cdots z_{-(m-1)} z_{-m}$.
+</blockquote>
+
+<p>Reversing the above process gives the Mitchell approximation algorithm for exponents:</p>
+
+<blockquote>
+    1. Input binary $z_n z_{n-1} \cdots z_1 z_0 . z_{-1} z_{-2} \cdots z_{-(m-1)} z_{-m}$;<br>
+    2. Convert the integer part $z_n z_{n-1} \cdots z_1 z_0$ to decimal $n$;<br>
+    3. Then the binary approximation of its exponent is $1 z_{-1} z_{-2} \cdots z_{-(n-1)} z_{-n} . z_{-(n+1)} z_{-(n+2)} \cdots z_{-(m-1)} z_{-m}$;<br>
+    4. Convert the result to decimal.
+</blockquote>
+
+<p>So, in binary, the approximate calculation of logarithms and exponents is just counting and splicing operations! Isn't it stunning? Isn't it magical?</p>
+
+<h2>An Example of Multiplication</h2>
+
+<p>With fast (approximate) algorithm for logarithms and exponents, we can perform multiplication. Let's use this idea to calculate a specific example to deepen our understanding of the process.</p>
+
+<p>We want to calculate $12.3 \times 4.56$. The calculation process is as follows (the approximate exponent is calculated for the sum):</p>
+
+\[
+\begin{array}{c|cc}
+\hline
+p, q |_{\text{Decimal}} & 12.3 & 4.56 \\
+\hline
+p, q |_{\text{Binary}} & 1100.0100110 & 100.1000111 \\
+\hline
+n |_{\text{Decimal}} & 3 & 2 \\
+\hline
+n |_{\text{Binary}} & 11 & 10 \\
+\hline
+x |_{\text{Binary}} & 0.1000100110 & 0.001000111 \\
+\hline
+n+x |_{\text{Binary}} & 11.1000100110 & 10.001000111 \\
+\hline
+\text{Sum} |_{\text{Binary}} & \rlap{\,\,\,101.10101101} \\
+\hline
+n |_{\text{Binary}} & \rlap{\,\,\,\,\,\,\,\,\,\,\,\,\,\,\,101} \\
+\hline
+n |_{\text{Decimal}} & \rlap{\,\,\,\,\,\,\,\,\,\,\,\,\,\,\,\,\,\,5} \\
+\hline
+x |_{\text{Binary}} & \rlap{\,\,\,\,\,0.10101101} \\
+\hline
+\text{Approximate Exponent} |_{\text{Binary}} & \rlap{\,\,\,\,\,110101.101} \\
+\hline
+\text{Approximate Exponent} |_{\text{Decimal}} & \rlap{\,\,\,\,\,\,\,\,\,\,\,53.625} \\
+\hline
+\text{Exact Product} |_{\text{Decimal}} & \rlap{\,\,\,\,\,\,\,\,\,\,\,56.088} \\
+\hline
+\text{Relative Error} |_{\text{Decimal}} & \rlap{\,\,\,\,\,\,\,\,\,\,\,\,\,4.39\%} \\
+\hline
+\end{array}
+\]
+
+<p>Here, the binary representations of $p$ and $q$ are infinite repeating decimals; they are truncated at finite positions. If the exact binary representations were kept, the final result would be 53.68, which is not far from 53.625 in the table. As you can see, the main computational load of the entire process consists of two parts: summation and the conversion between decimal and binary. However, although decimal-binary conversion is computationally intensive for humans, for computers, which store data in binary, we can consider the conversion cost negligible; or rather, as long as we output in decimal, this computational cost is inevitable regardless of the algorithm, so we don't count it towards the algorithm's complexity. Therefore, the only computational load of the algorithm is the single addition step, achieving an (approximate) conversion from multiplication to addition.</p>
+
+<h2>Magic C++ Implementation</h2>
+
+<p>Even better, there is a very simple C++ implementation of the above process, which you can refer to below:</p>
+
+<pre><code>#include &lt;stdio.h&gt;
+
+int main() {
+ float a = 12.3f;
+ float b = 4.56f;
+ int c = *(int*)&amp;a + *(int*)&amp;b - 0x3f800000;
+ printf("Approximate result: %f\n", *(float*)&amp;c);
+ printf("Exact result: %f\n", a * b);
+ return 0;
+}
+</code></pre>
+
+<p>Readers without a C++ environment can find a web-based C++ runner to test the results. Even those who don't know C++ (like myself) can probably sense that this code roughly converts to adding two numbers and subtracting a constant—how can this achieve multiplication? Some readers might also ask, can you write it this way in Python?</p>
+
+<p>First, the answer to the latter question is no, because Python's data types are highly encapsulated. The feasibility of the C++ code lies in the IEEE 754 representation of floating-point numbers: a decimal floating-point number is first converted to binary, then normalized into scientific notation, and finally stored in a specific structure. Specifically, IEEE 754 uses 32 bits (0s and 1s) to represent a float, where 1 bit is the sign (0 for positive), 8 bits for the exponent of the scientific notation, and 23 bits for the fraction. Take 9.75 as an example: its binary is 1001.11, which written in scientific notation is $1.00111 \times 10^{11}$ (here both 10 and 11 are binary; $10^{11}$ corresponds to decimal $2^3$). Note that we also need to add an offset of 127 to the exponent, so $2^3$ is actually stored as 130 (binary 10000010) because the first 126 numbers are used for negative powers. For the main part 1.00111, since the first digit is always 1, we only need to store 0.00111. Thus, the representation for 9.75 is:</p>
+
+\[
+\begin{array}{c|c|c}
+\hline
+\text{Sign} & \text{Exponent} & \text{Fraction} \\
+\hline
+0 & 10000010 & 0011100\, 00000000\, 00000000 \\
+\hline
+\end{array}
+\]
+
+<p>Knowing the IEEE 754 representation, one can understand the code. <code>*(int*)&amp;a</code> and <code>*(int*)&amp;b</code> take the IEEE 754 representations of $a$ and $b$ out and treat them as ordinary integers for calculation. Adding them corresponds exactly to the result of Mitchell's approximate logarithm addition. However, the exponent part will have an extra offset, so the offset needs to be subtracted. Since the offset is 127 and there are 23 bits following it, subtracting the offset is equivalent to subtracting the constant $127 \times 2^{23}$, which is <code>0x3f800000</code> in hexadecimal (computers use hexadecimal as a shorthand for long binary sequences in I/O). Finally, the result of the addition and subtraction is restored to a floating-point number.</p>
+
+<p>(Note: Actually, I don't know C++ either; the above understanding was pieced together. If there are inaccuracies, please point them out.)</p>
+
+<h2>Maximum Error Analysis</h2>
+
+<p>The title mentioned that the error of this algorithm does not exceed 1/9. We will now prove this. The proof requires understanding everything back in decimal. Mitchell's approximation essentially uses the following approximations:</p>
+
+\begin{equation}\log_2 2^n(1+x)\approx n + x,\quad 2^{n+x}\approx 2^n(1+x)\end{equation}
+
+<p>where $n$ is an integer and $x \in [0, 1)$, so the error analysis also starts from these two approximations.</p>
+
+<p>Suppose two numbers are $p=2^{n_1} (1 + x_1), q = 2^{n_2} (1 + x_2)$. According to the approximation, $\log_2 p + \log_2 q \approx n_1 + n_2 + x_1 + x_2$. We need to discuss two cases. In the first case, $x_1 + x_2 < 1$, then the approximate exponential result is $2^{n_1 + n_2}(1 + x_1 + x_2)$. Therefore, the approximation ratio is:</p>
+
+\begin{equation}
+\begin{aligned}
+\frac{2^{n_1 + n_2}(1 + x_1 + x_2)}{2^{n_1} (1 + x_1)\times 2^{n_2} (1 + x_2)} = \frac{1 + x_1 + x_2}{1 + x_1 + x_2 + x_1 x_2}
+\end{aligned}
+\end{equation}
+
+<p>In the second case, $x_1 + x_2 \geq 1$, then the approximate exponential result is $2^{n_1 + n_2 + 1}(x_1 + x_2 - 1 + 1) = 2^{n_1 + n_2 + 1}(x_1 + x_2)$. (Wait, the Mitchell logic for $x_1+x_2 \geq 1$ makes the new integer part $(n_1+n_2+1)$ and the new fractional part $(x_1+x_2-1)$). Thus the approximation is $2^{n_1+n_2+1}(1 + (x_1+x_2-1)) = 2^{n_1+n_2+1}(x_1+x_2)$. The approximation ratio is:</p>
+
+\begin{equation}
+\begin{aligned}
+\frac{2^{n_1 + n_2 + 1}(x_1 + x_2)}{2^{n_1} (1 + x_1)\times 2^{n_2} (1 + x_2)} = \frac{2 (x_1 + x_2)}{1 + x_1 + x_2 + x_1 x_2}
+\end{aligned}
+\end{equation}
+
+<p>It can be proven step-by-step that the minimum values for both cases are reached at $x_1 = x_2 = 0.5$, resulting in $8/9$. Thus, the maximum relative error is $1/9$ (for division turned subtraction, the maximum error is $12.5\%$). Since a step-by-step proof is tedious, we won't repeat it here. Instead, we'll plot the contour map to see that the maximum error occurs at the center:</p>
+
+<p>Contour plot of the approximation ratio. It can be seen that the minimum approximation ratio is at the center point.</p>
+
+<p>Plotting code (Python):</p>
+
+<pre><code>import numpy as np
+import matplotlib.pyplot as plt
+
+x = np.arange(0, 1, 0.001)
+y = np.arange(0, 1, 0.001)
+
+X, Y = np.meshgrid(x, y)
+Z1 = (1 + X + Y) / (1 + X + Y + X * Y)
+Z2 = 2 * (X + Y) / (1 + X + Y + X * Y)
+Z = (X + Y &lt; 1) * Z1 + (X + Y &gt;= 1) * Z2
+plt.figure(figsize=(7, 6))
+contourf = plt.contourf(X, Y, Z)
+plt.contour(X, Y, Z)
+plt.colorbar(contourf)
+plt.show()
+</code></pre>
+
+<p>In essence, this error depends on the degree of approximation of $\log_2 (1 + x) \approx x$. We know that $x$ is the first-order Taylor expansion of the natural logarithm $\ln (1 + x)$, and $e = 2.71828 \dots$ is closer to 3. Therefore, if computers used base-3, this algorithm would have higher average precision. In fact, some theoretical analyses suggest that the most ideal base for computers is $e$, and since 3 is closer to $e$ than 2, ternary computers would be superior in many aspects. Both China and the former Soviet Union researched ternary computers, but since binary is much easier to implement, binary computers dominate today.</p>
+
+<h2>Bringing it to Deep Learning</h2>
+
+<p>That concludes the introduction to the Mitchell approximation. Readers might be puzzled: shouldn't this be some foundational computer science or data structures stuff? Why study it? Can it have any application in deep learning?</p>
+
+<p>There are two reasons I studied it: first, it is indeed very beautiful and worth learning; second, it really can be used in deep learning. In fact, I discovered it in a NeurIPS 2020 paper titled <a href="https://papers.cool/arxiv/2012.03458">"Deep Neural Network Training without Multiplications"</a>. The paper verified on "ImageNet + ResNet50" that directly replacing the multiplications in neural networks with Mitchell's additive approximation resulted in only a slight drop in accuracy, or even no drop at all.</p>
+
+<p>Of course, the authors' current implementation only verifies that this replacement is acceptable in terms of performance; in terms of speed, it is actually slower. This is because although replacing multiplication with approximate addition will theoretically speed things up, achieving this speedup requires hardware-level optimization. Standard multiplication is already optimized at the hardware level, so the authors are likely suggesting a direction for future deep learning hardware optimization. Furthermore, using Mitchell's approximation in deep learning is not being discussed for the first time; a simple Google search yields two more papers: <a href="https://ieeexplore.ieee.org/document/8532287">"Efficient Mitchell’s Approximate Log Multipliers for Convolutional Neural Networks"</a> and <a href="https://ieeexplore.ieee.org/document/8297391">"Low-power implementation of Mitchell's approximate logarithmic multiplication for convolutional neural networks"</a>.</p>
+
+<p>Some readers might be reminded of the addition neural network <a href="https://papers.cool/arxiv/1912.13200">AdderNet</a> proposed by Huawei before. Its goal is indeed similar, but the method is very different. AdderNet replaces the inner product in neural networks with $l_1$ distance, thereby removing multiplication; this paper, however, modifies the implementation of multiplication, reducing its computational cost, potentially allowing existing neural network operations to be retained.</p>
+
+<h2>Old Wine in New Bottles</h2>
+
+<p>This article introduced the Mitchell approximation algorithm published in 1962, which is an approximate way to calculate logarithms and exponents. Based on this, we can convert multiplication to addition while maintaining a certain level of precision. It seemed outdated, but by putting this "old wine in a new bottle," it became a paper at NeurIPS 2020.</p>
+
+<p>So, what other "old wines" have you found that could be put into "new bottles"?</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7991.html" style="color: #005fcc;">https://kexue.fm/archives/7991</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

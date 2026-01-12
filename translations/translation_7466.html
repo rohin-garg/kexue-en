@@ -1,0 +1,424 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/7466">Generalization Ramblings: From Random Noise and Gradient Penalty to Virtual Adversarial Training</a></h1>
+
+<p>By 苏剑林 | June 1, 2020</p>
+
+<p>Improving the generalization performance of a model is one of the primary goals of machine learning. Common methods to improve generalization mainly fall into two categories: the first is adding noise, such as adding Gaussian noise to the input, using Dropout in intermediate layers, and the currently popular adversarial training; data augmentation techniques like random translation and scaling of images also belong to this category in a sense. The second is adding regularization terms to the loss, such as $L_1, L_2$ penalties, gradient penalties, etc. This article attempts to explore the connections between several common means of improving generalization performance.</p>
+
+<h2>Random Noise</h2>
+
+<p>Let the model be $f(x)$, $\mathcal{D}$ be the training dataset, and $l(f(x), y)$ be the loss for a single sample. Our optimization objective is:</p>
+
+\begin{equation}\mathop{\text{argmin}}_{\theta} L(\theta)=\mathbb{E}_{(x,y)\sim \mathcal{D}}[l(f(x), y)]\end{equation}
+
+<p>where $\theta$ represents the trainable parameters within $f(x)$. If we add noise $\varepsilon$ to the model input, with a distribution $q(\varepsilon)$, the optimization objective becomes:</p>
+
+\begin{equation}\mathop{\text{argmin}}_{\theta} L_{\varepsilon}(\theta)=\mathbb{E}_{(x,y)\sim \mathcal{D}, \varepsilon\sim q(\varepsilon)}[l(f(x + \varepsilon), y)]\end{equation}
+
+<p>Of course, the place where noise is added is not limited to the input; it can also be the intermediate layers, the weights $\theta$, or even the output $y$ (which is equivalent to label smoothing). The noise is not necessarily additive; for example, Dropout is multiplicative. For additive noise, a common choice for $q(\varepsilon)$ is a Gaussian distribution with zero mean and fixed variance; for multiplicative noise, common choices are the uniform distribution $U([0,1])$ or the Bernoulli distribution.</p>
+
+<p>The goal of adding random noise is intuitive: we hope the model can learn to resist some random perturbations, thereby reducing sensitivity to inputs or parameters. Reducing this sensitivity usually means the resulting model is less dependent on the specific training set, thus helping to improve the model's generalization performance.</p>
+
+<h2>Improving Efficiency</h2>
+
+<p>Adding random noise is easy to implement and indeed effective in many cases, but it has a significant drawback: it is not "specific" enough. The noise $\varepsilon$ is random and not constructed specifically for $x$, which means that in most cases $x + \varepsilon$ may just be a trivial sample—that is, it does not cause a significant perturbation to the original model—so the improvement to generalization performance is limited.</p>
+
+<h3>Increasing Sampling</h3>
+
+<p>Theoretically, after adding random noise, the loss for a single sample becomes:</p>
+
+\begin{equation}\tilde{l}(x,y)=\mathbb{E}_{\varepsilon\sim q(\varepsilon)}[l(f(x+\varepsilon),y)]=\int q(\varepsilon) l(f(x+\varepsilon),y) d\varepsilon\label{eq:noisy-loss}\end{equation}
+
+<p>But in practice, for each specific sample $(x, y)$, we usually only sample one noise, so it does not approximate the above equation well. Of course, we could sample multiple noises $\varepsilon_1, \varepsilon_2, \cdots, \varepsilon_k \sim q(\varepsilon)$ and better approximate it as:</p>
+
+\begin{equation}\tilde{l}(x,y)\approx \frac{1}{k}\sum_{i=1}^k l(f(x+\varepsilon_i),y)\end{equation}
+
+<p>However, this is equivalent to expanding the batch size by $k$ times, increasing the computational cost, which is not very friendly.</p>
+
+<h3>Approximate Expansion</h3>
+
+<p>A direct idea is that if we could calculate the integral in Equation \eqref{eq:noisy-loss} beforehand, there would be no need for inefficient sampling (or it would be equivalent to sampling infinite noises at once). Let's try to proceed in this direction. Of course, an exact explicit integral is basically impossible, but we can perform an approximate expansion:</p>
+
+\begin{equation}l(f(x+\varepsilon),y)\approx l(f(x),y)+(\varepsilon \cdot \nabla_x) l(f(x),y)+\frac{1}{2}(\varepsilon \cdot \nabla_x)^2 l(f(x),y)\end{equation}
+
+<p>Then, integrate both sides multiplied by $q(\varepsilon)$. Assuming the components of $\varepsilon$ are independent and identically distributed (i.i.d.) with a mean of 0 and variance of $\sigma^2$, the result of the integration is:</p>
+
+\begin{equation}\int q(\varepsilon)l(f(x+\varepsilon),y)d\varepsilon \approx l(f(x),y)+\frac{1}{2}\sigma^2 \Delta l(f(x),y)\end{equation}
+
+<p>where $\Delta$ is the Laplace operator, i.e., $\Delta f = \sum\limits_i \frac{\partial^2}{\partial x_i^2} f$. This result is very simple in form: it is equivalent to adding a regularization term $\frac{1}{2}\sigma^2 \Delta l(f(x),y)$ to the loss. However, it is quite difficult in practice because it implies calculating the second-order derivative of $l$, and combined with gradient descent, one would need to calculate third-order derivatives, which is hard to implement efficiently in existing deep learning frameworks.</p>
+
+<h2>Shifting the Goal</h2>
+
+<p>Directly simplifying the integral of $l(f(x+\varepsilon),y)$ is a dead end, but we can try changing the optimization objective to:</p>
+
+\begin{equation}l(f(x+\varepsilon),f(x)) + l(f(x),y)\label{eq:loss-2}\end{equation}
+
+<p>This means simultaneously narrowing the gap between $f(x)$ and $y$, and the gap between $f(x+\varepsilon)$ and $f(x)$. By attacking from both sides, it achieved the goal of narrowing the gap between $f(x+\varepsilon)$ and $y$ to some extent. Crucially, this objective yields more interesting results.</p>
+
+<h3>Analysis of the Idea</h3>
+
+<p>In mathematical terms, if $l$ is some form of distance metric, then by the triangle inequality:</p>
+
+\begin{equation}l(f(x+\varepsilon),y) \leq l(f(x+\varepsilon),f(x)) + l(f(x),y)\end{equation}
+
+<p>If $l$ is not a metric, a similar result can usually be obtained via Jensen's inequality. For example, if $l(f(x+\varepsilon),y)=\Vert f(x+\varepsilon) - y\Vert^2$, then we have:</p>
+
+\begin{equation}\begin{aligned}
+\Vert f(x+\varepsilon) - f(x) + f(x) - y\Vert^2 =& \left\Vert \frac{1}{2}\times 2[f(x+\varepsilon) - f(x)] + \frac{1}{2}\times 2[f(x) - y]\right\Vert^2\\
+\leq& \frac{1}{2} \Vert 2[f(x+\varepsilon) - f(x)]\Vert^2 + \frac{1}{2} \Vert 2[f(x) - y]\Vert^2\\
+=& 2\big(\Vert f(x+\varepsilon) - f(x)\Vert^2 + \Vert f(x) - y\Vert^2\big)
+\end{aligned}\end{equation}
+
+<p>This means that (a multiple of) objective \eqref{eq:loss-2} can be considered an upper bound of $l(f(x+\varepsilon),y)$. Since the original objective is difficult to optimize, we optimize its upper bound instead.</p>
+
+<p>Note that between the two terms in objective \eqref{eq:loss-2}, $l(f(x+\varepsilon),f(x))$ measures the smoothness of the model itself and has nothing to do with labels. It can be optimized using unlabeled data, which means it can be combined with labeled data to form a <strong>semi-supervised learning</strong> process.</p>
+
+<h3>Calculations</h3>
+
+<p>For objective \eqref{eq:loss-2}, the integral result is:</p>
+
+\begin{equation}\int q(\varepsilon) \big[l(f(x+\varepsilon),f(x)) + l(f(x),y)\big]d\varepsilon = l(f(x),y) + \int q(\varepsilon) l(f(x+\varepsilon),f(x)) d\varepsilon\end{equation}
+
+<p>Following the same path, we perform an approximate expansion of $\varepsilon$:</p>
+
+\begin{equation}\begin{aligned}l(f(x+\varepsilon),f(x))\approx &\, l(f(x),f(x)) + \left.\sum_{i,j} \frac{\partial l(F(x),f(x))}{\partial F_i(x)}\frac{\partial f_i(x)}{\partial x_j}\varepsilon_j\right\|_{F(x)=f(x)}\\
+&\, + \frac{1}{2}\left.\sum_{i,j,k} \frac{\partial l(F(x),f(x))}{\partial F_i(x)}\frac{\partial^2 f_i(x)}{\partial x_j \partial x_k}\varepsilon_j \varepsilon_k\right\|_{F(x)=f(x)}\\
+&\, + \frac{1}{2}\left.\sum_{i,i',j,k} \frac{\partial^2 l(F(x),f(x))}{\partial F_i(x) \partial F_{i'}(x)}\frac{\partial f_i(x)}{\partial x_j}\frac{\partial f_{i'}(x)}{\partial x_k}\varepsilon_j \varepsilon_k\right\|_{F(x)=f(x)}
+\end{aligned}\label{eq:kongbu}\end{equation}
+
+<p>Looks terrifying? Don't worry. Let's recall that a loss function $l$ generally has the following characteristics:</p>
+
+<blockquote>
+<p>1. $l$ is smooth;</p>
+<p>2. $l(x, x)=0$;</p>
+<p>3. $\left.\frac{\partial}{\partial x} l(x,y)\right\|_{x=y}=0, \left.\frac{\partial}{\partial y} l(x,y)\right\|_{y=x}=0$.</p>
+</blockquote>
+
+<p>This simply means $l$ is smooth, reaches its (local) minimum at $x=y$, and the minimum value is 0. These characteristics are common to almost all losses. Based on these features, the first three terms of Equation \eqref{eq:kongbu} become 0, so the final integral result is:</p>
+
+\begin{equation}\int q(\varepsilon) l(f(x+\varepsilon),f(x)) d\varepsilon \approx \frac{1}{2}\sigma^2\left.\sum_{i,i',j} \frac{\partial^2 l(F(x),f(x))}{\partial F_i(x) \partial F_{i'}(x)}\frac{\partial f_i(x)}{\partial x_j}\frac{\partial f_{i'}(x)}{\partial x_j}\right\|_{F(x)=f(x)}
+\end{equation}
+
+<h3>Gradient Penalty</h3>
+
+<p>It still looks a bit daunting, but much better than Equation \eqref{eq:kongbu}. This result is also a regularization term, characterized by only containing first-order gradient terms. For specific loss functions, $\left.\frac{\partial^2 l(F(x),f(x))}{\partial F_i(x) \partial F_{i'}(x)}\right\|_{F(x)=f(x)}$ can be calculated in advance. Specifically, for several common loss functions, when $i \neq i'$, $\left.\frac{\partial^2 l(F(x),f(x))}{\partial F_i(x) \partial F_{i'}(x)}\right\|_{F(x)=f(x)}=0$, so only the $i=i'$ components need to be calculated. Let's denote it as $\lambda_{i}(x)$, then:</p>
+
+\begin{equation}\int q(\varepsilon) l(f(x+\varepsilon),f(x)) d\varepsilon \approx \frac{1}{2}\sigma^2 \sum_i \lambda_i(x)\Vert \nabla_x f_i(x)\Vert^2\label{eq:gp}\end{equation}
+
+<p>As we can see, in form, this is calculating a gradient penalty term $\Vert \nabla_x f_i(x)\Vert^2$ for each component of $f(x)$ and then summing them weighted by $\lambda_i(x)$.</p>
+
+<p>For instance, for MSE, $l(f(x),y)=\Vert f(x) - y\Vert^2$. One can calculate $\lambda_i(x)\equiv 2$, so the corresponding regularization term is $\sum\limits_i\Vert \nabla_x f_i(x)\Vert^2$; for KL divergence, $l(f(x),y)=\sum\limits_i y_i \log \frac{y_i}{f_i(x)}$. Here $\lambda_i(x)=\frac{1}{f_i(x)}$, so the corresponding regularization term is $\sum\limits_i f_i(x) \Vert \nabla_x \log f_i(x)\Vert^2$. These results can be found more or less in the famous "Flower Book" <a href="https://book.douban.com/subject/27087503/">"Deep Learning"</a>; they are not new results. Similar derivations can also be found in the reference <a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/bishop-tikhonov-nc-95.pdf">"Training with noise is equivalent to Tikhonov regularization"</a>.</p>
+
+<h3>Sampling Approximation</h3>
+
+<p>Of course, while we can derive a regularization term $\sum\limits_i \lambda_i(x)\Vert \nabla_x f_i(x)\Vert^2$ that only contains first-order gradients, the computational cost is still not low because it requires calculating gradients for every $f_i(x)$. If the number of output components is too large, the calculation remains unbearable.</p>
+
+<p>At this point, one can consider an approximation via sampling: assume $q(\eta)$ is a distribution with mean 0 and variance 1, then we have:</p>
+
+\begin{equation}\sum_i \Vert \nabla_x f_i(x)\Vert^2=\sum_i \left\Vert \nabla_x f_i(x)\right\Vert^2=\mathbb{E}_{\eta_i\sim q(\eta)}\left[\left\Vert\sum_i \eta_i \nabla_x f_i(x)\right\Vert^2\right]\end{equation}
+
+<p>In this way, for each step, we only need to calculate the gradient of $\sum\limits_i \eta_i f_i(x)$, avoiding calculating multiple gradients. The simplest choice for $q(\eta)$ is a uniform distribution over $\{-1,1\}$, where $\eta_i$ is chosen from $\{-1,1\}$ with equal probability.</p>
+
+<h2>Adversarial Training</h2>
+
+<p>Reviewing the process so far: we first introduced adding random noise as a means of enhancing generalization, then pointed out that random noise might lack specificity. Thus, we aimed to calculate the integral beforehand, leading to the derived results on approximate expansion and gradient penalty. From another perspective, if we can find a way to construct noise signals more specifically, we can also improve training efficiency and enhance generalization performance.</p>
+
+<h3>Supervised Adversarial Training</h3>
+
+<p>Supervised adversarial training focuses on the original objective \eqref{eq:noisy-loss}. To optimize the goal of making the loss as small as possible, if we want to choose more representative noise, we should choose noise that makes the loss larger. Since:</p>
+
+\begin{equation}l(f(x + \varepsilon), y) \approx l(f(x), y) + \varepsilon \cdot \nabla_x l(f(x), y)\end{equation}
+
+<p>Making $l(f(x + \varepsilon), y)$ as large as possible means $\varepsilon$ should be in the same direction as $\nabla_x l(f(x), y)$. In other words, the perturbation should follow the direction of the gradient ascent, i.e.:</p>
+
+\begin{equation}\varepsilon \sim \nabla_x l(f(x), y)\end{equation}
+
+<p>This constitutes the FGM method in adversarial training, which was previously introduced in <a href="translation_7234.html">"A Brief Discussion on Adversarial Training: Significance, Methods and Reflections (with Keras Implementation)"</a>.</p>
+
+<p>It is worth noting that in that article, we also derived that adversarial training is equivalent to adding a gradient penalty term $\left\Vert\nabla_x l(f(x), y)\right\Vert^2$ to the loss to some extent, which is similar to the results regarding noise integration in the previous section. This suggests that gradient penalty should be one of the universal methods for improving model performance.</p>
+
+<h3>Virtual Adversarial Training</h3>
+
+<p>As mentioned earlier, the term $l(f(x+\varepsilon),f(x))$ does not require label signals and can therefore be used for unsupervised learning. We obtained the gradient penalty \eqref{eq:gp} via its Gaussian integral expansion. Following the ideology of adversarial training, instead of calculating the integral, we look for the perturbation noise that maximizes $l(f(x+\varepsilon),f(x))$. This constitutes "Virtual Adversarial Training (VAT)", which first appeared in the article <a href="https://papers.cool/arxiv/1704.03976">"Virtual Adversarial Training: A Regularization Method for Supervised and Semi-Supervised Learning"</a>.</p>
+
+<p>Based on our previous discussion on the properties of the loss function $l$, we know that the first-order gradient of $l(f(x+\varepsilon),f(x))$ with respect to $\varepsilon$ is zero. Therefore, to calculate the adversarial perturbation, we must expand it to the second order:</p>
+
+\begin{equation}\begin{aligned}
+l(f(x+\varepsilon),f(x))\approx&\, l(f(x),f(x)) + \varepsilon^{\top} \nabla_x l(f(x),f_{ng}(x)) + \frac{1}{2}\varepsilon^{\top}\nabla_x^2 l(f(x),f_{ng}(x)) \varepsilon\\
+=&\, \frac{1}{2}\varepsilon^{\top}\nabla_x^2 l(f(x),f_{ng}(x)) \varepsilon\end{aligned}\end{equation}
+
+<p>Here, $f_{ng}(x)$ indicates that there is no need to calculate the gradient for the $x$ inside. Consequently, we need to solve two problems: 1. How to efficiently calculate the Hessian matrix $\mathcal{H}=\nabla_x^2 l(f(x),f_{ng}(x))$; 2. How to find a unit vector $u$ that maximizes $u^{\top}\mathcal{H}u$.</p>
+
+<p>In fact, it is not difficult to prove that the optimal solution for $u$ is actually the "eigenvector corresponding to the largest eigenvalue of $\mathcal{H}$," also known as the "principal eigenvector of $\mathcal{H}$." An effective method to approximately find the principal eigenvector is the "<a href="https://en.wikipedia.org/wiki/Power_iteration">Power Iteration Method</a>": starting from a random vector $u_0$, iteratively execute $u_{i+1}=\frac{\mathcal{H}u_i}{\Vert\mathcal{H}u_i\Vert}$. Related derivations can be found in the sections "Principal Eigenvalue" and "Power Iteration" of <a href="https://kexue.fm/archives/6051#%E4%B8%BB%E7%89%B9%E5%BE%81%E6%A0%B9">"Lipschitz Continuity in Deep Learning: Generalization and Generative Models"</a>.</p>
+
+<p>In power iteration, we find that we don't need to know the specific value of $\mathcal{H}$, only the value of $\mathcal{H}u$, which can be approximated by finite differences:</p>
+
+\begin{equation}\begin{aligned}\mathcal{H}u =&\, \nabla_x^2 l(f(x),f_{ng}(x)) u\\
+=&\, \nabla_x \big(u\cdot\nabla_x l(f(x),f_{ng}(x))\big)\\
+\approx&\, \nabla_x \left(\frac{l(f(x + \xi u),f_{ng}(x)) - l(f(x),f_{ng}(x))}{\xi}\right)\\
+=&\, \frac{1}{\xi}\nabla_x l(f(x + \xi u),f_{ng}(x))\end{aligned}\end{equation}
+
+<p>where $\xi$ is a scalar constant. Based on this approximation, we can obtain the following VAT process:</p>
+
+<blockquote>
+<p>Initialize vector $u\sim \mathcal{N}(0,1)$, scalars $\epsilon$ and $\xi$;</p>
+<p>Iterate $r$ times:</p>
+<p>   $u \leftarrow \frac{u}{\Vert u\Vert}$;</p>
+<p>   $u \leftarrow \nabla_x l(f(x+\xi u), f_{ng}(x))$</p>
+<p>$u \leftarrow \frac{u}{\Vert u\Vert}$;</p>
+<p>Use $l(f(x+\epsilon u), f_{ng}(x))$ as the loss to perform regular gradient descent.</p>
+</blockquote>
+
+<p>Experiments show that 1 iteration is usually enough. If 0 iterations are performed, it is equivalent to adding Gaussian noise as mentioned at the beginning of this article. This indicates that virtual adversarial training improves the "specificity" of the noise through $\nabla_x l(f(x+\xi u), f_{ng}(x))$.</p>
+
+<h3>Reference Implementation</h3>
+
+<p>For the Keras implementation of adversarial training, it was provided in <a href="translation_7234.html">"A Brief Discussion on Adversarial Training"</a>. Here, I provide a reference implementation for virtual adversarial training in Keras:</p>
+
+<pre><code class="python">def virtual_adversarial_training(
+    model, embedding_name, epsilon=1, xi=10, iters=1
+):
+    """Add virtual adversarial training to the model.
+    model is the Keras model requiring VAT, and embedding_name
+    is the name of the Embedding layer in the model. Use after model.compile().
+    """
+    if model.train_function is None: # If training function is not yet built
+        model._make_train_function() # Build manually
+    old_train_function = model.train_function # Backup the old training function
+
+    # Find the Embedding layer
+    for output in model.outputs:
+        embedding_layer = search_layer(output, embedding_name)
+        if embedding_layer is not None:
+            break
+    if embedding_layer is None:
+        raise Exception('Embedding layer not found')
+
+    # Get Embedding gradients
+    embeddings = embedding_layer.embeddings # Embedding matrix
+    gradients = K.gradients(model.total_loss, [embeddings]) # Embedding gradients
+    gradients = K.zeros_like(embeddings) + gradients[0] # Convert to dense tensor
+
+    # Encapsulate as functions
+    inputs = (
+        model._feed_inputs + model._feed_targets + model._feed_sample_weights
+    ) # All input layers
+    model_outputs = K.function(
+        inputs=inputs,
+        outputs=model.outputs,
+        name='model_outputs',
+    ) # Model output function
+    embedding_gradients = K.function(
+        inputs=inputs,
+        outputs=[gradients],
+        name='embedding_gradients',
+    ) # Model gradient function
+
+    def l2_normalize(x):
+        return x / (np.sqrt((x**2).sum()) + 1e-8)
+
+    def train_function(inputs): # Redefine training function
+        outputs = model_outputs(inputs)
+        inputs = inputs[:2] + outputs + inputs[3:]
+        delta1, delta2 = 0.0, np.random.randn(*K.int_shape(embeddings))
+        for _ in range(iters): # Iteratively find perturbation
+            delta2 = xi * l2_normalize(delta2)
+            K.set_value(embeddings, K.eval(embeddings) - delta1 + delta2)
+            delta1 = delta2
+            delta2 = embedding_gradients(inputs)[0] # Embedding gradient
+        delta2 = epsilon * l2_normalize(delta2)
+        K.set_value(embeddings, K.eval(embeddings) - delta1 + delta2)
+        outputs = old_train_function(inputs) # Gradient descent
+        K.set_value(embeddings, K.eval(embeddings) - delta2) # Remove perturbation
+        return outputs
+
+    model.train_function = train_function # Override original training function
+
+# To enable VAT, only one line of code is needed after writing the function
+virtual_adversarial_training(model_vat, 'Embedding-Token')
+</code></pre>
+
+<p>For the complete usage script, please refer to: <a href="https://github.com/bojone/bert4keras/blob/master/examples/task_sentiment_virtual_adversarial_training.py">task_sentiment_virtual_adversarial_training.py</a>. Broadly speaking, the model is built twice: one model is trained normally using labeled data, and the other is trained via virtual adversarial training using unlabeled data. The two are executed alternately. Please understand the source code before applying it; do not blindly copy the code.</p>
+
+<p>The experimental task is sentiment classification. There are about 20,000 labeled samples. We take the first 200 as labeled samples and the rest as unlabeled data. The comparison between VAT and non-VAT performance is as follows (each experiment was repeated three times, and the average was taken):</p>
+
+\begin{array}{c|cc}
+\hline
+& \text{Validation Set} & \text{Test Set}\\
+\hline
+\text{Non-VAT} & 88.93\% & 89.34\%\\
+\text{VAT} & 89.83\% & 90.37\%\\
+\hline
+\end{array}
+
+<blockquote>
+<p><strong>Note:</strong> We previously mentioned that $f_{ng}(x)$ means no gradient is calculated with respect to $x$, though the gradient for $f$'s own parameters $\theta$ still needs to be calculated. However, readers of the code above will find that the implementation effectively removes gradients for both $x$ and $\theta$ within $f_{ng}(x)$. In theory, this is not strictly equivalent to standard VAT. The issue is that implementing standard VAT in Keras is somewhat troublesome and increases computational complexity. Furthermore, the experiments found that this "imitation" version already brings improvements. Since standard VAT differs from it only by second-order infinitesimals, the difference is negligible, and the code above basically meets the needs.</p>
+</blockquote>
+
+<h2>Summary</h2>
+
+<p>This article first introduced the common regularization technique of adding random noise, then derived its connection to gradient penalty through approximate expansion and integration. From this, it introduced a model-smoothing loss suitable for semi-supervised training, further connecting it to supervised adversarial training and semi-supervised virtual adversarial training. Finally, it provided the implementation and an example of virtual adversarial training in Keras.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7466.html" style="color: #005fcc;">https://kexue.fm/archives/7466</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,298 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/10739">Muon Sequel: Why did we choose to try Muon?</a></h1>
+    <p>By 苏剑林 | Feb 27, 2025</p>
+
+    <p>In this post, I will interpret our latest technical report <a href="https://papers.cool/arxiv/2502.16982"><i>"Muon is Scalable for LLM Training"</i></a>. It shares a relatively large-scale practice of the Muon optimizer, which we previously introduced in <a href="translation_10592.html"><i>"Muon Optimizer Appreciation: An Essential Leap from Vectors to Matrices"</i></a>. We have open-sourced the corresponding models (which we call "<a href="https://github.com/MoonshotAI/Moonlight">Moonlight</a>", currently a 3B/16B MoE model). We found a somewhat startling conclusion: under our experimental setup, Muon achieved nearly twice the training efficiency compared to Adam.</p>
+
+    <p style="text-align:center;">
+        <img src="https://kexue.fm/usr/uploads/2025/02/894611593.png" alt="Scaling Law and MMLU performance" style="max-width:100%;"><br>
+        <em>The Scaling Law of Muon and the MMLU performance of Moonlight</em>
+    </p>
+
+    <p>Research on optimizers is neither too much nor too little, but why did we choose Muon as a new direction for exploration? How can an Adam optimizer with already tuned hyperparameters be quickly switched to Muon for experimentation? After scaling the model up, how does the performance difference between Muon and Adam manifest? Next, I will share our thought process.</p>
+
+    <h2 id="optimization-principle">Optimization Principle</h2>
+    <p>Regarding optimizers, I actually gave a brief review in <a href="translation_10592.html"><i>"Muon Optimizer Appreciation: An Essential Leap from Vectors to Matrices"</i></a>. Most optimizer improvements are essentially just small patches—not to say they are worthless, but they ultimately fail to give a profound and striking impression.</p>
+
+    <p>We need to start from principles closer to the essence to think about what constitutes a good optimizer. Intuitively, an ideal optimizer should have two characteristics: <b>Stability</b> and <b>Speed</b>. Specifically, every update step of an ideal optimizer should satisfy two points: 1. The perturbation to the model should be as small as possible; 2. The contribution to lowering the Loss should be as large as possible. To put it more directly, we don't want to change the model drastically (Stability), but we want to reduce the Loss significantly (Speed)—a classic case of "wanting both."</p>
+
+    <p>How do we translate these two characteristics into mathematical language? <b>Stability</b> can be understood as a constraint on the update amount, while <b>Speed</b> can be understood as finding the update amount that makes the loss function decrease fastest. Thus, this can be transformed into a constrained optimization problem. Using the notation from previously, for a matrix parameter $\boldsymbol{W}\in\mathbb{R}^{n\times m}$, its gradient is $\boldsymbol{G}\in\mathbb{R}^{n\times m}$. When the parameter changes from $\boldsymbol{W}$ to $\boldsymbol{W}+\Delta\boldsymbol{W}$, the variation in the loss function is:
+    \begin{equation}\text{Tr}(\boldsymbol{G}^{\top}\Delta\boldsymbol{W})\end{equation}
+    Then, finding the the update amount for <b>Speed</b> under the premise of <b>Stability</b> can be expressed as:
+    \begin{equation}\mathop{\text{argmin}}_{\Delta\boldsymbol{W}}\text{Tr}(\boldsymbol{G}^{\top}\Delta\boldsymbol{W})\quad\text{s.t.}\quad \rho(\Delta\boldsymbol{W})\leq \eta\label{eq:least-action}\end{equation}
+    Here $\rho(\Delta\boldsymbol{W})\geq 0$ is a certain indicator of <b>Stability</b> (smaller values indicate more stability), and $\eta$ is a constant smaller than 1 representing our requirement for stability; we will later see that it is actually the learning rate of the optimizer. If readers don't mind, we can borrow a concept from theoretical physics and call the above principle the "<b>Least Action Principle</b>" for optimizers.</p>
+
+    <h2 id="matrix-norm">Matrix Norm</h2>
+    <p>The only uncertainty in Eq. $\eqref{eq:least-action}$ is the metric for stability $\rho(\Delta\boldsymbol{W})$. Once $\rho(\Delta\boldsymbol{W})$ is selected, $\Delta\boldsymbol{W}$ can be explicitly solved (at least theoretically). To some extent, we can consider that the essential difference between different optimizers is that their definitions of <b>Stability</b> are different.</p>
+
+    <p>Many readers, when they first learned SGD, must have seen statements like "the negative gradient direction is the direction of fastest local descent of the function value." Looked at through this framework, it is actually choosing the metric of <b>Stability</b> as the Frobenius norm $\Vert\Delta\boldsymbol{W}\Vert_F$. That is to say, the "fastest descent direction" is not invariable; it can only be determined after choosing a metric. Changing to a different norm might mean the negative gradient direction is no longer the fastest.</p>
+
+    <p>The next natural question is: which norm most appropriately measures <b>Stability</b>? If we impose a constraint that is too strong, it will be stable, but the optimizer will struggle and only converge to a suboptimal solution; conversely, if the constraint is weakened and the optimizer "let loose," the training process will become extremely uncontrollable. Therefore, the ideal scenario is to find the most accurate indicator of <b>Stability</b>. Considering that neural networks are dominated by matrix multiplications, let's take $\boldsymbol{y}=\boldsymbol{x}\boldsymbol{W}$ as an example:
+    \begin{equation}\Vert\Delta \boldsymbol{y}\Vert = \Vert\boldsymbol{x}(\boldsymbol{W} + \Delta\boldsymbol{W}) - \boldsymbol{x}\boldsymbol{W}\Vert = \Vert\boldsymbol{x} \Delta\boldsymbol{W}\Vert\leq \rho(\Delta\boldsymbol{W}) \Vert\boldsymbol{x}\Vert\end{equation}
+    The meaning of the above equation is that when parameters change from $\boldsymbol{W}$ to $\boldsymbol{W}+\Delta\boldsymbol{W}$, the change in model output is $\Delta\boldsymbol{y}$. We hope the magnitude of this change can be controlled by $\Vert\boldsymbol{x}\Vert$ and a function $\rho(\Delta\boldsymbol{W})$ related to $\Delta\boldsymbol{W}$; we use this function as our indicator of stability. From linear algebra, we know that the most accurate value for $\rho(\Delta\boldsymbol{W})$ is the spectral norm of $\Delta\boldsymbol{W}$, denoted as $\Vert\Delta\boldsymbol{W}\Vert_2$. Substituting this into Eq. $\eqref{eq:least-action}$, we get:
+    \begin{equation}\mathop{\text{argmin}}_{\Delta\boldsymbol{W}}\text{Tr}(\boldsymbol{G}^{\top}\Delta\boldsymbol{W})\quad\text{s.t.}\quad \Vert\Delta\boldsymbol{W}\Vert_2\leq \eta\end{equation}
+    Solving this optimization problem results in Muon with $\beta=0$:
+    \begin{equation}\Delta\boldsymbol{W} = -\eta\, \text{msign}(\boldsymbol{G}) = -\eta\,\boldsymbol{U}_{[:,:r]}\boldsymbol{V}_{[:,:r]}^{\top}, \quad \boldsymbol{U},\boldsymbol{\Sigma},\boldsymbol{V}^{\top} = \mathop{\text{SVD}}(\boldsymbol{G})\end{equation}
+    When $\beta > 0$, $\boldsymbol{G}$ is replaced by the momentum $\boldsymbol{M}$. Since $\boldsymbol{M}$ can be seen as a smoother estimate of the gradient, the conclusion of the above equation still holds. Therefore, we can conclude that "Muon is the steepest descent under the spectral norm." As for the Newton-Schulz iteration and the like, they are computational approximations, which we won't detail here. The detailed derivation was already given in <a href="translation_10592.html"><i>"Muon Optimizer Appreciation: An Essential Leap from Vectors to Matrices"</i></a> and won't be repeated.</p>
+
+    <h2 id="weight-decay">Weight Decay</h2>
+    <p>At this point, we can answer the first question: Why choose to try Muon? Because like SGD, Muon gives the direction of steepest descent, but its spectral norm constraint is more accurate than SGD's $F$-norm, so it has better potential. On the other hand, improving an optimizer from the perspective of "choosing the most appropriate constraint for different parameters" seems more essential than various patch-like modifications.</p>
+
+    <p>Of course, potential does not equal capability, and there are "traps" in verifying Muon on larger models. First is the Weight Decay issue. Although we included Weight Decay when introducing Muon in <a href="translation_10592.html">the previous post</a>, when the author first proposed Muon, it wasn't there. We initially followed the official implementation, only to find that Muon converged fast in the early stages but was soon caught up by Adam, and various "internal metrics" showed signs of crashing.</p>
+
+    <p>We soon realized this might be a Weight Decay issue, so we added it:
+    \begin{equation}\Delta\boldsymbol{W} = -\eta\, [\text{msign}(\boldsymbol{M})+ \lambda \boldsymbol{W}]\end{equation}
+    Continuing the experiment, as expected, Muon consistently maintained a lead over Adam, as shown in Figure 2 of the paper:</p>
+
+    <p style="text-align:center;">
+        <img src="https://kexue.fm/usr/uploads/2025/02/1063071358.png" alt="Effect of Weight Decay Comparison" style="max-width:100%;"><br>
+        <em>Comparison of results with and without Weight Decay</em>
+    </p>
+
+    <p>What role does Weight Decay play? Post-analysis suggests that the key might be keeping the parameter norm bounded:
+    \begin{align}
+    \Vert\boldsymbol{W}_t\Vert = &\, \Vert\boldsymbol{W}_{t-1} - \eta_t (\boldsymbol{\Phi}_t + \lambda \boldsymbol{W}_{t-1})\Vert \nonumber\\[5pt]
+    = &\, \Vert(1 - \eta_t \lambda)\boldsymbol{W}_{t-1} - \eta_t \lambda (\boldsymbol{\Phi}_t/\lambda)\Vert \nonumber\\[5pt]
+    \leq &\,(1 - \eta_t \lambda)\Vert\boldsymbol{W}_{t-1}\Vert + \eta_t \lambda \Vert\boldsymbol{\Phi}_t/\lambda\Vert \nonumber\\[5pt]
+    \leq &\, \max(\Vert\boldsymbol{W}_{t-1}\Vert,\Vert\boldsymbol{\Phi}_t/\lambda\Vert)
+    \end{align}
+    Here $\Vert\cdot\Vert$ is any matrix norm; the above inequality holds for any matrix norm. $\boldsymbol{\Phi}_t$ is the update vector provided by the optimizer, which for Muon is $\text{msign}(\boldsymbol{M})$. When we take the spectral norm, we have $\Vert\text{msign}(\boldsymbol{M})\Vert_2 = 1$, thus for Muon:
+    \begin{equation}
+    \Vert\boldsymbol{W}_t\Vert_2 \leq \max(\Vert\boldsymbol{W}_{t-1}\Vert_2,1/\lambda)\leq\cdots \leq \max(\Vert\boldsymbol{W}_0\Vert_2,1/\lambda)\end{equation}
+    This ensures the "internal health" of the model, because $\Vert\boldsymbol{x}\boldsymbol{W}\Vert\leq \Vert\boldsymbol{x}\Vert\Vert\boldsymbol{W}\Vert_2$. By controlling $\Vert\boldsymbol{W}\Vert_2$, $\Vert\boldsymbol{x}\boldsymbol{W}\Vert$ is also controlled, meaning there is no risk of explosion, which is particularly important for issues like Attention Logits explosion. Of course, this upper bound is quite loose in most cases; in practice, the spectral norm of parameters is usually much smaller than this bound. This inequality simply demonstrates that Weight Decay has the property of controlling the norm.</p>
+
+    <h2 id="rms-alignment">RMS Alignment</h2>
+    <p>When we decide to try a new optimizer, a major headache is how to quickly find hyperparameters close to the optimum, such as Muon's at least two hyperparameters: learning rate $\eta_t$ and decay rate $\lambda$. Grid search is an option but is time-consuming. Here, we propose a hyperparameter transfer idea based on <b>Update RMS alignment</b>, allowing hyperparameters tuned for Adam to be applied to other optimizers.</p>
+
+    <p>First, for a matrix $\boldsymbol{W}\in\mathbb{R}^{n\times m}$, its RMS (Root Mean Square) is defined as:
+    \begin{equation}\text{RMS}(\boldsymbol{W}) = \frac{\Vert \boldsymbol{W}\Vert_F}{\sqrt{nm}} = \sqrt{\frac{1}{nm}\sum_{i=1}^n\sum_{j=1}^m W_{i,j}^2}\end{equation}
+    Simply put, RMS measures the average size of each element in the matrix. We observe that the RMS of Adam's update amount is relatively stable, usually between 0.2 and 0.4, which is why <a href="translation_10542.html">theoretical analyses</a> often use SignSGD as an approximation of Adam. Based on this, we suggest aligning the Update RMS of the new optimizer to 0.2 via RMS Norm:
+    \begin{gather}
+    \boldsymbol{W}_t =\boldsymbol{W}_{t-1} - \eta_t (\boldsymbol{\Phi}_t + \lambda \boldsymbol{W}_{t-1}) \nonumber\\[6pt]
+    \downarrow \notag\\[6pt]
+    \boldsymbol{W}_t = \boldsymbol{W}_{t-1} - \eta_t (0.2\, \boldsymbol{\Phi}_t/\text{RMS}(\boldsymbol{\Phi}_t) + \lambda \boldsymbol{W}_{t-1})
+    \end{gather}
+    In this way, we can reuse Adam's $\eta_t$ and $\lambda$ to achieve roughly the same update magnitude for parameters at each step. Practice shows that by using this simple strategy to migrate from Adam to Muon, one can train results significantly better than Adam, close to the results of further fine-grained searching of Muon's hyperparameters. Specifically, $\text{RMS}(\boldsymbol{\Phi}_t)=\text{RMS}(\boldsymbol{U}_{[:,:r]}\boldsymbol{V}_{[:,:r]}^{\top})$ for Muon can even be calculated analytically:
+    \begin{equation}nm\,\text{RMS}(\boldsymbol{\Phi}_t)^2 = \sum_{i=1}^n\sum_{j=1}^m \sum_{k=1}^r U_{i,k}^2V_{k,j}^2 = \sum_{k=1}^r\left(\sum_{i=1}^n U_{i,k}^2\right)\left(\sum_{j=1}^m V_{k,j}^2\right) = \sum_{k=1}^r 1 = r\end{equation}
+    That is, $\text{RMS}(\boldsymbol{\Phi}_t) = \sqrt{r/nm}$. In practice, the probability of a matrix being strictly low-rank is small, so we can assume $r = \min(n,m)$, thus $\text{RMS}(\boldsymbol{\Phi}_t) = \sqrt{1/\max(n,m)}$. Therefore, we ended up not using RMS Norm but rather its equivalent analytical version:
+    \begin{equation}\boldsymbol{W}_t = \boldsymbol{W}_{t-1} - \eta_t (0.2\, \boldsymbol{\Phi}_t\,\sqrt{\max(n,m)} + \lambda \boldsymbol{W}_{t-1})\label{eq:muon-rms-aligned}\end{equation}
+    The final equation, Eq. $\eqref{eq:muon-rms-aligned}$, indicates that in Muon, it is not suitable for all parameters to share the same learning rate. For example, Moonlight is an MoE model, and many matrix parameters have shapes that deviate from square matrices; $\max(n,m)$ spans a large range. Using a single learning rate would inevitably lead to synchronization problems where some parameters learn too fast or too slow, thus affecting the final result.</p>
+
+    <h2 id="experimental-analysis">Experimental Analysis</h2>
+    <p>We compared Adam and Muon on a 2.4B/16B scale MoE and found that Muon has obvious advantages in terms of convergence speed and final results. For detailed comparison results, I recommend reading the original paper; I will only share some excerpts here.</p>
+
+    <blockquote>
+        <b>Github: <a href="https://github.com/MoonshotAI/Moonlight">https://github.com/MoonshotAI/Moonlight</a></b>
+    </blockquote>
+
+    <p>First is a relatively objective control table, including a comparison between our own controlled-variable training of Muon and Adam, as well as a comparison with a model of the same architecture trained by an external party (DeepSeek) using Adam (to facilitate comparison, the architecture of Moonlight is identical to DSV3-Small), demonstrating the unique advantage of Muon:</p>
+
+    <p style="text-align:center;">
+        <img src="https://kexue.fm/usr/uploads/2025/02/3356073708.png" alt="Muon (Moonlight) vs Adam comparison" style="max-width:100%;"><br>
+        <em>Comparison between Muon (Moonlight) vs Adam (Moonlight-A and DSV3-small)</em>
+    </p>
+
+    <p>What is different about a model trained with Muon? Since we earlier said Muon is the steepest descent under the spectral norm, and the spectral norm is the largest singular value, we thought of monitoring and analyzing singular values. Sure enough, we found some interesting signals. The parameters trained by Muon have a relatively more uniform distribution of singular values. We use singular value entropy to quantitatively describe this phenomenon:
+    \begin{equation}H(\boldsymbol{\sigma}) = -\frac{1}{\log n}\sum_{i=1}^n \frac{\sigma_i^2}{\sum_{j=1}^n\sigma_j^2}\log \frac{\sigma_i^2}{\sum_{j=1}^n\sigma_j^2}\end{equation}
+    Here $\boldsymbol{\sigma}=(\sigma_1,\sigma_2,\cdots,\sigma_n)$ is the set of all singular values of a parameter. Parameters trained with Muon have higher entropy, meaning the singular value distribution is more uniform, which implies the parameter is harder to compress. This suggests that Muon better utilizes the potential of the parameters:</p>
+
+    <p style="text-align:center;">
+        <img src="https://kexue.fm/usr/uploads/2025/02/2573216843.png" alt="Higher singular value entropy with Muon" style="max-width:100%;"><br>
+        <em>Weights trained by Muon have higher singular value entropy</em>
+    </p>
+
+    <p>Another interesting finding is that when we use Muon for Supervised Fine-Tuning (SFT), we might get a suboptimal solution if the pre-training did not use Muon. Specifically, if both pre-training and fine-tuning use Muon, then the performance is best. However, for the other three combinations (Adam+Muon, Muon+Adam, Adam+Adam), the relative advantages did not show a clear pattern.</p>
+
+    <p style="text-align:center;">
+        <img src="https://kexue.fm/usr/uploads/2025/02/325792276.png" alt="Pre-train/SFT Muon/Adam combinations" style="max-width:100%;"><br>
+        <em>Combination tests of Muon/Adam for pre-training/fine-tuning</em>
+    </p>
+
+    <p style="text-align:center;">
+        <img src="https://kexue.fm/usr/uploads/2025/02/1000676451.png" alt="SFT on open source models with Muon/Adam" style="max-width:100%;"><br>
+        <em>Attempts to fine-tune open-source models with Muon/Adam</em>
+    </p>
+
+    <p>This phenomenon suggests that some special initializations are unfavorable for Muon. Conversely, some initializations may be more favorable for Muon. We are still exploring the deeper underlying principles.</p>
+
+    <h2 id="further-thoughts">Further Thoughts</h2>
+    <p>Overall, in our experiments, Muon's performance appears very competitive compared to Adam. As a new optimizer whose form differs significantly from Adam, this performance of Muon isn't just "noteworthy"; it also indicates that it might have captured some essential properties.</p>
+
+    <p>Previously, a viewpoint circulated in the community: Adam performs well because mainstream model architecture improvements are "overfitting" Adam. This viewpoint probably originated from <a href="https://parameterfree.com/2020/12/06/neural-network-maybe-evolved-to-make-adam-the-best-optimizer/"><i>"Neural Networks (Maybe) Evolved to Make Adam The Best Optimizer"</i></a>. It sounds a bit absurd, but it is actually profound. Think about it: when we try to improve a model, we train it with Adam to see the result. If the result is good, we keep the change; otherwise, we discard it. But is this "good effect" because it is essentially better, or because it matches Adam better?</p>
+
+    <p>This is food for thought. While not all work is like this, certainly at least some work shows better results because it pairs better with Adam. Over time, model architectures will evolve in a direction that favors Adam. In this context, the fact that an optimizer significantly different from Adam can "break through" is especially worth noting and contemplating. Note that neither I nor my company are the proposers of Muon, so these comments are purely "heartfelt words" and not self-promotion.</p>
+
+    <p>What's next for Muon? There is actually quite a lot of work to be done. For example, the issue mentioned above where "Adam pre-training + Muon fine-tuning" performs poorly—further analysis is necessary and valuable. After all, open-source model weights are currently basically trained with Adam; if Muon doesn't work for fine-tuning, it will inevitably affect its adoption. Of course, we can also take this opportunity to deepen our understanding of Muon (learning through bugs).</p>
+
+    <p>There is also an extension to consider: Muon is based on the spectral norm, and the spectral norm is the largest singular value. In fact, we can construct a series of norms based on singular values, such as <a href="https://en.wikipedia.org/wiki/Schatten_norm">Schatten norms</a>. Generalizing it to these broader norms and tuning parameters could theoretically offer a chance for even better results. Furthermore, after the release of Moonlight, some readers asked how to design <a href="https://papers.cool/arxiv/2203.03466">µP (maximal update parametrization)</a> under Muon. This is also an urgent problem to be solved.</p>
+
+    <h2 id="summary">Summary</h2>
+    <p>This post introduced our relatively large-scale practice of the Muon optimizer (Moonlight) and shared our latest thoughts on the Muon optimizer.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10739.html" style="color: #005fcc;">https://kexue.fm/archives/10739</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

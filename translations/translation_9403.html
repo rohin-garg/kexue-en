@@ -1,0 +1,291 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/9403">Transformer Upgrade Road: 6. Completeness Analysis of Rotary Positional Embeddings</a></h1>
+    
+    <p>By 苏剑林 | December 28, 2022</p>
+
+    <p>In last year's article <a href="translation_8265.html">"Transformer Upgrade Road: 2. Rotary Positional Embeddings (RoPE) that Incorporate Various Strengths,"</a> I proposed Rotary Positional Embedding (RoPE). At that time, the starting point was simply feeling that implementing relative positions through absolute positions was a "very fun thing to do," and I did not expect that its actual performance would be quite good and widely accepted. This was truly a pleasant surprise. Later, in <a href="translation_8397.html">"Transformer Upgrade Road: 4. Rotary Positional Embeddings for 2D Positions,"</a> I discussed the 2D form of RoPE and studied the general solution of RoPE expressed using matrix exponentials.</p>
+
+    <p>Since we have a general solution, a natural question arises: the RoPE we commonly use is just a block-diagonal matrix with 2D rotation matrices as the basic units. If we replaced it with the general solution, would the performance be theoretically better? This article aims to answer this question.</p>
+
+    <h2>Exponential General Solution</h2>
+
+    <p>In <a href="translation_8397.html">"Transformer Upgrade Road: 4. Rotary Positional Embeddings for 2D Positions,"</a> we abstractly defined RoPE as any square matrix satisfying the following equation:</p>
+
+    \begin{equation}\boldsymbol{\mathcal{R}}_m^{\top}\boldsymbol{\mathcal{R}}_n=\boldsymbol{\mathcal{R}}_{n-m}\label{eq:re}\end{equation}
+
+    <p>Then, we explored solutions in the form of the following matrix exponential:</p>
+
+    \begin{equation}\boldsymbol{\mathcal{R}}_n=\exp n\boldsymbol{B}\end{equation}
+
+    <p>The matrix exponential here is not an element-wise operation like a Softmax activation function, but follows the definition of a "<a href="https://en.wikipedia.org/wiki/Matrix_exponential">Matrix Exponential</a>" according to a Taylor series. According to the "<a href="https://en.wikipedia.org/wiki/Baker%E2%80%93Campbell%E2%80%93Hausdorff_formula">Baker–Campbell–Hausdorff formula</a>," we have:</p>
+
+    \begin{equation}\begin{aligned}
+    \boldsymbol{\mathcal{R}}_m^{\top}\boldsymbol{\mathcal{R}}_n=&\,(\exp m\boldsymbol{B})^{\top}(\exp n\boldsymbol{B}) = (\exp m\boldsymbol{B}^{\top})(\exp n\boldsymbol{B}) \\
+    =&\,\exp\left(m\boldsymbol{B}^{\top} + n\boldsymbol{B} + \frac{1}{2}mn\left[\boldsymbol{B}^{\top}, \boldsymbol{B}\right]+\cdots\right)
+    \end{aligned}\end{equation}
+
+    <p>Here $[\boldsymbol{A}, \boldsymbol{B}]=\boldsymbol{A}\boldsymbol{B}-\boldsymbol{B}\boldsymbol{A}$, and the $\cdots$ omits terms of third order or higher in $m$ and $n$. According to Equation \eqref{eq:re}, the exponent part of the above expression should equal $(n-m)\boldsymbol{B}$, which leads to:</p>
+
+    \begin{equation}\boldsymbol{B}^{\top} = - \boldsymbol{B}\end{equation}
+
+    <p>That is, $\boldsymbol{B}$ must be a skew-symmetric matrix.</p>
+
+    <h2>Orthogonal General Solution</h2>
+
+    <p>Furthermore, we have $(\exp \boldsymbol{B})^{\top}(\exp \boldsymbol{B})=\exp(\boldsymbol{B}-\boldsymbol{B}) = \boldsymbol{I}$ and $\exp n\boldsymbol{B} = (\exp\boldsymbol{B})^n$. The former indicates that $\exp\boldsymbol{B}$ is an orthogonal matrix, and the latter suggests whether this can be generalized to any orthogonal matrix. It is not difficult to verify that the answer is yes. we have the conclusion:</p>
+
+    <blockquote>For any orthogonal matrix $\boldsymbol{O}$, $\boldsymbol{\mathcal{R}}_n=\boldsymbol{O}^n$ is a solution satisfying Equation \eqref{eq:re}.</blockquote>
+
+    <p>It is worth pointing out that in the real field, not all orthogonal matrices can be written in the form $\exp\boldsymbol{B}$, so $\boldsymbol{O}^n$ is actually more broad than the matrix exponential form. From <a href="translation_6377.html">"Appreciating the Identity det(exp(A)) = exp(Tr(A))"</a> we know $\det(\exp(\boldsymbol{A})) = \exp(\text{Tr}(\boldsymbol{A})) > 0$, so the determinant of an orthogonal matrix that can be written in matrix exponential form must be greater than 0 (i.e., equal to 1). In fact, the converse also holds: any orthogonal matrix with a determinant equal to 1 can be written in the form $\exp\boldsymbol{B}$, where $\boldsymbol{B}$ is a skew-symmetric matrix (refer to <a href="https://math.stackexchange.com/questions/2467531/why-can-any-orthogonal-matrix-be-written-as-o-ea">"Why can any orthogonal matrix be written as O=e^A"</a>).</p>
+
+    <p>For an orthogonal matrix with $\det(\boldsymbol{O}) = -1$, we have $\boldsymbol{O}=\boldsymbol{O}_+ \boldsymbol{I}_-$, where $\boldsymbol{I}_-$ is a diagonal matrix with one -1 on the diagonal and the rest 1s, and $\boldsymbol{O}_+$ is an orthogonal matrix with $\det(\boldsymbol{O}_+) = 1$, which can be written in the form $\exp\boldsymbol{B}$. In this case, $\boldsymbol{O}^n = (\boldsymbol{O}_+ \boldsymbol{I}_-)^n = \boldsymbol{I}_-^n\exp n\boldsymbol{B}$. This means that even for $\boldsymbol{O}^n$ with $\det(\boldsymbol{O}) = -1$, it is just a simple transformation of $\exp n\boldsymbol{B}$. Therefore, we will primarily study solutions in the form of $\exp n\boldsymbol{B}$.</p>
+
+    <h2>Completeness Analysis</h2>
+
+    <p>As is well known, the RoPE positional encoding we usually use is a block-diagonal matrix of the following form:</p>
+
+    \begin{equation}\scriptsize{\left(\begin{array}{cc:cc:cc:cc}
+    \cos n\theta_0 & -\sin n\theta_0 & 0 & 0 & \cdots & \cdots & 0 & 0 \\
+    \sin n\theta_0 & \cos n\theta_0 & 0 & 0 & \cdots & \cdots & 0 & 0 \\
+    \hdashline
+    0 & 0 & \cos n\theta_1 & -\sin n\theta_1 & \cdots & \cdots & 0 & 0 \\
+    0 & 0 & \sin n\theta_1 & \cos n\theta_1 & \cdots & \cdots & 0 & 0 \\
+    \hdashline
+    \vdots & \vdots & \vdots & \vdots & \ddots & \ddots & \vdots & \vdots \\
+    \vdots & \vdots & \vdots & \vdots & \ddots & \ddots & \vdots & \vdots \\
+    \hdashline
+    0 & 0 & 0 & 0 & \cdots & \cdots & \cos n\theta_{d/2-1} & -\sin n\theta_{d/2-1} \\
+    0 & 0 & 0 & 0 & \cdots & \cdots & \sin n\theta_{d/2-1} & \cos n\theta_{d/2-1} \\
+    \end{array}\right)}\end{equation}
+
+    <p>It can be simplified as:</p>
+
+    \begin{equation}\begin{pmatrix}
+    \boldsymbol{R}_{n\theta_0} & \boldsymbol{0} & \cdots & \boldsymbol{0} \\
+    \boldsymbol{0} & \boldsymbol{R}_{n\theta_1} & \cdots & \boldsymbol{0} \\
+    \vdots & \vdots & \ddots & \vdots \\
+    \boldsymbol{0} & \boldsymbol{0} & \cdots & \boldsymbol{R}_{n\theta_{d/2-1}} \\
+    \end{pmatrix} = \exp n\begin{pmatrix}
+    \boldsymbol{J}_{\theta_0} & \boldsymbol{0} & \cdots & \boldsymbol{0} \\
+    \boldsymbol{0} & \boldsymbol{J}_{\theta_1} & \cdots & \boldsymbol{0} \\
+    \vdots & \vdots & \ddots & \vdots \\
+    \boldsymbol{0} & \boldsymbol{0} & \cdots & \boldsymbol{J}_{\theta_{d/2-1}} \\
+    \end{pmatrix}\end{equation}
+
+    <p>Where</p>
+
+    \begin{equation}\boldsymbol{R}_{\theta} = \begin{pmatrix} \cos\theta & -\sin\theta \\ \sin\theta & \cos\theta \end{pmatrix},\quad \boldsymbol{J}_{\theta} = \begin{pmatrix} 0 & -\theta \\ \theta & 0\end{pmatrix}\end{equation}
+
+    <p>This choice is arguably the simplest possible one, fundamentally chosen to reduce computational complexity. So, the so-called completeness question is to answer: Compared to the full-parameter $\exp n\boldsymbol{B}$, does the special case of the block-diagonal matrix above represent a loss in capability? In other words, if computational cost is not considered, would replacing $\boldsymbol{B}$ with a general skew-symmetric matrix potentially improve performance?</p>
+
+    <p>Answering this question is not difficult. In fact, for any even-order skew-symmetric matrix, it can be diagonalized into a block-diagonal matrix:</p>
+
+    \begin{equation}\boldsymbol{\Lambda} = \begin{pmatrix}
+    \boldsymbol{J}_{\theta_0} & \boldsymbol{0} & \cdots & \boldsymbol{0} \\
+    \boldsymbol{0} & \boldsymbol{J}_{\theta_1} & \cdots & \boldsymbol{0} \\
+    \vdots & \vdots & \ddots & \vdots \\
+    \boldsymbol{0} & \boldsymbol{0} & \cdots & \boldsymbol{J}_{\theta_{d/2-1}} \\
+    \end{pmatrix}\end{equation}
+
+    <p>This conclusion can be found in the reference for <a href="https://en.wikipedia.org/wiki/Skew-symmetric_matrix#Spectral_theory">Skew-symmetric matrix</a>. That is to say, there exists an invertible matrix $\boldsymbol{P}$ such that $\boldsymbol{B}=\boldsymbol{P}\boldsymbol{\Lambda}\boldsymbol{P}^{-1}$, so:</p>
+
+    \begin{equation}\exp n\boldsymbol{B} = \exp \left(n\boldsymbol{P}\boldsymbol{\Lambda}\boldsymbol{P}^{-1}\right) = \boldsymbol{P}(\exp n\boldsymbol{\Lambda})\boldsymbol{P}^{-1}\end{equation}
+
+    <p>This means that any $\exp n\boldsymbol{B}$ and the block-diagonal $\exp n\boldsymbol{\Lambda}$ differ only by a similarity transformation. When we apply RoPE in Self-Attention, it looks like this:</p>
+
+    \begin{equation}\boldsymbol{q}^{\top}\big(\exp (n-m)\boldsymbol{B}\big)\boldsymbol{k} = \big(\boldsymbol{P}^{\top}\boldsymbol{q}\big)^{\top}\big(\exp (n-m)\boldsymbol{\Lambda}\big)\big(\boldsymbol{P}^{-1}\boldsymbol{k}\big)\end{equation}
+
+    <p>Since $\boldsymbol{q},\boldsymbol{k}$ are generally obtained from the input $\boldsymbol{x}$ through some learnable linear transformation, $\boldsymbol{P}^{\top}$ and $\boldsymbol{P}^{-1}$ can theoretically be absorbed into the training parameters of the linear transformations. Therefore, directly setting it to $\boldsymbol{q}^{\top}\big(\exp (n-m)\boldsymbol{\Lambda}\big)\boldsymbol{k}$ theoretically results in no loss of generality.</p>
+
+    <p>So, for Self-Attention, the answer is negative. However, if it is <a href="translation_7546.html">Linear Attention</a>, the answer will be slightly different, because the $\boldsymbol{q},\boldsymbol{k}$ in Linear Attention have an added activation function:</p>
+
+    \begin{equation}\phi(\boldsymbol{q})^{\top}\big(\exp (n-m)\boldsymbol{B}\big)\varphi(\boldsymbol{k}) = \big(\boldsymbol{P}^{\top}\phi(\boldsymbol{q})\big)^{\top}\big(\exp (n-m)\boldsymbol{\Lambda}\big)\big(\boldsymbol{P}^{-1}\varphi(\boldsymbol{k})\big)\end{equation}
+
+    <p>This results in $\boldsymbol{P}^{\top}$ and $\boldsymbol{P}^{-1}$ not necessarily being absorbable into the training parameters of the linear transformation. Therefore, adding two parameter matrices to Linear Attention might potentially bring improvements.</p>
+
+    <h2>Summary</h2>
+
+    <p>This article briefly analyzes the completeness issue of RoPE, showing that for Self-Attention, the current block-diagonal form of RoPE does not lose generality.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9403.html" style="color: #005fcc;">https://kexue.fm/archives/9403</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

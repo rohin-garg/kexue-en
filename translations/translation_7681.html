@@ -1,0 +1,328 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/7681">L2 Regularization is Not as Good as Imagined? It Might Be the Fault of "Weight Scale Shifting"</a></h1>
+
+    <p>By 苏剑林 | August 14, 2020</p>
+
+
+<p>
+  <strong>By Su Jianlin | August 14, 2020</strong>
+</p>
+
+<p>
+  L2 regularization is a commonly used method in machine learning to prevent overfitting (and is likely a frequent interview question). Simply put, it aims to keep the magnitude of weights as small as possible so that the model can withstand more perturbations, ultimately improving its generalization performance. However, readers may also find that the performance of L2 regularization is often not as good as theory suggests; in many cases, adding it might even have a negative effect. A recent paper, <a href="https://arxiv.org/abs/1905.05931">"Improve Generalization and Robustness of Neural Networks via Weight Scale Shifting Invariant Regularizations"</a>, analyzes the drawbacks of L2 regularization from the perspective of "Weight Scale Shifting" and proposes a new <strong>WEISSI regularization</strong> term. The entire analysis process is quite interesting, and I would like to share it with you here.
+</p>
+
+<h2>Related Content</h2>
+<p>
+  In this section, we first briefly review L2 regularization, then introduce its connection to weight decay and the related AdamW optimizer.
+</p>
+
+<h3>Understanding L2 Regularization</h3>
+<p>
+  Why add L2 regularization? There are multiple answers to this question. Some answer from the perspective of Ridge regression, others from Bayesian inference. Here, we provide an understanding from the perspective of perturbation sensitivity.
+</p>
+<p>
+  For two (column) vectors $\boldsymbol{w}, \boldsymbol{x}$, we have the Cauchy-Schwarz inequality $|\boldsymbol{w}^{\top}\boldsymbol{x}| \leq \Vert\boldsymbol{w}\Vert_2\Vert\boldsymbol{x}\Vert_2$. Based on this result, we can prove:
+</p>
+
+\begin{equation}\Vert\boldsymbol{W}(\boldsymbol{x}_2 - \boldsymbol{x}_1)\Vert_2\leq \Vert\boldsymbol{W}\Vert_2\Vert\boldsymbol{x}_2 - \boldsymbol{x}_1\Vert_2\end{equation}
+
+<p>
+  where $\Vert\boldsymbol{W}\Vert_2^2$ is equal to the sum of the squares of all elements of the matrix $\boldsymbol{W}$. The proof is not difficult, and interested readers can complete it themselves. This result tells us: the change in $\boldsymbol{W}\boldsymbol{x}$ can be controlled by $\Vert\boldsymbol{W}\Vert_2$ and $\Vert\boldsymbol{x}_2 - \boldsymbol{x}_1\Vert_2$. Therefore, if we want the change in $\boldsymbol{W}\boldsymbol{x}$ to be as small as possible when $\Vert\boldsymbol{x}_2 - \boldsymbol{x}_1\Vert_2$ is small, we can reduce $\Vert\boldsymbol{W}\Vert_2$. In this case, we can add a regularization term $\mathcal{L}_{reg}=\Vert\boldsymbol{W}\Vert_2^2$ to the task objective $\mathcal{L}_{task}$. It is easy to see that this is essentially L2 regularization. Further discussion from this perspective can also be found in <a href="translation_6051.html">"Lipschitz Constraints in Deep Learning: Generalization and Generative Models"</a> (though note that the notation in the two articles differs slightly).
+</p>
+
+<h3>AdamW Optimizer</h3>
+<p>
+  When using SGD for optimization, assuming the original iteration is $\boldsymbol{\theta}_{t}=\boldsymbol{\theta}_{t-1} - \varepsilon\boldsymbol{g}_{t}$, it is easy to prove that after adding L2 regularization $\Vert\boldsymbol{\theta}\Vert_2^2$, it becomes:
+</p>
+
+\begin{equation}\boldsymbol{\theta}_{t}=(1-\varepsilon\lambda)\boldsymbol{\theta}_{t-1} - \varepsilon\boldsymbol{g}_{t}\end{equation}
+
+<p>
+  Since $0 < 1-\varepsilon\lambda < 1$, this causes the parameters $\boldsymbol{\theta}$ to have a tendency to "shrink" toward 0 during the optimization process. This modification is called "Weight Decay."
+</p>
+<p>
+  However, the equivalence between L2 regularization and weight decay only holds under the SGD optimizer. If an adaptive learning rate optimizer such as Adagrad or Adam is used, the two are not equivalent. In adaptive learning rate optimizers, the effect of L2 regularization is roughly equal to adding $-\varepsilon\lambda\text{sign}(\boldsymbol{\theta}_{t-1})$ to the optimization process rather than $-\varepsilon\lambda\boldsymbol{\theta}_{t-1}$. In other words, the penalty for each element is uniform, rather than elements with larger absolute values receiving a larger penalty; this partially cancels out the effect of L2 regularization. The paper <a href="https://arxiv.org/abs/1711.05101">"Decoupled Weight Decay Regularization"</a> first emphasized this issue and proposed the improved AdamW optimizer.
+</p>
+
+<h2>New Regularization</h2>
+<p>
+  In this section, we will point out that the "Weight Scale Shifting" phenomenon often exists in common deep learning models. This phenomenon may lead to the effect of L2 regularization being less significant. Furthermore, we can construct a new regularization term that has a similar effect to L2 but is more coordinated with the weight scale shifting phenomenon, which theoretically should be more effective.
+</p>
+
+<h3>Weight Scale Shifting</h3>
+<p>
+  We know that the basic structure of deep learning models is "linear transformation + non-linear activation function," and one of the most commonly used activation functions now is $\text{relu}(x)=\max(x,0)$. Interestingly, both satisfy "positive homogeneity," meaning that for $\varepsilon \geq 0$, we have $\varepsilon\phi(x)=\phi(\varepsilon x)$ identifying as true. For other activation functions like SoftPlus, GELU, and Swish, they are actually smooth approximations of $\text{relu}$, so they can be considered to approximately satisfy "positive homogeneity."
+</p>
+<p>
+  "Positive homogeneity" makes deep learning models invariant to a certain degree of weight scale shifting. Specifically, assume an $L$-layer model:
+</p>
+
+\begin{equation}
+\begin{aligned} 
+\boldsymbol{h}_L =& \phi(\boldsymbol{W}_L \boldsymbol{h}_{L-1} + \boldsymbol{b}_L) \\ 
+=& \phi(\boldsymbol{W}_L \phi(\boldsymbol{W}_{L-1} \boldsymbol{h}_{L-2} + \boldsymbol{b}_{L-1}) + \boldsymbol{b}_L) \\ 
+=& \dots \\ 
+=& \phi(\boldsymbol{W}_L \phi(\boldsymbol{W}_{L-1} \phi(\dots\phi(\boldsymbol{W}_1\boldsymbol{x} + \boldsymbol{b}_1)\dots) + \boldsymbol{b}_{L-1}) + \boldsymbol{b}_L) 
+\end{aligned}
+\end{equation}
+
+<p>
+  Suppose each parameter introduces a shift $\boldsymbol{W}_l = \gamma_l\tilde{\boldsymbol{W}}_l, \boldsymbol{b}_l = \gamma_l\tilde{\boldsymbol{b}}_l$. Then according to positive homogeneity, we have:
+</p>
+
+\begin{equation}
+\begin{aligned} 
+\boldsymbol{h}_L =& \left(\prod_{l=1}^L \gamma_l\right)\phi(\tilde{\boldsymbol{W}}_L \boldsymbol{h}_{L-1} + \tilde{\boldsymbol{b}}_L) \\ 
+=& \dots \\ 
+=& \left(\prod_{l=1}^L \gamma_l\right) \phi(\tilde{\boldsymbol{W}}_L \phi(\tilde{\boldsymbol{W}}_{L-1} \phi(\dots\phi(\tilde{\boldsymbol{W}}_1\boldsymbol{x} + \tilde{\boldsymbol{b}}_1)\dots) + \tilde{\boldsymbol{b}}_{L-1}) + \tilde{\boldsymbol{b}}_L) 
+\end{aligned}
+\end{equation}
+
+<p>
+  If $\prod_{l=1}^L \gamma_l = 1$, then the model with parameters $\{\boldsymbol{W}_l, \boldsymbol{b}_l\}$ is completely equivalent to the model with parameters $\{\tilde{\boldsymbol{W}}_l, \tilde{\boldsymbol{b}}_l\}$. In other words, the model is invariant to weight scale shifts where $\prod_{l=1}^L \gamma_l = 1$ (WEIght-Scale-Shift-Invariance, WEISSI).
+</p>
+
+<h3>Incoordination with L2 Regularization</h3>
+<p>
+  Just now we said that as long as the scale shift satisfies $\prod_{l=1}^L \gamma_l = 1$, then the models corresponding to the two sets of parameters are equivalent. The problem is that their corresponding L2 regularizations are not equivalent:
+</p>
+
+\begin{equation}\sum_{l=1}^L \Vert\boldsymbol{W}_l\Vert_2^2=\sum_{l=1}^L \gamma_l^2\Vert\tilde{\boldsymbol{W}_l}\Vert_2^2\neq \sum_{l=1}^L \Vert\tilde{\boldsymbol{W}_l}\Vert_2^2\end{equation}
+
+<p>
+  And it can be proven that if we fix $\Vert\boldsymbol{W}_1\Vert_2, \Vert\boldsymbol{W}_2\Vert_2, \dots, \Vert\boldsymbol{W}_L\Vert_2$ and maintain the constraint $\prod_{l=1}^L \gamma_l = 1$, the minimum value of $\sum_{l=1}^L \Vert\tilde{\boldsymbol{W}}_l\Vert_2^2$ occurs at:
+</p>
+
+\begin{equation}\Vert\tilde{\boldsymbol{W}_1}\Vert_2=\Vert\tilde{\boldsymbol{W}_2}\Vert_2=\dots=\Vert\tilde{\boldsymbol{W}}_L\Vert_2=\left(\prod_{l=1}^L \Vert\boldsymbol{W}_l\Vert_2\right)^{1/L}\end{equation}
+
+<p>
+  In fact, this reflects the inefficiency of L2 regularization. Imagine that we have already trained a set of parameters $\{\boldsymbol{W}_l, \boldsymbol{b}_l\}$, and the generalization performance of this set of parameters may not be very good. So we hope that L2 regularization can help the optimizer find a better set of parameters (sacrificing a little $\mathcal{L}_{task}$ to reduce $\mathcal{L}_{reg}$). However, the above results tell us that due to the existence of weight scale shift invariance, the model can fully find a new set of parameters $\{\tilde{\boldsymbol{W}}_l, \tilde{\boldsymbol{b}}_l\}$, which is completely equivalent to the original parameter model (no improvement in generalization performance), but the L2 regularization is even smaller (L2 regularization took effect). To put it bluntly, L2 regularization indeed worked, but it did not improve the model's generalization performance, failing to achieve the original intention of using L2 regularization.
+</p>
+
+<h3>WEISSI Regularization</h3>
+<p>
+  The root of the above problem is that the model is invariant to weight scale shifting, but L2 regularization is not invariant to weight scale shifting. If we can find a new regularization term that has a similar effect but is also invariant to weight scale shifting, the problem can be solved. Personally, I feel that the original paper's explanation of this part is not clear enough. The following derivation is primarily based on my personal understanding.
+</p>
+<p>
+  We consider a regularization term of the following general form:
+</p>
+
+\begin{equation}\mathcal{L}_{reg}=\sum_{l=1}^L \varphi(\Vert\boldsymbol{W}_l\Vert_2)\end{equation}
+
+<p>
+  For L2 regularization, $\varphi(x)=x^2$. As long as $\varphi(x)$ is a monotonically increasing function with respect to $x$ on $[0, +\infty)$, it can be guaranteed that the optimization goal is to reduce $\Vert\boldsymbol{W}_l\Vert$. Note that we want the regularization term to have scale shift invariance; we do not need $\varphi(\gamma x) = \varphi(x)$, but only:
+</p>
+
+\begin{equation}\frac{d}{dx}\varphi(\gamma x)=\frac{d}{dx}\varphi(x) \label{eq:varphi}\end{equation}
+
+<p>
+  because the optimization process only needs to use its gradient. Some readers might immediately see a solution; it is actually the logarithmic function $\varphi(x) = \log x$. So the newly proposed regularization term is:
+</p>
+
+\begin{equation}\mathcal{L}_{reg}=\sum_{l=1}^L \log\Vert\boldsymbol{W}_l\Vert_2=\log \left(\prod_{l=1}^L \Vert\boldsymbol{W}_l\Vert_2\right)\end{equation}
+
+<p>
+  In addition, the original paper might have been concerned that the penalty of the above regularization term was not strong enough, so they also added an L1 penalty to the parameter direction. The total form is:
+</p>
+
+\begin{equation}\mathcal{L}_{reg}=\lambda_1\sum_{l=1}^L \log\Vert\boldsymbol{W}_l\Vert_2 + \lambda_2\sum_{l=1}^L \big\Vert\boldsymbol{W}_l\big/\Vert\boldsymbol{W}_l\Vert_2\big\Vert_1\end{equation}
+
+<h2>Brief Description of Experimental Results</h2>
+<p>
+  As per convention, let's show the experimental results from the original paper. Naturally, since the authors organized them into a paper, it clearly shows positive results:
+</p>
+<p align="center">
+  <img src="https://files.mdnice.com/user/2919/46c03936-e0f3-469b-9c95-072837339d2c.png" alt="One of the experimental results of WEISSI regularization in the original paper" />
+  <br />
+  <em>One of the experimental results of WEISSI regularization in the original paper</em>
+</p>
+<p>
+  For us, it's simply knowing that there is such a new choice, providing one more thing to try when "alchemy" (training models). After all, with regularization terms, there is no theory that guarantees they will definitely work; you only know the result after using them. No matter how beautifully expressed by others, it may not necessarily be useful.
+</p>
+
+<h2>Article Summary</h2>
+<p>
+  This article introduces the phenomenon of weight scale shift invariance in neural network models and points out its incompatibility with L2 regularization, subsequently proposing a regularization term that acts similarly but resolves this incompatibility.
+</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7681.html" style="color: #005fcc;">https://kexue.fm/archives/7681</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

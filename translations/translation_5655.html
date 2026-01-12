@@ -1,0 +1,377 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/5655">Optimization Algorithms from a Dynamical Perspective (I): From SGD to Momentum Acceleration</a></h1>
+
+    <p>By 苏剑林 | June 27, 2018</p>
+
+    <p>In this series, we focus on optimization algorithms. The theme of this article is SGD (Stochastic Gradient Descent), including versions with Momentum and Nesterov. Regarding SGD, several questions generally interest us:</p>
+    <ul>
+        <li>Why is SGD effective?</li>
+        <li>Is the batch size for SGD better when it is larger?</li>
+        <li>How should the learning rate for SGD be adjusted?</li>
+        <li>How does Momentum accelerate optimization?</li>
+        <li>Why is Nesterov slightly better than Momentum?</li>
+    </ul>
+    <p>... Here, we attempt to analyze SGD from a dynamical perspective to provide some heuristic understandings of the above questions.</p>
+
+    <h2>Gradient Descent</h2>
+    <p>Since we want to compare what is better or worse, we need to know what the best looks like—that is, what is our ultimate goal?</p>
+
+    <h3>Analysis of Training Goals</h3>
+    <p>Suppose the set of all training samples is $\boldsymbol{S}$ and the loss measure is $L(\boldsymbol{x};\boldsymbol{\theta})$, where $\boldsymbol{x}$ represents a single sample and $\boldsymbol{\theta}$ represents the optimization parameters. We can then construct the loss function:</p>
+    <p>
+        $$L(\boldsymbol{\theta}) = \frac{1}{|\boldsymbol{S}|}\sum_{\boldsymbol{x}\in\boldsymbol{S}} L(\boldsymbol{x};\boldsymbol{\theta})\tag{1}$$
+    </p>
+    <p>The <strong>ultimate goal of training</strong> is to find a <strong>global optimum</strong> of $L(\boldsymbol{\theta})$ (where "optimal" here means "minimum").</p>
+
+    <h3>GD and ODE</h3>
+    <p>To accomplish this goal, we can use the Gradient Descent (GD) method:</p>
+    <p>
+        $$\boldsymbol{\theta}_{n+1}=\boldsymbol{\theta}_{n} - \gamma \nabla_{\boldsymbol{\theta}} L(\boldsymbol{\theta}_{n})\tag{2}$$
+    </p>
+    <p>where $\gamma > 0$ is called the learning rate, which here is also the step size of the iteration (as we will see later, the step size is not necessarily equal to the learning rate). Gradient descent can be understood in several ways. Since we generally have $\gamma \ll 1$, we can rewrite it as:</p>
+    <p>
+        $$\frac{\boldsymbol{\theta}_{n+1}-\boldsymbol{\theta}_{n}}{\gamma} = - \nabla_{\boldsymbol{\theta}} L(\boldsymbol{\theta}_{n})\tag{3}$$
+    </p>
+    <p>Then the left side approximates the derivative of $\boldsymbol{\theta}$ (assuming it is a function of time $t$), so we obtain an ODE dynamical system:</p>
+    <p>
+        $$\dot{\boldsymbol{\theta}} = - \nabla_{\boldsymbol{\theta}} L(\boldsymbol{\theta})\tag{4}$$
+    </p>
+    <p>Thus, $(2)$ is actually an Euler method solution of $(4)$. In this light, <strong>gradient descent is essentially using the Euler method to solve the dynamical system $(4)$</strong>. Since $(4)$ is a <strong>conservative dynamical system</strong>, it can eventually converge to a fixed point (where $\dot{\boldsymbol{\theta}}=0$), and it can be proven that a stable fixed point is a local minimum (though not necessarily the global minimum).</p>
+
+    <h2>Stochastic Gradient Descent</h2>
+    <p>This suggests that stochastic gradient descent can be analyzed semi-qualitatively and semi-quantitatively using a stochastic differential equation.</p>
+
+    <h3>From GD to SGD</h3>
+    <p>We generally call $(2)$ "full batch gradient descent" because it requires all samples to calculate the gradient. This is a significant disadvantage of GD: when there are tens of thousands of samples, the cost of each iteration is too high, potentially making it impossible to proceed. Therefore, we randomly draw a subset $\boldsymbol{R}\subseteq \boldsymbol{S}$ from $\boldsymbol{S}$ and use only $\boldsymbol{R}$ to calculate the gradient for a single iteration. We denote:</p>
+    <p>
+        $$L_{\boldsymbol{R}}(\boldsymbol{\theta}) = \frac{1}{|\boldsymbol{R}|}\sum_{\boldsymbol{x}\in\boldsymbol{R}} L(\boldsymbol{x};\boldsymbol{\theta})\tag{5}$$
+    </p>
+    <p>Then formula $(2)$ becomes:</p>
+    <p>
+        $$\boldsymbol{\theta}_{n+1}=\boldsymbol{\theta}_{n} - \gamma \nabla_{\boldsymbol{\theta}} L_{\boldsymbol{R}}(\boldsymbol{\theta}_{n})\tag{6}$$
+    </p>
+    <p>Note that the minimum of $L$ is our goal, while $L_{\boldsymbol{R}}$ is a random variable, and $\nabla_{\boldsymbol{\theta}} L_{\boldsymbol{R}}(\boldsymbol{\theta}_{n})$ is merely an estimate of the original $\nabla_{\boldsymbol{\theta}} L(\boldsymbol{\theta}_{n})$. Can this approach yield reasonable results?</p>
+
+    <h3>From SGD to SDE</h3>
+    <p>Here we assume:</p>
+    <p>
+        $$\nabla_{\boldsymbol{\theta}} L(\boldsymbol{\theta}_{n}) - \nabla_{\boldsymbol{\theta}} L_{\boldsymbol{R}}(\boldsymbol{\theta}_{n})=\boldsymbol{\xi}_n\tag{7}$$
+    </p>
+    <p>follows a normal distribution with variance $\sigma^2$. Note that this is only an approximate description intended for semi-qualitative and semi-quantitative analysis. Under this assumption, stochastic gradient descent is equivalent to introducing Gaussian noise into the dynamical system $(4)$:</p>
+    <p>
+        $$\dot{\boldsymbol{\theta}} = - \nabla_{\boldsymbol{\theta}} L(\boldsymbol{\theta}) + \sigma \boldsymbol{\xi}\tag{8}$$
+    </p>
+    <p>where $\boldsymbol{\xi}$ follows a standard normal distribution. The original dynamical system was an ODE; it has now become an SDE (Stochastic Differential Equation), which we call the "Langevin equation." Of course, the source of noise is not only the estimation error from random sampling; the size of the learning rate at each iteration also introduces noise.</p>
+    <p>Under the Gaussian noise assumption, what is the solution to this equation? The solution to the original ODE is a deterministic trajectory. Now, because random noise is introduced, the solution is also random. The probability distribution at equilibrium can be solved as:</p>
+    <p>
+        $$P(\boldsymbol{\theta}) \sim \exp \left(-\frac{L(\boldsymbol{\theta})}{\sigma^2}\right)\tag{9}$$
+    </p>
+    <p>The derivation process can refer to general stochastic dynamics textbooks; we will just use this result.</p>
+
+    <h3>Inspirational Results</h3>
+    <p>We can derive meaningful results from equation $(8)$. First, we see that, in principle, $\boldsymbol{\theta}$ is no longer a deterministic value but a probability distribution, and the original local minimum points of $L(\boldsymbol{\theta})$ now correspond to the maximum points of $P(\boldsymbol{\theta})$. This implies that if we execute gradient descent for an infinite duration, theoretically, $\boldsymbol{\theta}$ can traverse all possible values and has a higher probability of being in the various "pits" of $L(\boldsymbol{\theta})$.</p>
+    <p>$\sigma^2$ is the variance of the gradient. Obviously, this variance depends on the batch size; according to definition $(7)$, a larger batch size leads to a smaller variance. In equation $(9)$, a larger $\sigma^2$ means the landscape of $P(\boldsymbol{\theta})$ is flatter, i.e., closer to a uniform distribution, in which case $\boldsymbol{\theta}$ may wander everywhere. When $\sigma^2$ is smaller, the regions of the original local minima of $L(\boldsymbol{\theta})$ become more prominent, and $\boldsymbol{\theta}$ is likely to fall into a "pit" and not get out.</p>
+
+    <p style="text-align: center;">[Curves of L(θ) and exp(-L(θ))]</p>
+
+    <p>Analyzing it this way, <strong>theoretically, we should start with a smaller batch size</strong> so that the noise variance $\sigma^2$ is larger, making the distribution closer to uniform and allowing the algorithm to traverse more regions. As iterations increase, it should gradually approach the optimal region. At this point, the variance should decrease to make the extrema more prominent. That is, if possible, the batch size should slowly increase as iterations increase.</p>
+    <p>This partially explains the results proposed by Google last year in <a href="https://arxiv.org/abs/1711.00489">"Don't Decay the Learning Rate, Increase the Batch Size"</a>. However, increasing the batch size significantly increases computational costs, so we generally stop adjusting it once it reaches a certain amount.</p>
+    <p>Of course, as seen in the figure, <strong>when entering a stable descent region, the step size $\gamma$ (learning rate) per iteration should not exceed the width of the "pit."</strong> Since a smaller $\sigma^2$ makes the pit narrower, this also indicates that the learning rate should decrease as the number of iterations increases. Additionally, a larger $\gamma$ also partially contributes to the noise; thus, a decrease in $\sigma^2$ effectively implies that we should reduce the learning rate.</p>
+    <p>So the conclusion of the analysis is: <strong>Where conditions permit, when using SGD, start with a small batch size and a large learning rate, then slowly increase the batch size and slowly decrease the learning rate.</strong> As for the specific strategy for increasing and decreasing, it depends on your level of "alchemy."</p>
+
+    <h2>Momentum Acceleration</h2>
+    <p>It is well known that pure SGD optimization is very slow compared to adaptive learning rate algorithms like Adam. Introducing momentum can accelerate SGD iterations. This also has a beautiful dynamical explanation.</p>
+
+    <h3>From First-Order to Second-Order</h3>
+    <p>From the preceding text, we know there is no difference in iteration format between SGD and GD. Therefore, to seek acceleration for SGD, we only need to seek acceleration for GD and then swap the full gradient for a stochastic gradient. From $(2)$ to $(4)$, we know GD turns the problem of finding the minimum of $L(\boldsymbol{\theta})$ into the iterative solution of the ODE $\dot{\boldsymbol{\theta}} = - \nabla_{\boldsymbol{\theta}} L(\boldsymbol{\theta})$.</p>
+    <p>Why must it be first-order? Would a second-order $\ddot{\boldsymbol{\theta}} = - \nabla_{\boldsymbol{\theta}} L(\boldsymbol{\theta})$ work? To this end, we consider the general form:</p>
+    <p>
+        $$\ddot{\boldsymbol{\theta}} + \lambda \dot{\boldsymbol{\theta}} = - \nabla_{\boldsymbol{\theta}} L(\boldsymbol{\theta})\tag{10}$$
+    </p>
+    <p>This truly corresponds to a (Newtonian) mechanical system, where $\lambda > 0$ introduces an effect similar to friction. Let's analyze the difference between such a system and the original first-order ODE $(4)$ of GD.</p>
+    <p>First, from the perspective of fixed points, the stable fixed point to which $(10)$ eventually converges (where $\ddot{\boldsymbol{\theta}}=\dot{\boldsymbol{\theta}}=0$) is indeed a local minimum of $L(\boldsymbol{\theta})$. Imagine a small ball rolling down from a mountaintop; it will automatically fall into a valley and then climb back up, but due to frictional resistance, it eventually stops in the valley. Note that unless the algorithm never stops, once it does, it must be at a valley (it could be a peak or a saddle point, but the probability of that is small); it absolutely cannot stop halfway up the mountain because halfway up there is still potential energy, and by the law of conservation of energy, that energy can be converted into kinetic energy, so it will not stop.</p>
+    <p>Thus, the convergence situation should be no different from first-order GD. We only need to compare their convergence speeds.</p>
+
+    <h3>GD + Momentum</h3>
+    <p>We rewrite $(10)$ equivalently as:</p>
+    <p>
+        $$\dot{\boldsymbol{\theta}}=\boldsymbol{\eta},\quad \dot{\boldsymbol{\eta}}=-\lambda \boldsymbol{\eta} - \nabla_{\boldsymbol{\theta}} L(\boldsymbol{\theta})\tag{11}$$
+    </p>
+    <p>We discretize $\dot{\boldsymbol{\theta}}$ as:</p>
+    <p>
+        $$\dot{\boldsymbol{\theta}}\approx \frac{\boldsymbol{\theta}_{n+1}-\boldsymbol{\theta}_{n}}{\gamma}\tag{12}$$
+    </p>
+    <p>How do we handle $\boldsymbol{\eta}$? $\boldsymbol{\eta}_n$? No, $(\boldsymbol{\theta}_{n+1}-\boldsymbol{\theta}_{n})/\gamma$ as a derivative at time $n$ is only a first-order approximation ($\mathcal{O}(\gamma)$), whereas as a derivative at time $n+1/2$, it is a second-order approximation ($\mathcal{O}(\gamma^2)$). Thus, more accurately, we have:</p>
+    <p>
+        $$\frac{\boldsymbol{\theta}_{n+1}-\boldsymbol{\theta}_{n}}{\gamma}=\boldsymbol{\eta}_{n+1/2}\tag{13}$$
+    </p>
+    <p>Similarly, from the second equation of $(11)$, we derive the following result, which also has a second-order approximation:</p>
+    <p>
+        $$\frac{\boldsymbol{\eta}_{n+1/2}-\boldsymbol{\eta}_{n-1/2}}{\gamma}=-\lambda\left(\frac{\boldsymbol{\eta}_{n+1/2}+\boldsymbol{\eta}_{n-1/2}}{2}\right)- \nabla_{\boldsymbol{\theta}} L(\boldsymbol{\theta}_n)\tag{14}$$
+    </p>
+    <p>In short, to pursue high precision, $(\boldsymbol{\theta}_{n+1}-\boldsymbol{\theta}_{n})/\gamma$ is the derivative of $\boldsymbol{\theta}$ at time $n+1/2$, $(\boldsymbol{\eta}_{n+1/2}-\boldsymbol{\eta}_{n-1/2})/ \gamma$ is the derivative of $\boldsymbol{\eta}$ at time $n$, and $(\boldsymbol{\eta}_{n+1/2}+\boldsymbol{\eta}_{n-1/2})/2=\boldsymbol{\eta}_n$. They all have the precision of $\mathcal{O}(\gamma^2)$.</p>
+    <p>Let:</p>
+    <p>
+        $$\boldsymbol{v}_{n+1}=\gamma\boldsymbol{\eta}_{n+1/2},\quad \beta = \frac{1-\lambda\gamma/2}{1+\lambda\gamma/2},\quad \alpha = \frac{\gamma^2}{1+\lambda\gamma/2}\tag{15}$$
+    </p>
+    <p>Then combining $(13)$ and $(14)$, we get:</p>
+    <p>
+        \begin{align}
+        &\boldsymbol{\theta}_{n+1} = \boldsymbol{\theta}_{n} + \boldsymbol{v}_{n+1} \\ 
+        & \boldsymbol{v}_{n+1} = \beta\boldsymbol{v}_{n} - \alpha \nabla_{\boldsymbol{\theta}} L(\boldsymbol{\theta}_n) 
+        \end{align}\tag{16}
+    </p>
+    <p>This is the GD algorithm with Momentum. In mathematics, it also has a special name, called <strong>"Leapfrog integration."</strong></p>
+
+    <h3>How Does It Accelerate?</h3>
+    <p>Combining the two equations of $(15)$ and $(16)$, we can observe how Momentum accelerates GD.</p>
+    <p>In GD $(2)$, the learning rate is $\gamma$, the step size is also $\gamma$, and the accuracy is $\mathcal{O}(\gamma)$. In Momentum, the learning rate is $\alpha\approx \gamma^2$, the step size is $\gamma$, and the accuracy is $\mathcal{O}(\gamma^2)=\mathcal{O}(\alpha)$. Thus, given a learning rate $\alpha$, at the same accuracy, Momentum actually advances with a step size of $\sqrt{\alpha}$, while pure GD advances with a step size of $\alpha$.</p>
+    <p>Since the learning rate is generally less than 1, $\sqrt{\alpha} > \alpha$. Thus, <strong>one principle of Momentum acceleration is that it allows the algorithm to advance with larger step sizes under the same learning rate without losing accuracy.</strong></p>
+
+    <p style="text-align: center;">[Illustration: From point A, SGD+Momentum can reach point D, while SGD usually only reaches point B]</p>
+
+    <p>Furthermore, as shown in the figure, starting from point $A$, gradient descent will slowly descend to point $B$ and finally stop at point $C$. Of course, if the noise or learning rate is large enough, it might cross point $C$ and reach point $D$. However, with momentum acceleration, $(10)$ is a dynamical equation, and all of Newtonian mechanics can be applied here. Starting from point $A$, the initial velocity is 0, then it slowly descends, converting potential energy into kinetic energy. After passing point $B$, it slowly rises, converting kinetic energy back into potential energy. If the friction is small, it still has kinetic energy upon reaching $C$, so it can directly reach $D$. This is guaranteed by the conservation of energy, even without noise. In SGD, one must rely on a large learning rate or small batch size (enhanced noise) to achieve a similar effect.</p>
+    <p>Therefore, we can also say that <strong>Momentum acceleration provides a dynamical possibility for "skipping over" less-than-ideal local minima.</strong></p>
+    <p>So how should $\lambda$ be chosen? Can't we just set $\lambda=0$ or $\beta=1$?</p>
+    <p>As mentioned earlier, the $\lambda > 0$ term acts like friction to dissipate energy. Without this term, no matter how small the learning rate is (as long as it's not zero), the Momentum algorithm will not stop at the local minimum; it will keep moving. This is like a pendulum that swings forever without friction; the conservation of energy dictates that at the point of lowest energy (the minimum point we want), kinetic energy is at its maximum—the speed is fastest. To put it bluntly, the algorithm simply won't stop. But with friction to dissipate energy, energy is no longer conserved, and the pendulum eventually stops at the lowest point of energy. Therefore, <strong>introducing $\lambda$ is necessary for the algorithm's convergence</strong>, and from $(15)$, we have $\beta < 1$. However, $\lambda$ should not be too large; excessive friction will cause the motion to stop before reaching the minimum. To ensure acceleration exists, we also have $\beta > 0$.</p>
+    <p>Finally, from the definition of $\beta$ in $(15)$, we see that for a fixed $\lambda$ (a fixed friction coefficient), if the learning rate $\alpha$ decreases (meaning $\gamma$ also decreases), then $\beta$ should increase accordingly. The ratio of this increase can be roughly estimated. From $(16)$, we get the approximation $1-\lambda\sqrt{\alpha}=\beta$, from which $\lambda$ can be solved, and then a new $\beta$ can be calculated by substituting a new $\alpha$.</p>
+    <p>From this, we obtain a reference tuning scheme for $\beta$ in the SGD+Momentum optimizer: <strong>When using SGD+Momentum, if you decrease the learning rate, you should slightly increase $\beta$. When the learning rate drops from $\alpha$ to $r\alpha$, $\beta$ can be considered for increase to $1 - (1-\beta)\sqrt{r}$.</strong></p>
+
+    <h2>Nesterov Momentum</h2>
+    <p>The Momentum algorithm essentially solves $(10)$ numerically. However, solving $(10)$ is not limited to explicit iteration formats like $(13)$ and $(14)$; there are also implicit ones. For example, we can approximate $(10)$ as:</p>
+    <p>
+        \begin{align}
+        &\frac{\boldsymbol{\theta}_{n+1}-\boldsymbol{\theta}_{n}}{\gamma} = \frac{\boldsymbol{\eta}_{n+1}+\boldsymbol{\eta}_{n}}{2}\\ 
+        &\frac{\boldsymbol{\eta}_{n+1}-\boldsymbol{\eta}_{n-1}}{2\gamma} = -\lambda \frac{\boldsymbol{\eta}_{n}+\boldsymbol{\eta}_{n-1}}{2} - \nabla_{\boldsymbol{\theta}} L\left(\frac{\boldsymbol{\theta}_{n+1}+\boldsymbol{\theta}_n}{2}\right) 
+        \end{align}\tag{17}
+    </p>
+    <p>Let:</p>
+    <p>
+        $$\boldsymbol{v}_{n+1}=\frac{\gamma}{2}(\boldsymbol{\eta}_{n+1}+\boldsymbol{\eta}_{n}),\quad \beta = 1-\lambda\gamma,\quad \alpha=\gamma^2\tag{18}$$
+    </p>
+    <p>to get:</p>
+    <p>
+        \begin{align}
+        &\boldsymbol{\theta}_{n+1} = \boldsymbol{\theta}_{n} + \boldsymbol{v}_{n+1} \\ 
+        & \boldsymbol{v}_{n+1} = \beta\boldsymbol{v}_{n} - \alpha \nabla_{\boldsymbol{\theta}} L\left(\frac{\boldsymbol{\theta}_{n+1}+\boldsymbol{\theta}_n}{2}\right) 
+        \end{align}\tag{19}
+    </p>
+    <p>This is an implicit iteration formula. In theory, to find $\boldsymbol{\theta}_{n+1}$, we would need to solve a system of nonlinear equations. But approximately, we only need to substitute $\boldsymbol{\theta}_{n+1}$ with $\boldsymbol{\theta}_{n}+\beta \boldsymbol{v}_{n}$ to get:</p>
+    <p>
+        \begin{align}
+        &\boldsymbol{\theta}_{n+1} = \boldsymbol{\theta}_{n} + \boldsymbol{v}_{n+1} \\ 
+        & \boldsymbol{v}_{n+1} = \beta\boldsymbol{v}_{n} - \alpha \nabla_{\boldsymbol{\theta}} L\left(\boldsymbol{\theta}_n + \frac{\beta}{2}\boldsymbol{v}_n\right) 
+        \end{align}\tag{20}
+    </p>
+    <p>If we replace the $\beta/2$ inside the parentheses with $\beta$, this becomes the standard GD algorithm with Nesterov momentum. However, I feel the above formula seems more reasonable because the Nesterov algorithm aims to use the gradient at $\boldsymbol{\theta}_{n+1}$ instead of $\boldsymbol{\theta}_n$ to give the algorithm "look-ahead capability," but in reality, that is biased; intuitively, using the gradient at $(\boldsymbol{\theta}_n+\boldsymbol{\theta}_{n+1})/2$ is more "balanced."</p>
+    <p>From the perspective of error analysis, both standard Momentum and the Nesterov version are second-order algorithms with the same level of accuracy (just a constant factor difference). However, theoretically, Nesterov is an implicit iteration with a wider stability region, so it usually achieves better results.</p>
+    <p>How do we implement formula $(20)$ in frameworks like TensorFlow? Note that $(20)$ involves first finding the derivative of $L(\boldsymbol{\theta})$ with respect to $\boldsymbol{\theta}$, and then replacing $\boldsymbol{\theta}$ with $\boldsymbol{\theta}_n + \frac{\beta}{2}\boldsymbol{v}_n$ (my version of Nesterov) or $\boldsymbol{\theta}_n + \beta\boldsymbol{v}_n$ (standard Nesterov). This operation seems simple to us, but it's a bit tedious in frameworks like TF. Although these frameworks have automatic differentiation, they are ultimately numerical calculation frameworks rather than symbolic systems, so the result is only a numerical derivative. When we calculate the derivative of $\boldsymbol{\theta}$, the result is a tensor—some fixed numbers. Replacing $\boldsymbol{\theta}$ with $\boldsymbol{\theta}_n + \frac{\beta}{2}\boldsymbol{v}_n$ is quite difficult. Of course, it's not impossible, but it's not as straightforward as the Momentum version.</p>
+    <p>Thus, for ease of implementation, let (taking standard Nesterov as an example):</p>
+    <p>
+        $$\boldsymbol{\Theta}_n=\boldsymbol{\theta}_n + \beta\boldsymbol{v}_n$$
+    </p>
+    <p>Then we can get a new iteration formula:</p>
+    <p>
+        \begin{align}
+        &\boldsymbol{\Theta}_{n+1} = \boldsymbol{\Theta}_{n} + \beta\boldsymbol{v}_{n+1} - \alpha \nabla_{\boldsymbol{\theta}} L\left(\boldsymbol{\Theta}_n\right) \\ 
+        & \boldsymbol{v}_{n+1} = \beta\boldsymbol{v}_{n} - \alpha \nabla_{\boldsymbol{\theta}} L\left(\boldsymbol{\Theta}_n\right) 
+        \end{align}
+    </p>
+    <p>This is how the Nesterov algorithm is implemented in mainstream frameworks, such as <a href="https://github.com/keras-team/keras/blob/master/keras/optimizers.py">Keras</a>, avoiding the process of variable substitution. As the iteration moves closer to the minimum, the momentum $\boldsymbol{v}$ will become smaller and smaller, so $\boldsymbol{\Theta}$ and $\boldsymbol{\theta}$ will eventually be equivalent—even a small error doesn't matter, because our fundamental purpose for using momentum is acceleration, and model selection still depends on performance on the validation set.</p>
+
+    <h2>Kramers Equation</h2>
+    <p>The previous discussion only concerned the momentum acceleration method for full batch gradient descent. Finally, let's briefly analyze the situation under stochastic gradient descent. With the same assumptions as before, after introducing the stochastic gradient, we can consider that $(10)$ becomes an equation with random force:</p>
+    <p>
+        $$\ddot{\boldsymbol{\theta}} + \lambda \dot{\boldsymbol{\theta}} = - \nabla_{\boldsymbol{\theta}} L(\boldsymbol{\theta})+\sigma\boldsymbol{\xi}\tag{21}$$
+    </p>
+    <p>This is called the "Kramers equation." Like the Langevin equation, it is a core result in stochastic dynamics. When $\lambda=0$, the stationary solution can be written out, and this stationary distribution can serve as a reference for the general case:</p>
+    <p>
+        $$P(\boldsymbol{\theta},\boldsymbol{\eta}) \sim \exp\left(-\frac{\boldsymbol{\eta}^2/2 + L(\boldsymbol{\theta})}{\sigma^2}\right)\tag{22}$$
+    </p>
+    <p>where $\boldsymbol{\eta}=\dot{\boldsymbol{\theta}}$. The marginal distribution of $\boldsymbol{\theta}$ is equation $(9)$. Therefore, the previous analysis of pure SGD can be considered equally applicable to Momentum and Nesterov algorithms.</p>
+
+    <h2>Retrospective Reflection</h2>
+    <p>This article aimed to analyze SGD-related content through a dynamical perspective. While it cannot provide exact answers to the questions posed at the beginning, I expect it provides some inspiration. Even though the article is quite long with many formulas, any reader who has studied numerical computation as an undergraduate should find it easy to understand. If you have any doubts, feel free to leave a comment for further discussion.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_5655.html" style="color: #005fcc;">https://kexue.fm/archives/5655</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

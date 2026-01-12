@@ -1,0 +1,358 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+
+<h1><a href="https://kexue.fm/archives/8084">[Searching for Text] Part 2: From MCMC to Simulated Annealing</a></h1>
+
+    <p>By 苏剑林 | January 14, 2021</p>
+
+<h2>[Text from Searching] · (2) From MCMC to Simulated Annealing</h2>
+
+<p>In the previous article, we introduced the concept of "constrained text generation," noting that certain conditional text generation tasks can be completed unsupervised by quantifying targets and sampling from them. At the same time, the previous article introduced "Importance Sampling" and "Rejection Sampling" methods, pointing out that for high-dimensional spaces, the easy-to-sample distributions they rely on are often difficult to design, making it hard for them to meet our sampling needs. At this point, we need to introduce one of the most important algorithms in the sampling world: the "Markov Chain Monte Carlo (MCMC)" method. It combines Markov chains and Monte Carlo methods, making it possible (at least in theory) to sample from many high-dimensional distributions. It is also one of the fundamental algorithms for the constrained text generation applications we will introduce later. This article attempts to provide a basic introduction to it.</p>
+
+<h3>Markov Chain</h3>
+<p>A Markov chain is essentially a "memoryless" random walk process. It is based on a transition probability $p(\boldsymbol{y}\leftarrow\boldsymbol{x})$. Starting from an initial state $\boldsymbol{x}_0$, each step randomly selects the next state through this transition probability, thus forming a sequence of random states $\boldsymbol{x}_0, \boldsymbol{x}_1, \boldsymbol{x}_2, \cdots, \boldsymbol{x}_t, \cdots$. We want to examine the distribution followed by $\boldsymbol{x}_t$ for a sufficiently large number of steps $t$, which is the "stationary distribution" of the Markov chain.</p>
+
+<p>$\setCounter{11}$ Assuming the distribution followed by $\boldsymbol{x}_t$ is $p^{(t)}(\boldsymbol{x}_t)$, then the distribution followed by $\boldsymbol{x}_{t+1}$ is:</p>
+
+\begin{equation}p^{(t+1)}(\boldsymbol{x}_{t+1}) = \sum_{\boldsymbol{x}_t} p(\boldsymbol{x}_{t+1} \leftarrow \boldsymbol{x}_t)p^{(t)}(\boldsymbol{x}_t)\end{equation}
+
+<p>If equilibrium has already been reached, then we should have $p^{(t+1)}=p^{(t)}$. Therefore, if $p(\boldsymbol{x})$ is the stationary distribution, it must satisfy:</p>
+
+\begin{equation}p(\boldsymbol{y}) = \sum_{\boldsymbol{x}} p(\boldsymbol{y} \leftarrow \boldsymbol{x})p(\boldsymbol{x})\label{eq:stable}\end{equation}
+
+<p>In other words, the stationary distribution is a non-zero solution to the above equation regarding $p(\boldsymbol{x})$.</p>
+
+<p>Now, a question that needs answering is: Is the non-zero solution to the above equation unique? The answer to this question relates to whether the stationary distribution of a Markov chain depends on the initial state $\boldsymbol{x}_0$. Unfortunately, the answer is not necessarily. Put simply, the condition for the uniqueness of the non-zero solution is that any two states of the Markov chain are connected. Specifically, for any two states $\boldsymbol{x}, \boldsymbol{y}$, there exists a chain of states $\boldsymbol{x}=\boldsymbol{x}_0, \boldsymbol{x}_1, \cdots, \boldsymbol{x}_{n-1}, \boldsymbol{x}_n=\boldsymbol{y}$ such that:</p>
+
+\begin{equation}\begin{aligned} 
+&amp;p(\boldsymbol{x}_{1} \leftarrow \boldsymbol{x}_0) > 0 \\ 
+&amp;p(\boldsymbol{x}_{2} \leftarrow \boldsymbol{x}_1) > 0 \\ 
+&amp;\qquad\vdots \\ 
+&amp;p(\boldsymbol{x}_{n} \leftarrow \boldsymbol{x}_{n-1}) > 0 
+\end{aligned}\end{equation}
+
+<p>Simply put, the probability of jumping from state $\boldsymbol{x}$ to $\boldsymbol{y}$ (not necessarily in one step, but potentially multiple steps) is greater than 0. In fact, this criterion is not hard to understand; a vivid metaphor is that the condition for a unique stationary distribution is that the Markov chain cannot have "isolated islands." Otherwise, if $\boldsymbol{x}_0$ is inside an island, it will stay inside that island forever; if $\boldsymbol{x}_0$ is outside the island, it will stay outside forever. Thus, different initial states would lead to different stationary distributions.</p>
+
+<h3>Detailed Balance</h3>
+<p>Since a Markov chain possesses a stationary distribution, and building a Markov chain only requires a transition matrix, if we can construct an easy-to-sample transition matrix whose stationary distribution is exactly the distribution $p(\boldsymbol{x})$ we want to sample from, then iterating for enough steps would be equivalent to sampling from $p(\boldsymbol{x})$. This is the core idea of all MCMC methods. Of course, a Markov chain often requires many iterations to reach stationarity, so sampling can be time-consuming. However, even so, the sampling process can eventually be completed within finite cost, making it practical in many situations.</p>
+
+<p>Assuming MCMC is feasible, the key is how to construct a transition probability $p(\boldsymbol{y}\leftarrow\boldsymbol{x})$ such that its stationary distribution is our given distribution $p(\boldsymbol{x})$. Meanwhile, as introduced in the previous article, we often only know $\rho(\boldsymbol{x})$, which is proportional to $p(\boldsymbol{x})$, but we do not know the normalization factor. Therefore, the construction of $p(\boldsymbol{y}\leftarrow\boldsymbol{x})$ should not rely on the normalization factor of $p(\boldsymbol{x})$.</p>
+
+<p>To achieve this, we need to use a "Detailed Balance Condition":</p>
+
+<blockquote>
+    <strong>Detailed Balance Condition</strong>: If a distribution $p(\boldsymbol{x})$ and transition probability $p(\boldsymbol{y}\leftarrow\boldsymbol{x})$ satisfy the identity:
+    \begin{equation}p(\boldsymbol{y}\leftarrow\boldsymbol{x})p(\boldsymbol{x})=p(\boldsymbol{x}\leftarrow\boldsymbol{y})p(\boldsymbol{y})\end{equation}
+    then $p(\boldsymbol{x})$ is the stationary distribution of $p(\boldsymbol{y}\leftarrow\boldsymbol{x})$.
+</blockquote>
+
+<p>The name sounds sophisticated, but it is actually very easy to prove. Just sum both sides over $\boldsymbol{x}$, and you immediately get Equation $\eqref{eq:stable}$. Satisfying Equation $\eqref{eq:stable}$ means $p(\boldsymbol{x})$ is the stationary distribution of $p(\boldsymbol{y}\leftarrow\boldsymbol{x})$. The "Detailed Balance Condition" is a sufficient condition for a stationary distribution, though not a necessary one. Its value lies in providing a convenient way to construct transition probabilities for any arbitrary distribution.</p>
+
+<h3>Transition Probability</h3>
+<p>Given the stationary distribution $p(\boldsymbol{x})$ and any reference transition probability $q(\boldsymbol{y}\leftarrow\boldsymbol{x})$, if it satisfies the detailed balance condition, then everything is perfect, and we can just use $q(\boldsymbol{y}\leftarrow\boldsymbol{x})$ as the final probability. If it doesn't satisfy it, let $\alpha(\boldsymbol{x}\leftarrow\boldsymbol{y})=q(\boldsymbol{y}\leftarrow\boldsymbol{x})p(\boldsymbol{x})$. Then we have the following obviously true identity:</p>
+
+\begin{equation}\underbrace{\alpha(\boldsymbol{y}\leftarrow\boldsymbol{x})q(\boldsymbol{y}\leftarrow\boldsymbol{x})}_{\tilde{q}(\boldsymbol{y}\leftarrow\boldsymbol{x})}p(\boldsymbol{x})=\underbrace{\alpha(\boldsymbol{x}\leftarrow\boldsymbol{y})q(\boldsymbol{x}\leftarrow\boldsymbol{y})}_{\tilde{q}(\boldsymbol{x}\leftarrow\boldsymbol{y})}p(\boldsymbol{y})\label{eq:feihua}\end{equation}
+
+<p>In fact, this identity is almost trivial; it's like saying "although $a\neq b$, $ab=ba$ always holds." But it is this "trivial" identity that gives us a hint: if we use $\tilde{q}(\boldsymbol{y}\leftarrow\boldsymbol{x})$ as the transition probability, wouldn't the corresponding stationary distribution be $p(\boldsymbol{x})$?</p>
+
+<p>Actually, it's not that simple, because $\tilde{q}(\boldsymbol{y}\leftarrow\boldsymbol{x})$ constructed this way is usually not normalized. Not being normalized means it is not a proper transition probability, and thus there is no stationary distribution to speak of. Note that while we may not need to know the normalization factor to perform sampling, in theoretical distributions, we do need to ensure normalization holds. Some readers might think: Can I manually divide by a normalization factor? No, because after dividing by a normalization factor, the detailed balance condition might no longer hold, and even Equation $\eqref{eq:stable}$ might fail. I checked many introductory materials and found that none clarified this point; they all say to directly use $\tilde{q}(\boldsymbol{y}\leftarrow\boldsymbol{x})$ as the transition probability, which was confusing for a long time.</p>
+
+<p>In fact, the MCMC method does not normalize $\tilde{q}(\boldsymbol{y}\leftarrow\boldsymbol{x})$ at all. Instead, it transfers all the remaining probability to the state itself. In mathematical terms, the transition probability it actually uses is:</p>
+
+\begin{equation}p(\boldsymbol{y}\leftarrow\boldsymbol{x})=\tilde{q}(\boldsymbol{y}\leftarrow\boldsymbol{x}) + \left(1 - \sum_{\boldsymbol{y}} \tilde{q}(\boldsymbol{y}\leftarrow\boldsymbol{x})\right)\delta(\boldsymbol{y}\leftarrow\boldsymbol{x}) 
+\end{equation}
+
+<p>where $\delta(\boldsymbol{y}\leftarrow\boldsymbol{x}) = \left\{\begin{aligned}1,\boldsymbol{y}=\boldsymbol{x} \\ 0, \boldsymbol{y}\neq \boldsymbol{x}\end{aligned}\right.$, representing the transition probability that can only stay at the current state (i.e., "never change"). Thus, the definition of $p(\boldsymbol{y}\leftarrow\boldsymbol{x})$ is simply to stack the excess probability onto the "no change" operation. It clearly satisfies normalization. As for the detailed balance condition, it can be verified by substitution, and it is also satisfied, mainly because for any $p(\boldsymbol{x})$ and $f(\boldsymbol{x},\boldsymbol{y})$, the following equation always holds:</p>
+
+\begin{equation}f(\boldsymbol{x},\boldsymbol{y})\delta(\boldsymbol{y}\leftarrow \boldsymbol{x})p(\boldsymbol{x})=f(\boldsymbol{y},\boldsymbol{x})\delta(\boldsymbol{x}\leftarrow \boldsymbol{y})p(\boldsymbol{y})\end{equation}
+
+<p>So $p(\boldsymbol{y}\leftarrow\boldsymbol{x})$ is the true transition probability we seek. If the state space is finite, the transition probability corresponds to a finite matrix. The above result actually says that "normalization can be completed by adjusting the diagonal elements of the transition matrix without affecting the detailed balance condition."</p>
+
+<h3>MCMC Method</h3>
+<p>How do we implement sampling from the aforementioned $p(\boldsymbol{y}\leftarrow\boldsymbol{x})$? It's simple: first, implement sampling from $\tilde{q}(\boldsymbol{y}\leftarrow\boldsymbol{x})$. If the condition for sampling from $\tilde{q}(\boldsymbol{y}\leftarrow\boldsymbol{x})$ is not met, then remain unchanged. Since $\tilde{q}(\boldsymbol{y}\leftarrow\boldsymbol{x})=\alpha(\boldsymbol{y}\leftarrow\boldsymbol{x})q(\boldsymbol{y}\leftarrow\boldsymbol{x})$, and we assume sampling from $q(\boldsymbol{y}\leftarrow\boldsymbol{x})$ is easy, we can recall the rejection sampling introduced in the last article. We can sample an additional $\varepsilon\sim U[0,1]$ and use $ \alpha(\boldsymbol{y}\leftarrow\boldsymbol{x}) < \varepsilon$ to decide whether to accept the sampled $\boldsymbol{y}$. In summary, we obtain the following MCMC sampling process:</p>
+
+<blockquote>
+    <strong>Metropolis Sampling</strong><br>
+    Initial state is $\boldsymbol{x}_0$, state at time $t$ is $\boldsymbol{x}_t$.<br>
+    Sample $\boldsymbol{x}_{t+1}$ through the following process:<br>
+    &emsp;&emsp;1. Sample $\boldsymbol{y}\sim q(\boldsymbol{y}\leftarrow\boldsymbol{x}_t)$;<br>
+    &emsp;&emsp;2. Sample $\varepsilon\sim U[0,1]$;<br>
+    &emsp;&emsp;3. Calculate $\alpha(\boldsymbol{y}\leftarrow\boldsymbol{x}_t)=q(\boldsymbol{x}_t\leftarrow\boldsymbol{y})p(\boldsymbol{y})$;<br>
+    &emsp;&emsp;4. If $\varepsilon \leq \alpha(\boldsymbol{y}\leftarrow\boldsymbol{x}_t)$, then $\boldsymbol{x}_{t+1} = \boldsymbol{y}$, otherwise $\boldsymbol{x}_{t+1}=\boldsymbol{x}_t$.
+</blockquote>
+
+<p>This is the sampling algorithm proposed by Metropolis in 1953, generally called the <strong>Metropolis Algorithm</strong>, or simply the <strong>MCMC method</strong>. it requires knowing the exact expression of $p(\boldsymbol{x})$ and an easy-to-sample transition probability $q(\boldsymbol{y}\leftarrow\boldsymbol{x})$. Then, after iterating for enough steps according to the process above, we can consider the obtained $\boldsymbol{x}_t$ to be sampled from $p(\boldsymbol{x})$. The number of steps depends on the specific choices of $p(\boldsymbol{x})$ and $q(\boldsymbol{y}\leftarrow\boldsymbol{x})$, and generally can only be determined by experimental results, with no uniform standard.</p>
+
+<p>Some readers might feel: isn't this just ordinary rejection sampling? Where is the "stacking excess probability on 'no change'" that was mentioned earlier? In fact, it is slightly different from ordinary rejection sampling. In ordinary rejection sampling, if $\varepsilon > \alpha(\boldsymbol{y}\leftarrow\boldsymbol{x})$, steps 1, 2, and 3 are repeated until a $\boldsymbol{y}$ where $\varepsilon \leq \alpha(\boldsymbol{y}\leftarrow\boldsymbol{x})$ is sampled, then $\boldsymbol{x}_{t+1} = \boldsymbol{y}$ is set. In the sampling process above, if $\varepsilon > \alpha(\boldsymbol{y}\leftarrow\boldsymbol{x})$, $\boldsymbol{x}_{t+1} = \boldsymbol{x}_t$ is set immediately, and the next sample will be $\boldsymbol{x}_{t+2}$. If we assume the distribution becomes stationary starting from time $T$, then $\{\boldsymbol{x}_t\}_{t=T}^{\infty}$ are all samples from $p(\boldsymbol{x})$ (identically distributed but not independent). Clearly, the two different rejection methods will affect the final distribution of $\{\boldsymbol{x}_t\}_{t=T}^{\infty}$.</p>
+
+<p>Furthermore, it is worth pointing out that although in this series of articles we deal with $\boldsymbol{x}$ as a discrete object, the same conclusions are actually applicable to sampling continuous objects. One simply needs to replace the summations with integrals over probability densities in the previous derivations; there is no substantial difference.</p>
+
+<h3>MH Sampling</h3>
+<p>The Metropolis sampling above is already usable in many scenarios, but it is not yet perfect. First, as mentioned, Metropolis sampling needs to know the exact expression of $p(\boldsymbol{x})$, which is difficult to achieve in many tasks. Second, the acceptance rate $\alpha(\boldsymbol{y}\leftarrow\boldsymbol{x})$ is often too small, leading to long periods of "standing still," which makes the time to reach stationarity too long. Fortunately, there is a simple trick that can solve both problems simultaneously.</p>
+
+<p>The trick is to use the following expression as the acceptance rate:</p>
+
+\begin{equation}\mathcal{A}(\boldsymbol{y}\leftarrow\boldsymbol{x}) = \min\left(1, \frac{q(\boldsymbol{x}\leftarrow\boldsymbol{y})p(\boldsymbol{y})}{q(\boldsymbol{y}\leftarrow\boldsymbol{x})p(\boldsymbol{x})}\right)\end{equation}
+
+<p>This acceptance rate also originates from identity $\eqref{eq:feihua}$. The only requirement for the acceptance rate is that it is between 0 and 1; additionally, the closer to 1, the better. To this end, we can divide the acceptance rates on both sides of identity $\eqref{eq:feihua}$ by $\max(\alpha(\boldsymbol{y}\leftarrow\boldsymbol{x}),\alpha(\boldsymbol{x}\leftarrow\boldsymbol{y}))$. This way, one of them becomes 1, the other remains no greater than 1, and both are enlarged. After simplification, we get $\mathcal{A}(\boldsymbol{y}\leftarrow\boldsymbol{x})$. Quite cleverly, $\mathcal{A}(\boldsymbol{y}\leftarrow\boldsymbol{x})$ now only depends on the relative values of $p(\boldsymbol{y})$, so we don't have to calculate its normalization factor.</p>
+
+<p>In this way, we obtain the improved version of the Metropolis sampling algorithm, which is the famous <strong>Metropolis-Hastings Sampling (MH Sampling)</strong>:</p>
+
+<blockquote>
+    <strong>Metropolis-Hastings Sampling</strong><br>
+    Initial state is $\boldsymbol{x}_0$, state at time $t$ is $\boldsymbol{x}_t$.<br>
+    Sample $\boldsymbol{x}_{t+1}$ through the following process:<br>
+    &emsp;&emsp;1. Sample $\boldsymbol{y}\sim q(\boldsymbol{y}\leftarrow\boldsymbol{x}_t)$;<br>
+    &emsp;&emsp;2. Sample $\varepsilon\sim U[0,1]$;<br>
+    &emsp;&emsp;3. Calculate $\mathcal{A}(\boldsymbol{y}\leftarrow\boldsymbol{x}_t) = \min\left(1, \frac{q(\boldsymbol{x}_t\leftarrow\boldsymbol{y})p(\boldsymbol{y})}{q(\boldsymbol{y}\leftarrow\boldsymbol{x}_t)p(\boldsymbol{x}_t)}\right)$;<br>
+    &emsp;&emsp;4. If $\varepsilon \leq \mathcal{A}(\boldsymbol{y}\leftarrow\boldsymbol{x}_t)$, then $\boldsymbol{x}_{t+1} = \boldsymbol{y}$, otherwise $\boldsymbol{x}_{t+1}=\boldsymbol{x}_t$.
+</blockquote>
+
+<h3>Analysis and Thinking</h3>
+<p>In the last article, we pointed out that sampling directly from $p(\boldsymbol{x})$ is very difficult. Even with rejection sampling, if the dimension of $\boldsymbol{x}$ is too high, the acceptance rate after sampling from the approximate distribution $q(\boldsymbol{x})$ is usually very low, making the efficiency of rejection sampling extremely poor and unusable. So a natural question is: In the MCMC method, we also sample from a transition probability $q(\boldsymbol{y}\leftarrow \boldsymbol{x})$ and also have an acceptance probability $\mathcal{A}(\boldsymbol{y}\leftarrow \boldsymbol{x})$. Why is MCMC practical while ordinary rejection sampling is not?</p>
+
+<p>In fact, for direct rejection sampling, it needs to sample the entire high-dimensional sequence from the approximate distribution $q(\boldsymbol{x})$. If $q(\boldsymbol{x})$ is quite different from the precise $p(\boldsymbol{x})$, the acceptance probability is often exponentially decaying, leading to an extremely low acceptance rate. For the MCMC method, we don't have many restrictions on the form of $q(\boldsymbol{y}\leftarrow \boldsymbol{x})$, so we can appropriately design $q(\boldsymbol{y}\leftarrow \boldsymbol{x})$ such that the probability distribution is concentrated only on those $\boldsymbol{y}$ that are similar to $\boldsymbol{x}$. In other words, $q(\boldsymbol{y}\leftarrow \boldsymbol{x})$ is non-zero only when $\boldsymbol{y}$ is very similar to $\boldsymbol{x}$. As a result, the outcome of sampling from $q(\boldsymbol{y}\leftarrow \boldsymbol{x})$ differs only slightly from the input $\boldsymbol{x}$. Since the change is small, the acceptance rate is usually higher, making rejection sampling possible.</p>
+
+<p>So, plainly speaking, the MCMC method converts "direct generation of $\boldsymbol{x}$" into a progressive process of "starting from $\boldsymbol{x}_0$, repeatedly fine-tuning and polishing it until generating $\boldsymbol{x}$ that meets the requirements." This makes it effective, which is consistent with the "step-by-step" approach mentioned in the previous article.</p>
+
+<p>Next, we will introduce two examples of MH sampling: Gibbs sampling and simulated annealing. Both embody this fine-tuning, progressive idea of MCMC.</p>
+
+<h3>Gibbs Sampling</h3>
+<p>Suppose $\boldsymbol{x}=(x_1,x_2,\dots,x_l)$ is a sequence of length $l$. <strong>Gibbs sampling</strong> adjusts only one element at a time. Specifically, Gibbs sampling defines the reference transition probability as (strictly speaking, it should be divided by $l$, but constants do not change the result, so it is omitted):</p>
+
+\begin{equation}q(\boldsymbol{x}_{[x_i=y]}\leftarrow \boldsymbol{x}) = p(y|\boldsymbol{x}_{-i})\triangleq\frac{p(x_1,\dots,x_{i-1},y,x_{i+1},\cdots,x_l)}{\sum\limits_y p(x_1,\dots,x_{i-1},y,x_{i+1},\cdots,x_l)}\end{equation}
+
+<p>where $\boldsymbol{x}_{[x_i=y]}$ is the sequence after replacing the $i$-th position of $\boldsymbol{x}$ with $y$. This means it uses the distribution $p(\boldsymbol{x})$ to build $p(y|\boldsymbol{x}_{-i})$ as the transition probability. Each time, it randomly selects a position $i$ from $1,2,\cdots,l$ and then replaces the element at position $i$ with the result sampled from the distribution $p(y|\boldsymbol{x}_{-i})$. More beautifully, we can prove that in this case, the acceptance probability is always 1:</p>
+
+\begin{equation}\begin{aligned} 
+\mathcal{A}(\boldsymbol{x}_{[x_i=y]}\leftarrow \boldsymbol{x}) =&amp;\, \min\left(1, \frac{p(x_i|\boldsymbol{x}_{-i})p(\boldsymbol{x}_{[x_i=y]})}{p(y|\boldsymbol{x}_{-i})p(\boldsymbol{x})}\right) \\ 
+=&amp;\, \min\left(1, \frac{p(x_i|\boldsymbol{x}_{-i})p(y|\boldsymbol{x}_{-i})p(\boldsymbol{x}_{-i})}{p(y|\boldsymbol{x}_{-i})p(x_i|\boldsymbol{x}_{-i})p(\boldsymbol{x}_{-i})}\right)\\ 
+=&amp;\, \min\left(1, 1\right)\\ 
+=&amp;\,1 
+\end{aligned}\end{equation}
+
+<p>Thus, we can construct the following Gibbs sampling process:</p>
+
+<blockquote>
+    <strong>Gibbs Sampling</strong><br>
+    Initial state is $\boldsymbol{x}_0=(x_{0,1},x_{0,2},\cdots,x_{0,l})$, state at time $t$ is $\boldsymbol{x}_t=(x_{t,1},x_{t,2},\cdots,x_{t,l})$.<br>
+    Sample $\boldsymbol{x}_{t+1}$ through the following process:<br>
+    &emsp;&emsp;1. Uniformly sample an $i$ from $1,2,\cdots,l$;<br>
+    &emsp;&emsp;2. Calculate $p(y|\boldsymbol{x}_{t,-i})=\frac{p(x_{t,1},\dots,x_{t,i-1},y,x_{t,i+1},\cdots,x_{t,l})}{\sum\limits_y p(x_{t,1},\dots,x_{t,i-1},y,x_{t,i+1},\cdots,x_{t,l})}$;<br>
+    &emsp;&emsp;3. Sample $y\sim p(y|\boldsymbol{x}_{t,-i})$;<br>
+    &emsp;&emsp;4. $\boldsymbol{x}_{t+1} = {\boldsymbol{x}_t}_{[x_{t,i}=y]}$ (i.e., replace the $i$-th position of $\boldsymbol{x}_t$ with $y$ as $\boldsymbol{x}_{t+1}$).
+</blockquote>
+
+<h3>Simulated Annealing</h3>
+<p>Another example is the <strong>Simulated Annealing</strong> algorithm. In the previous article, we mentioned that maximizing a target can also be seen as random sampling from that target, and its result corresponds to the simulated annealing algorithm.</p>
+
+<p>First, let the function we want to maximize be $f(\boldsymbol{x})$, and assume there exists a constant $T > 0$ such that for any $0 < \tau \leq T$, we have:</p>
+
+\begin{equation}\sum_{\boldsymbol{x}} e^{f(\boldsymbol{x})/\tau} < \infty\end{equation}
+
+<p>Here, the physical meaning of $\tau$ is temperature. This assumption seems like an additional constraint, but in fact, simulated annealing only applies to scenarios that satisfy this condition. Since this condition is satisfied, we can construct the distribution:</p>
+
+\begin{equation}p_{\tau}(\boldsymbol{x}) = \frac{e^{f(\boldsymbol{x})/\tau}}{\sum\limits_{\boldsymbol{x}} e^{f(\boldsymbol{x})/\tau}}\end{equation}
+
+<p>Assuming the maximum point is unique, then as $\tau \to 0$, $p_{\tau}(\boldsymbol{x})$ degrades into a one-hot distribution, where only the maximum point has a probability of 1. If we sample from $p_{\tau}(\boldsymbol{x})$, the sampling result will be the maximum point. Even if $\tau > 0$, the probability of the maximum point is still the largest, so sampling from $p_{\tau}(\boldsymbol{x})$ will still have a trend toward the maximum point. Therefore, we can first fix the temperature $\tau$, construct a stochastic process for MH sampling from $p_{\tau}(\boldsymbol{x})$, and then gradually lower $\tau$. The final convergence result will be near the maximum point. This is the so-called "Simulated Annealing."</p>
+
+<p>To perform MH sampling, we need to construct a transition matrix. The choice for simulated annealing is relatively simple: design a fixed number of $\boldsymbol{y}$ as candidate values for the new $\boldsymbol{x}$ based on the current state $\boldsymbol{x}$ (this step is usually called "mutation," often just simple modifications to $\boldsymbol{x}$ to get $\boldsymbol{y}$), and then $q(\boldsymbol{y}\leftarrow \boldsymbol{x})$ is randomly chosen uniformly from the candidates. Since it's uniform, $q(\boldsymbol{y}\leftarrow \boldsymbol{x})$ is a constant and $q(\boldsymbol{y}\leftarrow \boldsymbol{x})=q(\boldsymbol{x}\leftarrow \boldsymbol{y})$. Therefore:</p>
+
+\begin{equation}\mathcal{A}(\boldsymbol{y}\leftarrow\boldsymbol{x}) = \min\left(1, \frac{q(\boldsymbol{x}\leftarrow\boldsymbol{y})p_{\tau}(\boldsymbol{y})}{q(\boldsymbol{y}\leftarrow\boldsymbol{x})p_{\tau}(\boldsymbol{x})}\right) = \min\left(1, e^{[f(\boldsymbol{y}) - f(\boldsymbol{x})]/\tau}\right)\end{equation}
+
+<p>So, simulated annealing is a search strategy: if $f(\boldsymbol{y}) \geq f(\boldsymbol{x})$, then update $\boldsymbol{x}=\boldsymbol{y}$; even if not, there is still a certain probability to update $\boldsymbol{x}=\boldsymbol{y}$. Throughout the search process, we gradually cool down ($\tau$ gradually approaches 0). Under an appropriate cooling strategy, simulated annealing almost always finds the maximum point. Of course, how to formulate an "appropriate" cooling strategy for a specific problem is another question worth considering.</p>
+
+<blockquote>
+    <strong>Simulated Annealing</strong><br>
+    Initial state is $\boldsymbol{x}_0$, initial temperature is $\tau_0$. The temperature decreases according to a pre-established strategy. State at time $t$ is $\boldsymbol{x}_t$, temperature is $\tau_t$.<br>
+    Sample $\boldsymbol{x}_{t+1}$ through the following process:<br>
+    &emsp;&emsp;1. Sample $\boldsymbol{y}\sim q(\boldsymbol{y}\leftarrow\boldsymbol{x}_t)$;<br>
+    &emsp;&emsp;2. Sample $\varepsilon\sim U[0,1]$;<br>
+    &emsp;&emsp;3. Calculate $\mathcal{A}(\boldsymbol{y}\leftarrow\boldsymbol{x}_t) = \min\left(1, e^{[f(\boldsymbol{y}) - f(\boldsymbol{x}_t)]/\tau_t}\right)$;<br>
+    &emsp;&emsp;4. If $\varepsilon\leq \mathcal{A}(\boldsymbol{y}\leftarrow\boldsymbol{x}_t)$, then $\boldsymbol{x}_{t+1} = \boldsymbol{y}$, otherwise $\boldsymbol{x}_{t+1}=\boldsymbol{x}_t$.
+</blockquote>
+
+<p>If we modify it slightly and change the acceptance strategy to "if $f(\boldsymbol{y}) \geq f(\boldsymbol{x}_t)$, accept, otherwise reject," it becomes the simpler "<strong>Hill Climbing</strong>" method. Clearly, Hill Climbing has a clearer goal and might converge faster in the early stages, but once it falls into a local maximum, it usually cannot jump out, and its final convergence result is not as good as simulated annealing. Of course, the performance of Hill Climbing can be improved by repeating experiments with different initial values. The choice of algorithm depends on the specific problem at hand.</p>
+
+<h3>Summary</h3>
+<p>This article continues to introduce the basic sampling algorithm needed for "constrained text generation"—the MCMC method. After repeated revisions, I have finally written an introduction to MCMC that I find satisfactory. The main difference is that it answers some detailed questions not mentioned in common MCMC tutorials. The introduction to basic algorithms ends here. Starting from the next article, we will gradually introducing how to apply these seemingly dry sampling algorithms to vivid and concrete text generation tasks.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8084.html" style="color: #005fcc;">https://kexue.fm/archives/8084</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

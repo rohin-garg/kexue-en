@@ -1,0 +1,246 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+<h1><a href="https://kexue.fm/archives/9105">A Theoretical Defect and Countermeasure of Relative Position Encoding Transformer</a></h1>
+<p>By 苏剑林 | June 07, 2022</p>
+
+<p>Position encoding is a crucial part of the Transformer. In <a href="translation_8130.html">"Transformer Position Encodings That Make Researchers Rack Their Brains"</a>, we summarized several common designs for position encoding. Broadly speaking, we categorize Transformer position encodings into two types: "absolute position encoding" and "relative position encoding," with the latter generally performing better in many NLP/CV experiments.</p>
+
+<p>However, it is observable that currently, almost all relative position encodings operate on the Attention matrix before the Softmax. This method of application actually possesses a theoretical defect that prevents the Transformer from becoming a "universal approximator." This article will analyze this problem and explore some solutions.</p>
+
+<h2 id="simple-probe">Simple Probe</h2>
+<p>As the name suggests, position encoding is used to supplement the model with positional information. So, how do we determine if a model has sufficient capability to recognize positions? I previously conceived a simple probe experiment:</p>
+
+<blockquote>
+<p>For a model with the capability to identify positions, it should be able to accurately achieve the following mapping:</p>
+\begin{equation}
+\begin{array}{lc}
+\text{Input: } & [0, 0, \cdots, 0, 0] \\
+& \downarrow \\
+\text{Output: } & [1, 2, \cdots, n-1, n]
+\end{array}
+\end{equation}
+</blockquote>
+
+<p>That is, given $n$ zeros as input, it should be able to output position indices $1 \sim n$ in order. The idea behind this probe experiment is simple: if a model can do this, it indicates that identifying positions is an inherent capability of the model itself, independent of external input, which is exactly what we want. It's not hard to see that since absolute position is directly applied to the input, it can easily pass this probe test.</p>
+
+<h2 id="unable-to-perform">Unable to Perform</h2>
+<p>However, when I considered Transformer models with relative position encodings using this simple probe experiment, I found that almost all of them fail this task.</p>
+
+<p>Specifically, except for the design proposed in <a href="https://papers.cool/arxiv/1803.02155">"Self-Attention with Relative Position Representations"</a>, all other relative position encodings (including <a href="translation_8265.html">RoPE</a> proposed by me) only modify the Attention matrix before the Softmax. Consequently, the Attention matrix with relative position information remains a stochastic matrix (i.e., each row sums to 1).</p>
+
+<p>On the other hand, for a Transformer model, the sole source of interaction between tokens is the $\boldsymbol{A}\boldsymbol{V}$ step of Self-Attention, which can be written as $\boldsymbol{o}_i = \sum\limits_j a_{i,j}\boldsymbol{v}_j$. Identical inputs mean that every $\boldsymbol{v}_j$ is the same, therefore:
+\begin{equation}\boldsymbol{o}_i = \sum_j a_{i,j}\boldsymbol{v}_j = \sum_j a_{i,j}\boldsymbol{v} = \left(\sum_j a_{i,j}\right)\boldsymbol{v} = \boldsymbol{v}\end{equation}
+This means every $\boldsymbol{o}_i$ is also the same. In other words, every position in the model outputs the same result from beginning to end, so it is fundamentally impossible for the model to output distinct values like $[1, 2, \cdots, n-1, n]$.</p>
+
+<p>Similar findings also appeared in the recent paper <a href="https://papers.cool/arxiv/2205.13401">"Your Transformer May Not be as Powerful as You Expect"</a>, where the authors constructed slightly different examples to demonstrate the fitting capability defect of relative position encoding Transformers. The two ideas coincide perfectly. Furthermore, the beginning of this article mentions "universal approximation"; if this counterexample is resolved, can "universal approximation" be achieved? That paper also provides corresponding theoretical analysis to affirm this fact, which won't be detailed here.</p>
+
+<h2 id="preliminary-solution">Preliminary Solution</h2>
+<p>A little thought reveals that the problem mainly stems from the fact that each row of the Attention matrix sums to 1. To solve this, one needs to find a way to break this constraint. To this end, <a href="https://papers.cool/arxiv/2205.13401">"Your Transformer May Not be as Powerful as You Expect"</a> further proposed the following design based on their findings:
+\begin{equation}\boldsymbol{O} = (\boldsymbol{A}\odot \boldsymbol{C})\boldsymbol{V}\quad \text{or equivalently}\quad\boldsymbol{o}_i = \sum_j a_{i,j}c_{i,j}\boldsymbol{v}_j\end{equation}
+where $\boldsymbol{C}$ is a trainable parameter matrix, and $\odot$ is the element-wise product (<a href="https://en.wikipedia.org/wiki/Hadamard_product_(matrices)">Hadamard product</a>). To ensure the entire model still only contains relative position information (as this article discusses the defects of relative position encoding Transformers), we must constrain $\boldsymbol{C}$ to be a <a href="https://en.wikipedia.org/wiki/Toeplitz_matrix">Toeplitz matrix</a>, i.e., $c_{i,j}=g(i-j)$.</p>
+
+<p>With the addition of $\boldsymbol{C}$, the collective $\boldsymbol{A}\odot \boldsymbol{C}$ clearly does not necessarily have rows summing to 1, thereby breaking the restriction and solving the problem (for more experimental results, please refer to the original paper). However, this introduces a new parameter matrix, and since $\boldsymbol{C}$ itself is of finite size, it does not support variable-length inputs well (or the matrix $\boldsymbol{C}$ would need to take the form of $c_{i,j}=g(\text{clip}(i-j, p_{\min}, p_{\max}))$). Overall, it feels insufficiently concise and elegant.</p>
+
+<h2 id="removing-denominator">Removing the Denominator</h2>
+<p>Returning again to the source of the problem: the sum of each row in the Attention matrix equals 1. What operation leads to this phenomenon? The answer is obvious: Softmax.
+\begin{equation}a_{i,j} = \frac{e^{b_{i,j}}}{\sum\limits_j e^{b_{i,j}}}\end{equation}
+Here $\boldsymbol{B}=(b_{i,j})$ is the matrix before Softmax. Clearly, it is the step of "dividing by $\sum\limits_j e^{b_{i,j}}$" that results in $\sum\limits_j a_{i,j}=1$. So, a very direct thought is:</p>
+
+<blockquote>
+<p>If I don't want $\sum\limits_j a_{i,j}=1$, why not just stop dividing by $\sum\limits_j e^{b_{i,j}}$?</p>
+</blockquote>
+
+<p>In fact, it works! Experimental results show that a Transformer that does not divide by this denominator can successfully complete the aforementioned probe test. At this point, one cannot help but admire the "foresight" of <a href="translation_8934.html">GAU</a>. The new attention it proposed directly uses $\text{relu}^2$ activation and then simply divides by $n$ for normalization, avoiding $\sum\limits_j a_{i,j}=1$ and thereby enhancing the model's theoretical capability (though perhaps the authors didn't think that far; it might be more of my imagination).</p>
+
+<h2 id="new-normalization">New Normalization</h2>
+<p>However, we found in <a href="translation_9019.html">"It seems Attention and Softmax go better together..."</a> that attention designs without probability normalization, like those in GAU, might suffer from poor extrapolation capabilities. In other words, performing probability normalization leads to the theoretical defect mentioned earlier, while simply dividing by $n$ for normalization might result in poor extrapolation. Is there a scheme that can balance both?</p>
+
+<p>Let's brainstorm further. From the perspective of norms, $\sum\limits_j e^{b_{i,j}}$ is actually the $l_1$ norm of the vector $e^{b_{i,:}}$. Thus, Softmax is essentially an $l_1$ normalization operation on the vector $e^{b_{i,:}}$. To avoid $\sum\limits_j a_{i,j}=1$ while retaining normalization, would switching to other normalization operations work? For example, $l_2$ normalization:
+\begin{equation}a_{i,j} = \frac{e^{b_{i,j}}}{\sqrt{\sum\limits_j e^{2b_{i,j}}}}\end{equation}</p>
+
+<p>According to my tests, this $l_2$-normalized Attention can indeed successfully complete the probe experiment. So, does this change help in the NLP pre-training scenarios we care about more? I also conducted corresponding comparative experiments, and the results are twofold:</p>
+
+<blockquote>
+<p>1. For the standard Attention + FFN combination, before applying $l_2$ normalization to Attention, one must reduce the initial variance of the $\boldsymbol{W}_V, \boldsymbol{W}_O$ of Attention. The experimental results were slightly worse than the conventional $l_1$-normalized Attention.</p>
+<p>2. For the full-GAU architecture, $l_2$-normalized Attention can be applied directly without changing initialization. The experimental results were slightly better than the conventional $l_1$-normalized Attention.</p>
+</blockquote>
+
+<p>The difference likely originates from their inherent initialization methods. In the standard Attention + FFN combination, the initial Attention matrix is close to a uniform matrix (all numbers the same), whereas in <a href="translation_8990.html">"Does Gated Attention Unit (GAU) still need Warmup?"</a>, we analyzed that the initial Attention matrix of GAU is closer to an identity matrix (times some constant).</p>
+
+<h2 id="turn-of-events">A Turn of Events</h2>
+<p>Looking back at the whole text, we found that because "every $\boldsymbol{v}_j$ is the same," a "model where $\sum\limits_j a_{i,j}=1$ cannot complete the probe experiment." But what if not all $\boldsymbol{v}_j$ are the same?</p>
+
+<p>We know that starting from BERT, mainstream Transformer models have designed inputs like "[CLS] SENT [SEP]". That is, some marker tokens are attached before and after the input. If we consider these marker tokens as part of the model rather than the input (meaning the input is "[CLS] 0 0 ... 0 0 [SEP]" instead of all zeros), is it possible to complete the probe?</p>
+
+<p>I also experimented with this and found that after supplementing the input with marker tokens, the probe experiment can indeed be completed without modifying other parts of the relative position encoding Transformer. This result is somewhat ironic—it turns out the authors of BERT also had great "foresight." The added special tokens [CLS] and [SEP] also assist in positioning. The theoretical defect we analyzed so long was actually resolved by two special tokens. This reminds one of the conclusion in <a href="https://papers.cool/arxiv/2001.08248">"How Much Position Information Do Convolutional Neural Networks Encode?"</a>, which states "CNNs identify absolute positions through padding"; there is a shared logic between the two.</p>
+
+<p>Of course, this doesn't mean our previous reflections were meaningless. For example, for the GAU model, switching Attention to $l_2$ normalization definitely has the effect of accelerating convergence and slightly improving performance. Furthermore, since $l_2$ normalization is acceptable, can $e^{b_{i,j}}$ be replaced by general activation functions (such as removing the non-negativity constraint)? I also briefly experimented with "$\text{swish}(b_{i,j})$ + $l_2$ normalization" and found it has some feasibility. From this perspective, Attention under $l_2$ normalization actually has more room for expansion.</p>
+
+<h2 id="closing">Closing</h2>
+<p>This article analyzed an implicit defect of the relative position encoding Transformer and explored corresponding countermeasures, leading to reflections on the non-negativity and normalization methods of the Attention matrix.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9105.html" style="color: #005fcc;">https://kexue.fm/archives/9105</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

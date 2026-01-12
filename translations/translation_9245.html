@@ -1,0 +1,344 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/9245">Diffusion Model Notes (7): Optimal Diffusion Variance Estimation (Part 1)</a></h1>
+
+    <p>By 苏剑林 | August 12, 2022</p>
+
+    <p>For generative diffusion models, a crucial question is how to choose the variance of the generation process, as different variances significantly impact the generation quality.</p>
+
+    <p>In <a href="translation_9152.html">"Diffusion Model Notes (2): DDPM = Autoregressive VAE"</a>, we mentioned that DDPM derived two usable results by assuming the data followed two special distributions respectively. In <a href="translation_9181.html">"Diffusion Model Notes (4): DDIM = High-Perspective DDPM"</a>, DDIM adjusted the generation process, making the variance a hyperparameter and even allowing for zero-variance generation; however, the generation quality of zero-variance DDIM is generally worse than non-zero variance DDPM. Furthermore, <a href="translation_9209.html">"Diffusion Model Notes (5): SDE Perspective of the General Framework"</a> showed that the variance of the forward and reverse SDEs should be consistent, but this principle theoretically only holds when $\Delta t \to 0$. <a href="https://papers.cool/arxiv/2006.11239">"Improved Denoising Diffusion Probabilistic Models"</a> proposed treating it as a trainable parameter to be learned, though this increases training difficulty.</p>
+
+    <p>So, how exactly should the variance of the generation process be set? Two papers from this year, <a href="https://papers.cool/arxiv/2201.06503">"Analytic-DPM: an Analytic Estimate of the Optimal Reverse Variance in Diffusion Probabilistic Models"</a> and <a href="https://papers.cool/arxiv/2206.07309">"Estimating the Optimal Covariance with Imperfect Mean in Diffusion Probabilistic Models"</a>, seem to provide a relatively perfect answer to this question. Next, let's appreciate their results together.</p>
+
+    <h2 id="uncertainty">Uncertainty</h2>
+
+    <p>In fact, these two papers come from the same team, and the authors are essentially the same. The first paper (referred to as Analytic-DPM hereafter) derived an analytical solution for the unconditional variance based on DDIM. The second paper (referred to as Extended-Analytic-DPM) weakened the assumptions of the first paper and proposed an optimization method for conditional variance. This article will first introduce the results of the first paper.</p>
+
+    <p>In <a href="translation_9181.html">"Diffusion Model Notes (4): DDIM = High-Perspective DDPM"</a>, we derived that for a given $p(\boldsymbol{x}_t|\boldsymbol{x}_0) = \mathcal{N}(\boldsymbol{x}_t;\bar{\alpha}_t \boldsymbol{x}_0,\bar{\beta}_t^2 \boldsymbol{I})$, the corresponding general solution for $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0)$ is:</p>
+
+    \begin{equation}p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0) = \mathcal{N}\left(\boldsymbol{x}_{t-1}; \frac{\sqrt{\bar{\beta}_{t-1}^2 - \sigma_t^2}}{\bar{\beta}_t} \boldsymbol{x}_t + \gamma_t \boldsymbol{x}_0, \sigma_t^2 \boldsymbol{I}\right)\end{equation}
+
+    <p>where $\gamma_t = \bar{\alpha}_{t-1} - \frac{\bar{\alpha}_t\sqrt{\bar{\beta}_{t-1}^2 - \sigma_t^2}}{\bar{\beta}_t}$, and $\sigma_t$ is the adjustable standard deviation parameter. In DDIM, the subsequent processing workflow is: use $\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)$ to estimate $\boldsymbol{x}_0$, and then assume:</p>
+
+    \begin{equation}p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t) \approx p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0=\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t))\end{equation}
+
+    <p>However, from a Bayesian perspective, this treatment is quite improper because predicting $\boldsymbol{x}_0$ from $\boldsymbol{x}_t$ cannot be perfectly accurate; it carries a certain degree of uncertainty. Therefore, we should use a probability distribution rather than a deterministic function to describe it. In fact, strictly speaking:</p>
+
+    \begin{equation}p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t) = \int p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0)p(\boldsymbol{x}_0|\boldsymbol{x}_t)d\boldsymbol{x}_0\end{equation}
+
+    <p>The exact $p(\boldsymbol{x}_0|\boldsymbol{x}_t)$ is usually unobtainable, but here we only need a coarse approximation. Thus, we use a normal distribution $\mathcal{N}(\boldsymbol{x}_0;\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t),\bar{\sigma}_t^2\boldsymbol{I})$ to approach it (how to approach it will be discussed later). With this approximate distribution, we can write:</p>
+
+    \begin{equation}\begin{aligned}
+    \boldsymbol{x}_{t-1} =&\, \frac{\sqrt{\bar{\beta}_{t-1}^2 - \sigma_t^2}}{\bar{\beta}_t}\boldsymbol{x}_t + \gamma_t \boldsymbol{x}_0 + \sigma_t\boldsymbol{\varepsilon}_1 \\
+    \approx&\, \frac{\sqrt{\bar{\beta}_{t-1}^2 - \sigma_t^2}}{\bar{\beta}_t}\boldsymbol{x}_t + \gamma_t \big(\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t) + \bar{\sigma}_t \boldsymbol{\varepsilon}_2\big) + \sigma_t\boldsymbol{\varepsilon}_1 \\
+    =&\, \left(\frac{\sqrt{\bar{\beta}_{t-1}^2 - \sigma_t^2}}{\bar{\beta}_t}\boldsymbol{x}_t + \gamma_t \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)\right) + \underbrace{\big(\sigma_t\boldsymbol{\varepsilon}_1 + \gamma_t\bar{\sigma}_t \boldsymbol{\varepsilon}_2\big)}_{\sim \sqrt{\sigma_t^2 + \gamma_t^2\bar{\sigma}_t^2}\boldsymbol{\varepsilon}} \\
+    \end{aligned}\end{equation}
+
+    <p>where $\boldsymbol{\varepsilon}_1,\boldsymbol{\varepsilon}_2,\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0},\boldsymbol{I})$. It can be seen that $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t)$ is closer to a normal distribution with mean $\frac{\sqrt{\bar{\beta}_{t-1}^2 - \sigma_t^2}}{\bar{\beta}_t}\boldsymbol{x}_t + \gamma_t \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)$ and covariance $\left(\sigma_t^2 + \gamma_t^2\bar{\sigma}_t^2\right)\boldsymbol{I}$. The mean is consistent with previous results; the difference is that the variance has an additional term $\gamma_t^2\bar{\sigma}_t^2$. Therefore, even if $\sigma_t=0$, the corresponding variance is not 0. This additional term is the correction for the optimal variance proposed in the first paper.</p>
+
+    <h2 id="mean-optimization">Mean Optimization</h2>
+
+    <p>Now let's discuss how to use $\mathcal{N}(\boldsymbol{x}_0;\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t),\bar{\sigma}_t^2\boldsymbol{I})$ to approach the true $p(\boldsymbol{x}_0|\boldsymbol{x}_t)$, which essentially means finding the mean and covariance of $p(\boldsymbol{x}_0|\boldsymbol{x}_t)$.</p>
+
+    <p>For the mean $\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)$, it depends on $\boldsymbol{x}_t$, so a model is needed to fit it, and training the model requires a loss function. Utilizing:</p>
+
+    \begin{equation}\mathbb{E}_{\boldsymbol{x}}[\boldsymbol{x}] = \mathop{\text{argmin}}_{\boldsymbol{\mu}}\mathbb{E}_{\boldsymbol{x}}\left[\Vert \boldsymbol{x} - \boldsymbol{\mu}\Vert^2\right]\label{eq:mean-opt}\end{equation}
+
+    <p>We obtain:</p>
+
+    \begin{equation}\begin{aligned}
+    \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t) =&\, \mathbb{E}_{\boldsymbol{x}_0\sim p(\boldsymbol{x}_0|\boldsymbol{x}_t)}[\boldsymbol{x}_0] \\[5pt]
+    =&\, \mathop{\text{argmin}}_{\boldsymbol{\mu}}\mathbb{E}_{\boldsymbol{x}_0\sim p(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\Vert \boldsymbol{x}_0 - \boldsymbol{\mu}\Vert^2\right] \\
+    =&\, \mathop{\text{argmin}}_{\boldsymbol{\mu}(\boldsymbol{x}_t)}\mathbb{E}_{\boldsymbol{x}_t\sim p(\boldsymbol{x}_t)}\mathbb{E}_{\boldsymbol{x}_0\sim p(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\left\Vert \boldsymbol{x}_0 - \boldsymbol{\mu}(\boldsymbol{x}_t)\right\Vert^2\right] \\
+    =&\, \mathop{\text{argmin}}_{\boldsymbol{\mu}(\boldsymbol{x}_t)}\mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0)}\mathbb{E}_{\boldsymbol{x}_t\sim p(\boldsymbol{x}_t|\boldsymbol{x}_0)}\left[\left\Vert \boldsymbol{x}_0 - \boldsymbol{\mu}(\boldsymbol{x}_t)\right\Vert^2\right] \\
+    \end{aligned}\label{eq:loss-1}\end{equation}
+
+    <p>This is the loss function used to train $\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)$. If we introduce parameterization as before:</p>
+
+    \begin{equation}\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t) = \frac{1}{\bar{\alpha}_t}\left(\boldsymbol{x}_t - \bar{\beta}_t \boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)\right)\label{eq:bar-mu}\end{equation}
+
+    <p>we can obtain the form of the loss function used in DDPM training: $\left\Vert\boldsymbol{\varepsilon} - \boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\bar{\alpha}_t \boldsymbol{x}_0 + \bar{\beta}_t \boldsymbol{\varepsilon}, t)\right\Vert^2$. The results regarding mean optimization are consistent with previous ones and involve no modifications.</p>
+
+    <h2 id="variance-estimation-1">Variance Estimation 1</h2>
+
+    <p>Similarly, by definition, the covariance matrix should be:</p>
+
+    \begin{equation}\begin{aligned}
+    \boldsymbol{\Sigma}(\boldsymbol{x}_t)=&\, \mathbb{E}_{\boldsymbol{x}_0\sim p(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\left(\boldsymbol{x}_0 - \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)\right)\left(\boldsymbol{x}_0 - \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)\right)^{\top}\right] \\
+    =&\, \mathbb{E}_{\boldsymbol{x}_0\sim p(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\left((\boldsymbol{x}_0 - \boldsymbol{\mu}) - (\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t) - \boldsymbol{\mu})\right)\left((\boldsymbol{x}_0 - \boldsymbol{\mu}) - (\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t) - \boldsymbol{\mu})\right)^{\top}\right] \\
+    =&\, \mathbb{E}_{\boldsymbol{x}_0\sim p(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[(\boldsymbol{x}_0 - \boldsymbol{\mu}_0)(\boldsymbol{x}_0 - \boldsymbol{\mu}_0)^{\top}\right] - (\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t) - \boldsymbol{\mu}_0)(\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t) - \boldsymbol{\mu}_0)^{\top}\\
+    \end{aligned}\label{eq:var-expand}\end{equation}
+
+    <p>where $\boldsymbol{\mu}_0$ can be any constant vector, corresponding to the translation invariance of covariance.</p>
+
+    <p>The above estimates the full covariance matrix, but it is not what we want, because currently we want to use $\mathcal{N}(\boldsymbol{x}_0;\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t),\bar{\sigma}_t^2\boldsymbol{I})$ to approach $p(\boldsymbol{x}_0|\boldsymbol{x}_t)$, where the designed covariance matrix is $\bar{\sigma}_t^2\boldsymbol{I}$. It has two characteristics:</p>
+
+    <blockquote>
+    <p>1. Independent of $\boldsymbol{x}_t$: To eliminate the dependence on $\boldsymbol{x}_t$, we take the average over all $\boldsymbol{x}_t$, i.e., $\boldsymbol{\Sigma}_t = \mathbb{E}_{\boldsymbol{x}_t\sim p(\boldsymbol{x}_t)}[\boldsymbol{\Sigma}(\boldsymbol{x}_t)]$;</p>
+    <p>2. A multiple of the identity matrix: This means we only need to consider the diagonal parts and take the average of the diagonal elements, i.e., $\bar{\sigma}_t^2 = \text{Tr}(\boldsymbol{\Sigma}_t)/d$, where $d=\dim(\boldsymbol{x})$.</p>
+    </blockquote>
+
+    <p>Thus we have:</p>
+
+    \begin{equation}\begin{aligned}
+    \bar{\sigma}_t^2 =&\, \mathbb{E}_{\boldsymbol{x}_t\sim p(\boldsymbol{x}_t)}\mathbb{E}_{\boldsymbol{x}_0\sim p(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\frac{\Vert\boldsymbol{x}_0 - \boldsymbol{\mu}_0\Vert^2}{d}\right] - \mathbb{E}_{\boldsymbol{x}_t\sim p(\boldsymbol{x}_t)}\left[\frac{\Vert\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t) - \boldsymbol{\mu}_0\Vert^2}{d}\right] \\
+    =&\, \frac{1}{d}\mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0)}\mathbb{E}_{\boldsymbol{x}_t\sim p(\boldsymbol{x}_t|\boldsymbol{x}_0)}\left[\Vert\boldsymbol{x}_0 - \boldsymbol{\mu}_0\Vert^2\right] - \frac{1}{d}\mathbb{E}_{\boldsymbol{x}_t\sim p(\boldsymbol{x}_t)}\left[\Vert\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t) - \boldsymbol{\mu}_0\Vert^2\right] \\
+    =&\, \frac{1}{d}\mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0)}\left[\Vert\boldsymbol{x}_0 - \boldsymbol{\mu}_0\Vert^2\right] - \frac{1}{d}\mathbb{E}_{\boldsymbol{x}_t\sim p(\boldsymbol{x}_t)}\left[\Vert\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t) - \boldsymbol{\mu}_0\Vert^2\right] \\
+    \end{aligned}\label{eq:var-1}\end{equation}
+
+    <p>This is an analytical form for $\bar{\sigma}_t^2$ provided by the author. Once $\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)$ is trained, the above equation can be approximately calculated by sampling a batch of $\boldsymbol{x}_0$ and $\boldsymbol{x}_t$.</p>
+
+    <p>Specially, if we take $\boldsymbol{\mu}_0=\mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0)}[\boldsymbol{x}_0]$, then it can be written as:</p>
+
+    \begin{equation}\bar{\sigma}_t^2 = \mathbb{V}ar[\boldsymbol{x}_0] - \frac{1}{d}\mathbb{E}_{\boldsymbol{x}_t\sim p(\boldsymbol{x}_t)}\left[\Vert\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t) - \boldsymbol{\mu}_0\Vert^2\right]\end{equation}
+
+    <p>Here $\mathbb{V}ar[\boldsymbol{x}_0]$ is the pixel-level variance of all training data $\boldsymbol{x}_0$. If every pixel value of $\boldsymbol{x}_0$ is within the range $[a,b]$, then its variance obviously won't exceed $\left(\frac{b-a}{2}\right)^2$, leading to the inequality:</p>
+
+    \begin{equation}\bar{\sigma}_t^2 \leq \mathbb{V}ar[\boldsymbol{x}_0] \leq \left(\frac{b-a}{2}\right)^2\end{equation}
+
+    <h2 id="variance-estimation-2">Variance Estimation 2</h2>
+
+    <p>The previous solution was an intuitive one provided by the author. The original Analytic-DPM paper provided a slightly different solution, which the author considers relatively less intuitive. By substituting Eq. $\eqref{eq:bar-mu}$, we can obtain:</p>
+
+    \begin{equation}\begin{aligned}
+    \boldsymbol{\Sigma}(\boldsymbol{x}_t)=&\, \mathbb{E}_{\boldsymbol{x}_0\sim p(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\left(\boldsymbol{x}_0 - \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)\right)\left(\boldsymbol{x}_0 - \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)\right)^{\top}\right] \\
+    =&\, \mathbb{E}_{\boldsymbol{x}_0\sim p(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\left(\left(\boldsymbol{x}_0 - \frac{\boldsymbol{x}_t}{\bar{\alpha}_t}\right) + \frac{\bar{\beta}_t}{\bar{\alpha}_t} \boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)\right)\left(\left(\boldsymbol{x}_0 - \frac{\boldsymbol{x}_t}{\bar{\alpha}_t}\right) + \frac{\bar{\beta}_t}{\bar{\alpha}_t} \boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)\right)^{\top}\right] \\
+    =&\, \mathbb{E}_{\boldsymbol{x}_0\sim p(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\left(\boldsymbol{x}_0 - \frac{\boldsymbol{x}_t}{\bar{\alpha}_t}\right)\left(\boldsymbol{x}_0 - \frac{\boldsymbol{x}_t}{\bar{\alpha}_t}\right)^{\top}\right] - \frac{\bar{\beta}_t^2}{\bar{\alpha}_t^2} \boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)^{\top}\\
+    =&\, \frac{1}{\bar{\alpha}_t^2}\mathbb{E}_{\boldsymbol{x}_0\sim p(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\left(\boldsymbol{x}_t - \bar{\alpha}_t\boldsymbol{x}_0\right)\left(\boldsymbol{x}_t - \bar{\alpha}_t\boldsymbol{x}_0\right)^{\top}\right] - \frac{\bar{\beta}_t^2}{\bar{\alpha}_t^2} \boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)^{\top}\\
+    \end{aligned}\end{equation}
+
+    <p>At this point, if we average both sides over $\boldsymbol{x}_t\sim p(\boldsymbol{x}_t)$, we have:</p>
+
+    \begin{equation}\begin{aligned}
+    &\,\mathbb{E}_{\boldsymbol{x}_t\sim p(\boldsymbol{x}_t)}\mathbb{E}_{\boldsymbol{x}_0\sim p(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\left(\boldsymbol{x}_t - \bar{\alpha}_t\boldsymbol{x}_0\right)\left(\boldsymbol{x}_t - \bar{\alpha}_t\boldsymbol{x}_0\right)^{\top}\right] \\
+    =&\, \mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0)}\mathbb{E}_{\boldsymbol{x}_t\sim p(\boldsymbol{x}_t|\boldsymbol{x}_0)}\left[\left(\boldsymbol{x}_t - \bar{\alpha}_t\boldsymbol{x}_0\right)\left(\boldsymbol{x}_t - \bar{\alpha}_t\boldsymbol{x}_0\right)^{\top}\right]
+    \end{aligned}\end{equation}
+
+    <p>Don't forget $p(\boldsymbol{x}_t|\boldsymbol{x}_0) = \mathcal{N}(\boldsymbol{x}_t;\bar{\alpha}_t \boldsymbol{x}_0,\bar{\beta}_t^2 \boldsymbol{I})$, so $\bar{\alpha}_t \boldsymbol{x}_0$ is actually the mean of $p(\boldsymbol{x}_t|\boldsymbol{x}_0)$. Then $\mathbb{E}_{\boldsymbol{x}_t\sim p(\boldsymbol{x}_t|\boldsymbol{x}_0)}\left[\left(\boldsymbol{x}_t - \bar{\alpha}_t\boldsymbol{x}_0\right)\left(\boldsymbol{x}_t - \bar{\alpha}_t\boldsymbol{x}_0\right)^{\top}\right]$ is actually calculating the covariance matrix of $p(\boldsymbol{x}_t|\boldsymbol{x}_0)$, which is obviously $\bar{\beta}_t^2 \boldsymbol{I}$. Therefore:</p>
+
+    \begin{equation}\mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0)}\mathbb{E}_{\boldsymbol{x}_t\sim p(\boldsymbol{x}_t|\boldsymbol{x}_0)}\left[\left(\boldsymbol{x}_t - \bar{\alpha}_t\boldsymbol{x}_0\right)\left(\boldsymbol{x}_t - \bar{\alpha}_t\boldsymbol{x}_0\right)^{\top}\right] = \mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0)}\left[\bar{\beta}_t^2 \boldsymbol{I}\right] = \bar{\beta}_t^2 \boldsymbol{I}
+    \end{equation}
+
+    <p>Then:</p>
+
+    \begin{equation}
+    \boldsymbol{\Sigma}_t = \mathbb{E}_{\boldsymbol{x}_t\sim p(\boldsymbol{x}_t)}[\boldsymbol{\Sigma}(\boldsymbol{x}_t)] = \frac{\bar{\beta}_t^2}{\bar{\alpha}_t^2}\left(\boldsymbol{I} - \mathbb{E}_{\boldsymbol{x}_t\sim p(\boldsymbol{x}_t)}\left[ \boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)^{\top}\right]\right)\end{equation}
+
+    <p>Taking the trace and dividing by $d$, we get:</p>
+
+    \begin{equation}\bar{\sigma}_t^2 = \frac{\bar{\beta}_t^2}{\bar{\alpha}_t^2}\left(1 - \frac{1}{d}\mathbb{E}_{\boldsymbol{x}_t\sim p(\boldsymbol{x}_t)}\left[ \Vert\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)\Vert^2\right]\right)\leq \frac{\bar{\beta}_t^2}{\bar{\alpha}_t^2}\label{eq:var-2}\end{equation}
+
+    <p>This gives another estimate and upper bound, which is the original result of Analytic-DPM.</p>
+
+    <h2 id="experimental-results">Experimental Results</h2>
+
+    <p>Experimental results from the original paper show that the variance correction made by Analytic-DPM provides a more significant improvement when the number of generation diffusion steps is small. Thus, it is quite meaningful for accelerating diffusion models:</p>
+
+    <p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2022/08/847522637.png" alt="Analytic-DPM provides significant improvement when steps are small" title="Analytic-DPM provides significant improvement when steps are small"></p>
+
+    <p>I also tried the Analytic-DPM correction on my previously implemented code. The reference code is at:</p>
+
+    <blockquote>
+    <p><strong>Github: <a href="https://github.com/bojone/Keras-DDPM/blob/main/adpm.py">https://github.com/bojone/Keras-DDPM/blob/main/adpm.py</a></strong></p>
+    </blockquote>
+
+    <p>When the number of diffusion steps is 10, the comparison between DDPM and Analytic-DDPM is as follows:</p>
+
+    <p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2022/08/926213602.jpg" alt="DDPM results at 10 steps" title="DDPM results at 10 steps"></p>
+
+    <p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2022/08/4263413841.jpg" alt="Analytic-DDPM results at 10 steps" title="Analytic-DDPM results at 10 steps"></p>
+
+    <p>It can be seen that when the number of diffusion steps is small, DDPM's generated results are smoother, giving a sort of "heavy skin smoothing" feeling. In contrast, Analytic-DDPM's results appear more realistic but also bring additional noise. In terms of evaluation metrics, Analytic-DDPM is better.</p>
+
+    <h2 id="nitpicking">Nitpicking</h2>
+
+    <p>At this point, we have completed the introduction to Analytic-DPM. The derivation involves some technicality but isn't overly complex; at least the logic is quite clear. If readers find it difficult to understand, they might want to look at the original paper's derivation in the appendix, which takes 7 pages and 13 lemmas. I'm sure after seeing that, the derivation in this article will feel quite friendly, haha.</p>
+
+    <p>Admittedly, I admire the authors' insight in being the first to obtain this analytical solution for variance. However, from a "hindsight" perspective, Analytic-DPM made some "detours" in its derivation and results, being "too convoluted" and "too coincidental," and thus lacking heuristic value. One of the most prominent features is that the original paper's results are all expressed using $\nabla_{\boldsymbol{x}_t}\log p(\boldsymbol{x}_t)$, which brings three problems: first, it makes the derivation process particularly un-intuitive, making it hard to understand "how they thought of it"; second, it requires readers to have extra knowledge of score matching results, increasing the difficulty of understanding; finally, in practice, $\nabla_{\boldsymbol{x}_t}\log p(\boldsymbol{x}_t)$ must be expressed back using $\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)$ or $\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$, which just adds an extra loop.</p>
+
+    <p>The starting point of the derivation in this article is that we are estimating parameters of a normal distribution. For a normal distribution, moment estimation is identical to maximum likelihood estimation, so we can directly estimate the corresponding mean and variance. In terms of results, there's no need to force the form to align with $\nabla_{\boldsymbol{x}_t}\log p(\boldsymbol{x}_t)$ or score matching. Obviously, the baseline model for Analytic-DPM is DDIM, and DDIM itself did not start from score matching. Adding links to score matching doesn't benefit the theory or the experiments. Directly aligning with $\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)$ or $\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ is more intuitive in form and makes it easier to convert into experimental formats.</p>
+
+    <h2 id="summary">Summary</h2>
+
+    <p>This article shared the optimal diffusion variance estimation results from the Analytic-DPM paper. it provides a directly usable analytical formula for optimal variance estimation, allowing us to improve generation quality without retraining. I simplified the derivation from the original paper with my own logic and performed simple experimental verification.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9245.html" style="color: #005fcc;">https://kexue.fm/archives/9245</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

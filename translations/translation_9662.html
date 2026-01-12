@@ -1,0 +1,280 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    ignoreHtmlClass: 'tex2jax_ignore',
+    processHtmlClass: 'tex2jax_process'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/9662">Generative Diffusion Models (19): GAN as a Diffusion ODE</a></h1>
+    <p>By 苏剑林 | June 24, 2023</p>
+
+    <p>In the article <a href="translation_9467.html">"Generative Diffusion Models (16): W-Distance ≤ Score Matching"</a>, we derived an inequality between the Wasserstein distance and the diffusion model's score matching loss, suggesting that the optimization objectives of diffusion models and WGAN share a certain degree of similarity. In this article, we will explore the findings in <a href="https://papers.cool/arxiv/2302.01075">"MonoFlow: Rethinking Divergence GANs via the Perspective of Wasserstein Gradient Flows"</a>, which further demonstrate the connection between GANs and diffusion models: a GAN can actually be viewed as a diffusion ODE in another time dimension!</p>
+
+    <p>These findings suggest that although GANs and diffusion models appear to be two completely different types of generative models on the surface, they actually share many similarities and can provide mutual insights in many aspects.</p>
+
+    <h2>Introduction to the Idea</h2>
+    <p>We know that the generator trained by a GAN is a direct, deterministic transformation $\boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z})$ from noise $\boldsymbol{z}$ to a real sample. In contrast, a defining characteristic of diffusion models is "progressive generation," where the generation process corresponds to sampling from a series of gradually changing distributions $p_0(\boldsymbol{x}_0), p_1(\boldsymbol{x}_1), \cdots, p_T(\boldsymbol{x}_T)$ (Note: In the previous articles, $\boldsymbol{x}_T$ was noise and $\boldsymbol{x}_0$ was the target sample, with the sampling process being $\boldsymbol{x}_T \to \boldsymbol{x}_0$; but for convenience in the following description, we reverse this to $\boldsymbol{x}_0 \to \boldsymbol{x}_T$). On the surface, it seems hard to find much in common. So how can we link the two?</p>
+
+    <p>Clearly, if we want to understand GANs from the perspective of diffusion models, we must find a way to construct a sequence of gradually changing distributions. The generator $\boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z})$ itself is an "all-at-once" transformation without gradual changes. However, we know that the optimization of the model is gradual—could we use the historical trajectory of the parameters $\boldsymbol{\theta}_t$ to construct this sequence of distributions? Specifically, suppose the generator is initialized with $\boldsymbol{\theta}_0$ and reaches optimal parameters $\boldsymbol{\theta}_T$ after $T$ steps of adversarial training, with intermediate parameters $\boldsymbol{\theta}_1, \boldsymbol{\theta}_2, \cdots, \boldsymbol{\theta}_{T-1}$. If we define $\boldsymbol{x}_t = \boldsymbol{g}_{\boldsymbol{\theta}_t}(\boldsymbol{z})$, haven't we defined a sequence of gradually changing $\boldsymbol{x}_0, \boldsymbol{x}_1, \cdots, \boldsymbol{x}_T$, and thus a sequence of distributions $p_0(\boldsymbol{x}_0), p_1(\boldsymbol{x}_1), \cdots, p_T(\boldsymbol{x}_T)$?</p>
+
+    <p>If this line of thought is feasible, GANs can be interpreted as diffusion models in the (virtual) time dimension of gradient descent! Let us explore this idea further.</p>
+
+    <h2>Gradient Flow</h2>
+    <p>First, we need to revisit the results from the previous article <a href="translation_9660.html">"Gradient Flow: Exploring the Path to the Minimum"</a> regarding Wasserstein gradient flow: it states that the equation</p>
+
+    \begin{equation}\frac{\partial q_t(\boldsymbol{x})}{\partial t} = - \nabla_{\boldsymbol{x}}\cdot\big(q_t(\boldsymbol{x})\nabla_{\boldsymbol{x}}\log r_t(\boldsymbol{x})\big)\label{eq:w-flow}\end{equation}
+
+    is minimizing the KL divergence between $p(\boldsymbol{x})$ and $q_t(\boldsymbol{x})$, i.e., $\lim\limits_{t\to\infty} q_t(\boldsymbol{x}) = p(\boldsymbol{x})$, where $r_t(\boldsymbol{x})=\frac{p(\boldsymbol{x})}{q_t(\boldsymbol{x})}$. If $p(\boldsymbol{x})$ represents the distribution of real samples, then if we can implement sampling from $q_t(\boldsymbol{x})$ and let it evolve to $t\to\infty$, we can achieve sampling from $p(\boldsymbol{x})$. According to <a href="translation_9461.html">"Deriving the Continuity Equation and Fokker-Planck Equation via the Test Function Method"</a>, sampling from $q_t(\boldsymbol{x})$ can be achieved through the following ODE:</p>
+
+    \begin{equation}\frac{d\boldsymbol{x}}{dt} = \nabla_{\boldsymbol{x}}\log r_t(\boldsymbol{x})\label{eq:ode-core}\end{equation}
+
+    However, $r_t(\boldsymbol{x})$ in the above equation is unknown, so we cannot sample using this equation directly; we first need to find a way to estimate $r_t(\boldsymbol{x})$.
+
+    <h2>Discriminative Estimation</h2>
+    <p>This is where the GAN discriminator comes in. Taking the original Vanilla GAN as an example, its training objective is</p>
+
+    \begin{equation}\max_D\, \mathbb{E}_{\boldsymbol{x}\sim p(\boldsymbol{x})}[\log \sigma(D(\boldsymbol{x}))] + \mathbb{E}_{\boldsymbol{x}\sim q(\boldsymbol{x})}[\log (1 - \sigma(D(\boldsymbol{x})))]\label{eq:gan-d}\end{equation}
+
+    where $D$ is the discriminator, $\sigma(t)=1/(1+e^{-t})$ is the sigmoid function, $p(\boldsymbol{x})$ is the distribution of real samples, and $q(\boldsymbol{x})$ is the distribution of fake samples. It can be proven (readers who are unclear can refer to the "Supplementary Proof" section in <a href="translation_6110.html">"RSGAN: The 'Turing Test' Idea in Adversarial Models"</a>) that the theoretical optimal solution for the discriminator $D$ in the above formula is</p>
+
+    \begin{equation}D(\boldsymbol{x}) = \log \frac{p(\boldsymbol{x})}{q(\boldsymbol{x})}\end{equation}
+
+    Results for more generalized f-GANs (refer to <a href="translation_6016.html">"Introduction to f-GAN: The Production Shop for GAN Models"</a> and <a href="translation_7210.html">"Designing GANs: Another GAN Production Shop"</a>) will be slightly different, but it can be proven that their theoretical optimal discriminators are all functions of $\frac{p(\boldsymbol{x})}{q(\boldsymbol{x})}$. That is to say, as long as we can sample from $p(\boldsymbol{x})$ and $q_t(\boldsymbol{x})$, we can estimate $r_t(\boldsymbol{x})=\frac{p(\boldsymbol{x})}{q_t(\boldsymbol{x})}$ by training the GAN discriminator according to $\eqref{eq:gan-d}$.
+
+    <h2>One Step Forward</h2>
+    <p>At this point, some readers might be confused: hasn't this entered a "chicken and egg" circular argument? We estimate $r_t(\boldsymbol{x})$ specifically to use equation $\eqref{eq:ode-core}$ to achieve sampling from $q_t(\boldsymbol{x})$, yet you assume we can already sample from $q_t(\boldsymbol{x})$ to estimate $r_t(\boldsymbol{x})$? Don't worry, here comes the classic masterstroke.</p>
+
+    <p>Suppose we have a generator $\boldsymbol{g}_{\boldsymbol{\theta}_t}(\boldsymbol{z})$, and its sampling results are equivalent to sampling from $q_t(\boldsymbol{x})$, i.e.,</p>
+
+    \begin{equation}\big\{\boldsymbol{g}_{\boldsymbol{\theta}_t}(\boldsymbol{z})\big\|\,\boldsymbol{z}\sim \mathcal{N}(\boldsymbol{0},\boldsymbol{I})\big\}\quad = \quad\big\{\boldsymbol{x}_t\big\|\,\boldsymbol{x}_t\sim q_t(\boldsymbol{x})\big\}\end{equation}
+
+    Now we can use it and equation $\eqref{eq:gan-d}$ to estimate $r_t(\boldsymbol{x})$. Note that this is only $r_t(\boldsymbol{x})$ at time $t$; we don't know $r_t(\boldsymbol{x})$ at other times, so we cannot complete the final sampling process directly through equation $\eqref{eq:ode-core}$. However, we can push forward by one small step:</p>
+
+    \begin{equation}\boldsymbol{x}_{t+1} = \boldsymbol{x}_t + \epsilon \nabla_{\boldsymbol{x}_t}\log r_t(\boldsymbol{x}_t) = \boldsymbol{x}_t + \epsilon \nabla_{\boldsymbol{x}_t} D(\boldsymbol{x}_t)\label{eq:forward}\end{equation}
+
+    where $\epsilon$ is a very small positive number representing the step size. Now, we have the sampling result for the next step. We want this to continue to be equivalent to the sampling result of the generator at the next step, i.e.,</p>
+
+    \begin{equation}\begin{aligned}
+    \big\{\boldsymbol{g}_{\boldsymbol{\theta}_{t+1}}(\boldsymbol{z})\big\|\,\boldsymbol{z}\sim \mathcal{N}(\boldsymbol{0},\boldsymbol{I})\big\}\quad =& \quad\big\{\boldsymbol{x}_{t+1}\big\|\,\boldsymbol{x}_{t+1}\sim q_{t+1}(\boldsymbol{x})\big\} \\[5pt]
+    \quad =& \quad\big\{\boldsymbol{x}_{t+1}\big\|\,\boldsymbol{x}_t + \epsilon \nabla_{\boldsymbol{x}_t} D(\boldsymbol{x}_t),\boldsymbol{x}_t\sim q_t(\boldsymbol{x})\big\}
+    \end{aligned}\end{equation}
+
+    In other words, we want to **transform the movement of samples in the diffusion model into the movement of generator parameters**! To achieve this goal, we find $\boldsymbol{\theta}_{t+1}$ using the following loss:</p>
+
+    \begin{equation}\boldsymbol{\theta}_{t+1} = \mathop{\text{argmin}}_{\boldsymbol{\theta}}\mathbb{E}_{\boldsymbol{z}\sim \mathcal{N}(\boldsymbol{0},\boldsymbol{I})}\Big[\big\Vert \boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z}) - \boldsymbol{g}_{\boldsymbol{\theta}_t}(\boldsymbol{z}) - \epsilon \nabla_{\boldsymbol{g}}D(\boldsymbol{g}_{\boldsymbol{\theta}_t}(\boldsymbol{z}))\big\Vert^2\Big]\label{eq:gan-g0}\end{equation}
+
+    That is, we take $\boldsymbol{x}_t = \boldsymbol{g}_{\boldsymbol{\theta}_t}(\boldsymbol{z})$ and iterate forward one step to get $\boldsymbol{x}_{t+1}$, and then hope the new $\boldsymbol{g}_{\boldsymbol{\theta}_{t+1}}(\boldsymbol{z})$ matches $\boldsymbol{x}_{t+1}$ as closely as possible. After completing this round, we replace the original $\boldsymbol{\theta}_t$ with $\boldsymbol{\theta}_{t+1}$ and start a new round of iteration. Alternating between equation $\eqref{eq:gan-d}$ and equation $\eqref{eq:gan-g0}$... doesn't this start to smell like a GAN?</p>
+
+    <h2>The Finishing Touch</h2>
+    <p>If that's not enough, we can refine it further to make it more consistent with GANs. Notice the gradient of the function inside the expectation in equation $\eqref{eq:gan-g0}$ is:</p>
+
+    \begin{equation}\begin{aligned}
+    &\,\nabla_{\boldsymbol{\theta}}\Vert \boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z}) - \boldsymbol{g}_{\boldsymbol{\theta}_t}(\boldsymbol{z}) - \epsilon \nabla_{\boldsymbol{g}}D(\boldsymbol{g}_{\boldsymbol{\theta}_t}(\boldsymbol{z}))\Vert^2 \\
+    =&\,2\big\langle\boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z}) - \boldsymbol{g}_{\boldsymbol{\theta}_t}(\boldsymbol{z}) - \epsilon \nabla_{\boldsymbol{g}}D(\boldsymbol{g}_{\boldsymbol{\theta}_t}(\boldsymbol{z})), \nabla_{\boldsymbol{\theta}}\boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z}) \big\rangle \\
+    \end{aligned}\end{equation}
+
+    Substituting the current parameter value $\boldsymbol{\theta}=\boldsymbol{\theta}_t$, the result is</p>
+
+    \begin{equation}-2\epsilon\big\langle \nabla_{\boldsymbol{g}}D(\boldsymbol{g}_{\boldsymbol{\theta}_t}(\boldsymbol{z})), \nabla_{\boldsymbol{\theta}_t}\boldsymbol{g}_{\boldsymbol{\theta}_t}(\boldsymbol{z}) \big\rangle = -2\epsilon\nabla_{\boldsymbol{\theta}_t}D(\boldsymbol{g}_{\boldsymbol{\theta}_t}(\boldsymbol{z}))\end{equation}
+
+    In other words, if we use a gradient-based optimizer to perform only one optimization step, then using equation $\eqref{eq:gan-g0}$ as the loss function is equivalent to using the following loss function (since the gradients only differ by a constant factor):</p>
+
+    \begin{equation}\boldsymbol{\theta}_{t+1} = \mathop{\text{argmin}}_{\boldsymbol{\theta}}\mathbb{E}_{\boldsymbol{z}\sim \mathcal{N}(\boldsymbol{0},\boldsymbol{I})}[-D(\boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z}))]\label{eq:gan-g}\end{equation}
+
+    This is one of the most common generator loss functions. Alternating the training of equation $\eqref{eq:gan-d}$ and equation $\eqref{eq:gan-g}$ constitutes a common GAN variant.</p>
+
+    <p>In particular, the original paper also proved that the generator's loss function can be generalized to:</p>
+
+    \begin{equation}\boldsymbol{\theta}_{t+1} = \mathop{\text{argmin}}_{\boldsymbol{\theta}}\mathbb{E}_{\boldsymbol{z}\sim \mathcal{N}(\boldsymbol{0},\boldsymbol{I})}[-h(D(\boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z})))]\end{equation}
+
+    where $h(\cdot)$ is any monotonically increasing function. This corresponds to the fact that in the Wasserstein gradient flow $\eqref{eq:w-flow}$, $\log r_t(\boldsymbol{x})$ can be replaced by $h(\log r_t(\boldsymbol{x}))$. This is likely the origin of the term "MonoFlow" (Monotonically increasing function + Wasserstein flow). We won't expand on this proof process here; interested readers can read the original paper.</p>
+
+    <h2>Reflections on Significance</h2>
+    <p>To summarize, the logic of understanding GANs as diffusion models is:</p>
+
+    \require{AMScd}\begin{CD}
+    \cdots @> >> \boldsymbol{g}_{\boldsymbol{\theta}_t}(\boldsymbol{z}) @> \text{Eq }\eqref{eq:gan-d} >> r_t(\boldsymbol{x}) @> \text{Eq }\eqref{eq:forward} >> \boldsymbol{x}_{t+1} @> \text{Eq }\eqref{eq:gan-g0} >> \boldsymbol{g}_{\boldsymbol{\theta}_{t+1}}(\boldsymbol{z}) @> >> \cdots
+    \end{CD}
+
+    The core of this process is equation $\eqref{eq:forward}$, which originates from the Wasserstein gradient flow equations $\eqref{eq:w-flow}$ and $\eqref{eq:ode-core}$, which we discussed in the previous article <a href="translation_9660.html">"Gradient Flow: Exploring the Path to the Minimum"</a>.</p>
+
+    <p>Readers might ask: this perspective doesn't seem to yield anything more than GAN already does, so why go to such great lengths to re-understand GANs? First, in my view, unifying diffusion models and GANs is itself very interesting and fun. It doesn't necessarily need to have a practical utility; being interesting and fun is its greatest significance.</p>
+
+    <p>Secondly, as the authors say in the original paper, the existing derivation processes for GANs are inconsistent with their actual training processes, whereas the diffusion perspective discussed here is consistent with the training process. In other words, if we take the training process as the standard, the existing derivations of GAN are wrong, and the diffusion perspective in this article is correct. How should we understand this? Take the previously mentioned GAN as an example; the objectives of the discriminator and generator are respectively:</p>
+
+    \begin{gather}\max_D\, \mathbb{E}_{\boldsymbol{x}\sim p(\boldsymbol{x})}[\log \sigma(D(\boldsymbol{x}))] + \mathbb{E}_{\boldsymbol{x}\sim q(\boldsymbol{x})}[\log (1 - \sigma(D(\boldsymbol{x})))] \\
+    \min_q \mathbb{E}_{\boldsymbol{x}\sim q(\boldsymbol{x})}[-D(\boldsymbol{x})]
+    \end{gather}
+
+    The usual proof method is to show that the optimal solution for $D$ is $\log\frac{p(\boldsymbol{x})}{q(\boldsymbol{x})}$, then substitute it into the generator's loss function to find that it minimizes the KL divergence between $q(\boldsymbol{x})$ and $p(\boldsymbol{x})$, thus the optimal solution is $q(\boldsymbol{x})=p(\boldsymbol{x})$. However, the training method corresponding to this proof should be to first solve the $\max_D$ step for any $q(\boldsymbol{x})$ (the resulting $D$ should be a function of $q(x)$, or accurately, a function of the generator parameters $\boldsymbol{\theta}$), and then execute the $\min_q$ step—not the alternating training actually used. In contrast, the understanding based on diffusion models is designed to be alternating, so it is more consistent with the training process.</p>
+
+    <p>In conclusion, understanding GANs from the perspective of diffusion models is not just a new way of looking at GANs, but also a perspective that is closer to the training process. For example, we can explain why the GAN generator cannot be trained for too many steps: because equation $\eqref{eq:gan-g}$ and equation $\eqref{eq:gan-g0}$ are only equivalent during single-step optimization. If a GAN is to undergo more steps of optimization, equation $\eqref{eq:gan-g0}$ should be used as the loss function. In fact, equation $\eqref{eq:gan-g0}$ is equivalent to the $KL\left(q(x)\Vert q^{o}(x)\right)$ term I proposed earlier in <a href="translation_5716.html">"Unifying Generative Models (VAE, GAN, AAE, ALI) via Variational Inference"</a>, which ensures the generator's "inheritance" rather than just "innovation."</p>
+
+    <h2>Summary</h2>
+    <p>This article introduced MonoFlow, which shows that we can understand GANs as diffusion ODEs in another time dimension, establishing a new perspective for understanding GANs based on diffusion models. Notably, this is a perspective that is closer to the training process than conventional GAN derivations.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9662.html" style="color: #005fcc;">https://kexue.fm/archives/9662</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

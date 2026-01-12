@@ -1,0 +1,289 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    macros: {
+      tr: ["\\mathop{\\text{tr}}"],
+      diag: ["\\mathop{\\text{diag}}"],
+      sign: ["\\mathop{\\text{sign}}"]
+    },
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/11301">Rethinking Learning Rate and Batch Size (IV): EMA</a></h1>
+    <p>By 苏剑林 | Sep 22, 2025</p>
+
+    <p>In <a href="translation_11280.html">"Rethinking Learning Rate and Batch Size (II): Mean Field"</a>, we mentioned that one reason for focusing on SignSGD is that we typically use it as a theoretical approximation for Adam. This is a common simplification strategy used in the theoretical analysis of Adam. Besides analyzing learning rates, we have also used this simplification in posts like <a href="translation_10001.html">"Can LoRA Improve Further with Different Learning Rates?"</a> and <a href="translation_10770.html">"A First Look at MuP: Hyperparameter Scaling Laws Across Model Scales"</a>.</p>
+
+    <p>However, is SignSGD truly a good approximation for Adam? One obvious difference is that the Update RMS of SignSGD is always 1, while that is not the case for Adam. I have found that the core reason for this difference is momentum, which is ubiquitous in optimizers like Adam, Lion, and Muon. Therefore, in this article, we will examine the impact of momentum—or more generally, EMA (Exponential Moving Average).</p>
+
+    <h2>Problem Analysis</h2>
+    <p>From the perspective of Adam, SignSGD corresponds to the special case where $\beta_1=\beta_2=0$, or to the first update step of Adam (regardless of $\beta_1, \beta_2$). Thus, we believe they certainly share some commonalities and can capture some general laws.</p>
+
+    <p>However, there are also distinct differences between them. A typical one is the difference in Update RMS: SignSGD is always 1, but Adam is often significantly smaller than 1. Furthermore, Adam appears closer to SGD; it seems to be an intermediate version between SignSGD and SGD. Initially, I thought this difference was caused by the $\epsilon$ in Adam's denominator, so in <a href="translation_10563.html">"How Does Adam's Epsilon Affect the Learning Rate Scaling Law?"</a>, I specifically calculated SoftSignSGD with $\epsilon$.</p>
+
+    <p>Later, in <a href="translation_11267.html">"Why is Adam's Update RMS 0.2?"</a>, we estimated Adam's Update RMS from both simulation and theory. In fact, the estimation from the mean-field approximation is $\sqrt{\frac{1-\beta_1}{1+\beta_1}}$, and we verified that it aligns well with simulation results and actual experiments. This result explicitly depends on $\beta_1$, so it clearly directed our thinking toward momentum.</p>
+
+    <p>This led to the following analysis. In summary, we can confirm that the role of $\epsilon$ is indeed secondary, while the true protagonist is momentum—it is the "sliding average" of gradients—which is precisely the focus of this article: "EMA (Exponential Moving Average)".</p>
+
+    <h2>Gradient Descent</h2>
+    <p>To analyze the variables introduced by EMA, we start with SGDM, which is SGD with momentum. In practice, SGD is rarely used without momentum:</p>
+
+    \begin{equation}
+    \begin{aligned}
+    &\boldsymbol{m}_t = \beta_1 \boldsymbol{m}_{t-1} + \left(1 - \beta_1\right) \boldsymbol{g}_t \\[4pt]
+    &\boldsymbol{w}_t = \boldsymbol{w}_{t-1} - \eta_t \boldsymbol{m}_t
+    \end{aligned}
+    \end{equation}
+
+    <p>In actual use, $\boldsymbol{g}_t$ is replaced by $\tilde{\boldsymbol{g}}_{B,t}$, which is a random variable with mean $\boldsymbol{g}_t$ and covariance matrix $\boldsymbol{\Sigma}_t/B$. These basic settings are the same as in <a href="translation_11260.html">"Rethinking Learning Rate and Batch Size (I): Current Status"</a>. The noise here is caused by the random sampling of different batches, so we can reasonably assume that $\tilde{\boldsymbol{g}}_{B,t}$ are independent across different $t$.</p>
+
+    <p>Our task is to calculate:</p>
+    \begin{equation}\eta^* \approx \frac{\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B]^{\top}\boldsymbol{g}}{\tr(\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B\tilde{\boldsymbol{\varphi}}_B^{\top}]\boldsymbol{H})}\label{eq:eta-opt}\end{equation}
+
+    <p>The relevant derivations were given in previous articles and will not be repeated here. For SGDM, $\tilde{\boldsymbol{\varphi}}_B = \boldsymbol{m}_t$, which can be expanded as:</p>
+    \begin{equation}\boldsymbol{m}_t = (1 - \beta_1)\sum_{s=1}^t \beta_1^{t-s}\tilde{\boldsymbol{g}}_{B,s}\end{equation}
+
+    <h2>Enlarging Batch Size</h2>
+    <p>Now we can calculate:</p>
+    \begin{equation}\mathbb{E}[\boldsymbol{m}_t] = (1 - \beta_1)\sum_{s=1}^t \beta_1^{t-s}\mathbb{E}[\tilde{\boldsymbol{g}}_{B,s}] = (1 - \beta_1)\sum_{s=1}^t \beta_1^{t-s}\boldsymbol{g}_s\end{equation}
+    <p>We further assume that once the model training enters the "right track," the gradient changes slowly. Thus, we can approximate $\boldsymbol{g}_s$ with the current gradient $\boldsymbol{g}_t$, obtaining:</p>
+    \begin{equation}\mathbb{E}[\boldsymbol{m}_t] = (1 - \beta_1)\sum_{s=1}^t \beta_1^{t-s}\boldsymbol{g}_t = (1 - \beta_1^t) \boldsymbol{g}_t \approx \boldsymbol{g}_t \qquad (t\to\infty)\end{equation}
+    <p>As for $\mathbb{E}[\boldsymbol{m}_t \boldsymbol{m}_t^{\top}]$, we use the identity $\mathbb{E}[\boldsymbol{m}_t \boldsymbol{m}_t^{\top}] = \mathbb{E}[\boldsymbol{m}_t] \mathbb{E}[\boldsymbol{m}_t]^{\top} + \mathbb{C}\text{ov}[\boldsymbol{m}_t,\boldsymbol{m}_t]$, and then use the additivity of variance to get:</p>
+    \begin{equation}\mathbb{C}\text{ov}[\boldsymbol{m}_t,\boldsymbol{m}_t] = (1 - \beta_1)^2\sum_{s=1}^t \beta_1^{2(t-s)}\boldsymbol{\Sigma}_s/B\end{equation}
+    <p>Similarly, assuming the slow variation of the covariance matrix:</p>
+    \begin{equation}\mathbb{C}\text{ov}[\boldsymbol{m}_t] \approx (1 - \beta_1)^2\sum_{s=1}^t \beta_1^{2(t-s)}\boldsymbol{\Sigma}_t/B = (1 - \beta_1)^2\frac{1-\beta_1^{2t}}{1-\beta_1^2}\boldsymbol{\Sigma}_t/B = \frac{1 - \beta_1}{1 + \beta_1}\boldsymbol{\Sigma}_t/B \qquad (t\to\infty)\end{equation}
+    <p>Substituting into Equation \eqref{eq:eta-opt} gives:</p>
+    \begin{equation}\eta^* \approx \frac{\eta_{\max}}{1 + \frac{1 - \beta_1}{1 + \beta_1}\mathcal{B}_{\text{noise}}/B},\qquad \eta_{\max} = \frac{\boldsymbol{g}^{\top}\boldsymbol{g}}{\boldsymbol{g}^{\top}\boldsymbol{H}\boldsymbol{g}},\quad\mathcal{B}_{\text{noise}} = \frac{\tr(\boldsymbol{\Sigma}\boldsymbol{H})}{\boldsymbol{g}^{\top}\boldsymbol{H}\boldsymbol{g}}\end{equation}
+    <p>From this result, we can see that the introduction of a momentum mechanism is equivalent to enlarging the batch size of SGD by a factor of $\frac{1 + \beta_1}{1 - \beta_1}$. In my understanding, momentum eliminates gradient noise at a low cost by performing an EMA on the gradients along the optimization trajectory, so this result is consistent with my interpretation of the significance of momentum.</p>
+
+    <h2>Sign Momentum</h2>
+    <p>Furthermore, let's consider SignSGDM, which can be seen as a special case of <a href="translation_9473.html">Lion</a>, essentially being SGDM with an added $\sign$ function:</p>
+    \begin{equation}
+    \begin{aligned}
+    &\boldsymbol{m}_t = \beta_1 \boldsymbol{m}_{t-1} + \left(1 - \beta_1\right) \boldsymbol{g}_t \\[4pt]
+    &\boldsymbol{w}_t = \boldsymbol{w}_{t-1} - \eta_t \sign(\boldsymbol{m}_t)
+    \end{aligned}
+    \end{equation}
+    <p>In actual training, $\boldsymbol{g}_t$ is likewise replaced by $\tilde{\boldsymbol{g}}_{B,t}$. For SignSGDM, $\tilde{\boldsymbol{\varphi}}_B = \sign(\boldsymbol{m}_t)$. According to the mean-field approximation:</p>
+    \begin{equation}\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B] = \mathbb{E}\bigg[\frac{\boldsymbol{m}_t}{\sqrt{\boldsymbol{m}_t^2}}\bigg]\approx \frac{\mathbb{E}[\boldsymbol{m}_t]}{\sqrt{\mathbb{E}[\boldsymbol{m}_t^2]}}\end{equation}
+    <p>Where vector multiplication defaults to the Hadamard product. We have already calculated the numerator $\mathbb{E}[\boldsymbol{m}_t]$. The denominator $\mathbb{E}[\boldsymbol{m}_t^2]$ is actually equal to $\diag(\mathbb{E}[\boldsymbol{m}_t \boldsymbol{m}_t^{\top}])$, so we can substitute the results from the previous section to get:</p>
+    \begin{equation}\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B] \approx \frac{\boldsymbol{g}_t}{\sqrt{\boldsymbol{g}_t^2 + \frac{1 - \beta_1}{1 + \beta_1}\boldsymbol{\sigma}_t^2/B}} = \frac{\sign(\boldsymbol{g}_t)}{\sqrt{1 + \frac{1 - \beta_1}{1 + \beta_1}(\boldsymbol{\sigma}_t^2/\boldsymbol{g}_t^2)/B}} \approx \frac{\sign(\boldsymbol{g}_t)}{\sqrt{1 + \frac{1 - \beta_1}{1 + \beta_1} \mathcal{B}_{\text{simple}}/B}}\end{equation}
+    <p>Where $\boldsymbol{\sigma}_t^2 = \diag(\boldsymbol{\Sigma}_t)$ and $\mathcal{B}_{\text{simple}} = \tr(\boldsymbol{\Sigma}_t)/\boldsymbol{g}_t^{\top}\boldsymbol{g}_t$. This formula is equivalent to SignSGD where $B$ is replaced by $\frac{1 + \beta_1}{1 - \beta_1}B$. If we further calculate $\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B\tilde{\boldsymbol{\varphi}}_B^{\top}]$, we will find the same conclusion. Thus, like SGDM, momentum is equivalent to enlarging the batch size of SignSGD by a factor of $\frac{1 + \beta_1}{1 - \beta_1}$.</p>
+
+    <p>In <a href="translation_11285.html">"Rethinking Learning Rate and Batch Size (III): Muon"</a>, we calculated the learning rate law for Muon and found it consistent with SignSGD. Thus, we can assert that the role of momentum in Muon is the same as in SignSGDM, approximating an enlargement of the batch size by a factor of $\frac{1 + \beta_1}{1 - \beta_1}$.</p>
+
+    <h2>Double Smoothing</h2>
+    <p>Finally, let's look at Adam:</p>
+    \begin{equation}
+    \begin{aligned}
+    &\boldsymbol{m}_t = \beta_1 \boldsymbol{m}_{t-1} + \left(1 - \beta_1\right) \boldsymbol{g}_t\\
+    &\boldsymbol{v}_t = \beta_2 \boldsymbol{v}_{t-1} + \left(1 - \beta_2\right) \boldsymbol{g}_t^2\\
+    &\hat{\boldsymbol{m}}_t = \boldsymbol{m}_t/\left(1 - \beta_1^t\right)\\
+    &\hat{\boldsymbol{v}}_t = \boldsymbol{v}_t/\left(1 - \beta_2^t\right)\\
+    &\boldsymbol{\theta}_t = \boldsymbol{\theta}_{t-1} - \eta_t \hat{\boldsymbol{m}}_t/\left(\sqrt{\hat{\boldsymbol{v}}_t} + \epsilon\right)
+    \end{aligned}
+    \end{equation}
+    <p>In actual training, $\boldsymbol{g}_t$ is replaced by $\tilde{\boldsymbol{g}}_{B,t}$. We are considering the state where training has entered the "right track," i.e., $t \to \infty$, so we do not distinguish between $\boldsymbol{m}_t$ and $\hat{\boldsymbol{m}}_t$, or $\boldsymbol{v}_t$ and $\hat{\boldsymbol{v}}_t$. At the same time, we focus on the effect of EMA, so we set $\epsilon = 0$. For Adam, we have $\tilde{\boldsymbol{\varphi}}_B = \boldsymbol{m}_t/\sqrt{\boldsymbol{v}_t}$. The difference between it and SignSGDM is that the $\boldsymbol{m}_t^2$ in the denominator is replaced by another EMA statistic $\boldsymbol{v}_t$.</p>
+
+    <p>From the mean-field approximation:</p>
+    \begin{equation}\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B] = \mathbb{E}\bigg[\frac{\boldsymbol{m}_t}{\sqrt{\boldsymbol{v}_t}}\bigg]\approx \frac{\mathbb{E}[\boldsymbol{m}_t]}{\sqrt{\mathbb{E}[\boldsymbol{v}_t]}}\end{equation}
+    <p>We have already calculated $\mathbb{E}[\boldsymbol{m}_t]$, so we only need to calculate $\mathbb{E}[\boldsymbol{v}_t]$:</p>
+    \begin{equation}\mathbb{E}[\boldsymbol{v}_t] = (1 - \beta_2)\sum_{s=1}^t \beta_2^{t-s}\mathbb{E}[\tilde{\boldsymbol{g}}_{B,s}^2] = (1 - \beta_2)\sum_{s=1}^t \beta_2^{t-s}(\boldsymbol{g}_s^2 + \boldsymbol{\sigma}_s^2/B)\approx \boldsymbol{g}_t^2 + \boldsymbol{\sigma}_t^2/B\end{equation}
+    <p>As before, the last approximation assumes slow variation of the gradient and variance, and $t \to \infty$. Thus, we have:</p>
+    \begin{equation}\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B] \approx \frac{\boldsymbol{g}_t}{\sqrt{\boldsymbol{g}_t^2 + \boldsymbol{\sigma}_t^2/B}} \approx \frac{\sign(\boldsymbol{g}_t)}{\sqrt{1 + \mathcal{B}_{\text{simple}}/B}}\end{equation}
+    <p>This result is identical to that of SignSGD, so based on the first moment alone, it is reasonable to use SignSGD as an approximation for Adam. However, we also have the second moment $\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B \tilde{\boldsymbol{\varphi}}_B^{\top}]$. Under the assumption of independent components, we only need to calculate $\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B^2]$:</p>
+    \begin{equation}\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B^2] = \mathbb{E}\bigg[\frac{\boldsymbol{m}_t^2}{\boldsymbol{v}_t}\bigg]\approx \frac{\mathbb{E}[\boldsymbol{m}_t^2]}{\mathbb{E}[\boldsymbol{v}_t]} \approx \frac{\boldsymbol{g}_t^2 + \frac{1 - \beta_1}{1 + \beta_1}\boldsymbol{\sigma}_t^2/B}{\boldsymbol{g}_t^2 + \boldsymbol{\sigma}_t^2/B}\label{eq:u2-adam}\end{equation}
+
+    <h2>Two Special Cases</h2>
+    <p>Let's observe two special cases. First is $\beta_1=0$. In this case, the numerator and denominator are the same, and $\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B^2]$ is a vector of ones, consistent with SignSGD. Thus, SignSGD is a good approximation for Adam with $\beta_1=0$—which is <a href="https://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf">RMSProp</a>. As $\beta_1$ increases, the approximation quality begins to degrade.</p>
+
+    <p>When $\beta_1=1$, we have:</p>
+    \begin{equation}\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B^2] \approx \frac{\boldsymbol{g}_t^2}{\boldsymbol{g}_t^2 + \boldsymbol{\sigma}_t^2/B}\approx \mathbb{E}[\tilde{\boldsymbol{\varphi}}_B]^2\end{equation}
+    <p>From this, we get $\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B \tilde{\boldsymbol{\varphi}}_B^{\top}] \approx \mathbb{E}[\tilde{\boldsymbol{\varphi}}_B] \mathbb{E}[\tilde{\boldsymbol{\varphi}}_B]^{\top}$. Substituting into Equation \eqref{eq:eta-opt} gives:</p>
+    \begin{equation}\eta^* \approx \frac{\Vert \boldsymbol{g}\Vert_1 \sqrt{1 + \mathcal{B}_{\text{simple}}/B}}{\sign(\boldsymbol{g})^{\\top} \boldsymbol{H} \sign(\boldsymbol{g})}\end{equation}
+    <p>Note that this is a monotonically decreasing function of $B$, meaning that the optimal learning rate should decrease as the batch size increases. From this, we can infer that an increase in Adam's $\beta_1$ will accelerate the appearance of the "<a href="https://kexue.fm/archives/11280#%E5%8F%8D%E5%B8%B8%E7%8E%B0%E8%B1%A1">Surge phenomenon</a>".</p>
+
+    <p>This conclusion might seem slightly puzzling, but it is easier to understand from another perspective. The "Surge phenomenon" refers to the situation where, after the batch size exceeds a certain threshold, the optimal learning rate decreases as the batch size increases. The previous results for SGDM and SignSGDM both indicate that the introduction of momentum is approximately equivalent to enlarging the batch size by a factor of $\frac{1 + \beta_1}{1 - \beta_1} > 1$, which naturally increases the likelihood of exceeding the threshold.</p>
+
+    <p>In other words, the conclusion that "as $\beta_1$ increases, the 'Surge phenomenon' becomes more likely to occur" holds even for SignSGDM. While Adam has some novel characteristics compared to SignSGDM, the fact that "the momentum mechanism is equivalent to enlarging the batch size" always holds, making the similar conclusion easy to understand.</p>
+
+    <h2>General Analysis</h2>
+    <p>Let's rewrite Equation \eqref{eq:u2-adam}:</p>
+    \begin{equation}\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B^2] \approx \frac{\boldsymbol{g}_t^2 + \frac{1 - \beta_1}{1 + \beta_1}\boldsymbol{\sigma}_t^2/B}{\boldsymbol{g}_t^2 + \boldsymbol{\sigma}_t^2/B} = \frac{2\beta_1}{1+\beta_1}\frac{\boldsymbol{g}_t^2}{\boldsymbol{g}_t^2 + \boldsymbol{\sigma}_t^2/B} + \frac{1 - \beta_1}{1 + \beta_1} \approx \frac{2\beta_1}{1+\beta_1}\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B]^2 + \frac{1 - \beta_1}{1 + \beta_1}\end{equation}
+    <p>From this, we can write:</p>
+    \begin{equation}\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B \tilde{\boldsymbol{\varphi}}_B^{\top}] \approx \mathbb{E}[\tilde{\boldsymbol{\varphi}}_B] \mathbb{E}[\tilde{\boldsymbol{\varphi}}_B]^{\top} + \frac{1 - \beta_1}{1 + \beta_1}\diag\left(1 - \mathbb{E}[\tilde{\boldsymbol{\varphi}}_B]^2\right)\end{equation}
+    <p>Then:</p>
+    \begin{equation}\eta^* \approx \frac{\sum_i |g_i|}{\frac{1}{\beta}\frac{1 - \beta_1}{1 + \beta_1}\sum_i H_{i,i} + \beta\left(\sum_{i,j} H_{i,j}\sign(g_i g_j) - \frac{1 - \beta_1}{1 + \beta_1}\sum_i H_{i,i}\right)}\end{equation}
+    <p>Here, the $\beta$ without a subscript equals $(1 + \mathcal{B}_{\text{simple}}/B)^{-1/2}$. I apologize if this is easily confused with $\beta_1, \beta_2$; I have used the notation from the previous two articles. Unlike SignSGD, which does not exhibit the Surge phenomenon if it is assumed that the Hessian matrix is diagonal, the above formula shows the Surge phenomenon even under the diagonal Hessian assumption. In that case:</p>
+    \begin{equation}\eta^* \approx \frac{\sum_i |g_i|}{\left(\frac{1}{\beta}\frac{1 - \beta_1}{1 + \beta_1} + \beta\frac{2\beta_1}{1 + \beta_1}\right)\sum_i H_{i,i}}\end{equation}
+    <p>By the inequality of arithmetic and geometric means, the above expression reaches its maximum value at $\beta^*=\sqrt{\frac{1-\beta_1}{2\beta_1}}$. Note that by the definition of $\beta$, it is in $(0, 1)$, so we must also check if $\beta^* \in (0, 1)$, which requires $\beta_1 > 1/3$. If this condition is not met, the maximum is still reached at $\beta=1$, and there is no Surge phenomenon. Conversely, when $\beta_1 > 1/3$ and $\beta > \beta^*$ (i.e., $B > \frac{1-\beta_1}{3\beta_1-1}\mathcal{B}_{\text{simple}}$), the learning rate should decrease as the batch size increases.</p>
+
+    <p>This conclusion can preliminarily explain why Muon can support larger batch sizes. From <a href="translation_11285.html">"Rethinking Learning Rate and Batch Size (III): Muon"</a>, we know that Muon's behavior is similar to SignSGDM. Under certain Hessian structure assumptions, it does not exhibit the Surge phenomenon, meaning that increasing the batch size always improves learning efficiency, although the relative gains diminish.</p>
+
+    <p>In contrast, Adam, under common settings (such as $\beta_1=0.9$), exhibits the Surge phenomenon even when the Hessian is assumed to be diagonal. This means that after the batch size exceeds a certain value, learning efficiency decreases.</p>
+
+    <h2>Article Summary</h2>
+    <p>This article provides a preliminary analysis of the impact of an optimizer's EMA mechanism on the scaling laws of learning rate and batch size. It confirms that the introduction of EMA, particularly the momentum mechanism, slightly alters the scaling laws. Optimizers like Adam, which involve double EMA operations, present some new characteristics distinct from SignSGD.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_11301.html" style="color: #005fcc;">https://kexue.fm/archives/11301</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

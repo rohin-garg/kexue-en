@@ -1,0 +1,443 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/5112">Another New Year's Feast: From K-Means to Capsule</a></h1>
+    <p>By 苏剑林 | February 12, 2018</p>
+
+    <p>In this article, we perform another analysis of Capsule.</p>
+
+    <p>Overall, the details of the Capsule algorithm are not very complex; if you follow the process, implementing it with a framework is basically no problem. Therefore, the difficult part is understanding exactly what Capsule does and why it does it that way, especially those steps in Dynamic Routing.</p>
+
+    <p>Why do I repeatedly analyze Capsule? This is not simply "reheating old rice," but rather an attempt to gain an intuitive understanding of Capsule's principles. As everyone knows, the feeling Capsule gives is that there is "too much man-made convention," lacking a direct sense of "even if I don't fully understand it, I believe it should be this way." I hope to think through the origin and development of Capsule as clearly as possible, so that we can feel that Capsule is a natural and smooth model, and even draw inferences from it.</p>
+
+    <p>In <a href="translation_4819.html">"Unveiling the Mist: A Delicious Capsule Feast,"</a> I first analyzed the results of dynamic routing and then pointed out that the output is a kind of clustering of the input. This "from result to cause" process had more or less a component of speculation based on the literal meaning. This time, we do it the other way around: we directly confirm that the output is a clustering of the input, and then reverse-engineer what dynamic routing should look like, which greatly reduces the ambiguous components. The two articles complement each other to a certain extent.</p>
+
+    <h2 id="Capsule框架">Capsule Framework</h2>
+
+    <p style="text-align:center"><img src="https://kexue.fm/usr/uploads/2018/02/1000572561.png" alt="Simple illustration of the Capsule framework" /><br />Figure 1: Simple orientation diagram of the Capsule framework</p>
+
+    <p>Rather than calling Capsule a specific model, it is better to call Capsule a modeling framework. Within the framework, the content of each step can be flexibly replaced, and the paper published by Hinton is just one use case.</p>
+
+    <p>What kind of framework is this?</p>
+
+    <h3 id="特征表达">Feature Representation</h3>
+
+    <p>In the Capsule model, <strong>each feature is represented by a vector (i.e., Capsule, capsule)</strong>.</p>
+
+    <p style="text-align:center"><img src="https://kexue.fm/usr/uploads/2018/02/3358045618.png" alt="Each feature of Capsule is a vector, progressing through clustering" /><br />Figure 2: Each feature of Capsule is a vector, and they progress via clustering</p>
+
+    <p>Of course, for readers who follow the news, this is no longer new. Readers might have questions: What's so special about using vectors to represent features? Isn't the feature input of a neural network already a vector? In a traditional neural network (MLP), each layer's input is a vector $\boldsymbol{x}\in\mathbb{R}^n$, and the output is $\boldsymbol{y}=Activation(\boldsymbol{W}\boldsymbol{x}+\boldsymbol{b})\in \mathbb{R}^k$. We treat each component of $\boldsymbol{x}$ as a feature, so each feature is a scalar. After the so-called vectorization of features, each layer's input becomes $\boldsymbol{x}\in\mathbb{R}^{n\times d_x}$, and the output is $\boldsymbol{y}=Routing(\boldsymbol{x})\in \mathbb{R}^{k\times d_y}$. At this time, input $\boldsymbol{x}$ is also seen as $n$ features, but each feature is a $d_x$-dimensional vector; output $\boldsymbol{y}$ is seen as $k$ features, with each feature being a $d_y$-dimensional vector. From another perspective, this simply means that for an MLP, each layer's input and output have changed from a single vector to a set of vectors (a matrix).</p>
+
+    <p>Alternatively, we can change its name to "distributed representation of features." Perhaps readers who see "distributed representation" will think of word vectors in NLP. Correct, word vectors were initially called "Distributed Representations," and my first reaction to this characteristic of Capsule was word vectors. We can use word vectors instead of one-hot encoding to represent a word, making the information expressed much richer, and since all words are located in the same vector space, it facilitates subsequent processing.</p>
+
+    <p>Furthermore, there are already such examples in images. As everyone knows, color images generally have three channels: RGB, with 256 choices for each channel, so they can express a total of $256^3=16777216$ colors (about 17 million). Why not directly use 17 million numbers to represent these 1700 colors separately, but instead divide them into three groups with 256 numbers each? This is actually a kind of distributed representation, which can better express the diversity of colors (for example, what are the colors similar to red? Some might say orange, some say purple, maybe pink; a single number is difficult to express various similarities, whereas grouping them makes it possible). Furthermore, when we continuously perform convolution operations on images, the channel dimension of the resulting output is actually a kind of distributed representation of the image features.</p>
+
+    <h3 id="特征组合">Feature Combination</h3>
+
+    <p>The second characteristic of Capsule is <strong>combining features through clustering</strong>.</p>
+
+    <h4 id="组合与表达">Combination and Representation</h4>
+
+    <p>Combining low-level features into high-level features is consistent with our cognitive patterns. In NLP, we have a layered combination of "character --> word --> sentence --> paragraph"; in images, we also have layered combinations of "point --> line --> surface --> volume." When facing new things (high-level features), we always decompose them into things we are familiar with (low-level features), and then our minds map these things to the new thing (feature combination).</p>
+
+    <p>For us, this process of decomposition and combination doesn't necessarily have a specific purpose but is simply done to understand this new thing in our own way (forming a good feature representation in the brain). This also explains one of the reasons why Hinton criticizes deep learning and developed Capsule: he feels that current deep learning models are too task-specific (for example, an MNIST classification model can only do single-digit recognition; recognizing multiple digits requires rebuilding the dataset, redesigning, and retraining the model). In fact, our ultimate goal is not simply to perform tasks, but to form good, universal feature representations through tasks, which is the only way to achieve true artificial intelligence.</p>
+
+    <h4 id="特征间聚类">Inter-feature Clustering</h4>
+
+    <p>So, how is this combination process completed? Think about why two characters can become a word: it's because these two characters often appear "clustered" together, and this "cluster" only contains them. This tells us that the aggregation of features happens because they have a clustering tendency, so Capsule integrates clustering algorithms into the model.</p>
+
+    <p>It should be noted that the clustering we discussed in the past usually refers to clustering between samples, such as automatically clustering MNIST images into 10 categories, or clustering word vectors trained by Word2Vec into several classes. The object of clustering is a single sample (input). Capsule, on the other hand, envisions representing the input itself as several feature vectors and then performing clustering on these vectors (<strong>inter-feature clustering</strong>) to obtain several center vectors, then clustering these center vectors further, layer by layer, thereby completing the process of layered abstraction. This is a form of clustering between features within a single representation.</p>
+
+    <p>Now the question arises. Since it is clustering, what method is used for clustering? And how is that magical Dynamic Routing derived according to this clustering method? We will trace the source starting from K-Means later, but for now, let's finish the main idea.</p>
+
+    <h4 id="特征显著性">Feature Significance</h4>
+
+    <p>Higher-level features can be obtained through the combination of features, but how do we compare the strength of features? <strong>Capsule's answer is: vector length.</strong> This is just like finding the "prominent" one among a vast number of vectors? You just need to see who is "taller." Therefore, using the length of the feature vector to measure its own "degree of prominence" is obviously a natural choice. Additionally, a bounded metric is desirable, so we apply a compression to the feature vector:
+    $$squash(\boldsymbol{v})=\frac{\Vert\boldsymbol{v}\Vert^2}{1+\Vert\boldsymbol{v}\Vert^2}\frac{\boldsymbol{v}}{\Vert\boldsymbol{v}\Vert}\tag{1}$$
+    The compression scheme is not unique, so we won't expand on it here. However, during my experiments, I found that replacing 1 with 0.5 can improve performance.</p>
+
+    <p style="text-align:center"><img src="https://kexue.fm/usr/uploads/2018/02/1943825945.png" alt="Capsule characterizes combination properties via clustering of feature vectors" /><br />Figure 3: Capsule characterizes the combination properties of features through the clustering of feature vectors</p>
+
+    <p>To emphasize this meaning of length, coordination is also needed in the model design. As shown in the figure, although the lengths of the feature vectors $\boldsymbol{u}_1,\boldsymbol{u}_2,\boldsymbol{u}_4,\boldsymbol{u}_8$ contained in the class represented by $\boldsymbol{v}_1$ are relatively small, because there are many members ("many little brothers"), the length of $\boldsymbol{v}_1$ can also dominate ("great power"). This shows that for a class to be prominent, it is related to both the number of vectors in the class and the lengths of the vectors within the class themselves. Later we will see how Capsule reflects this.</p>
+
+    <h2 id="K-Means新探">A New Exploration of K-Means</h2>
+
+    <p>Since this article repeatedly emphasizes that Capsule abstracts features through clustering, it is necessary to talk in detail about clustering algorithms. The clustering algorithm used by Capsule is actually a variant of K-Means. There are many clustering algorithms, and while theoretically every clustering algorithm is possible, embedding a clustering algorithm into Capsule requires a bit of effort.</p>
+
+    <h3 id="聚类目标">Clustering Objective</h3>
+
+    <p>K-Means clustering is essentially a "centroid-based clustering method"—clustering is about finding class centers. To define a center, we need a measure of proximity. The most common is Euclidean distance, but it is not the only choice. So here we simply introduce K-Means in a more <strong>generalized framework</strong>: K-Means hopes to unsupervisedly divide existing data $\boldsymbol{u}_1, \boldsymbol{u}_2, \dots, \boldsymbol{u}_n$ into $k$ classes. The clustering method is to find $k$ clustering centers $\boldsymbol{v}_1, \boldsymbol{v}_2, \dots, \boldsymbol{v}_k$ to minimize the intra-class interval:
+    $$L=\sum_{i=1}^n \min_{j=1}^k d(\boldsymbol{u}_i, \boldsymbol{v}_j)\tag{2}$$
+    Here $d$ represents the measure of proximity, so the meaning of this formula is simple: it says that each $\boldsymbol{u}_i$ belongs only to the class closest to it, and then all intra-class distances are summed to minimize this total intra-class distance:
+    $$(\boldsymbol{v}_1, \dots, \boldsymbol{v}_k) = \mathop{\text{argmin}}_{(\boldsymbol{v}_1, \dots, \boldsymbol{v}_k)}L\tag{3}$$</p>
+
+    <blockquote>
+        Note: Obviously, the result of clustering depends on the specific form of $d$. This actually tells us: the difference between unsupervised learning and supervised learning lies in the way we "communicate" with the model. In supervised learning, we convey our intentions to the model through labeled data; in unsupervised learning, we complete this process by designing an appropriate metric $d$.
+    </blockquote>
+
+    <h3 id="求解过程">The Solving Process</h3>
+
+    <p>How do we minimize $L$ to find the various centers? If the reader does not wish to understand the derivation process in detail, they can skip this section and go directly to the next.</p>
+
+    <p>Because there is a $\min$ operation in $L$, calculating its gradient directly is difficult (it's not impossible, but it's hard to handle near the critical points). In fact, many similar problems have not been well resolved because their loss functions contain $\min$ (we'll talk about this if we have the chance in the future).</p>
+
+    <p>However, we can "soften" this $L$ so that it becomes differentiable. Since we have a very beautiful formula (refer to <a href="translation_3290.html">"Seeking a Smooth Maximum Function"</a>):
+    $$\begin{aligned}\max(\lambda_1,\lambda_2,\dots,\lambda_n)=&\lim_{K\to+\infty}\frac{1}{K}\ln\left(\sum_{i=1}^n e^{\lambda_i K}\right)\\
+    \approx&\frac{1}{K}\ln\left(\sum_{i=1}^n e^{\lambda_i K}\right)\end{aligned}\tag{4}$$</p>
+
+    <blockquote>
+        Note: If $K=1$, obviously the part in parentheses is the denominator of the softmax, which is where softmax comes from—it is a "soft" plus "max"—a "soft maximum."
+    </blockquote>
+
+    <p>And we have:
+    $$\min(\lambda_1,\lambda_2,\dots,\lambda_n)=-\max(-\lambda_1,-\lambda_2,\dots,-\lambda_n)\tag{5}$$
+    Thus we get:
+    $$L\approx-\frac{1}{K}\sum_{i=1}^n \ln\left(\sum_{j=1}^k e^{-K\cdot d(\boldsymbol{u}_i, \boldsymbol{v}_j)}\right)=-\frac{1}{K}\sum_{i=1}^n\ln Z_i\tag{6}$$
+    Now this approximate loss is smooth and differentiable globally. Therefore, we can try to find its gradient:
+    $$\frac{\partial L}{\partial \boldsymbol{v}_j}\approx\sum_{i=1}^n \frac{e^{-K\cdot d(\boldsymbol{u}_i, \boldsymbol{v}_j)}}{Z_i} \frac{\partial d(\boldsymbol{u}_i, \boldsymbol{v}_j)}{\partial \boldsymbol{v}_j}=\sum_{i=1}^n c_{ij}\frac{\partial d(\boldsymbol{u}_i, \boldsymbol{v}_j)}{\partial \boldsymbol{v}_j}\tag{7}$$
+    Here,
+    $$c_{ij}=\mathop{softmax}\limits_j\Big(-K\cdot d(\boldsymbol{u}_i, \boldsymbol{v}_j)\Big)$$
+    We have specified that normalization is performed over the dimension for $j$. To find a local minimum, we hope to set $\partial L/\partial \boldsymbol{v}_j=0$, but the resulting equation is not simply solvable. Therefore, we can introduce an iterative process. Assuming $\boldsymbol{v}^{(r)}_j$ is the result of the $r$-th iteration for $\boldsymbol{v}_j$, then we can set:
+    $$0=\sum_{i=1}^n c_{ij}^{(r)}\frac{\partial d(\boldsymbol{u}_i, \boldsymbol{v}_j^{(r+1)})}{\partial \boldsymbol{v}_j^{(r+1)}}\tag{8}$$
+    If we can solve for $\boldsymbol{v}_j^{(r+1)}$ from the above equation, then we can obtain an iterative format from it.</p>
+
+    <h3 id="欧氏距离">Euclidean Distance</h3>
+
+    <p>Now we can substitute our chosen metric into equation $(8)$ for calculation. We can look at a basic example: $d(\boldsymbol{u}_i, \boldsymbol{v}_j)=\Vert\boldsymbol{u}_i - \boldsymbol{v}_j\Vert^2$. Then we have:
+    $$\frac{\partial d(\boldsymbol{u}_i, \boldsymbol{v}_j)}{\partial \boldsymbol{v}_j}=2(\boldsymbol{v}_j-\boldsymbol{u}_i)\tag{9}$$
+    According to equation $(8)$, we get $0=2\sum\limits_{i=1}^n c_{ij}^{(r)}\left(\boldsymbol{v}_j^{(r+1)}-\boldsymbol{u}_i\right)$, from which we can solve:
+    $$v_{j}^{(r+1)}=\frac{\sum\limits_{i=1}^n c_{ij}^{(r)}\boldsymbol{u}_i}{\sum\limits_{i=1}^n c_{ij}^{(r)}}\tag{10}$$
+    If we take the limit $K\to+\infty$, then $c_{ij}^{(r)}$ is either 0 or 1, so the above formula says (the reader can complete the proof themselves):</p>
+
+    <blockquote>
+        $\boldsymbol{v}_{j}^{(r+1)}$ is the average value of those $\boldsymbol{u}_i$ closest to $\boldsymbol{v}_{j}^{(r)}$.
+    </blockquote>
+
+    <p>This gives us the K-Means clustering algorithm we usually talk about.</p>
+
+    <h3 id="内积相似度">Inner Product Similarity</h3>
+
+    <p>Euclidean distance is not suitable for use in Capsule because the center vector obtained by Euclidean distance is the average of the vectors within the class. Thus, no matter how many vectors are in the class, it will not lead to a longer center vector, which does not satisfy the "more little brothers, greater power" design we mentioned earlier.</p>
+
+    <p>What kind of distance is more suitable? In the paper "Dynamic Routing Between Capsules," there is a passage:</p>
+
+    <blockquote>
+        The initial coupling coefficients are then iteratively refined by measuring the agreement between the current output $\boldsymbol{v}_j$ of each capsule, $j$, in the layer above and the prediction $\boldsymbol{\hat{u}_{j|i}}$ made by capsule $i$.<br /><br />
+        The agreement is simply the scalar product $a_{ij} = \boldsymbol{v}_j \cdot \boldsymbol{\hat{u}_{j|i}}$ ...
+    </blockquote>
+
+    <p>Corresponding to this article, the approximate meaning is to use the inner product $\langle\boldsymbol{u}_i, \boldsymbol{v}_j\rangle$ as a measure of similarity, which means $d(\boldsymbol{u}_i, \boldsymbol{v}_j)=-\langle\boldsymbol{u}_i, \boldsymbol{v}_j\rangle$. But careful thinking reveals a problem, because such a $d$ is unbounded from below! We cannot use a function without a lower bound as a loss, so I was confused by this for a long time. Until one day, I felt that $\boldsymbol{v}_j$ could be normalized first before calculating the inner product. In this way, it is actually:
+    $$d(\boldsymbol{u}_i, \boldsymbol{v}_j)=-\left\langle\boldsymbol{u}_i, \frac{\boldsymbol{v}_j}{\Vert\boldsymbol{v}_j\Vert}\right\rangle\tag{11}$$
+    Now for a fixed $\boldsymbol{u}_i$, no matter how $\boldsymbol{v}_j$ changes, $d(\boldsymbol{u}_i, \boldsymbol{v}_j)$ has a lower bound. So this $d$ can be used as a loss. Substituting into equation $(8)$, the final result obtained is:
+    $$\frac{\boldsymbol{v}_j^{(r+1)}}{\left\Vert\boldsymbol{v}_j^{(r+1)}\right\Vert}=\frac{\sum\limits_{i=1}^n c_{ij}^{(r)}\boldsymbol{u}_i}{\left\Vert\sum\limits_{i=1}^n c_{ij}^{(r)}\boldsymbol{u}_i\right\Vert}\tag{12}$$
+    That is to say, the directions of $\boldsymbol{v}_j^{(r+1)}$ and $\sum\limits_{i=1}^n c_{ij}^{(r)}\boldsymbol{u}_i$ are the same, but this does not mean they are equal. However, this also means we can indeed simply take:
+    $$\boldsymbol{v}_j^{(r+1)}=\sum\limits_{i=1}^n c_{ij}^{(r)}\boldsymbol{u}_i\tag{13}$$
+    If we take the limit $K\to +\infty$, then it means:</p>
+
+    <blockquote>
+        $\boldsymbol{v}_{j}^{(r+1)}$ is the sum of those $\boldsymbol{u}_i$ closest to $\boldsymbol{v}_{j}^{(r)}$.
+    </blockquote>
+
+    <p>Since we are now performing summation, it can reflect the characteristic of "more little brothers, greater power." (Note that "closest" appears here and in the Euclidean distance section, but the meanings of "closest" are different because the chosen $d$ is different.)</p>
+
+    <blockquote>
+        Note: The derivation of equation $(12)$.
+        $$\begin{aligned}\frac{\partial\left\langle\boldsymbol{u}_i, \frac{\boldsymbol{v}_j}{\Vert\boldsymbol{v}_j\Vert}\right\rangle}{\partial \boldsymbol{v}_j}=&\frac{\partial \left(\boldsymbol{u}_i \cdot \frac{\boldsymbol{v}_j}{\Vert\boldsymbol{v}_j\Vert}\right)}{\partial \boldsymbol{v}_j}\\
+        =&\frac{\boldsymbol{u}_i}{\Vert\boldsymbol{v}_j\Vert}+(\boldsymbol{u}_i \cdot \boldsymbol{v}_j)\frac{\partial}{\partial \boldsymbol{v}_j}\frac{1}{\Vert\boldsymbol{v}_j\Vert}\\
+        =&\frac{\boldsymbol{u}_i}{\Vert\boldsymbol{v}_j\Vert}-(\boldsymbol{u}_i \cdot \boldsymbol{v}_j)\frac{\boldsymbol{v}_j}{\Vert\boldsymbol{v}_j\Vert^3}\end{aligned}$$
+        Then according to equation $(8)$, we get
+        $$0=\frac{\sum\limits_{i=1}^n C_{ij}^{(r)}\boldsymbol{u}_i}{\left\Vert\boldsymbol{v}_j^{(r+1)}\right\Vert}-\left(\sum\limits_{i=1}^n C_{ij}^{(r)}\boldsymbol{u}_i \cdot \boldsymbol{v}_j^{(r+1)}\right)\frac{\boldsymbol{v}_j^{(r+1)}}{\left\Vert\boldsymbol{v}_j^{(r+1)}\right\Vert^3}$$
+        Rearranging:
+        $$\sum\limits_{i=1}^n C_{ij}^{(r)}\boldsymbol{u}_i=\left(\sum\limits_{i=1}^n C_{ij}^{(r)}\boldsymbol{u}_i \cdot \frac{\boldsymbol{v}_j^{(r+1)}}{\left\Vert\boldsymbol{v}_j^{(r+1)}\right\Vert}\right)\frac{\boldsymbol{v}_j^{(r+1)}}{\left\Vert\boldsymbol{v}_j^{(r+1)}\right\Vert}$$
+        Taking the norm of both sides:
+        $$\left\Vert\sum\limits_{i=1}^n C_{ij}^{(r)}\boldsymbol{u}_i\right\Vert=\left|\sum\limits_{i=1}^n C_{ij}^{(r)}\boldsymbol{u}_i \cdot \frac{\boldsymbol{v}_j^{(r+1)}}{\left\Vert\boldsymbol{v}_j^{(r+1)}\right\Vert}\right|=\left\Vert\sum\limits_{i=1}^n C_{ij}^{(r)}\boldsymbol{u}_i\right\Vert \times |\cos\theta|$$
+        Where $\theta$ is the angle between the vector $\sum\limits_{i=1}^n C_{ij}^{(r)}\boldsymbol{u}_i$ and the vector $\boldsymbol{v}_j^{(r+1)}$. The above formula shows $|\cos\theta|=1$, so $\theta=0$ or $\pi$. Since $\theta=\pi$ is actually a maximum point rather than a minimum, $\theta=0$, meaning they have the same direction, yielding equation $(12)$.
+    </blockquote>
+
+    <h2 id="动态路由">Dynamic Routing</h2>
+
+    <p>After a long period of preparation, the Dynamic Routing algorithm is ready to emerge.</p>
+
+    <p>According to the first part, we said that each layer in Capsule completes feature combination and abstraction through inter-feature clustering. Clustering requires repeated iteration and is an implicit process. For each layer, we need to find a smooth, explicit expression:
+    $$\boldsymbol{v}_j=\boldsymbol{f}_j(\boldsymbol{u}_1,\dots,\boldsymbol{u}_n)\tag{14}$$
+    to complete the training of the model. <strong>Dynamic routing is the process of writing out this (approximate) explicit expression through iteration.</strong></p>
+
+    <h3 id="基本步骤">Basic Steps</h3>
+
+    <p>Assume the input features of a Capsule layer are $\boldsymbol{u}_1, \boldsymbol{u}_2, \dots, \boldsymbol{u}_n$, and the feature vectors of the next layer are $\boldsymbol{v}_1, \boldsymbol{v}_2, \dots, \boldsymbol{v}_k$. These are the clustering centers obtained by clustering the previous $n$ vectors into $k$ classes, where the clustering metric used is the normalized inner product mentioned before. Thus, we can write out the iterative process:</p>
+
+    <blockquote>
+        Initialize $\boldsymbol{v}_{j} \leftarrow \boldsymbol{v}_{j}^{(0)}$<br />
+        Iterate $r$ times:<br />
+        &emsp;&emsp;$\boldsymbol{v}_{j} \leftarrow \boldsymbol{v}_{j}/\Vert\boldsymbol{v}_{j}\Vert$;<br />
+        &emsp;&emsp;If $j=\mathop{\text{argmax}}\limits_{j=1,\dots,k}\langle\boldsymbol{u}_i,\boldsymbol{v}_j\rangle$, then $c_{ij} \leftarrow 1$, else $c_{ij} \leftarrow 0$;<br />
+        &emsp;&emsp;$\boldsymbol{v}_{j} \leftarrow \sum\limits_{i}c_{ij}\boldsymbol{u}_{i}$;<br />
+        Return $squash(\boldsymbol{v}_j)$.
+    </blockquote>
+
+    <p>This version is easy to understand, but because there is an $\text{argmax}$ operation, we cannot use gradient descent, which is currently the only method for learning other model parameters. To solve this problem, we choose not to take the limit $K\to+\infty$, instead taking a constant $K > 0$, and change the algorithm to:</p>
+
+    <blockquote>
+        Initialize $\boldsymbol{v}_{j} \leftarrow \boldsymbol{v}_{j}^{(0)}$<br />
+        Iterate $r$ times:<br />
+        &emsp;&emsp;$\boldsymbol{v}_{j} \leftarrow \boldsymbol{v}_{j}/\Vert\boldsymbol{v}_{j}\Vert$;<br />
+        &emsp;&emsp;$c_{ij} \leftarrow \mathop{softmax}\limits_j \Big(\langle\boldsymbol{u}_i,K\boldsymbol{v}_j\rangle\Big)$;<br />
+        &emsp;&emsp;$\boldsymbol{v}_{j} \leftarrow \sum\limits_{i}c_{ij}\boldsymbol{u}_{i}$;<br />
+        Return $squash(\boldsymbol{v}_j)$.
+    </blockquote>
+
+    <p>However, this introduces a new parameter $K$. At first glance, if $K$ is too large, gradients vanish; if $K$ is too small, it's not accurate enough, making it difficult to determine. But as we will see later, we can simply let $K=1$, because the solution space for $K=1$ already covers the solution for any $K$. Finally, we get:</p>
+
+    <blockquote>
+        Initialize $\boldsymbol{v}_{j}=\boldsymbol{v}_{j}^{(0)}$<br />
+        Iterate $r$ times:<br />
+        &emsp;&emsp;$\boldsymbol{v}_{j} \leftarrow \boldsymbol{v}_{j}/\Vert\boldsymbol{v}_{j}\Vert$;<br />
+        &emsp;&emsp;$c_{ij} \leftarrow \mathop{softmax}\limits_j \Big(\langle\boldsymbol{u}_i, \boldsymbol{v}_j\rangle\Big)$;<br />
+        &emsp;&emsp;$\boldsymbol{v}_{j} \leftarrow \sum\limits_{i}c_{ij}\boldsymbol{u}_{i}$;<br />
+        Return $squash(\boldsymbol{v}_j)$.
+    </blockquote>
+
+    <p>Interestingly, the final derived result not only differs from Hinton's original paper "Dynamic Routing Between Capsules," but also from my previous introduction. <strong>The most obvious difference is that in the iterative process, $\boldsymbol{v}_{j}/\Vert\boldsymbol{v}_{j}\Vert$ is used to replace $squash(\boldsymbol{v}_j)$, and squash is only performed at the final output.</strong> Experiments show that this helps improve the feature representation ability; in the numerical experiments of my previous article (single-digit training, double-digit prediction), it could reach an accuracy of over 95% (previously 91%).</p>
+
+    <h3 id="三种症状">Three Symptoms</h3>
+
+    <p>Is that all? Far from it. We still need to solve several problems.</p>
+
+    <p><strong>1. How to perform category initialization?</strong> Because clustering results are related to initialization, and good initialization is often more than half the battle for successful clustering. Now that we want to embed clustering into the model as a part of it, how should the various $\boldsymbol{v}_{j}^{(0)}$ be selected? If they are initialized identically, the clustering process cannot be completed; if they are initialized randomly, then a deterministic clustering result cannot be obtained (even if the class center vectors don't change, the order of the classes might change).</p>
+
+    <p><strong>2. How to identify feature order?</strong> We know that clustering results are independent of the order of the samples—that is to say, if the order of input vectors is shuffled, the clustering result is the same. For clustering between samples, this is an advantage; however, for inter-feature clustering, this might be inappropriate, because feature combinations in different orders may represent different meanings (just as word order changes the meaning of a sentence). If they all yield the same result, the order information of features is lost.</p>
+
+    <p><strong>3. How to ensure feature representation ability?</strong> Dynamic routing takes high-level Capsules as clustering results of low-level Capsules. Each class may contain multiple feature vectors, but if only the class center vector is used to represent the overall feature (high-level feature) of the class, will it reduce the feature representation ability of the high-level Capsule?</p>
+
+    <h3 id="一个对策">A Countermeasure</h3>
+
+    <p>Interestingly, all three of the above problems can be solved by the same method: <strong>adding transformation matrices</strong>.</p>
+
+    <p>First, for the sake of simplicity, we split the sum of all $\boldsymbol{u}_i$ evenly into each class as $\boldsymbol{v}_j^{(0)}$. How do we distinguish the different classes? Before outputting to each class, we equip each class with a transformation matrix $\boldsymbol{W}_j$ to distinguish different classes. At this time, dynamic routing becomes:</p>
+
+    <blockquote>
+        Initialize $\boldsymbol{v}_{j} \leftarrow \frac{1}{k}\sum\limits_{i=1}^n\boldsymbol{W}_j\boldsymbol{u}_{i}$<br />
+        Iterate $r$ times:<br />
+        &emsp;&emsp;$\boldsymbol{v}_{j} \leftarrow \boldsymbol{v}_{j}/\Vert\boldsymbol{v}_{j}\Vert$;<br />
+        &emsp;&emsp;$c_{ij} \leftarrow \mathop{softmax}\limits_j \Big(\langle\boldsymbol{W}_j\boldsymbol{u}_i, \boldsymbol{v}_j\rangle\Big)$;<br />
+        &emsp;&emsp;$\boldsymbol{v}_{j} \leftarrow \sum\limits_{i}c_{ij}\boldsymbol{W}_j\boldsymbol{u}_{i}$;<br />
+        Return $squash(\boldsymbol{v}_j)$.
+    </blockquote>
+
+    <p>This is the <strong>Capsule with shared weights</strong> that I mentioned in my previous post. Upon careful consideration, introducing the training matrix $\boldsymbol{W}_j$ is a very clever move. It not only solves the clustering initialization problem (identical initialization is mapped to different initializations by the matrix $\boldsymbol{W}_j$), but also allows the dimension of $\boldsymbol{u}_i$ to be changed through $\boldsymbol{W}_j$, thereby changing the dimension of the resulting center vector after clustering, ensuring the feature representation capability (dimensions can be increased or decreased). Additionally, in the past, when we did classification, we used an inner product with a vector followed by softmax, which essentially uses a vector to represent a class; now, it is equivalent to using a matrix to represent a class, allowing richer class information to be expressed. Furthermore, there is another benefit: we have $\langle\boldsymbol{W}_j\boldsymbol{u}_i, K\boldsymbol{v}_j\rangle=\big\langle\big(K\boldsymbol{W}_j\big)\boldsymbol{u}_i, \boldsymbol{v}_j\big\rangle$, which means it effectively incorporates the previous parameter $K$, allowing us to confidently set $K=1$ without worrying about accuracy—if necessary, the model will adjust $\boldsymbol{W}_j$ itself to achieve the effect of adjusting $K$!</p>
+
+    <p>Now only one last problem remains: identifying the order of input features. Just as with identifying each class, we can also assign a transformation matrix $\boldsymbol{\tilde{W}}_i$ to each input to distinguish different input positions. Thus, the dynamic routing becomes:</p>
+
+    <blockquote>
+        Initialize $\boldsymbol{v}_{j} \leftarrow \frac{1}{k}\sum\limits_{i=1}^n\boldsymbol{W}_j\boldsymbol{\tilde{W}}_i\boldsymbol{u}_{i}$<br />
+        Iterate $r$ times:<br />
+        &emsp;&emsp;$\boldsymbol{v}_{j} \leftarrow \boldsymbol{v}_{j}/\Vert\boldsymbol{v}_{j}\Vert$;<br />
+        &emsp;&emsp;$c_{ij} \leftarrow \mathop{softmax}\limits_j \Big(\langle\boldsymbol{W}_j\boldsymbol{\tilde{W}}_i\boldsymbol{u}_i, \boldsymbol{v}_j\rangle\Big)$;<br />
+        &emsp;&emsp;$\boldsymbol{v}_{j} \leftarrow \sum\limits_{i}c_{ij}\boldsymbol{W}_j\boldsymbol{\tilde{W}}_i\boldsymbol{u}_{i}$;<br />
+        Return $squash(\boldsymbol{v}_j)$.
+    </blockquote>
+
+    <p>If this feels too cumbersome, $\boldsymbol{W}_j\boldsymbol{\tilde{W}}_i$ can be replaced by a single matrix $\boldsymbol{W}_{ji}$, i.e., assigning a transformation matrix to each pair of indices $(i,j)$. The advantage of this is that the whole structure is simpler and clearer, while the disadvantage is that the number of matrices increases from $n+k$ to $nk$:</p>
+
+    <blockquote>
+        Initialize $\boldsymbol{v}_{j} \leftarrow \frac{1}{k}\sum\limits_{i=1}^n\boldsymbol{W}_{ji}\boldsymbol{u}_{i}$<br />
+        Iterate $r$ times:<br />
+        &emsp;&emsp;$\boldsymbol{v}_{j} \leftarrow \boldsymbol{v}_{j}/\Vert\boldsymbol{v}_{j}\Vert$;<br />
+        &emsp;&emsp;$c_{ij} \leftarrow \mathop{softmax}\limits_j \Big(\langle\boldsymbol{W}_{ji}\boldsymbol{u}_i, \boldsymbol{v}_j\rangle\Big)$;<br />
+        &emsp;&emsp;$\boldsymbol{v}_{j} \leftarrow \sum\limits_{i}c_{ij}\boldsymbol{W}_{ji}\boldsymbol{u}_{i}$;<br />
+        Return $squash(\boldsymbol{v}_j)$.
+    </blockquote>
+
+    <p>This is the <strong>fully connected version of dynamic routing</strong>. However, we don't always need to distinguish the input at different positions. For variable-length inputs, it's hard to assign a transformation matrix to each position, and this is where the shared version of dynamic routing comes in. In summary, both the fully connected and shared versions of dynamic routing have their applications.</p>
+
+    <p style="text-align:center"><img src="https://kexue.fm/usr/uploads/2018/02/123011310.png" alt="Possible positions of transformation matrices in Capsule" /><br />Figure 4: Possible positions of the transformation matrices in Capsule</p>
+
+    <h2 id="结语">Conclusion</h2>
+
+    <p>Through these two "grand" (rambling) blog posts, I have tried to interpret the Capsule model developed heavily by Hinton. However, my level as an author is limited, and I ask for the readers' understanding regarding any improprieties.</p>
+
+    <p>Personally, I believe Capsule is indeed a novel and promising area of research. While it might not necessarily be the future direction (though it could be), carefully savoring it is still sufficiently rewarding for us.</p>
+
+    <p>Now, looking back at the goal at the beginning of the article—attempting to make Capsule look a bit more natural—I wonder how readers feel now? My personal feeling is that after such parsing, Capsule is not so transcendent but rather a bold attempt—Hinton boldly integrated the iterative process of clustering into neural networks, thus giving birth to Capsule.</p>
+
+    <p>Does this mean we can consider integrating other intuitive algorithms into it, creating other interesting things? Let's wait and see.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_5112.html" style="color: #005fcc;">https://kexue.fm/archives/5112</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

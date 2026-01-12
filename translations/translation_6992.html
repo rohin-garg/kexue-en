@@ -1,0 +1,323 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="MathJax-script" async></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/6992">What Role Does BN Really Play? A "Closed-Door" Analysis</a></h1>
+
+    <p>By 苏剑林 | Oct 11, 2019</p>
+
+    <p>BN, also known as <a href="https://papers.cool/arxiv/1502.03167">Batch Normalization</a>, is a critically important technique in current deep learning models (especially vision-related models). It accelerates training, possesses a certain anti-overfitting effect, and even allows us to use larger learning rates. Overall, it offers many benefits (provided you can afford a sufficiently large batch size).</p>
+
+    <p>So, how does BN actually work? Early explanations were primarily based on probability distributions, roughly suggesting that normalizing the input distribution of each layer to $\mathcal{N}(0,1)$ reduces so-called Internal Covariate Shift, thereby stabilizing and accelerating training. This explanation seems plausible at first glance, but upon closer inspection, it is problematic: the input of any layer cannot strictly satisfy a normal distribution, so simply standardizing the mean and variance cannot achieve a standard distribution $\mathcal{N}(0,1)$. Furthermore, even if $\mathcal{N}(0,1)$ could be achieved, this interpretation fails to explain why other normalization methods (such as Instance Normalization or Layer Normalization) also work.</p>
+
+    <p>In last year's paper, <a href="https://papers.cool/arxiv/1805.11604">"How Does Batch Normalization Help Optimization?"</a>, the authors explicitly raised these doubts, refuted the original viewpoints, and proposed their own new understanding of BN: <strong>They believe the primary role of BN is to make the landscape of the entire loss function smoother, thereby allowing training to proceed more steadily.</strong></p>
+
+    <p>This blog post primarily shares the conclusions of that paper, but the method of argumentation is something I "conceived behind closed doors." I believe the original paper's arguments were somewhat obscure, particularly the mathematical parts which were difficult to grasp. Therefore, this article attempts to express the same viewpoint as intuitively as possible.</p>
+
+    <p><strong>(Note: Before reading this article, please ensure you clearly understand what BN is, as this post will not repeat the concepts and procedures of BN.)</strong></p>
+
+    <h2>Some Basic Conclusions</h2>
+
+    <p>In this section, we first provide a core inequality, then derive gradient descent, and obtain some basic conclusions about model training to pave the way for the subsequent analysis of BN.</p>
+
+    <h3>Core Inequality</h3>
+
+    <p>Assume the gradient of the function $f(\theta)$ satisfies the Lipschitz constraint ($L$-constraint), meaning there exists a constant $L$ such that the following always holds:</p>
+    \begin{equation}\Vert \nabla_{\theta} f(\theta + \Delta \theta) - \nabla_{\theta} f(\theta)\Vert_2\leq L\Vert \Delta\theta\Vert_2\end{equation}
+    <p>Then we have the following inequality:</p>
+    \begin{equation}f(\theta+\Delta\theta) \leq f(\theta) + \left\langle \nabla_{\theta}f(\theta), \Delta\theta\right\rangle + \frac{1}{2}L \Vert \Delta\theta\Vert_2^2\label{eq:core-eq}\end{equation}
+
+    <blockquote>
+        <p>The proof is not difficult. Define an auxiliary function $f(\theta + t\Delta\theta), t \in [0, 1]$, and then proceed directly:</p>
+        \begin{equation}\begin{aligned}f(\theta + \Delta\theta) - f(\theta)=&\int_0^1\frac{\partial f(\theta + t\Delta\theta)}{\partial t} dt\\
+        =&\int_0^1\left\langle\nabla_{\theta} f(\theta + t\Delta\theta), \Delta\theta\right\rangle dt\\
+        =&\left\langle\nabla_{\theta} f(\theta), \Delta\theta\right\rangle + \int_0^1\left\langle\nabla_{\theta} f(\theta + t\Delta\theta) - \nabla_{\theta} f(\theta), \Delta\theta\right\rangle dt\\
+        \leq&\left\langle\nabla_{\theta} f(\theta), \Delta\theta\right\rangle + \int_0^1\Vert\nabla_{\theta} f(\theta + t\Delta\theta) - \nabla_{\theta} f(\theta)\Vert_2 \cdot \Vert \Delta\theta\Vert_2 dt\\
+        \leq&\left\langle\nabla_{\theta} f(\theta), \Delta\theta\right\rangle + \int_0^1 L \Vert \Delta\theta\Vert_2^2 t dt\\
+        = &\left\langle\nabla_{\theta} f(\theta), \Delta\theta\right\rangle + \frac{1}{2} L \Vert \Delta\theta\Vert_2^2
+        \end{aligned}\end{equation}
+    </blockquote>
+
+    <h3>Gradient Descent</h3>
+
+    <p>Assuming $f(\theta)$ is the loss function and our goal is to minimize $f(\theta)$, this inequality provides a wealth of information. First, since we are minimizing, we naturally hope that each step results in a decrease, i.e., $f(\theta+\Delta\theta) < f(\theta)$. Since $\frac{1}{2}L \Vert \Delta\theta\Vert_2^2$ is necessarily non-negative, the only way to ensure a decrease is to ensure $\left\langle \nabla_{\theta}f(\theta), \Delta\theta\right\rangle < 0$. A natural choice is:</p>
+    \begin{equation}\Delta\theta = -\eta \nabla_{\theta}f(\theta)\label{eq:gd}\end{equation}
+    <p>where $\eta > 0$ is a scalar, representing the learning rate.</p>
+
+    <p>As we can see, Eq. $\eqref{eq:gd}$ is simply the update formula for gradient descent. Thus, this serves as a derivation for gradient descent, and the information contained in this derivation is more enriched. Because it is a strict inequality, it can also inform us about conclusions regarding training.</p>
+
+    <h3>Lipschitz Constraint</h3>
+
+    <p>By substituting the gradient descent formula into the inequality $\eqref{eq:core-eq}$, we get:</p>
+    \begin{equation}f(\theta+\Delta\theta) \leq f(\theta) + \left(\frac{1}{2}L\eta^2 - \eta\right) \Vert \nabla_{\theta}f(\theta)\Vert_2^2\end{equation}
+    <p>Note that a sufficient condition to guarantee that the loss function decreases is $\frac{1}{2}L\eta^2 - \eta < 0$. To achieve this, either $\eta$ must be sufficiently small, or $L$ must be sufficiently small. However, a very small $\eta$ implies that learning speed will be quite slow. Therefore, a more ideal scenario is for $L$ to be small enough; reducing $L$ allows for the use of larger learning rates, which can accelerate the learning process—this is one of its benefits.</p>
+
+    <p>But since $L$ is an intrinsic property of $f(\theta)$, we can only lower $L$ by adjusting the structure of $f$ itself.</p>
+
+    <h2>How BN is Forged</h2>
+
+    <p>This section will demonstrate that BN can be naturally derived by aiming to reduce the $L$ constant of the neural network's gradient. In other words, BN reduces the $L$ constant of the neural network's gradient, thereby making neural network training easier—for instance, allowing the use of larger learning rates. Intuitively, reducing the $L$ constant of the gradient means making the loss function less "turbulent," which is precisely what is meant by making the landscape smoother.</p>
+
+    <blockquote>
+        <p><strong>Note:</strong> We have discussed the $L$-constraint before. Previously, we discussed the neural network satisfying an $L$-constraint with respect to its <i>input</i>, which leads to spectral regularization and spectral normalization of weights (please refer to <a href="translation_6051.html">"Lipschitz Constraint in Deep Learning: Generalization and Generative Models"</a>). In this article, we discuss the neural network (specifically its gradient) satisfying an $L$-constraint with respect to its <i>parameters</i>, which leads to various normalization methods for inputs, of which BN is the most natural.</p>
+    </blockquote>
+
+    <h3>Gradient Analysis</h3>
+
+    <p>Using supervised learning as an example, assume the neural network is represented as $\hat{y}=h(x;\theta)$, and the loss function is $l(y,\hat{y})$. What we want to solve is:</p>
+    \begin{equation}\theta = \mathop{\text{argmin}}_{\theta}\, \mathbb{E}_{(x,y)\sim p(x,y)}\left[l(y, h(x;\theta))\right]\end{equation}
+    <p>In other words, $f(\theta)=\mathbb{E}_{(x,y)\sim p(x,y)}\left[l(y, h(x;\theta))\right]$, so:</p>
+    \begin{equation}\begin{aligned}\nabla_{\theta}f(\theta)=&\mathbb{E}_{(x,y)\sim p(x,y)}\left[\nabla_{\theta}l(y, h(x;\theta))\right]\\
+    =&\mathbb{E}_{(x,y)\sim p(x,y)}\left[\nabla_{h}l(y, h(x;\theta))\nabla_{\theta}h(x;\theta)\right]\end{aligned}\end{equation}
+
+    <p>As a side note, none of the symbols in this article are bolded, but depending on the context, they may represent either scalars or vectors.</p>
+
+    <h3>Non-linear Assumption</h3>
+
+    <p>Clearly, $f(\theta)$ is a non-linear function, and its non-linearity stems from two sources:</p>
+
+    <ol>
+        <li>The loss function $l(y,\hat{y})$ is generally non-linear;</li>
+        <li>The activation functions within the neural network $h(x;\theta)$ are non-linear.</li>
+    </ol>
+
+    <p>Regarding activation functions, most mainstream activation functions satisfy a property: the absolute value of their derivative does not exceed a certain constant. We now consider whether this property can be extended to the loss function—that is, whether the gradient of the loss function $\nabla_{h}l(y, h(x;\theta))$ will be confined within a certain range throughout the training process?</p>
+
+    <p>On the surface, this assumption often seems invalid. For example, cross-entropy is $-\log p$, and its derivative is $-1/p$, which clearly cannot be restricted to a finite range. However, when the loss function is considered in conjunction with the activation function of the final layer, this constraint is usually satisfied. For binary classification, the last layer typically uses a sigmoid activation, which, paired with cross-entropy, becomes:</p>
+    \begin{equation}-\log \text{sigmoid}(h(x;\theta)) = \log \left(1 + e^{-h(x;\theta)}\right)\end{equation}
+    <p>In this case, its gradient with respect to $h$ is between -1 and 1. Of course, there are cases where this does not hold, such as regression problems that use MSE as a loss function where the last layer typically has no activation function; here, the gradient is a linear function and is not confined to a finite range. In such scenarios, we can only hope that the model has good initialization and a good optimizer so that $\nabla_{h}l(y, h(x;\theta))$ remains relatively stable throughout the training process. While this "hope" seems strong, any neural network that can be successfully trained basically satisfies this "hope."</p>
+
+    <h3>Cauchy-Schwarz Inequality</h3>
+
+    <p>Our goal is to explore the degree to which $\nabla_{\theta}f(\theta)$ satisfies the $L$-constraint and to investigate methods to reduce this $L$ constant. To this end, let's first consider the simplest single-layer neural network (input vector, output scalar) $h(x;w,b)=g\left(\left\langle x, w\right\rangle + b\right)$, where $g$ is the activation function. In this case:</p>
+    \begin{equation}\begin{aligned}\mathbb{E}_{(x,y)\sim p(x,y)}\left[\nabla_{b}f(w,b)\right]&=\mathbb{E}_{(x,y)\sim p(x,y)}\left[\frac{\partial l_{w,b}}{\partial g}\dot{g}\left(\left\langle x, w\right\rangle + b\right)\right]\\
+    \mathbb{E}_{(x,y)\sim p(x,y)}\left[\nabla_{w}f(w,b)\right]&=\\mathbb{E}_{(x,y)\sim p(x,y)}\left[\frac{\partial l_{w,b}}{\partial g}\dot{g}\left(\left\langle x, w\right\rangle + b\right)x\right]
+    \end{aligned}\label{eq:grads}\end{equation}
+
+    <p>Based on our assumption, $\frac{\partial l_{w,b}}{\partial g}$ and $\dot{g}\left(\left\langle x, w\right\rangle + b\right)$ are both restricted within a certain range, so we can see that the gradient of the bias term $b$ is very stable, and its updates should also be very steady. However, the gradient of $w$ is different; it is directly related to the input $x$.</p>
+
+    <p>Regarding the difference in the gradient of $w$, we have:</p>
+    \begin{equation}\begin{aligned}
+    &\big\Vert\mathbb{E}_{(x,y)\sim p(x,y)}\left[\nabla_{w}f(w+\Delta w,b)\right] - \mathbb{E}_{(x,y)\sim p(x,y)}\left[\nabla_{w}f(w,b)\right]\big\Vert_2\\
+    =&\Bigg\Vert\mathbb{E}_{(x,y)\sim p(x,y)}\left[\left(\frac{\partial l_{w+\Delta w,b}}{\partial g}\dot{g}\left(\left\langle x, w+\Delta w\right\rangle + b\right) - \frac{\partial l_{w,b}}{\partial g}\dot{g}\left(\left\langle x, w\right\rangle + b\right)\right)x\right]\Bigg\Vert_2
+    \end{aligned}\end{equation}
+
+    <p>Let's denote the part in parentheses as $\lambda(x, y; w,b,\Delta w)$. According to the previous discussion, this part is restricted within a certain range and remains a stable term. Given this, we might as well assume that it naturally satisfies the $L$-constraint, i.e.,</p>
+    \begin{equation}\Vert\lambda(x, y; w,b,\Delta w)\Vert_2=\mathcal{O}\left(\Vert\Delta w\Vert_2\right)\end{equation}
+    <p>Now we only need to care about the extra $x$. According to the Cauchy-Schwarz inequality, we have:</p>
+    \begin{equation}\begin{aligned}&\Big\Vert\mathbb{E}_{(x,y)\sim p(x,y)}\left[\lambda(x, y; w,b,\Delta w) x\right]\Big\Vert_2\\
+    \leq & \sqrt{\mathbb{E}_{(x,y)\sim p(x,y)}\left[\lambda(x, y; w,b,\Delta w)^2\right]}\times \sqrt{\big\|\mathbb{E}_{x\sim p(x)}\left[x\otimes x\right]\big\|_1}
+    \end{aligned}\label{eq:kexi}\end{equation}
+
+    <p>In this way, we obtain the term $\big\|\mathbb{E}_{x\sim p(x)}\left[x\otimes x\right]\big\|_1$ which is independent of the (current layer's) parameters. If we want to reduce the $L$ constant, the most direct way is to reduce this term.</p>
+
+    <h3>Subtracting Mean and Dividing by Standard Deviation</h3>
+
+    <p>It is important to note that although we strongly desire to reduce the $L$ constant of the gradient, this is subject to a condition—it must be done without significantly degrading the original neural network's fitting capability. Otherwise, one could simply multiply by 0 to reduce $L$ to 0, but that would be meaningless.</p>
+
+    <p>The result of Eq. $\eqref{eq:kexi}$ tells us that trying to reduce $\big\|\mathbb{E}_{x\sim p(x)}\left[x\otimes x\right]\big\|_1$ is a direct approach. This means we need to perform a transformation on the input $x$. Then, based on the aforementioned "not degrading fitting capability" condition, the simplest and potentially effective method is a translation transformation. That is, we consider $x \to x - \mu$; in other words, we consider an appropriate $\mu$ such that:</p>
+    \begin{equation}\big\|\mathbb{E}_{x\sim p(x)}\left[(x-\mu)\otimes (x-\mu)\right]\big\|_1\end{equation}
+    <p>is minimized. This is merely a minimum value problem for a quadratic function, and it is not hard to find the optimal $\mu$ as:</p>
+    \begin{equation}\mu = \mathbb{E}_{x\sim p(x)}\left[x\right]\label{eq:mu}\end{equation}
+    <p>This is exactly the mean of all samples. Thus, we arrive at:</p>
+
+    <blockquote>
+        <p><strong>Conclusion 1:</strong> Subtracting the mean of all samples from the input can reduce the $L$ constant of the gradient. This is an operation that benefits optimization without degrading the neural network's fitting capability.</p>
+    </blockquote>
+
+    <p>Next, we consider a scaling transformation, namely $x - \mu \to \frac{x - \mu}{\sigma}$, where $\sigma$ is a vector of the same size as $x$, and the division is element-wise. This leads to:</p>
+    \begin{equation}\big\|\mathbb{E}_{x\sim p(x)}\left[(x-\mu)\otimes (x-\mu)\right]\big\|_1 \to \left\|\frac{\mathbb{E}_{x\sim p(x)}\left[(x-\mu)\otimes (x-\mu)\right]}{\sigma\otimes \sigma}\right\|_1\end{equation}
+
+    <p>$\sigma$ is the most direct scaling factor for $L$, but the question is: what is the best value to scale to? If we blindly pursue a smaller $L$, we could just let $\sigma \to \infty$, but then the neural network would lose all its fitting capability. However, if $\sigma$ is too small, resulting in an overly large $L$, it becomes unfavorable for optimization. Therefore, we need a standard.</p>
+
+    <p>What would be a good standard? Looking back at the gradient expression in Eq. $\eqref{eq:grads}$, we already mentioned that the gradient of the bias term is not significantly affected by $x$, so it seems to be a reliable standard. If that's the case, it is equivalent to directly scaling the weight of the input $x$ to 1. That is, $\frac{\mathbb{E}_{x\sim p(x)}\left[(x-\mu)\otimes (x-\mu)\right]}{\sigma\otimes \sigma}$ becomes an all-ones vector, or in other words:</p>
+    \begin{equation}\sigma = \sqrt{\mathbb{E}_{x\sim p(x)}\left[(x-\mu)\otimes (x-\mu)\right]}\label{eq:sigma}\end{equation}
+
+    <p>In this way, taking $\sigma$ as the standard deviation of the input is a relatively natural choice. At this point, we can sense that dividing by the standard deviation acts more like an adaptive learning rate correction term. To some extent, it eliminates the differences in parameter optimization caused by inputs at different layers, making the optimization of the entire network more "synchronized." Or, to put it another way, it makes every layer of the neural network more "equal," thereby making better use of the entire network and reducing the possibility of overfitting at a particular layer. Of course, when the magnitude of the input is too large, the act of dividing by the standard deviation also helps to reduce the $L$ constant of the gradient.</p>
+
+    <p>Thus, we have Conclusion 2:</p>
+
+    <blockquote>
+        <p><strong>Conclusion 2:</strong> Dividing the input (after subtracting the mean) by its standard deviation acts similarly to an adaptive learning rate, making the updates across each layer more synchronized. This reduces the possibility of overfitting at any specific layer and is an operation that enhances neural network performance.</p>
+    </blockquote>
+
+    <h3>From Derivation to Reality, Enter BN</h3>
+
+    <p>Although the preceding derivation only used a single-layer neural network (input vector, output scalar) as an example, the conclusions are sufficiently representative because a multi-layer neural network is essentially just a composition of single-layer ones (for more on this point, see my previous work <a href="translation_3873.html">"From Boosting to Neural Networks: Seeing Mountains as Mountains?"</a>).</p>
+
+    <p>So, with these two conclusions, BN can basically be implemented: during training, subtract the mean and divide by the standard deviation for the <strong>input</strong> of each layer. However, since the values in each batch are only an approximation of the whole, and the expectations in $\eqref{eq:mu}$ and $\eqref{eq:sigma}$ are the mean and standard deviation of all samples, BN inevitably requires a larger batch size to be effective, which places demands on computational power. Additionally, a conclusion of this analysis is: <strong>BN should be placed before the fully connected or convolutional layers.</strong></p>
+
+    <p>Furthermore, we need to maintain a set of variables to store the mean and variance accumulated during training for use during prediction. These are the mean and variance variables tracked via moving averages in BN. As for the additional $\beta$ and $\gamma$ terms in the standard BN design, I believe they are more of an "icing on the cake" and not strictly necessary, so I won't elaborate on them further.</p>
+
+    <h2>A Simple Summary</h2>
+
+    <p>This article analyzes the principle behind BN's effectiveness from an optimization perspective. The viewpoint held is basically consistent with <a href="https://papers.cool/arxiv/1805.11604">"How Does Batch Normalization Help Optimization?"</a>, but I believe the mathematical proof and descriptive style used here are simpler and easier to understand. The final conclusion is that subtracting the mean helps reduce the $L$ constant of the neural network's gradient, while dividing by the standard deviation acts more as an adaptive learning rate, ensuring parameter updates are more synchronized and preventing overfitting to any single layer or parameter.</p>
+
+    <p>Of course, the above interpretation is only a rough guide. Fully explaining BN is a very difficult task. The effect of BN seems to be a composite result of multiple factors. For example, for the mainstream activation functions we use, the interval $[-1, 1]$ is generally where non-linearity is strongest. Therefore, setting the mean to 0 and variance to 1 allows the non-linear capability of the activation functions to be more fully utilized, preventing the neural network's fitting capacity from being wasted.</p>
+
+    <p>In short, the theoretical analysis of neural networks is a difficult endeavor, far beyond what I can master. I can only write blogs here, telling a few stories that might be taken with a grain of salt~</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6992.html" style="color: #005fcc;">https://kexue.fm/archives/6992</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

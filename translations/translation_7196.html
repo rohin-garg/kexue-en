@@ -1,0 +1,296 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/7196">Your CRF Layer's Learning Rate Might Not Be Large Enough</a></h1>
+    <p>By 苏剑林 | February 07, 2020</p>
+
+    <p>CRF (Conditional Random Field) is a classic method for sequence labeling. It is theoretically elegant and practically effective. For readers who are not yet familiar with CRF, feel free to read my previous post <a href="translation_5542.html">"A Brief Introduction to Conditional Random Fields (CRF) (with pure Keras implementation)"</a>. After the emergence of the BERT model, much work has explored using BERT+CRF for sequence labeling tasks. However, many experimental results (such as those in the paper <a href="https://papers.cool/arxiv/1909.09292">"BERT Meets Chinese Word Segmentation"</a>) show that for both Chinese word segmentation and named entity recognition, BERT+CRF does not seem to bring any significant improvement compared to a simple BERT+Softmax approach. This differs from the behavior observed in traditional BiLSTM+CRF or CNN+CRF models.</p>
+
+    <p style="text-align:center;">
+        <img src="https://kexue.fm/usr/uploads/2018/05/2848452389.png" alt="Schematic of a 4-tag word segmentation model based on CRF" title="Click to view original image" style="max-width:100%;">
+        <br>
+        <em>Schematic of a 4-tag word segmentation model based on CRF</em>
+    </p>
+
+    <p>Over the past couple of days, I added a Chinese word segmentation example using CRF to <code>bert4keras</code> (<a href="https://github.com/bojone/bert4keras/blob/master/examples/task_sequence_labeling_cws_crf.py">task_sequence_labeling_cws_crf.py</a>). During debugging, I discovered that the CRF layer might suffer from insufficient learning. Further comparative experiments suggested that this might be the primary reason why CRF shows little improvement in BERT. I am recording the analysis process here to share with everyone.</p>
+
+    <h2 id="糟糕的转移矩阵">The Terrible Transition Matrix</h2>
+
+    <p>Since I am using my own implementation of the CRF layer, to ensure there were no implementation errors, I first observed the transition matrix after running the BERT+CRF experiment (using the BERT-base version). The approximate values were as follows:</p>
+
+    <table border="1" style="margin-left:auto;margin-right:auto;text-align:center;border-collapse:collapse;">
+        <tr>
+            <th></th><th>s</th><th>b</th><th>m</th><th>e</th>
+        </tr>
+        <tr>
+            <th>s</th><td>-0.0517</td><td>-0.459</td><td>-0.244</td><td>0.707</td>
+        </tr>
+        <tr>
+            <th>b</th><td>-0.564</td><td>-0.142</td><td>0.314</td><td>0.613</td>
+        </tr>
+        <tr>
+            <th>m</th><td>0.196</td><td>-0.334</td><td>-0.794</td><td>0.672</td>
+        </tr>
+        <tr>
+            <th>e</th><td>0.769</td><td>0.841</td><td>-0.683</td><td>0.572</td>
+        </tr>
+    </table>
+
+    <p>The value at the $i$-th row and $j$-th column represents the score of transferring from $i$ to $j$ (denoted as $S_{i \to j}$). Note that the absolute values of these scores are meaningless; only their relative comparisons matter. For context, this Chinese word segmentation task uses the (s, b, m, e) tagging method. If you are unfamiliar with it, you can refer to <a href="translation_3922.html">"[Chinese Word Segmentation Series] 3. Character Tagging and HMM Models"</a>.</p>
+
+    <p>Intuitively, however, this does not look like a well-learned transition matrix; in fact, it might even have a negative impact. For instance, looking at the first row, $S_{s \to b} = -0.459$ and $S_{s \to e} = 0.707$. This means $S_{s \to b}$ is significantly smaller than $S_{s \to e}$. According to the design of (s, b, m, e) tagging, it is possible for 's' to be followed by 'b', but impossible for it to be followed by 'e'. Thus, $S_{s \to b} < S_{s \to e}$ is clearly unreasonable. It could potentially guide the model toward invalid tag sequences. Ideally, $S_{s \to e}$ should be $-\infty$.</p>
+
+    <p>Such an unreasonable transition matrix initially made me worry that my CRF implementation was flawed. But after repeated checks and comparison with the official Keras implementation, I confirmed the implementation was correct. So where was the problem?</p>
+
+    <h2 id="学习率的不对等">Learning Rate Imbalance</h2>
+
+    <p>If we ignore the irrationality of this transition matrix and simply use the Viterbi algorithm for decoding/prediction based on the training results, and then evaluate it with official scripts, the F1 score is about 96.1% (on the PKU task), which is already state-of-the-art. </p>
+
+    <p>The fact that the transition matrix is terrible but the final result is still good indicates that the transition matrix has almost no impact on the final outcome. In what situation does the transition matrix become negligible? A possible reason is that the tag scores output by the model for each character are far larger than the values in the transition matrix and have distinct differentiation. Consequently, the transition matrix cannot influence the overall result. In other words, at this point, simply using Softmax and taking the argmax would already be very good. To confirm this, I randomly selected several sentences and observed the predicted tag distribution. I found that the highest tag score for each character was generally between 6 and 8, while the scores for other tags were usually more than 3 points lower. This is an order of magnitude larger than the values in the transition matrix, making it difficult for the transition matrix to exert influence. This confirmed my suspicion.</p>
+
+    <p>A good transition matrix should obviously help prediction, at least by helping us eliminate unreasonable tag transitions or ensuring no negative impact. So it is worth considering: what prevents the model from learning a good transition matrix? I suspect the answer is the <strong>learning rate</strong>.</p>
+
+    <p>When BERT is fine-tuned for downstream tasks after pre-training, it requires a very small learning rate (usually in the range of $10^{-5}$). Anything too large might lead to non-convergence. Although the learning rate is small, for most downstream tasks, convergence is fast; many tasks reach an optimum in just 2 to 3 epochs. Furthermore, BERT has a powerful fitting capacity, allowing it to fit the training data quite thoroughly.</p>
+
+    <p>What does this imply? First, we know that the tag distribution for each character is calculated directly by the BERT model, while the transition matrix is an additional component not directly related to BERT. When fine-tuning with a learning rate of $10^{-5}$, the BERT portion converges rapidly—meaning the character-level distributions are fitted quickly—and reaches a near-optimal state (high scores for target tags, wide gap from non-target tags) due to BERT's strong capability. Since the transition matrix is independent of BERT, while the character distributions converge rapidly, the transition matrix continues to "stroll along" at the $10^{-5}$ pace. Eventually, its values remain an order of magnitude lower than the character distribution scores. Moreover, once the character distributions fit the target sequence well, the transition matrix is no longer "needed" (its gradients become very small), so it almost stops updating.</p>
+
+    <p>Reflecting on this, a natural idea is: can we increase the learning rate of the CRF layer? I tried increasing the CRF layer's learning rate and found through multiple experiments that when the CRF learning rate is 100 times or more than the main learning rate, the transition matrix starts to become reasonable. Below is a transition matrix trained with a BERT learning rate of $10^{-5}$ and a CRF learning rate of $10^{-2}$ (i.e., 1000 times larger):</p>
+
+    <table border="1" style="margin-left:auto;margin-right:auto;text-align:center;border-collapse:collapse;">
+        <tr>
+            <th></th><th>s</th><th>b</th><th>m</th><th>e</th>
+        </tr>
+        <tr>
+            <th>s</th><td>3.1</td><td>7.2.16</td><td>-3.97</td><td>-2.04</td>
+        </tr>
+        <tr>
+            <th>b</th><td>-3.89</td><td>-0.451</td><td>1.67</td><td>0.874</td>
+        </tr>
+        <tr>
+            <th>m</th><td>-3.9</td><td>-4.41</td><td>3.82</td><td>2.45</td>
+        </tr>
+        <tr>
+            <th>e</th><td>1.88</td><td>0.991</td><td>-2.48</td><td>-0.247</td>
+        </tr>
+    </table>
+
+    <p>Such a transition matrix is reasonable, and its scale is correct. It has learned the correct tag transitions, such as $s \to s, b$ scoring higher than $s \to m, e$, and $b \to m, e$ scoring higher than $b \to s, b$, etc. However, even after adjusting the CRF learning rate, the results did not show a significant advantage over the unadjusted version. Ultimately, BERT's fitting power is so strong that even Softmax achieves optimal effects, meaning the transition matrix naturally contributes little additional gain.</p>
+
+    <p>(Note: Implementation techniques for increasing the learning rate can be found in <a href="translation_6418.html">"'Make Keras Cooler!': Layer-wise Learning Rates and Free Gradients"</a>.)</p>
+
+    <h2 id="更多的实验分析">Further Experimental Analysis</h2>
+
+    <p>The reason CRF didn't improve BERT results is that BERT's fitting power is too strong, making the transition matrix unnecessary. If we reduce BERT's fitting capability, will there be a significant difference?</p>
+
+    <p>In the previous experiments, we used the output of the 12th layer of BERT-base for fine-tuning. Now, we use only the output of the 1st layer to see if the adjustments bring significant improvements. The results are shown in the table below:</p>
+
+    <table border="1" style="margin-left:auto;margin-right:auto;text-align:center;border-collapse:collapse;">
+        <tr>
+            <th>Model</th><th>Main LR</th><th>CRF LR</th><th>Epoch 1 Test F1</th><th>Best Test F1</th>
+        </tr>
+        <tr>
+            <td>CRF-1</td><td>$10^{-3}$</td><td>$10^{-3}$</td><td>0.914</td><td>0.925</td>
+        </tr>
+        <tr>
+            <td>CRF-2</td><td>$10^{-3}$</td><td>$10^{-2}$</td><td>0.929</td><td>0.930</td>
+        </tr>
+        <tr>
+            <td>CRF-3</td><td>$10^{-2}$</td><td>$10^{-2}$</td><td>0.673</td><td>0.747</td>
+        </tr>
+        <tr>
+            <td>Softmax</td><td>$10^{-3}$</td><td>-</td><td>0.899</td><td>0.907</td>
+        </tr>
+    </table>
+
+    <p>Since we only used 1 layer of BERT, the main learning rate was set to $10^{-3}$ (the shallower the model, the appropriately larger the learning rate can be). The main comparison is the improvement brought by adjusting the CRF layer's learning rate. From the table, we can see:</p>
+
+    <blockquote>
+        <p>1. With an appropriate learning rate, CRF outperforms Softmax;</p>
+        <p>2. Appropriately increasing the CRF layer's learning rate also yields improvements over the original CRF.</p>
+    </blockquote>
+
+    <p>This shows that for models whose fitting capacity is not exceptionally powerful (such as using only the first few layers of BERT, or for particularly difficult tasks where even full BERT capacity isn't sufficient), CRF and its transition matrix are indeed helpful. Furthermore, fine-tuning the CRF layer's learning rate can bring even greater improvements. All the above experiments were based on BERT, but would a similar approach work for traditional BiLSTM+CRF or CNN+CRF? I did a few simple tests and found it helpful in some cases, so it is likely a general trick for CRF layers.</p>
+
+    <h2 id="内容简单汇总">Summary</h2>
+
+    <p>Starting from an example added to <code>bert4keras</code>, this post observes that when BERT is combined with CRF, the CRF layer might suffer from insufficient training. I hypothesized a possible reason and further validated the hypothesis through experiments. Finally, I proposed increasing the CRF layer's learning rate as a way to enhance CRF performance and verified its effectiveness (in certain tasks).</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7196.html" style="color: #005fcc;">https://kexue.fm/archives/7196</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

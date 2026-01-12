@@ -1,0 +1,325 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/11280">Rethinking Learning Rate and Batch Size (II): Mean Field</a></h1>
+
+<p>By 苏剑林 | September 10, 2025</p>
+
+<p>At the end of the previous article <a href="translation_11260.html">"Rethinking Learning Rate and Batch Size (I): The Current State"</a>, we mentioned that for cases where $\tilde{\boldsymbol{\varphi}}_B$ depends non-linearly on $\tilde{\boldsymbol{g}}_B$, such as SignSGD and SoftSignSGD, the mental burden of the calculation process is quite heavy and faces difficulties in generalization. To this end, I invested some effort in trying to simplify these derivations. Fortunately, there were some gains, and the key idea is the theme of this article—Mean Field.</p>
+
+<p>Mean field is a common approximation method in physics. It doesn't have a fixed form, but the general idea is to move the expectation (average) inside the function. In fact, we already caught a glimpse of the charm of mean field in <a href="translation_11267.html">"Why is the Update RMS of Adam 0.2?"</a>, and in this article, we will see its miraculous effect on calculating the learning rate laws of SignSGD/SoftSignSGD.</p>
+
+<h2>Core Idea</h2>
+
+<p>Following the notation of the previous article, for SignSGD, we have $\newcommand{sign}{\mathop{\text{sign}}}\tilde{\boldsymbol{\varphi}}_B=\sign(\tilde{\boldsymbol{g}}_B)$. We first need to calculate $\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B]$ and $\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B\tilde{\boldsymbol{\varphi}}_B^{\top}]$, from which we can then calculate:</p>
+
+\begin{equation}\newcommand{tr}{\mathop{\text{tr}}}\eta^* \approx \frac{\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B]^{\top}\boldsymbol{g}}{\tr(\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B\tilde{\boldsymbol{\varphi}}_B^{\top}]\boldsymbol{H})}\label{eq:eta-opt}\end{equation}
+
+<p>where $\boldsymbol{g}$ is the gradient and $\boldsymbol{H}$ is the Hessian matrix. According to our assumptions, the mean of the random variable $\tilde{\boldsymbol{g}}_B$ is $\boldsymbol{g}$, and its covariance matrix is $\boldsymbol{\Sigma}/B$. We are primarily concerned with the relationship between $\eta^*$ and Batch Size $B$. Since $\sign$ is an element-wise operation, we can start by analyzing a single scalar. The mean field method originated from an approximate relationship I suddenly realized one day: </p>
+
+\begin{equation}\mathbb{E}[\sign(\tilde{g}_B)] = \mathbb{E}\bigg[\frac{\tilde{g}_B}{\sqrt{\tilde{g}_B^2}}\bigg]\approx \frac{\mathbb{E}[\tilde{g}_B]}{\sqrt{\mathbb{E}[\tilde{g}_B^2]}} = \frac{g}{\sqrt{g^2 + \sigma^2/B}}\end{equation}
+
+<p>Readers who have read <a href="translation_10542.html">"How Should the Learning Rate Change as Batch Size Increases?"</a> might be surprised to find that this result, derived in just one line, differs from the result obtained through a long series of assumptions and approximations in the original text only by an insignificant constant $\pi/2$! This fact made me realize that the mean field approximation might be entirely sufficient for determining the relationship between learning rate and batch size.</p>
+
+<p>Derivations based on mean field have many advantages. First, there are fewer assumptions. The original derivation required at least three: independent components, a normal distribution, and approximating $\text{erf}(x)$ with $x/\sqrt{x^2+c}$. However, the mean field approximation can do away with distribution-related assumptions; it only needs to assume that the approximation itself is usable. Secondly, the calculation is simple. We completed the calculation in one line above, whereas the original derivation was far more complex even under many assumptions.</p>
+
+<h2>Calculation Process</h2>
+
+<p>In this section, we will use the mean field approximation to give the full calculation process for SignSGD. First, for the mean $\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B]$, the previous section's calculation was nearly complete; we just need to add a few details. Using component notation:</p>
+
+\begin{equation}\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B]_i = \mathbb{E}[\sign((\tilde{g}_B)_i)] = \mathbb{E}\bigg[\frac{(\tilde{g}_B)_i}{\sqrt{(\tilde{g}_B)_i^2}}\bigg]\approx \frac{\mathbb{E}[(\tilde{g}_B)_i]}{\sqrt{\mathbb{E}[(\tilde{g}_B)_i^2]}} = \frac{g_i}{\sqrt{g_i^2 + \sigma_i^2/B}} = \frac{\sign(g_i)}{\sqrt{1 + (\sigma_i^2/g_i^2)/B}}\end{equation}
+
+<p>where $\sigma_i^2 = \boldsymbol{\Sigma}_{i,i}$. Since we are primarily interested in the scalar relationship between $\eta^*$ and $B$, we use the mean field approximation once more to separate the $B$-dependent denominator as a scalar term:</p>
+
+\begin{equation}\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B]_i \approx \frac{\sign(g_i)}{\sqrt{1 + (\sigma_i^2/g_i^2)/B}} \approx \frac{\sign(g_i)}{\sqrt{1 + \mathcal{B}_{\text{simple}}/B}} \triangleq \mu_i\end{equation}
+
+<p>Here, $\mathcal{B}_{\text{simple}}$ is the same as in the previous article, $\mathcal{B}_{\text{simple}} = \tr(\boldsymbol{\Sigma})/\boldsymbol{g}^{\top}\boldsymbol{g}$, which is also equal to $\mathbb{E}[\sigma_i^2]/\mathbb{E}[g_i^2]$ (where this $\mathbb{E}$ is an average over the index $i$). That is, it replaces the original $\sigma_i^2/g_i^2$ (which depends on the index $i$) with a certain index-independent average $\mathbb{E}[\sigma_i^2]/\mathbb{E}[g_i^2]$. The result is simplified but retains the functional form with respect to $B$.</p>
+
+<p>Then, for the second moment $\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B\tilde{\boldsymbol{\varphi}}_B^{\top}]$, we re-introduce the component independence assumption to simplify the result. It is possible to calculate it without this assumption, but the result would be more complex and require other assumptions for simplification, so it is better to just introduce independence. Under the independence assumption, $\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B\tilde{\boldsymbol{\varphi}}_B^{\top}]_{i,j}$ is calculated in two parts: $i\neq j$ and $i=j$. When $i\neq j$:</p>
+
+\begin{equation}\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B\tilde{\boldsymbol{\varphi}}_B^{\top}]_{i,j} = \mathbb{E}[(\tilde{\varphi}_B)_i(\tilde{\varphi}_B)_j] = \mathbb{E}[(\tilde{\varphi}_B)_i]\mathbb{E}[(\tilde{\varphi}_B)_j] \approx \mu_i \mu_j\end{equation}
+
+<p>When $i=j$, it is even simpler, as the square of the $\sign$ function is necessarily 1, so its expectation is also 1. Therefore, the total result can be written as $\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B\tilde{\boldsymbol{\varphi}}_B^{\top}]_{i,j}\approx \mu_i\mu_j + \delta_{i,j}(1 - \mu_i\mu_j)$.</p>
+
+<h2>Anomalous Phenomena</h2>
+
+<p>Substituting the above results into Equation \eqref{eq:eta-opt}, we obtain:</p>
+
+\begin{equation}\eta^* \approx \frac{\sum_i |g_i|}{\frac{1}{\beta}\sum_i H_{i,i} + \beta\sum_{i\neq j} H_{i,j}\sign(g_i g_j)}\label{eq:eta-opt-sign}\end{equation}
+
+<p>where $\beta = (1 + \mathcal{B}_{\text{simple}}/B)^{-1/2}$. Note that $\beta$ is monotonically increasing with $B$ and $\beta\in(0,1)$, so $\beta$ can be viewed as the standardized Batch Size. However, $\eta^*$ is not always monotonic with respect to $\beta$. Consequently, an "anomalous" behavior might occur where "as Batch Size increases, the learning rate should actually decrease." The <a href="https://papers.cool/arxiv/2405.14578">original paper</a> calls this the "Surge phenomenon."</p>
+
+<p>Let's understand this step by step. When $B \ll \mathcal{B}_{\text{simple}}$, we have $\beta \approx \sqrt{B/\mathcal{B}_{\text{simple}}}$. Since $\beta \ll 1$, the $1/\beta$ term in the denominator of Equation \eqref{eq:eta-opt-sign} will dominate, leading to:</p>
+
+\begin{equation}\eta^* \approx \frac{\sum_i |g_i|}{\sum_i H_{i,i}}\beta \approx \frac{\sum_i |g_i|}{\sum_i H_{i,i}}\sqrt{B/\mathcal{B}_{\text{simple}}} \propto \sqrt{B}\end{equation}
+
+<p>This indicates that SignSGD's learning rate follows square-root scaling at small Batch Sizes. Since we assume the Hessian matrix is positive definite in our analysis, it follows that $\sum_i H_{i,i} > 0$. When $\sum_{i\neq j} H_{i,j}\sign(g_i g_j) \leq 0$, Equation \eqref{eq:eta-opt-sign} is always monotonically increasing with respect to $\beta$. Thus, $\eta^*$ is also monotonically increasing with $B$, and no anomalous behavior occurs.</p>
+
+<p>When $\sum_{i\neq j} H_{i,j}\sign(g_i g_j) > 0$, using the AM-GM inequality, we can find that the denominator of Equation \eqref{eq:eta-opt-sign} has a minimum point at:</p>
+
+\begin{equation}\beta^* = \sqrt{\frac{\sum_i H_{i,i}}{\sum_{i\neq j} H_{i,j}\sign(g_i g_j)}}\end{equation}
+
+<p>Since $\beta \in (0, 1)$, there is an additional condition $\beta^* \in (0, 1)$. In this case, $\eta^*$ is no longer monotonically increasing with $B$; instead, it first increases and then decreases. There exists a critical Batch Size beyond which the learning rate should be lowered, which is the "Surge phenomenon."</p>
+
+<h2>Reflecting on Causes</h2>
+
+<p>Why does such anomalous behavior as the Surge phenomenon occur? In fact, this is an expression of the incompatibility between the optimizer's own assumptions and our analysis method. Specifically, to estimate the optimal learning rate, we expanded the increment of the Loss to a second-order approximation and assumed the Hessian matrix is positive definite. Under these settings, the optimal update should be Newton's method, $\boldsymbol{H}^{-1}\boldsymbol{g}$.</p>
+
+<p>From the perspective of Newton's method, different optimizers are essentially different assumptions about the Hessian matrix. For example, SGD corresponds to assuming $\boldsymbol{H}=\eta_{\max}^{-1} \boldsymbol{I}$, while SignSGD corresponds to assuming $\newcommand{diag}{\mathop{\text{diag}}}\boldsymbol{H}=\eta_{\max}^{-1} \diag(|\boldsymbol{g}|)$, though in actual training we can only replace $\boldsymbol{g}$ with $\tilde{\boldsymbol{g}}_B$. The Surge phenomenon actually reflects that as $B \to \infty$, the deviation between the Hessian assumed by SignSGD and the actual Hessian increases.</p>
+
+<p>We know that the parameter counts of modern LLMs start at the billion level. Calculating either the full Hessian matrix or the covariance matrix is nearly impossible. This is one reason why we introduce the independence assumption when calculating the second moment $\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B\tilde{\boldsymbol{\varphi}}_B^{\top}]$. Under this assumption, the covariance matrix is just a diagonal matrix, making estimation feasible. The Hessian matrix is similar; we can usually only perform calculations for specific Hessian structures.</p>
+
+<p>For example, substituting $\boldsymbol{H}=\eta_{\max}^{-1} \diag(|\boldsymbol{g}|)$ into Equation \eqref{eq:eta-opt-sign} gives $\eta^*\approx \eta_{\max} \beta = \eta_{\max} / \sqrt{1 + \mathcal{B}_{\text{simple}}/B}$. This form is very concise and has no anomalous behavior. Does this mean the Surge phenomenon won't appear? Not necessarily; the Surge phenomenon is an objective reality. The point here is more about saying: when we observe a Surge phenomenon in experiments, perhaps our first priority shouldn't be to correct the variation law of $\eta^*$, but rather to change the optimizer.</p>
+
+<h2>Loss Variation</h2>
+
+<p>With $\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B]$ and $\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B\tilde{\boldsymbol{\varphi}}_B^{\top}]$, we can also calculate $\overline{\Delta\mathcal{L}}$ as in the previous article. It is particularly interesting that it follows the same format as the SGD result:</p>
+
+\begin{equation}\overline{\Delta\mathcal{L}} = \mathcal{L}(\boldsymbol{w}) - \mathbb{E}[\mathcal{L}(\boldsymbol{w} - \eta^*\tilde{\boldsymbol{g}}_B)] \approx \frac{(\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B]^{\top}\boldsymbol{g})^2}{2\tr(\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B\tilde{\boldsymbol{\varphi}}_B^{\top}]\boldsymbol{H})}\approx \frac{\Delta\mathcal{L}_{\max}}{1 + \mathcal{B}_{\text{noise}}/B}\end{equation}
+
+<p>where</p>
+\begin{equation}\Delta\mathcal{L}_{\max} = \frac{\frac{1}{2}(\sum_i |g_i|)^2}{\sum_i H_{i,i} + \sum_{i\neq j} H_{i,j}\sign(g_i g_j)},\quad \mathcal{B}_{\text{noise}} = \frac{\mathcal{B}_{\text{simple}}\sum_i H_{i,i}}{\sum_i H_{i,i} + \sum_{i\neq j} H_{i,j}\sign(g_i g_j)}\end{equation}
+
+<p>Note that the full Hessian is preserved here, so the result is quite interesting—even though the learning rate $\eta^*$ may exhibit the Surge phenomenon, the average increment of the loss function does not. It is always monotonically increasing with $B$ and remains in the same form as SGD. This means we can derive the same "Training Data Volume - Training Steps" relationship:</p>
+
+\begin{equation}\left(\frac{S}{S_{\min}} - 1\right)\left(\frac{E}{E_{\min}} - 1\right) = 1\end{equation}
+
+<p>A more profound question is why the updates for SGD and SignSGD are so different—including distinct behaviors for $\eta^*$—yet the relationship of $\overline{\Delta\mathcal{L}}$ with $B$ takes the same form. Is this merely a coincidence, or is there a deeper underlying principle?</p>
+
+<h2>General Laws</h2>
+
+<p>Starting again from the mean field approximation, I found an answer that tends toward the latter. Whether for $\eta^*$ or $\overline{\Delta\mathcal{L}}$, the core difficulty is calculating $\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B]$ and $\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B\tilde{\boldsymbol{\varphi}}_B^{\top}]$, so our goal is to explore a unified calculation law for both.</p>
+
+<p>Generally, let $\tilde{\boldsymbol{\varphi}}_B=\tilde{\boldsymbol{H}}_B^{-1}\tilde{\boldsymbol{g}}_B$, where $\tilde{\boldsymbol{H}}_B$ is a semi-positive definite matrix. We can write:</p>
+
+\begin{equation}\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B] = \mathbb{E}[\tilde{\boldsymbol{H}}_B^{-1}\tilde{\boldsymbol{g}}_B]\approx \underbrace{\mathbb{E}[\tilde{\boldsymbol{H}}_B]^{-1}}_{\text{denote as }\hat{\boldsymbol{H}}^{-1}}\mathbb{E}[\tilde{\boldsymbol{g}}_B] = \hat{\boldsymbol{H}}^{-1}\boldsymbol{g}\end{equation}
+
+<p>and</p>
+
+\begin{equation}\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B\tilde{\boldsymbol{\varphi}}_B^{\top}] = \mathbb{E}[\tilde{\boldsymbol{H}}_B^{-1}\tilde{\boldsymbol{g}}_B\tilde{\boldsymbol{g}}_B^{\top}\tilde{\boldsymbol{H}}_B^{-1}]\approx \mathbb{E}[\tilde{\boldsymbol{H}}_B]^{-1}\mathbb{E}[\tilde{\boldsymbol{g}}_B\tilde{\boldsymbol{g}}_B^{\top}]\mathbb{E}[\tilde{\boldsymbol{H}}_B]^{-1} = \hat{\boldsymbol{H}}^{-1}(\boldsymbol{g}\boldsymbol{g}^{\top} + \boldsymbol{\Sigma}/B)\hat{\boldsymbol{H}}^{-1}
+\end{equation}
+
+<p>Substituting into the expression for $\overline{\Delta\mathcal{L}}$, we get:</p>
+
+\begin{equation}\overline{\Delta\mathcal{L}} \approx \frac{1}{2}\frac{(\boldsymbol{g}^{\top}\hat{\boldsymbol{H}}^{-1}\boldsymbol{g})^2}{\boldsymbol{g}^{\top}\hat{\boldsymbol{H}}^{-1}\boldsymbol{H}\hat{\boldsymbol{H}}^{-1}\boldsymbol{g} + \tr(\boldsymbol{\Sigma}\hat{\boldsymbol{H}}^{-1}\boldsymbol{H}\hat{\boldsymbol{H}}^{-1})/B}\end{equation}
+
+<p>Note that the equation above is homogeneous with respect to $\hat{\boldsymbol{H}}$. If we assume that the relationship between $\hat{\boldsymbol{H}}$ and $B$ can be factored into a scalar form like $\hat{\boldsymbol{H}}\approx f(B) \boldsymbol{G}$, where $f(B)$ is a scalar function of $B$ and $\boldsymbol{G}$ is not obviously related to $B$, then $f(B)$ cancels out in the numerator and denominator. The final relationship with $B$ can be organized into the following form:</p>
+
+\begin{equation}\overline{\Delta\mathcal{L}} \approx \frac{\Delta\mathcal{L}_{\max}}{1 + \mathcal{B}_{\text{noise}}/B}\end{equation}
+
+<p>This proves that $\overline{\Delta\mathcal{L}}$ follows the same asymptotic laws with respect to $B$. The core of this is the homogeneity regarding $\hat{\boldsymbol{H}}$. In contrast, $\eta^*$ does not have such a unified result because it is not homogeneous with respect to $\hat{\boldsymbol{H}}$.</p>
+
+<h2>Validity Analysis</h2>
+
+<p>By now, everyone should have an understanding of the mean field method. Its main feature is simplicity—or more fundamentally—mean field picks simple, calculable directions. This leads to great flexibility. Flexibility is also a disadvantage in many cases, as it means it's hard to grasp the next step's rules. As for explaining why this approach is effective, that is even harder; one can only analyze case by case, and some cases might be hard to analyze at all. My feeling is that the mean field method is <strong>30% calculation</strong>, <strong>30% luck</strong>, <strong>30% intuition</strong>, and <strong>10% metaphysics</strong>. Of course, there's no harm in trying it. Let's take the SignSGD calculation as an example to attempt an analysis.</p>
+
+<p>Clearly, the core calculation of SignSGD is $\mathbb{E}[\sign(x)]$. We denote $\mathbb{E}[x]=\mu, \mathbb{E}[x^2]=\mu^2 + \sigma^2$, and write:</p>
+
+\begin{equation}\sign(x) = \frac{x}{\sqrt{x^2}} = \frac{x}{\sqrt{\mu^2 + \sigma^2 + (x^2 - \mu^2 - \sigma^2)}}\end{equation}
+
+<p>Assuming $x^2 - \mu^2 - \sigma^2$ is small, we perform a Taylor expansion:</p>
+
+\begin{equation}\sign(x) = \frac{x}{\sqrt{\mu^2 + \sigma^2}} - \frac{1}{2}\frac{x(x^2 - \mu^2 - \sigma^2)}{(\mu^2 + \sigma^2)^{3/2}} + \frac{3}{8}\frac{x(x^2 - \mu^2 - \sigma^2)^2}{(\mu^2 + \sigma^2)^{5/2}}-\cdots \end{equation}
+
+<p>Now the denominators are independent of $x$, and the numerators are polynomials in $x$. Taking expectations on both sides, the first term is the result of the mean field approximation $\mu/\sqrt{\mu^2 + \sigma^2}$. To observe the validity of the mean field approximation, we calculate the second term:</p>
+
+\begin{equation}\frac{1}{2}\frac{\mathbb{E}[x(x^2 - \mu^2 - \sigma^2)]}{(\mu^2 + \sigma^2)^{3/2}} = \frac{1}{2}\frac{\mathbb{E}[x^3] - (\mu^3 + \mu\sigma^2)}{(\mu^2 + \sigma^2)^{3/2}} \end{equation}
+
+<p>This involves $\mathbb{E}[x^3]$, a new statistic which is the key factor in the mean field error. We can use a normal distribution $\mathcal{N}(x;\mu,\sigma^2)$ to sense this; in this case $\mathbb{E}[x^3]=\mu^3 + 3\mu\sigma^2$. Substituting into the expression gives:</p>
+
+\begin{equation}\frac{\mu\sigma^2}{(\mu^2 + \sigma^2)^{3/2}} = \frac{\sigma^2/\mu^2}{(1 + \sigma^2/\mu^2)^{3/2}}\end{equation}
+
+<p>The right side is a bounded expression, with a maximum value reached at $\sigma^2/\mu^2=2$, yielding $2/3^{3/2}=0.3849\cdots$. This indicates that the error of the mean field approximation is likely finite, and the error terms tend to 0 as $\sigma\to 0$ and $\sigma\to\infty$. This demonstrates the general usability of the mean field approximation to some extent.</p>
+
+<h2>Generalized Approximation</h2>
+
+<p>One reason for choosing to analyze SignSGD is that we usually use it as a theoretical approximation for Adam. In <a href="translation_10563.html">"How Does Adam's epsilon Affect the Learning Rate Scaling Law?"</a>, we calculated a theoretically better approximation, SoftSignSGD, which considers the effect of $\epsilon$.</p>
+
+\begin{equation}\sign(x)=\frac{x}{\sqrt{x^2}}\quad\to\quad\newcommand{softsign}{\mathop{\text{softsign}}}\softsign(x)=\frac{x}{\sqrt{x^2+\epsilon^2}}\end{equation}
+
+<p>In this case $\tilde{\boldsymbol{\varphi}}_B = \softsign(\tilde{\boldsymbol{g}}_B)$. Let's jump straight to the derivation:</p>
+
+\begin{equation}\begin{aligned}
+&\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B]_i = \mathbb{E}[\softsign((\tilde{g}_B)_i)] = \mathbb{E}\bigg[\frac{(\tilde{g}_B)_i}{\sqrt{(\tilde{g}_B)_i^2 + \epsilon^2}}\bigg]\approx \frac{\mathbb{E}[(\tilde{g}_B)_i]}{\sqrt{\mathbb{E}[(\tilde{g}_B)_i^2]+ \epsilon^2}} \\[8pt]
+=& \frac{g_i}{\sqrt{g_i^2 + \sigma_i^2/B + \epsilon^2}} = \frac{\softsign(g_i)}{\sqrt{1 + \sigma_i^2/(g_i^2 + \epsilon^2)/B}}\approx \frac{\softsign(g_i)}{\sqrt{1 + \mathcal{B}_{\text{simple}}/B}}\triangleq \nu_i\beta
+\end{aligned}\end{equation}
+
+<p>Here $\mathcal{B}_{\text{simple}}$ is slightly different, being $\tr(\boldsymbol{\Sigma})/(\boldsymbol{g}^{\top}\boldsymbol{g} + N\epsilon^2)$, where $N$ is the total number of parameters, i.e., $\boldsymbol{g}\in\mathbb{R}^N$. As for the end terms, $\nu_i=\softsign(g_i), \beta = (1 + \mathcal{B}_{\text{simple}}/B)^{-1/2}$. Next, calculate $\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B\tilde{\boldsymbol{\varphi}}_B^{\top}]$. Under the independence assumption, when $i \neq j$, the expectations can still be separated, so $\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B\tilde{\boldsymbol{\varphi}}_B^{\top}]_{i,j}=\nu_i \nu_j \beta^2$. Thus, we only need to calculate the case $i=j$:</p>
+
+\begin{equation}\begin{aligned}
+&\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B\tilde{\boldsymbol{\varphi}}_B^{\top}]_{i,i} = \mathbb{E}[\softsign((\tilde{g}_B)_i)^2] = \mathbb{E}\bigg[\frac{(\tilde{g}_B)_i^2}{(\tilde{g}_B)_i^2 + \epsilon^2}\bigg]\approx \frac{\mathbb{E}[(\tilde{g}_B)_i^2]}{\mathbb{E}[(\tilde{g}_B)_i^2]+ \epsilon^2} \\[8pt]
+=& \frac{g_i^2 + \sigma_i^2/B}{g_i^2 + \sigma_i^2/B + \epsilon^2} = 1 - \frac{1 - \softsign(g_i)^2}{1 + \sigma_i^2/(g_i^2 + \epsilon^2)/B}\approx 1 - \frac{1 - \softsign(g_i)^2}{1 + \mathcal{B}_{\text{simple}}/B}
+\end{aligned}\end{equation}
+
+<p>This can be written uniformly as $\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B\tilde{\boldsymbol{\varphi}}_B^{\top}]_{i,j}\approx \nu_i \nu_j\beta^2 + \delta_{i,j}(1-\beta^2)$, resulting in:</p>
+
+\begin{equation}\eta^* \approx \frac{\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B]^{\top}\boldsymbol{g}}{\text{Tr}(\mathbb{E}[\tilde{\boldsymbol{\varphi}}_B\tilde{\boldsymbol{\varphi}}_B^{\top}]\boldsymbol{H})} \approx \frac{\beta\sum_i \nu_i g_i}{\sum_i H_{i,i} + \beta^2(\sum_{i,j} \nu_i \nu_j H_{i,j} - \sum_i H_{i,i})}\end{equation}
+
+<p>In the formula above, everything except $\beta$ is independent of $B$, so we have obtained the explicit relationship of $\eta^*$ with $B$, which is similar in form to that of SignSGD. The rest of the analysis can refer to <a href="translation_10563.html">"How Does Adam's epsilon Affect the Learning Rate Scaling Law?"</a> or follow the steps described above.</p>
+
+<h2>Summary</h2>
+
+<p>In this article, we used the mean field approximation to recalculate the conclusions for SignSGD and SoftSignSGD, significantly simplifying the related calculation process and preliminarily reflecting on the general laws of these calculations.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_11280.html" style="color: #005fcc;">https://kexue.fm/archives/11280</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

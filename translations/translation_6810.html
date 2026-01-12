@@ -1,0 +1,399 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']],
+      tags: 'ams',
+      processEscapes: true,
+      packages: {'[+]': ['ams']}
+    },
+    options: {
+      renderActions: {
+        findScript: [10, function (doc) {
+          for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+            const display = !!node.type.match(/; *mode=display/);
+            const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+            const text = document.createTextNode('');
+            node.parentNode.replaceChild(text, node);
+            math.start = {node: text, delim: '', n: 0};
+            math.end = {node: text, delim: '', n: 0};
+            doc.math.push(math);
+          }
+        }, '']
+      }
+    }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/6810">"Make Keras a Little Cooler!": Layers-within-layers and Masking</a></h1>
+
+<p>By 苏剑林 | July 16, 2019</p>
+
+<p>This edition of <a href="https://kexue.fm/search/%E8%AE%A9Keras%E6%9B%B4%E9%85%B7%E4%B8%80%E4%BA%9B/">"Make Keras a Little Cooler!"</a> will share two topics with readers: the first is "layers-within-layers," which as the name suggests, involves reusing existing layers when customizing layers in Keras to greatly reduce code volume; the other part, as requested by several readers, is an introduction to the principles and methods of masking in sequence models.</p>
+
+<h2 id="layers-within-layers">Layers-within-layers</h2>
+
+<p>In the article <a href="translation_5765.html">“Make Keras a Little Cooler!”: Exquisite Layers and Fancy Callbacks</a>, we already introduced the basic methods for customizing Keras layers. The core steps are defining the <code>build</code> and <code>call</code> functions, where <code>build</code> is responsible for creating trainable weights and <code>call</code> defines the specific operations.</p>
+
+<h3 id="refuse-redundant-labor">Avoid Redundant Labor</h3>
+
+<p>Readers who frequently use custom layers may feel they are doing redundant work. For example, if we want to add a linear transformation, we must add <code>kernel</code> and <code>bias</code> variables in <code>build</code> (manually defining initialization, regularization, etc.), then use <code>K.dot</code> in <code>call</code>, and sometimes consider dimension alignment issues. This process is tedious. In fact, a linear transformation is simply a <code>Dense</code> layer without an activation function. If we could reuse existing layers while customizing a layer, it would obviously save a lot of code.</p>
+
+<p>As long as you are familiar with Python's object-oriented programming and carefully study the source code of Keras's <code>Layer</code>, it is not difficult to find a way to reuse existing layers. Here, I have organized it into a standardized workflow for readers to reference.</p>
+
+<p><strong>(Note: Starting from Keras 2.3.0, the layers-within-layers functionality is built-in; you can simply use <code>Layer</code> directly without the custom <code>OurLayer</code> below.)</strong></p>
+
+<h3 id="ourlayer">OurLayer</h3>
+
+<p>First, we define a new <code>OurLayer</code> class:</p>
+
+<pre><code class="language-python">class OurLayer(Layer):
+    """Reuse existing layers in a custom layer
+    """
+    def reuse(self, layer, *args, **kwargs):
+        if not layer.built:
+            if len(args) > 0:
+                input_shape = K.int_shape(args[0])
+            else:
+                input_shape = None
+            layer.build(input_shape)
+        
+        # Manually add weights to ensure they are captured for training
+        if hasattr(layer, 'trainable_weights'):
+            for w in layer.trainable_weights:
+                if w not in self._trainable_weights:
+                    self._trainable_weights.append(w)
+        if hasattr(layer, 'non_trainable_weights'):
+            for w in layer.non_trainable_weights:
+                if w not in self._non_trainable_weights:
+                    self._non_trainable_weights.append(w)
+
+        return layer(*args, **kwargs)
+</code></pre>
+
+<p>This <code>OurLayer</code> class inherits from the original <code>Layer</code> and adds a <code>reuse</code> method, allowing us to reuse existing layers.</p>
+
+<p>Below is a simple example defining a layer with the following operation:</p>
+
+<p>$$y = g(f(xW_1 + b_1)W_2 + b_2)$$</p>
+
+<p>Here $f, g$ are activation functions. This is essentially a composition of two <code>Dense</code> layers. If we followed the standard approach, we would have to define several weights in <code>build</code>, determine shapes based on input, define initializations, etc. However, all these are already defined in the <code>Dense</code> layer. We can simply call them as follows:</p>
+
+<pre><code class="language-python">class OurDense(OurLayer):
+    """Inherit from OurLayer instead of Layer
+    """
+    def __init__(self, hidden_dim, output_dim,
+                 hidden_activation='linear',
+                 output_activation='linear', **kwargs):
+        super(OurDense, self).__init__(**kwargs)
+        self.hidden_dim = hidden_dim
+        self.output_dim = output_dim
+        self.hidden_activation = hidden_activation
+        self.output_activation = output_activation
+    def build(self, input_shape):
+        """Add the layers to be reused in the build method.
+        Standard trainable weights can also be added here.
+        """
+        super(OurDense, self).build(input_shape)
+        self.h_dense = Dense(self.hidden_dim, 
+                             activation=self.hidden_activation)
+        self.o_dense = Dense(self.output_dim, 
+                             activation=self.output_activation)
+    def call(self, inputs):
+        """Simply reuse the layers; equivalent to o_dense(h_dense(inputs))
+        """
+        h = self.reuse(self.h_dense, inputs)
+        o = self.reuse(self.o_dense, h)
+        return o
+    def compute_output_shape(self, input_shape):
+        return input_shape[:-1] + (self.output_dim,)
+</code></pre>
+
+<p>Isn't that much cleaner?</p>
+
+<h2 id="mask">Mask</h2>
+
+<p>In this section, we discuss the issues of padding and masking when processing variable-length sequences.</p>
+
+<h3 id="prove-you-have-thought">Prove You've Thought About It</h3>
+
+<p>Recently, in several models I've open-sourced, I've used masking extensively, which seemed to confuse many readers. While it's perfectly natural to have questions about new concepts, asking without thinking can be irresponsible. I believe that when asking someone a question, you should "prove" you have thought about it first. For example, if you want me to explain masking, I would first ask you to answer:</p>
+
+<blockquote>What does the sequence look like before masking? Which positions in the sequence changed after masking? How did they change?</blockquote>
+
+<p>These three questions have nothing to do with the "theory" of masking; they just require you to observe the operations being performed. Only after seeing what is happening can we discuss why we do it. If one cannot even understand the operation itself, there are two choices: give up on the problem, or study Keras for a few more months before coming back to it.</p>
+
+<p>Assuming the reader has understood the masking operation, let's briefly discuss its basic principles.</p>
+
+<h3 id="eliminating-padding">Eliminating Padding</h3>
+
+<p>Masking appears alongside padding because neural networks require a structured tensor as input, while text sequences are usually variable in length. Consequently, we need to crop or fill (pad) them to make them fixed-length. By convention, we use 0 as the padding symbol.</p>
+
+<p>Let's use a simple vector to describe the principle. Suppose we have a vector of length 5:</p>
+
+<p>$$x = [1, 0, 3, 4, 5]$$</p>
+
+<p>After padding to length 8, it becomes:</p>
+
+<p>$$x = [1, 0, 3, 4, 5, 0, 0, 0]$$</p>
+
+<p>When you feed this length-8 vector into a model, the model doesn't know whether this is a "length-8 vector" or a "length-5 vector filled with three meaningless zeros." To indicate which parts are meaningful and which are padding, we need a mask vector (matrix):</p>
+
+<p>$$m = [1, 1, 1, 1, 1, 0, 0, 0]$$</p>
+
+<p>This is a 0/1 vector (matrix), where 1 represents a meaningful part and 0 represents a meaningless padding part.</p>
+
+<p>Masking refers to operations involving $x$ and $m$ to eliminate the effects of padding. For instance, if we want to calculate the mean of $x$, the expected result is:</p>
+
+<p>$$\text{avg}(x) = \frac{1 + 0 + 3 + 4 + 5}{5} = 2.6$$</p>
+
+<p>However, because the vector is padded, a direct calculation would yield:</p>
+
+<p>$$\frac{1 + 0 + 3 + 4 + 5 + 0 + 0 + 0}{8} = 1.625$$</p>
+
+<p>This introduces a bias. More seriously, the number of zeros might vary for the same input across different paddings, leading to different means for the same sample, which is unreasonable. With the mask vector $m$, we can rewrite the mean operation as:</p>
+
+<p>$$\text{avg}(x) = \frac{\text{sum}(x \otimes m)}{\text{sum}(m)}$$</p>
+
+<p>Here $\otimes$ denotes element-wise multiplication. In this way, the numerator only sums the non-padded parts, and the denominator counts the non-padded parts. No matter how many zeros you pad, the final result remains consistent.</p>
+
+<p>What if we want the maximum value of $x$? We have $\max([1, 0, 3, 4, 5]) = \max([1, 0, 3, 4, 5, 0, 0, 0]) = 5$. It seems we don't need to eliminate the padding effect? This holds for this specific example, but consider:</p>
+
+<p>$$x = [-1, -2, -3, -4, -5]$$</p>
+
+<p>After padding, it becomes:</p>
+
+<p>$$x = [-1, -2, -3, -4, -5, 0, 0, 0]$$</p>
+
+<p>If you directly take the $\max$ of the padded $x$, the result is 0, which was not in the original range. The solution is to make the padded part so small that it (almost) can never be reached by the $\max$ operation, for example:</p>
+
+<p>$$\max(x) = \max\left(x - (1 - m) \times 10^{10}\right)$$</p>
+
+<p>Normally, the magnitude of a neural network's inputs and outputs isn't extremely large. After $x - (1 - m) \times 10^{10}$, the padding part becomes a very large negative number (on the order of $-10^{10}$), ensuring it won't be picked by the $\max$ operator.</p>
+
+<p>Processing softmax with padding follows the same logic. In Attention mechanisms or pointer networks, we may encounter softmax over variable-length vectors. If we apply softmax to the padded vector directly, the padding part will also share the probability mass, resulting in the sum of probabilities for the meaningful parts being less than 1. The solution is identical to the $\max$ case: make the padding part so small that $e^x$ is close to 0, which can then be ignored:</p>
+
+<p>$$\text{softmax}(x) = \text{softmax}\left(x - (1 - m) \times 10^{10}\right)$$</p>
+
+<p>The mask handling for the above operators is somewhat special. For other operations (except bidirectional RNNs), the masking usually just requires outputting:</p>
+
+<p>$$x \otimes m$$</p>
+
+<p>Which simply keeps the padding part as 0.</p>
+
+<h3 id="keras-implementation-points">Keras Implementation Points</h3>
+
+<p>Keras has built-in mask functionality, but I do not recommend using it. The built-in masking is not transparent, lacks flexibility, and doesn't support all layers. I strongly recommend readers implement masking themselves.</p>
+
+<p>Several models I've open-sourced recently provide plenty of masking examples. I believe that by reading the source code carefully, you will easily understand how to implement masking. Here are a few key points. Generally, the input for NLP models is a word ID matrix with shape $[batch\_size, seq\_len]$. I use 0 as the ID for padding and 1 for UNK tokens, while the rest are arbitrary. Then, I use a <code>Lambda</code> layer to generate the mask matrix:</p>
+
+<pre><code class="language-python"># Assuming input_tensor consists of word IDs, with 0 as padding
+mask = Lambda(lambda x: K.cast(K.greater(K.expand_dims(x, 2), 0), 'float32'))(input_tensor)
+</code></pre>
+
+<p>This generates a mask matrix of shape $[batch\_size, seq\_len, 1]$. After the word ID matrix passes through an <code>Embedding</code> layer, its shape becomes $[batch\_size, seq\_len, word\_size]$. Consequently, you can use the mask matrix to process the output. This is just my personal convention, not the only standard.</p>
+
+<h2 id="integration-bidirectional-rnn">Integration: Bidirectional RNN</h2>
+
+<p>Our previous discussion excluded bidirectional RNNs. This is because RNNs are recursive models and cannot be masked simply (especially the backward RNN part). A bidirectional RNN performs forward and backward passes and then concatenates or adds the results. If we perform a backward RNN on $[1, 0, 3, 4, 5, 0, 0, 0]$, the final output will contain information from the padding zeros (because the zeros are involved in the calculation at the start of the backward pass). Therefore, it cannot be eliminated after the fact; it must be eliminated beforehand.</p>
+
+<p>The solution is: when performing the backward RNN, first reverse $[1, 0, 3, 4, 5, 0, 0, 0]$ into $[5, 4, 3, 0, 1, 0, 0, 0]$ (Note: I actually mean reversing such that the meaningful sequence comes first, e.g., $[5, 4, 3, 0, 1]$... wait, let me rephrase). To make a backward RNN, you should reverse the <i>meaningful</i> part such that the sequence becomes $[5, 4, 3, 0, 1]$ followed by padding. Then perform a forward RNN, and then reverse the results back. Crucially, when reversing, you must only reverse the non-padded part. This ensures that the padding part never participates in the recursion and that the result remains aligned with the forward RNN. TensorFlow provides a ready-made function for this: <code>tf.reverse_sequence()</code>.</p>
+
+<p>Unfortunately, Keras's own <code>Bidirectional</code> wrapper does not have this functionality. Thus, I have rewritten it for reference:</p>
+
+<pre><code class="language-python">class BiRNN(OurLayer):
+    """A bidirectional RNN wrapper that properly handles masking for alignment.
+    """
+    def __init__(self, rnn, merge_mode='concat', **kwargs):
+        super(BiRNN, self).__init__(**kwargs)
+        self.forward_layer = rnn
+        self.backward_layer = copy.copy(rnn)
+        self.backward_layer.go_backwards = False
+        self.merge_mode = merge_mode
+    def build(self, input_shape):
+        super(BiRNN, self).build(input_shape)
+        # Build forward and backward RNN layers
+    def call(self, inputs):
+        x, mask = inputs # Consists of input and mask
+        # Forward pass is normal
+        y_f = self.reuse(self.forward_layer, x)
+        # Backward pass: reverse meaningful sequence, compute RNN, then reverse back
+        seq_len = K.cast(K.sum(mask, 1)[:, 0], 'int32')
+        x_b = tf.reverse_sequence(x, seq_len, seq_dim=1)
+        y_b = self.reuse(self.backward_layer, x_b)
+        y_b = tf.reverse_sequence(y_b, seq_len, seq_dim=1)
+        # Merge forward and backward results
+        if self.merge_mode == 'concat':
+            return K.concatenate([y_f, y_b])
+        else:
+            return y_f + y_b
+    def compute_output_shape(self, input_shape):
+        if self.merge_mode == 'concat':
+            return input_shape[0][:-1] + (self.forward_layer.units * 2,)
+        else:
+            return input_shape[0]
+</code></pre>
+
+<p>Usage is almost the same as the built-in <code>Bidirectional</code>, except you need to pass the mask matrix as well, for example:</p>
+
+<pre><code class="language-python">y = BiRNN(LSTM(64, return_sequences=True))([x, mask])
+</code></pre>
+
+<h2 id="summary">Summary</h2>
+
+<p>Keras is an extremely friendly and flexible high-level deep learning API wrapper. Do not believe the rumors claiming "Keras is friendly to beginners but lacks flexibility." Keras is friendly to beginners, even friendlier to experts, and best suited for users who need to customize modules frequently.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6810.html" style="color: #005fcc;">https://kexue.fm/archives/6810</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,259 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\max']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/5879">“Make Keras Cooler!”: Niche Custom Optimizers</a></h1>
+
+<p>By 苏剑林 | September 08, 2018</p>
+
+<p>Following up on my previous post <a href="translation_5765.html">"Make Keras Cooler!": Ingenious Layers and Fancy Callbacks</a>...</p>
+
+<p>Today, we will look at a niche requirement: custom optimizers.</p>
+
+<p>Upon reflection, regardless of the framework used, the need for a custom optimizer is truly a niche among niches. Generally, for most tasks, we can brainlessly use Adam, while "alchemist" tuning experts often use SGD to achieve better results. In other words, whether you are a novice or an expert, there is rarely a need to define a custom optimizer.</p>
+
+<p>So, what is the value of this article? In some scenarios, it can be quite useful. For instance, by learning how to write optimizers in Keras, you can gain a deeper understanding of algorithms like gradient descent, and you can see firsthand how concise and elegant the Keras source code is. Additionally, sometimes we can implement specific features through custom optimizers, such as rewriting optimizers for simple models (like Word2Vec) to use hard-coded gradients instead of automatic differentiation for speed, or implementing features like "soft batching."</p>
+
+<h2 id="KerasOptimizers">Keras Optimizers</h2>
+
+<p>First, let's look at the built-in optimizer code in Keras, located at:<br />
+<a href="https://github.com/keras-team/keras/blob/master/keras/optimizers.py">https://github.com/keras-team/keras/blob/master/keras/optimizers.py</a></p>
+
+<p>For simplicity, let's start with SGD. Although Keras's SGD implementation integrates momentum, Nesterov, and decay—which is convenient for use but not for learning—I have simplified it here to provide an example of a pure SGD algorithm:</p>
+
+<pre><code class="language-python"></code></pre>
+
+<p>This shouldn't need viel explanation, right? Doesn't it feel remarkably simple? Defining an optimizer isn't such a high-brow task after all~</p>
+
+<h2 id="ImplementingSoftBatch">Implementing "Soft Batch"</h2>
+
+<p>Now, let's implement a slightly more complex feature: what I call "soft batch." I'm not exactly sure if that's the standard name, so let's use it for now. The general scenario is: suppose you have a large model, and your GPU can only handle a batch size of 16, but you want to achieve the effect of a batch size of 64. What can you do? One solution is to calculate a batch of 16 at a time, cache the gradients, and update the parameters only after 4 batches. That is, calculate gradients for every small batch, but update parameters only every 4 batches.</p>
+
+<p><strong>Update (July 8, 2019): The implementation below is incorrect and does not achieve the expected effect. For a corrected implementation, please see <a href="translation_6794.html">Keras Gradient Accumulation Optimizer: Trading Time for Results</a>.</strong></p>
+
+<p><s>If you truly have this requirement, it can only be solved by modifying the optimizer. Based on the previous SGD example, the reference code is as follows:</s></p>
+
+<pre><code class="language-python"></code></pre>
+
+<p><s>This should also be easy to understand. While implementing momentum would be slightly more complex, the logic is the same. The key is to introduce an additional variable to store the accumulated gradients and a <code>cond</code> to control whether to update. The tasks originally performed by the optimizer are now only executed when <code>cond</code> is True (using the accumulated gradients instead of current ones). Compared to the original SGD, the changes are minimal.</s></p>
+
+<h2 id="IntrusiveOptimizers">"Intrusive" Optimizers</h2>
+
+<p>The solution above for implementing optimizers is standard, meaning it follows Keras's design specifications, which makes it straightforward. However, I once wanted to implement an optimizer that could not be achieved this way. After reading the source code, I found an "intrusive" approach. This method acts like a "plug-in" or "hook"; it can implement the functionality I need, but it is not a standard implementation. I'd like to share it with you here.</p>
+
+<p>The original requirement stems from the previous article <a href="translation_5655.html">Optimizing Algorithms from a Dynamical Systems Perspective (1): From SGD to Momentum Acceleration</a>. It pointed out that gradient descent optimizers can be viewed as Euler's method for solving systems of differential equations. This suggests that there are many methods more advanced than Euler's method for solving differential equations; can they be applied to deep learning? For example, the slightly more advanced "<a href="https://en.wikipedia.org/wiki/Heun%27s_method">Heun's Method</a>":</p>
+
+$$
+\begin{aligned}
+\tilde{p}_{i+1} &= p_i + \epsilon g(p_i) \\
+p_{i+1} &= p_i + \frac{1}{2}\epsilon [g(p_i) + g(\tilde{p}_{i+1})]
+\end{aligned}
+$$
+
+<p>Where $p$ is the parameter (vector), $g$ is the gradient, and $p_i$ represents the result of $p$ at the $i$-th iteration. This algorithm requires two steps. Essentially, it performs a standard gradient descent step first ("scouting"), then takes an average based on the result of the scout to find a more precise path. Equivalently, it can be rewritten as:</p>
+
+$$
+\begin{aligned}
+\tilde{p}_{i+1} &= p_i + \epsilon g(p_i) \\
+p_{i+1} &= \tilde{p}_{i+1} + \frac{1}{2}\epsilon [g(\tilde{p}_{i+1}) - g(p_i)]
+\end{aligned}
+$$
+
+<p>This clearly shows that the second step is actually a fine-tuning of the gradient descent.</p>
+
+<p>However, implementing such algorithms poses a challenge: gradients must be calculated twice—once for the parameters $p_i$ and once for the parameters $\tilde{p}_{i+1}$. In the standard optimizer definition, the <code>get_updates</code> method can only execute one step (corresponding to a single <code>sess.run</code> in the TensorFlow framework; those familiar with TF know it's hard to achieve this requirement with a single <code>sess.run</code>). Therefore, it cannot be implemented this way. After studying Keras's model training source code, I found it can be written like this:</p>
+
+<pre><code class="language-python"></code></pre>
+
+<p>Usage:</p>
+
+<pre><code class="language-python"></code></pre>
+
+<p>The key idea is commented in the code. Since Keras optimizers are ultimately wrapped into a <code>train_function</code>, we simply need to design our own <code>train_function</code> by referencing the Keras source code and inserting our own operations. Note that the operation defined by <code>K.function</code> is equivalent to a single <code>sess.run</code>.</p>
+
+<blockquote>
+    <strong>Note: Similarly, algorithms like RK23 and RK45 can be implemented. Unfortunately, these optimizers do not perform well in practice~</strong>
+</blockquote>
+
+<h2 id="ElegantKeras">Elegant Keras</h2>
+
+<p>This article discussed the very niche need of customizing optimizers, introducing the general way to write Keras optimizers as well as an "intrusive" approach. If you have such a special requirement, you can refer to these methods.</p>
+
+<p>Through the study and analysis of Keras optimizers, we can further observe that the overall Keras codebase is extremely concise and elegant, making it hard to find fault with~</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_5879.html" style="color: #005fcc;">https://kexue.fm/archives/5879</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

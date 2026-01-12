@@ -1,0 +1,384 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams', 'boldsymbol']}
+  },
+  loader: {load: ['[tex]/ams', '[tex]/boldsymbol']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+  <h1><a href="https://kexue.fm/archives/11404">Asymptotic Estimation of Weight RMS of AdamW (Part 2)</a></h1>
+  
+  <p>By 苏剑林 | November 17, 2025</p>
+
+  <p>In the blog post <a href="translation_11307.html">"Asymptotic Estimation of Weight RMS of AdamW (Part 1)"</a>, we derived the asymptotic expression for the RMS of model weights trained with AdamW. However, at that time, we assumed that Weight Decay and the learning rate were fixed throughout the training process, which doesn't perfectly match actual training. Therefore, in this article, we will generalize the previous conclusions into a dynamic version.</p>
+  
+  <p>The so-called dynamic version means allowing both Weight Decay and the learning rate to change as the number of training steps increases, such as the classic Cosine Decay, WSD (Warmup Stable Decay), etc., making the conclusions more general.</p>
+
+  <h2>Step 1</h2>
+  <p>Our starting point is still the definition of AdamW:</p>
+
+  \begin{equation}\text{Adam}\color{skyblue}{\text{W}}:=\left\{\begin{aligned}
+  &\boldsymbol{m}_t = \beta_1 \boldsymbol{m}_{t-1} + \left(1 - \beta_1\right) \boldsymbol{g}_t\\
+  &\boldsymbol{v}_t = \beta_2 \boldsymbol{v}_{t-1} + \left(1 - \beta_2\right) \boldsymbol{g}_t^2\\
+  &\hat{\boldsymbol{m}}_t = \boldsymbol{m}_t\left/\left(1 - \beta_1^t\right)\right.\\
+  &\hat{\boldsymbol{v}}_t = \boldsymbol{v}_t\left/\left(1 - \beta_2^t\right)\right.\\
+  &\boldsymbol{u}_t =\hat{\boldsymbol{m}}_t\left/\left(\sqrt{\hat{\boldsymbol{v}}_t} + \epsilon\right)\right.\\
+  &\boldsymbol{\theta}_t = \boldsymbol{\theta}_{t-1} - \eta_t (\boldsymbol{u}_t \color{skyblue}{ + \lambda_t \boldsymbol{\theta}_{t-1}})
+  \end{aligned}\right.\end{equation}
+
+  <p>Since $\eta_t\lambda_t\ll 1$, we can write:</p>
+
+  \begin{equation}\boldsymbol{\theta}_t = (1 - \eta_t\lambda_t)\boldsymbol{\theta}_{1} -\eta_t\boldsymbol{u}_t \approx e^{- \eta_t\lambda_t}\boldsymbol{\theta}_{t-1} -\eta_t\boldsymbol{u}_t\end{equation}
+
+  <p>Let $\kappa_t = \sum_{i=1}^t \eta_i\lambda_i$, then expanding directly gives:</p>
+
+  \begin{equation}\boldsymbol{\theta}_t \approx e^{-\kappa_t}\boldsymbol{\theta}_0 - \sum_{i=1}^t e^{-(\kappa_t - \kappa_i)}\eta_i\boldsymbol{u}_i = e^{-\kappa_t}\left(\boldsymbol{\theta}_0 - \sum_{i=1}^t e^{\kappa_i}\eta_i\boldsymbol{u}_i\right)\end{equation}
+
+  <p>Then let $z_t = \sum_{i=1}^t e^{\kappa_i}\eta_i$, then by the mean-field approximation we get:</p>
+
+  \begin{equation}\bar{\boldsymbol{u}}_t\triangleq\frac{1}{z_t}\sum_{i=1}^t e^{\kappa_i}\eta_i \boldsymbol{u}_i = \frac{1}{z_t}\sum_{i=1}^t e^{\kappa_i}\eta_i \frac{\boldsymbol{m}_i}{\sqrt{\boldsymbol{v}_i}}\approx \frac{\bar{\boldsymbol{m}}_t \,\, \triangleq \,\, \frac{1}{z_t}\sum_{i=1}^t e^{\kappa_i}\eta_i\boldsymbol{m}_i}{\sqrt{\bar{\boldsymbol{v}}_t \,\, \triangleq \,\, \frac{1}{z_t}\sum_{i=1}^t e^{\kappa_i}\eta_i\boldsymbol{v}_i}}\end{equation}
+
+  <p>In this way:</p>
+
+  \begin{equation}\Vert\boldsymbol{\theta}_t\Vert_{RMS}^2 \approx e^{-2\kappa_t}\Vert\boldsymbol{\theta}_0 - z_t \bar{\boldsymbol{u}}_t\Vert_{RMS}^2 \approx e^{-2\kappa_t}\Vert\boldsymbol{\theta}_0\Vert_{RMS}^2 + e^{-2\kappa_t}z_t^2\Vert\bar{\boldsymbol{u}}_t\Vert_{RMS}^2\end{equation}
+
+  <h2>Step 2</h2>
+  <p>Following the previous strategy, to estimate $\Vert \bar{\boldsymbol{u}}_t\Vert_{RMS}^2$, we need to assume that $\boldsymbol{g}_j$ are independently and identically distributed following $\mathcal{N}(\boldsymbol{\mu},\boldsymbol{\sigma}^2)$, and then solve for:</p>
+
+  \begin{equation}\mathbb{E}[\bar{\boldsymbol{u}}_t^2] \approx \mathbb{E}\left[\frac{\bar{\boldsymbol{m}}_t^2}{\bar{\boldsymbol{v}}_t}\right] \approx \frac{\mathbb{E}[\bar{\boldsymbol{m}}_t^2]}{\mathbb{E}[\bar{\boldsymbol{v}}_t]}\end{equation}
+
+  <p>Finally, we average the various components of $\mathbb{E}[\bar{\boldsymbol{u}}_t^2]$, and the result can serve as an approximation of $\Vert \bar{\boldsymbol{u}}_t\Vert_{RMS}^2$.</p>
+
+  <p>Expanding $\boldsymbol{m}_t$ and $\boldsymbol{v}_t$ gives:</p>
+
+  \begin{equation}\boldsymbol{m}_t = (1 - \beta_1)\sum_{i=1}^t \beta_1^{t-i}\boldsymbol{g}_i,\qquad \boldsymbol{v}_t = (1 - \beta_2)\sum_{i=1}^t \beta_2^{t-i}\boldsymbol{g}_i^2\label{eq:mv-roll}\end{equation}
+
+  <p>Meanwhile, we also have the identity:</p>
+
+  \begin{equation}\sum_{i=1}^t \sum_{j=1}^i a_i b_j = \sum_{j=1}^t \sum_{i=j}^t a_i b_j\end{equation}
+
+  <p>Utilizing these results, we can write:</p>
+
+  \begin{gather}
+  \bar{\boldsymbol{m}}_t = \frac{1}{z_t}\sum_{i=1}^t e^{\kappa_i}\eta_i\boldsymbol{m}_i = \frac{1 - \beta_1}{z_t}\sum_{i=1}^t e^{\kappa_i}\eta_i\sum_{j=1}^i \beta_1^{i-j}\boldsymbol{g}_j = \sum_{j=1}^t\boldsymbol{g}_j\underbrace{\frac{1 - \beta_1}{z_t}\sum_{i=j}^t e^{\kappa_i}\beta_1^{i-j}\eta_i}_{\text{denoted as }\bar{\beta}_1(j,t)} \\
+  \bar{\boldsymbol{v}}_t = \frac{1}{z_t}\sum_{i=1}^t e^{\kappa_i}\eta_i\boldsymbol{v}_i = \frac{1 - \beta_2}{z_t}\sum_{i=1}^t e^{\kappa_i}\eta_i\sum_{j=1}^i \beta_2^{i-j}\boldsymbol{g}_j^2 = \sum_{j=1}^t\boldsymbol{g}_j^2\underbrace{\frac{1 - \beta_2}{z_t}\sum_{i=j}^t e^{\kappa_i}\beta_2^{i-j}\eta_i}_{\text{denoted as }\bar{\beta}_2(j,t)} \\
+  \end{gather}
+
+  <h2>Step 3</h2>
+  <p>First calculate the denominator. When $t$ is sufficiently large (so $\beta_1^t, \beta_2^t$ are sufficiently small), $\sum_{j=1}^t \bar{\beta}_1(j,t)$ and $\sum_{j=1}^t \bar{\beta}_2(j,t)$ will be sufficiently close to 1 (because it is essentially a form of double-weighted average, just with the summation symbols swapped), so we have:</p>
+
+  \begin{equation}\mathbb{E}[\bar{\boldsymbol{v}}_t] = \sum_{j=1}^t\bar{\beta}_2(j,t) \mathbb{E}[\boldsymbol{g}_j^2] = \sum_{j=1}^t\bar{\beta}_2(j,t) (\boldsymbol{\mu}^2 + \boldsymbol{\sigma}^2) \approx \boldsymbol{\mu}^2 + \boldsymbol{\sigma}^2 \end{equation}
+
+  <p>Similarly for $\mathbb{E}[\bar{\boldsymbol{m}}_t]$, the result is $\boldsymbol{\mu}$, and since $\mathbb{E}[\bar{\boldsymbol{m}}_t^2] = \mathbb{E}[\bar{\boldsymbol{m}}_t]^2 + \mathbb{V}ar[\bar{\boldsymbol{m}}_t]$, using the additivity of variance for independent terms, we get:</p>
+
+  \begin{equation}\mathbb{V}ar[\bar{\boldsymbol{m}}_t] = \sum_{j=1}^t\bar{\beta}_1(j,t)^2 \mathbb{V}ar[\boldsymbol{g}_j] = \sum_{j=1}^t\bar{\beta}_1(j,t)^2 \boldsymbol{\sigma}^2\end{equation}
+
+  <p>Therefore:</p>
+
+  \begin{equation}\mathbb{E}[\bar{\boldsymbol{u}}_t^2] \approx \frac{\boldsymbol{\mu}^2 + \boldsymbol{\sigma}^2\sum_{j=1}^t\bar{\beta}_1(j,t)^2}{\boldsymbol{\mu}^2 + \boldsymbol{\sigma}^2}\end{equation}
+
+  <p>And:</p>
+
+  \begin{equation}\Vert\bar{\boldsymbol{u}}_t\Vert_{RMS}^2 \approx \frac{\Vert\boldsymbol{\mu}\Vert^2/\Vert\boldsymbol{\sigma}\Vert^2 + \sum_{j=1}^t\bar{\beta}_1(j,t)^2}{\Vert\boldsymbol{\mu}\Vert^2/\Vert\boldsymbol{\sigma}\Vert^2 + 1} \end{equation}
+
+  <p>Finally:</p>
+
+  \begin{equation}\Vert\boldsymbol{\theta}_t\Vert_{RMS}^2 \approx e^{-2\kappa_t}\Vert\boldsymbol{\theta}_0\Vert_{RMS}^2 + e^{-2\kappa_t}z_t^2\frac{\Vert\boldsymbol{\mu}\Vert^2/\Vert\boldsymbol{\sigma}\Vert^2 + \sum_{j=1}^t\bar{\beta}_1(j,t)^2}{\Vert\boldsymbol{\mu}\Vert^2/\Vert\boldsymbol{\sigma}\Vert^2 + 1}\end{equation}
+
+  <p>If readers are looking at this article directly, they might feel that some steps are a bit of a leap; in that case, one might as well revisit <a href="translation_11307.html">"Asymptotic Estimation of Weight RMS of AdamW (Part 1)"</a> first to become familiar with the ideas behind each approximation step.</p>
+
+  <h2>Example 1</h2>
+  <p>First consider $\boldsymbol{\mu}=\boldsymbol{0}$, then substituting the expression for $\bar{\beta}_1(j,t)$ into the above formula gives:</p>
+
+  \begin{equation}\Vert\boldsymbol{\theta}_t\Vert_{RMS}^2 \approx e^{-2\kappa_t}\Vert\boldsymbol{\theta}_0\Vert_{RMS}^2 + e^{-2\kappa_t}(1-\beta_1)^2\sum_{j=1}^t\left(\sum_{i=j}^t e^{\kappa_i}\beta_1^{i-j}\eta_i\right)^2\label{eq:w-rms-mu0}\end{equation}
+
+  <p>Then consider the simple case where $\lambda_t=0$, meaning there is no Weight Decay. At this point:</p>
+
+  \begin{equation}\Vert\boldsymbol{\theta}_t\Vert_{RMS}^2 \approx \Vert\boldsymbol{\theta}_0\Vert_{RMS}^2 + (1-\beta_1)^2\sum_{j=1}^t\left(\sum_{i=j}^t \beta_1^{i-j}\eta_i\right)^2\end{equation}
+
+  <p>If $\beta_1\to 0$, then we immediately have $\Vert\boldsymbol{\theta}_t\Vert_{RMS}^2 \approx \Vert\boldsymbol{\theta}_0\Vert_{RMS}^2 + \sum_{j=1}^t\eta_j^2$. This shows that in the absence of Weight Decay as the training steps $t\to\infty$, if we want the Weight RMS not to explode, the sum of the squares of the learning rate sequence must converge, which is one of the classic conditions in traditional optimization theory. In fact, even with $0 < \beta_1 < 1$, this condition is necessary and sufficient, namely:</p>
+
+  \begin{equation}\sum_{j=1}^{\infty}\left(\sum_{i=j}^{\infty} \beta_1^{i-j}\eta_i\right)^2 < \infty \qquad\Leftrightarrow\qquad \sum_{j=1}^{\infty}\eta_j^2 < \infty\end{equation}
+
+  <p>The proof is not difficult; we perform a transformation on the left side:</p>
+
+  \begin{equation}\begin{aligned}
+  \sum_{j=1}^{\infty}\left(\sum_{i=0}^{\infty} \beta_1^i\eta_{i+j}\right)^2 =&\, \sum_{j=1}^{\infty}\left(\sum_{i_1=0}^{\infty} \beta_1^{i_1}\eta_{i_1+j}\right)\left(\sum_{i_2=0}^{\infty} \beta_1^{i_2}\eta_{i_2+j}\right) \\
+  =&\, \sum_{i_1=0}^{\infty}\sum_{i_2=0}^{\infty} \beta_1^{i_1 + i_2}\sum_{j=1}^{\infty}\eta_{i_1+j}\eta_{i_2+j}
+  \end{aligned}\end{equation}
+
+  <p>This shows that if the left side converges, then for $\forall i_1, i_2$, the sum $\sum_{j=1}^{\infty}\eta_{i_1+j}\eta_{i_2+j}$ must converge, which naturally implies $\sum_{j=1}^{\infty}\eta_j^2$ converges—Necessity proven. As for Sufficiency, we can start from the above equation and use Cauchy's inequality:</p>
+
+  \begin{equation}\begin{aligned}
+  \sum_{i_1=0}^{\infty}\sum_{i_2=0}^{\infty} \beta_1^{i_1 + i_2}\sum_{j=1}^{\infty}\eta_{i_1+j}\eta_{i_2+j} \leq&\, \sum_{i_1=0}^{\infty}\sum_{i_2=0}^{\infty} \beta_1^{i_1 + i_2}\sqrt{\left(\sum_{j=1}^{\infty}\eta_{i_1+j}^2\right)\left(\sum_{j=1}^{\infty}\eta_{i_2+j}^2\right)} \\
+  \leq&\, \sum_{i_1=0}^{\infty}\sum_{i_2=0}^{\infty} \beta_1^{i_1 + i_2}\sqrt{\left(\sum_{j=1}^{\infty}\eta_j^2\right)\left(\sum_{j=1}^{\infty}\eta_j^2\right)} \\
+  =&\, \frac{1}{(1-\beta_1)^2} \sum_{j=1}^{\infty}\eta_j^2
+  \end{aligned}\end{equation}
+
+  <p>Thus $\sum_{j=1}^{\infty}\eta_j^2$ converging implies that the left side converges—Sufficiency proven.</p>
+
+  <h2>Example 2</h2>
+  <p>Next, we consider the case where Weight Decay is constant and the learning rate is variable. Here $\kappa_t = \lambda\sum_{i=1}^t \eta_i$. If we want to train infinitely and obtain a solution as close as possible to the theoretical optimum, the learning rate should satisfy $\sum_{i=1}^{\infty} \eta_i \to \infty$, so that the first term $e^{-2\kappa_t}\Vert\boldsymbol{\theta}_0\Vert_{RMS}^2$ can completely "forget" the initialization (the theoretical optimal solution should be independent of initialization). Interestingly, this is also one of the classic conditions in traditional optimization theory.</p>
+
+  <p>For the general case, calculating the expression $\eqref{eq:w-rms-mu0}$ is relatively difficult, but we can consider further approximations based on actual conditions. In actual training, typically $\lambda_t \eta_t \ll 1$, so the growth rate of $e^{\kappa_i}$ is far slower than the decay rate of $\beta_1^i$. Meanwhile, compared to $\beta_1^i$, the learning rate $\eta_i$ is usually slowly-varying. Therefore, we can consider the approximation:</p>
+
+  \begin{equation}\sum_{i=j}^t e^{\kappa_i}\beta_1^{i-j}\eta_i \approx \sum_{i=j}^t e^{\kappa_j}\beta_1^{i-j}\eta_j = e^{\kappa_j}\eta_j\sum_{i=j}^t\beta_1^{i-j}\approx e^{\kappa_j}\eta_j\sum_{i=j}^{\infty}\beta_1^{i-j} = \frac{e^{\kappa_j}\eta_j}{1-\beta_1}\end{equation}
+
+  <p>Substituting this approximation back into formula $\eqref{eq:w-rms-mu0}$ gives:</p>
+
+  \begin{equation}\Vert\boldsymbol{\theta}_t\Vert_{RMS}^2 \approx e^{-2\kappa_t}\Vert\boldsymbol{\theta}_0\Vert_{RMS}^2 + e^{- 2\kappa_t}\sum_{j=1}^t e^{2\kappa_j}\eta_j^2\label{eq:w-rms-simp}\end{equation}
+
+  <p>From here, one must calculate specifically for each $\eta_j$. For example, when both $\lambda_j$ and $\eta_j$ are constants, we can calculate $\kappa_t = \lambda\eta t$, and:</p>
+
+  \begin{equation}\begin{aligned}
+  \Vert\boldsymbol{\theta}_t\Vert_{RMS}^2 \approx&\, e^{-2\kappa_t}\Vert\boldsymbol{\theta}_0\Vert_{RMS}^2 + e^{- 2\kappa_t}\sum_{j=1}^t e^{2\kappa_j}\eta_j^2 \\
+  =&\, e^{-2\lambda\eta t}\Vert\boldsymbol{\theta}_0\Vert_{RMS}^2 + e^{-2\lambda\eta t}\sum_{j=1}^t e^{2\lambda\eta j}\eta^2 \\
+  =&\, e^{-2\lambda\eta t}\Vert\boldsymbol{\theta}_0\Vert_{RMS}^2 + \frac{e^{2\lambda\eta}(1 - e^{-2\lambda\eta t})}{e^{2\lambda\eta} - 1}\eta^2 \\
+  \approx&\, e^{-2\lambda\eta t}\Vert\boldsymbol{\theta}_0\Vert_{RMS}^2 + (1 - e^{-2\lambda\eta t} )\frac{\eta}{2\lambda}
+  \end{aligned}\end{equation}
+
+  <p>This is consistent with the results of the previous article.</p>
+
+  <h2>Differential Equations</h2>
+  <p>For numerical calculation, formula $\eqref{eq:w-rms-simp}$ is already quite concise. However, if we want to obtain general analytical results for $\lambda_t, \eta_t$, it is usually still difficult, so we need to look for further computational tools.</p>
+
+  <p>Considering that integrals are usually easier to compute than sums, we can try to approximate the summation with an integral:</p>
+
+  \begin{equation}\Vert\boldsymbol{\theta}_t\Vert_{RMS}^2 \approx e^{-2\kappa_t}\Vert\boldsymbol{\theta}_0\Vert_{RMS}^2 + e^{- 2\kappa_t}\sum_{j=1}^t e^{2\kappa_j}\eta_j^2\approx e^{-2\kappa_t}\Vert\boldsymbol{\theta}_0\Vert_{RMS}^2 + e^{- 2\kappa_t}\int_0^t e^{2\kappa_s}\eta_s^2 ds \label{eq:w-rms-int}\end{equation}
+
+  <p>Where $\kappa_t = \int_0^t \lambda_s\eta_s ds$. Letting $\rho_t = \Vert\boldsymbol{\theta}_t\Vert_{RMS}^2$, multiplying both sides by $e^{2\kappa_t}$ and then taking the derivative gives $\frac{d}{dt}(e^{2\kappa_t}\rho_t) \approx e^{2\kappa_t}\eta_t^2$. Rearranging yields:</p>
+
+  \begin{equation}\frac{d}{dt}\rho_t \approx -2\lambda_t\eta_t\rho_t + \eta_t^2\end{equation}
+
+  <p>This is the differential equation satisfied by the square of the RMS, which is arguably not very complex. If $\rho_t$ converges to a constant as $t\to\infty$, then the left side equals 0, thus:</p>
+
+  \begin{equation}\lim_{t\to\infty} \rho_t \approx \lim_{t\to\infty} \frac{\eta_t}{2\lambda_t}\end{equation}
+
+  <p>This tells us that for Decay-type learning rate sequences, the final learning rate should not be set to 0; otherwise, there is a risk of model weight collapse under long-term training. Of course, we can also choose to set $\lambda_t \propto \eta_t$ (for example, <a href="https://papers.cool/arxiv/2506.02285">AdamC</a>) to avoid weight collapse.</p>
+
+  <h2>Mean Field</h2>
+  <p>Situations that can be viewed as $t\to\infty$ are generally Multi-Epoch supervised training. In pre-training scenarios, training is usually Single-Epoch. In these cases, $\kappa_t$ is often $\mathcal{\Theta}(1)$ because the weight of early training samples is comparable to the weight $e^{-2\kappa_t}$ of the $\Vert\boldsymbol{\theta}_0\Vert_{RMS}^2$ term. Too large of a $\kappa_t$ might "forget" early training samples.</p>
+
+  <p>Under the assumption that $\kappa_t=\mathcal{\Theta}(1)$, we can consider mean-field approximation. Starting again from the integral form $\eqref{eq:w-rms-int}$, by definition, within $[0,t]$, $\kappa_s$ is a monotonically increasing function starting from 0 and ending at $\kappa_t$. Since $e^{\kappa_s} \geq 1$ and $e^{\kappa_s - \kappa_t} \leq 1$, we have:</p>
+
+  \begin{equation}e^{- 2\kappa_t}\int_0^t \eta_s^2 ds \leq e^{- 2\kappa_t}\int_0^t e^{2\kappa_s}\eta_s^2 ds = \int_0^t e^{2\kappa_s- 2\kappa_t}\eta_s^2 ds \leq \int_0^t \eta_s^2 ds\end{equation}
+
+  <p>That is, the target integral itself is bounded between $e^{- 2\kappa_t} \nu_t$ and $\nu_t$, where $\nu_t = \int_0^t \eta_s^2 ds$. When $\kappa_t=\mathcal{\Theta}(1)$, $e^{-2\kappa_t}$ will not be much smaller than 1, meaning that $\nu_t$ itself could be a good approximation. Of course, we can be more careful and estimate a reasonable multiple for $\nu_t$:</p>
+
+  \begin{equation}e^{- 2\kappa_t}\int_0^t e^{2\kappa_s}\eta_s^2 ds \approx e^{- 2\kappa_t}\int_0^t e^{2\kappa_s} (\nu_t / t) ds = \frac{\nu_t e^{- 2\kappa_t}}{t}\int_0^t e^{2\kappa_s} ds\end{equation}
+
+  <p>Considering that $\kappa_s$ is a monotonically increasing function from 0 to $\kappa_t$, we approximate it with $(\kappa_t/t)s$:</p>
+
+  \begin{equation}e^{- 2\kappa_t}\int_0^t e^{2\kappa_s}\eta_s^2 ds \approx \frac{\nu_t e^{- 2\kappa_t}}{t}\int_0^t e^{2\kappa_s} ds \approx \frac{\nu_t e^{- 2\kappa_t}}{t}\int_0^t e^{2(\kappa_t/t)s} ds = \frac{\nu_t}{2\kappa_t}(1 - e^{- 2\kappa_t})\end{equation}
+
+  <p>Substituting into formula $\eqref{eq:w-rms-int}$ yields:</p>
+
+  \begin{equation}\Vert\boldsymbol{\theta}_t\Vert_{RMS}^2 \approx e^{-2\kappa_t}\Vert\boldsymbol{\theta}_0\Vert_{RMS}^2 + (1 - e^{- 2\kappa_t})\frac{\nu_t}{2\kappa_t}\end{equation}
+
+  <h2>Example 3</h2>
+  <p>Returning once more to the common setting we care about—"Weight Decay fixed, learning rate variable"—let's calculate $\kappa_t, \nu_t$ for several specific examples. First is the linear learning rate:</p>
+
+  \begin{equation}\eta_s = \eta_a + (\eta_b - \eta_a) s / t\end{equation}
+
+  <p>Here $\eta_a, \eta_b$ are the initial and final learning rates, respectively. It could be that $\eta_b > \eta_a$ (like Warmup) or $\eta_b < \eta_a$ (Linear Decay), and $t$ is the total expected training steps. Integrating gives:</p>
+
+  \begin{gather}
+  \kappa_t = \int_0^t \lambda\eta_s ds= \lambda (\eta_a + \eta_b) t / 2 \\
+  \nu_t = \int_0^t \eta_s^2 ds = (\eta_a^2 + \eta_a \eta_b + \eta_b^2) t / 3
+  \end{gather}
+
+  <p>Next is Cosine Decay:</p>
+
+  \begin{equation}\eta_s = \eta_{\min} + (\eta_{\max} - \eta_{\min})\left(\frac{1}{2} + \frac{1}{2}\cos \frac{s\pi}{t}\right)\end{equation}
+
+  <p>Integrating gives:</p>
+
+  \begin{gather}
+  \kappa_t = \int_0^t \lambda\eta_s ds= \lambda (\eta_{\min} + \eta_{\max}) t / 2 \\
+  \nu_t = \int_0^t \eta_s^2 ds = (3\eta_{\min}^2 + 2\eta_{\min} \eta_{\max} + 3\eta_{\max}^2 ) t / 8
+  \end{gather}
+
+  <p>Finally, WSD (Warmup Stable Decay):</p>
+
+  \begin{equation}\eta_s = \left\{\begin{aligned} \frac{s}{t_1}\eta_{\max}, \quad s \in [0, t_1] \\[5pt]
+  \eta_{\max} , \quad s \in [t_1, t_2] \\[5pt]
+  \frac{t-s}{t-t_2}\eta_{\max}, \quad s \in [t_2, t]
+  \end{aligned}\right.\end{equation}
+
+  <p>Correspondingly:</p>
+
+  \begin{gather}
+  \kappa_t = \int_0^t \lambda\eta_s ds= \lambda \eta_{\max} (t + t_2 - t_1) / 2 \\
+  \nu_t = \int_0^t \eta_s^2 ds = \eta_{\max}^2 (t + 2t_2 - 2t_1) / 3
+  \end{gather}
+
+  <h2>Simulation Verification</h2>
+  <p>We can also verify the various approximations through numerical simulation:</p>
+
+  <pre><code></code></pre>
+
+  <h2>Article Summary</h2>
+  <p>This article generalizes the results from the previous post into a dynamic version, allowing us to estimate the Weight RMS of AdamW under a learning rate and Weight Decay that change over time.</p>
+
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_11404.html" style="color: #005fcc;">https://kexue.fm/archives/11404</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

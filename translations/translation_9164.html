@@ -1,0 +1,296 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    enableMenu: false
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9164">Talk on Generative Diffusion Models (Part 3): DDPM = Bayes + Denoising</a></h1>
+
+    <p>By 苏剑林 | July 19, 2022</p>
+
+
+<p>So far, I have provided two derivations for the generative diffusion model DDPM: the common analogy scheme in <a href="translation_9119.html">"Talk on Generative Diffusion Models (Part 1): DDPM = Demolishing + Building"</a> and the Variational Autoencoder (VAE) scheme in <a href="translation_9152.html">"Talk on Generative Diffusion Models (Part 2): DDPM = Autoregressive VAE"</a>. These two schemes have their own characteristics; the former is more straightforward and easy to understand but cannot provide much theoretical extension or quantitative understanding, while the latter is more theoretically complete but slightly formal and lacks heuristic insight.</p>
+
+<p>In this article, we will share another derivation of DDPM, which primarily utilizes Bayes' theorem to simplify calculations. The entire process has a strong sense of "deliberation" and is quite illuminating. Moreover, it is closely related to the DDIM model that we will introduce later.</p>
+
+<h2>Model Landscape</h2>
+
+<p>To recap, DDPM models the following transformation process:</p>
+
+\begin{equation}\boldsymbol{x} = \boldsymbol{x}_0 \rightleftharpoons \boldsymbol{x}_1 \rightleftharpoons \boldsymbol{x}_2 \rightleftharpoons \cdots \rightleftharpoons \boldsymbol{x}_{T-1} \rightleftharpoons \boldsymbol{x}_T = \boldsymbol{z}\end{equation}
+
+<p>The forward process gradually turns the sample data $\boldsymbol{x}$ into random noise $\boldsymbol{z}$, and the reverse process gradually turns random noise $\boldsymbol{z}$ back into sample data $\boldsymbol{x}$. The reverse process is the "generative model" we hope to obtain.</p>
+
+<p>The forward process is simple; each step is:</p>
+
+\begin{equation}\boldsymbol{x}_t = \alpha_t \boldsymbol{x}_{t-1} + \beta_t \boldsymbol{\varepsilon}_t,\quad \boldsymbol{\varepsilon}_t\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})\end{equation}
+
+<p>Alternatively, it can be written as $p(\boldsymbol{x}_t|\boldsymbol{x}_{t-1})=\mathcal{N}(\boldsymbol{x}_t;\alpha_t \boldsymbol{x}_{t-1},\beta_t^2 \boldsymbol{I})$. Under the constraint $\alpha_t^2 + \beta_t^2 = 1$, we have:</p>
+
+\begin{equation}\begin{aligned} 
+\boldsymbol{x}_t =&\, \alpha_t \boldsymbol{x}_{t-1} + \beta_t \boldsymbol{\varepsilon}_t \\ 
+=&\, \alpha_t \big(\alpha_{t-1} \boldsymbol{x}_{t-2} + \beta_{t-1} \boldsymbol{\varepsilon}_{t-1}\big) + \beta_t \boldsymbol{\varepsilon}_t \\ 
+=&\,\cdots\\ 
+=&\,(\alpha_t\cdots\alpha_1) \boldsymbol{x}_0 + \underbrace{(\alpha_t\cdots\alpha_2)\beta_1 \boldsymbol{\varepsilon}_1 + (\alpha_t\cdots\alpha_3)\beta_2 \boldsymbol{\varepsilon}_2 + \cdots + \alpha_t\beta_{t-1} \boldsymbol{\varepsilon}_{t-1} + \beta_t \boldsymbol{\varepsilon}_t}_{\sim \mathcal{N}(\boldsymbol{0}, (1-\alpha_t^2\cdots\alpha_1^2)\boldsymbol{I})} 
+\end{aligned}\end{equation}
+
+<p>From this, we can derive $p(\boldsymbol{x}_t|\boldsymbol{x}_0)=\mathcal{N}(\boldsymbol{x}_t;\bar{\alpha}_t \boldsymbol{x}_0,\bar{\beta}_t^2 \boldsymbol{I})$, where $\bar{\alpha}_t = \alpha_1\cdots\alpha_t$ and $\bar{\beta}_t = \sqrt{1-\bar{\alpha}_t^2}$. What DDPM needs to achieve is to solve for the $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t)$ required by the reverse process from this information. This way, we can start from any $\boldsymbol{x}_T=\boldsymbol{z}$ and step-by-step sample $\boldsymbol{x}_{T-1},\boldsymbol{x}_{T-2},\cdots,\boldsymbol{x}_1$, eventually obtaining the randomly generated sample data $\boldsymbol{x}_0=\boldsymbol{x}$.</p>
+
+<h2>Enter Bayes</h2>
+
+<p>Now we invite the great Bayes' theorem. In fact, directly according to Bayes' theorem, we have:</p>
+
+\begin{equation}p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t) = \frac{p(\boldsymbol{x}_t|\boldsymbol{x}_{t-1})p(\boldsymbol{x}_{t-1})}{p(\boldsymbol{x}_t)}\label{eq:bayes}\end{equation}
+
+<p>However, we do not know the expressions for $p(\boldsymbol{x}_{t-1})$ and $p(\boldsymbol{x}_t)$, so this path is blocked. But we can settle for the next best thing and use Bayes' theorem given the condition $\boldsymbol{x}_0$:</p>
+
+\begin{equation}p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0) = \frac{p(\boldsymbol{x}_t|\boldsymbol{x}_{t-1})p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_0)}{p(\boldsymbol{x}_t|\boldsymbol{x}_0)}\end{equation}
+
+<p>This modification is natural because $p(\boldsymbol{x}_t|\boldsymbol{x}_{t-1})$, $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_0)$, and $p(\boldsymbol{x}_t|\boldsymbol{x}_0)$ are all known, making the above equation calculable. Substituting their respective expressions gives:</p>
+
+\begin{equation}p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0) = \mathcal{N}\left(\boldsymbol{x}_{t-1};\frac{\alpha_t\bar{\beta}_{t-1}^2}{\bar{\beta}_t^2}\boldsymbol{x}_t + \frac{\bar{\alpha}_{t-1}\beta_t^2}{\bar{\beta}_t^2}\boldsymbol{x}_0,\frac{\bar{\beta}_{t-1}^2\beta_t^2}{\bar{\beta}_t^2} \boldsymbol{I}\right)\label{eq:p-xt-x0}\end{equation}
+
+<p><strong>Derivation:</strong> The derivation of the above formula is not difficult; it is simply a routine expansion and rearrangement, though we can find some tricks to speed up the calculation. First, by substituting the respective expressions, it can be seen that after removing the $-1/2$ factor from the exponent, the result is:</p>
+
+\begin{equation}\frac{\Vert \boldsymbol{x}_t - \alpha_t \boldsymbol{x}_{t-1}\Vert^2}{\beta_t^2} + \frac{\Vert \boldsymbol{x}_{t-1} - \bar{\alpha}_{t-1}\boldsymbol{x}_0\Vert^2}{\bar{\beta}_{t-1}^2} - \frac{\Vert \boldsymbol{x}_t - \bar{\alpha}_t \boldsymbol{x}_0\Vert^2}{\bar{\beta}_t^2}\end{equation}
+
+<p>This is quadratic with respect to $\boldsymbol{x}_{t-1}$, so the final distribution must also be a normal distribution. We only need to find its mean and covariance. It is not difficult to see that the coefficient of the $\Vert \boldsymbol{x}_{t-1}\Vert^2$ term in the expansion is:</p>
+
+\begin{equation}\frac{\alpha_t^2}{\beta_t^2} + \frac{1}{\bar{\beta}_{t-1}^2} = \frac{\alpha_t^2\bar{\beta}_{t-1}^2 + \beta_t^2}{\bar{\beta}_{t-1}^2 \beta_t^2} = \frac{\alpha_t^2(1-\bar{\alpha}_{t-1}^2) + \beta_t^2}{\bar{\beta}_{t-1}^2 \beta_t^2} = \frac{1-\bar{\alpha}_t^2}{\bar{\beta}_{t-1}^2 \beta_t^2} = \frac{\bar{\beta}_t^2}{\bar{\beta}_{t-1}^2 \beta_t^2}\end{equation}
+
+<p>Therefore, the rearranged result must be in the form of $\frac{\bar{\beta}_t^2}{\bar{\beta}_{t-1}^2 \beta_t^2}\Vert \boldsymbol{x}_{t-1} - \tilde{\boldsymbol{\mu}}(\boldsymbol{x}_t, \boldsymbol{x}_0)\Vert^2$, which means the covariance matrix is $\frac{\bar{\beta}_{t-1}^2 \beta_t^2}{\bar{\beta}_t^2}\boldsymbol{I}$. On the other hand, isolating the coefficient of the linear term gives $-2\left(\frac{\alpha_t}{\beta_t^2}\boldsymbol{x}_t + \frac{\bar{\alpha}_{t-1}}{\bar{\beta}_{t-1}^2}\boldsymbol{x}_0 \right)$. Dividing this by the factor $\frac{-2\bar{\beta}_t^2}{\bar{\beta}_{t-1}^2 \beta_t^2}$ yields:</p>
+
+\begin{equation}\tilde{\boldsymbol{\mu}}(\boldsymbol{x}_t, \boldsymbol{x}_0)=\frac{\alpha_t\bar{\beta}_{t-1}^2}{\bar{\beta}_t^2}\boldsymbol{x}_t + \frac{\bar{\alpha}_{t-1}\beta_t^2}{\bar{\beta}_t^2}\boldsymbol{x}_0 \end{equation}
+
+<p>This gives us all the information for $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0)$, and the result is exactly equation $\eqref{eq:p-xt-x0}$.</p>
+
+<h2>Denoising Process</h2>
+
+<p>Now that we have $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0)$, it has an explicit solution, but it is not our desired final answer because we want to predict $\boldsymbol{x}_{t-1}$ using only $\boldsymbol{x}_t$, without depending on $\boldsymbol{x}_0$—$\boldsymbol{x}_0$ is the result we eventually want to generate. Next, a "daring" idea is: if we could predict $\boldsymbol{x}_0$ through $\boldsymbol{x}_t$, couldn't we eliminate $\boldsymbol{x}_0$ from $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0)$ so that it only depends on $\boldsymbol{x}_t$?</p>
+
+<p>Let's do it. We use $\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)$ to estimate $\boldsymbol{x}_0$, with the loss function being $\Vert \boldsymbol{x}_0 - \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)\Vert^2$. Once the training is complete, we assume:</p>
+
+\begin{equation}p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t) \approx p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0=\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)) = \mathcal{N}\left(\boldsymbol{x}_{t-1}; \frac{\alpha_t\bar{\beta}_{t-1}^2}{\bar{\beta}_t^2}\boldsymbol{x}_t + \frac{\bar{\alpha}_{t-1}\beta_t^2}{\bar{\beta}_t^2}\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t),\frac{\bar{\beta}_{t-1}^2\beta_t^2}{\bar{\beta}_t^2} \boldsymbol{I}\right)\label{eq:p-xt}\end{equation}
+
+<p>In $\Vert \boldsymbol{x}_0 - \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)\Vert^2$, $\boldsymbol{x}_0$ represents the original data and $\boldsymbol{x}_t$ represents the noisy data, so this is essentially training a denoising model, which is the meaning of the first "D" in DDPM (Denoising). Specifically, $p(\boldsymbol{x}_t|\boldsymbol{x}_0)=\mathcal{N}(\boldsymbol{x}_t;\bar{\alpha}_t \boldsymbol{x}_0,\bar{\beta}_t^2 \boldsymbol{I})$ means $\boldsymbol{x}_t = \bar{\alpha}_t \boldsymbol{x}_0 + \bar{\beta}_t \boldsymbol{\varepsilon}$ where $\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})$, or written as $\boldsymbol{x}_0 = \frac{1}{\bar{\alpha}_t}\left(\boldsymbol{x}_t - \bar{\beta}_t \boldsymbol{\varepsilon}\right)$. This inspires us to parameterize $\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)$ as:</p>
+
+\begin{equation}\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t) = \frac{1}{\bar{\alpha}_t}\left(\boldsymbol{x}_t - \bar{\beta}_t \boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)\right)\label{eq:bar-mu}\end{equation}
+
+<p>At this point, the loss function becomes:</p>
+
+\begin{equation}\Vert \boldsymbol{x}_0 - \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)\Vert^2 = \frac{\bar{\beta}_t^2}{\bar{\alpha}_t^2}\left\Vert\boldsymbol{\varepsilon} - \boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\bar{\alpha}_t \boldsymbol{x}_0 + \bar{\beta}_t \boldsymbol{\varepsilon}, t)\right\Vert^2\end{equation}
+
+<p>Omitting the front coefficient, we get the loss function used in the original DDPM paper. It can be seen that this article directly derives the denoising process from $\boldsymbol{x}_t$ to $\boldsymbol{x}_0$, rather than deriving through the denoising process from $\boldsymbol{x}_t$ to $\boldsymbol{x}_{t-1}$ followed by integral transformation as in the previous two articles. In comparison, the derivation here is more immediate.</p>
+
+<p>On the other hand, substituting equation $\eqref{eq:bar-mu}$ into equation $\eqref{eq:p-xt}$, we simplify it to get:</p>
+
+\begin{equation} 
+p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t) \approx p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0=\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)) = \mathcal{N}\left(\boldsymbol{x}_{t-1}; \frac{1}{\alpha_t}\left(\boldsymbol{x}_t - \frac{\beta_t^2}{\bar{\beta}_t}\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)\right),\frac{\bar{\beta}_{t-1}^2\beta_t^2}{\bar{\beta}_t^2} \boldsymbol{I}\right)\end{equation}
+
+<p>This is the distribution used for the reverse sampling process, whereby the variance used in the sampling process is also determined. Thus, DDPM is derived!</p>
+
+<p>(Note: For the sake of derivation flow, $\boldsymbol{\epsilon}_{\boldsymbol{\theta}}$ in this article is defined differently from the previous two but is consistent with the original DDPM paper.)</p>
+
+<p><strong>Derivation:</strong> The main difficulty in substituting equation $\eqref{eq:bar-mu}$ into equation $\eqref{eq:p-xt}$ is calculating:</p>
+
+\begin{equation}\begin{aligned}\frac{\alpha_t\bar{\beta}_{t-1}^2}{\bar{\beta}_t^2} + \frac{\bar{\alpha}_{t-1}\beta_t^2}{\bar{\alpha}_t\bar{\beta}_t^2} =&\, \frac{\alpha_t\bar{\beta}_{t-1}^2 + \beta_t^2/\alpha_t}{\bar{\beta}_t^2} = \frac{\alpha_t^2(1-\bar{\alpha}_{t-1}^2) + \beta_t^2}{\alpha_t\bar{\beta}_t^2} = \frac{1-\bar{\alpha}_t^2}{\alpha_t\bar{\beta}_t^2} = \frac{1}{\alpha_t} 
+\end{aligned}\end{equation}
+
+<h2>Predict-Correct</h2>
+
+<p>I wonder if the reader has noticed an interesting point: what we want to do is slowly turn $\boldsymbol{x}_T$ into $\boldsymbol{x}_0$. However, when we use $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0)$ to approximate $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t)$, we include the step "using $\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)$ to estimate $\boldsymbol{x}_0$". If we could predict it accurately, wouldn't we just reach the end in one step? Why would we still need step-by-step sampling?</p>
+
+<p>The reality is that "using $\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)$ to estimate $\boldsymbol{x}_0$" will certainly not be very accurate, at least not for quite a many steps at the beginning. It only serves as a forward-looking prediction, and then we use $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t)$ to move forward just one small step. This is the "Predictor-Corrector" idea found in many numerical algorithms: we use a rough solution to project many steps forward, then use that rough result to move the final result forward by one small step, thereby gradually obtaining a more refined solution.</p>
+
+<p>From this, we can also think of the <a href="https://arxiv.org/abs/1907.08610">Lookahead Optimizer: k steps forward, 1 step back</a> proposed by Hinton three years ago. It similarly contains a prediction (k steps forward) and a correction (1 step back). The original paper interprets it as a combination of "Fast" and "Slow" weights, where the fast weight is the predicted result and the slow weight is the corrected result based on the prediction. If we wish, we can interpret the "Predict-Correct" process of DDPM in the same way.</p>
+
+<h2>Remaining Issues</h2>
+
+<p>Finally, in the section using Bayes' theorem, we said equation $\eqref{eq:bayes}$ cannot be used directly because $p(\boldsymbol{x}_{t-1})$ and $p(\boldsymbol{x}_t)$ are both unknown. By definition, we have:</p>
+
+\begin{equation}p(\boldsymbol{x}_t) = \int p(\boldsymbol{x}_t|\boldsymbol{x}_0)\tilde{p}(\boldsymbol{x}_0)d\boldsymbol{x}_0\end{equation}
+
+<p>While $p(\boldsymbol{x}_t|\boldsymbol{x}_0)$ is known, the data distribution $\tilde{p}(\boldsymbol{x}_0)$ cannot be known in advance, so the calculation cannot be performed. However, there are two special cases where both can be directly calculated, which we will provide here. These results happen to be the answer to the variance selection problem left over from the previous article.</p>
+
+<p>The first example is when the entire dataset has only one sample. Without loss of generality, assume the sample is $\boldsymbol{0}$. At this time, $\tilde{p}(\boldsymbol{x}_0)$ is the Dirac distribution $\delta(\boldsymbol{x}_0)$, and we can directly calculate $p(\boldsymbol{x}_t)=p(\boldsymbol{x}_t|\boldsymbol{0})$. Substituting this into equation $\eqref{eq:bayes}$, we find the result is exactly the special case of $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t,\boldsymbol{x}_0)$ taking $\boldsymbol{x}_0=\boldsymbol{0}$:</p>
+
+\begin{equation}p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t) = p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0=\boldsymbol{0}) = \mathcal{N}\left(\boldsymbol{x}_{t-1};\frac{\alpha_t\bar{\beta}_{t-1}^2}{\bar{\beta}_t^2}\boldsymbol{x}_t,\frac{\bar{\beta}_{t-1}^2\beta_t^2}{\bar{\beta}_t^2} \boldsymbol{I}\right)\end{equation}
+
+<p>We are primarily interested in its variance $\frac{\bar{\beta}_{t-1}^2\beta_t^2}{\bar{\beta}_t^2}$, which is one of the choices for sampling variance.</p>
+
+<p>The second example is when the dataset follows a standard normal distribution, i.e., $\tilde{p}(\boldsymbol{x}_0)=\mathcal{N}(\boldsymbol{x}_0;\boldsymbol{0},\boldsymbol{I})$. We previously noted that $p(\boldsymbol{x}_t|\boldsymbol{x}_0)=\mathcal{N}(\boldsymbol{x}_t;\bar{\alpha}_t \boldsymbol{x}_0,\bar{\beta}_t^2 \boldsymbol{I})$ implies $\boldsymbol{x}_t = \bar{\alpha}_t \boldsymbol{x}_0 + \bar{\beta}_t \boldsymbol{\varepsilon}, \boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})$. Given the assumption $\boldsymbol{x}_0\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})$, by the property of additivity of normal distributions, $\boldsymbol{x}_t$ also follows a standard normal distribution. After substituting the probability density of the standard normal distribution into equation $\eqref{eq:bayes}$, the exponent (after removing the $-1/2$ factor) is:</p>
+
+\begin{equation}\frac{\Vert \boldsymbol{x}_t - \alpha_t \boldsymbol{x}_{t-1}\Vert^2}{\beta_t^2} + \Vert \boldsymbol{x}_{t-1}\Vert^2 - \Vert \boldsymbol{x}_t\Vert^2\end{equation}
+
+<p>Similar to the process of deriving $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t,\boldsymbol{x}_0)$, we can obtain the distribution corresponding to the above exponent as:</p>
+
+\begin{equation}p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t) = \mathcal{N}\left(\boldsymbol{x}_{t-1};\alpha_t\boldsymbol{x}_t,\beta_t^2 \boldsymbol{I}\right)\end{equation}
+
+<p>We are equally interested in its variance $\beta_t^2$, which is another choice for sampling variance.</p>
+
+<h2>Article Summary</h2>
+
+<p>This article shared a derivation of DDPM with a strong sense of analytical "refinement." It uses Bayes' theorem to directly derive the reverse generative process, which is more immediate than the previous "Demolishing-Building" analogy and variational inference understanding. Simultaneously, it is more heuristic and closely linked to the DDIM model to be introduced next.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9164.html" style="color: #005fcc;">https://kexue.fm/archives/9164</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,250 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+  window.MathJax = {
+    tex: {
+      tags: 'ams',
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']],
+      processEscapes: true,
+      packages: {'[+]': ['ams']}
+    },
+    options: {
+      ignoreHtmlClass: 'tex2jax_ignore',
+      processHtmlClass: 'tex2jax_process'
+    }
+  };
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/10347">Why Do Decoder-only LLMs Need Positional Encodings?</a></h1>
+
+    <p>By 苏剑林 | September 01, 2024</p>
+
+
+    <p>As is widely known, the current mainstream Large Language Models (LLMs) are all Decoder-only models based on Causal Attention (we have previously discussed this in <i>"Why are current LLMs all using the Decoder-only architecture?"</i>). Regarding Causal Attention, several studies have shown that it does not require additional positional encoding (abbreviated as NoPE) to achieve non-trivial results. However, the reality is that mainstream Decoder-only LLMs still include additional positional encodings, such as RoPE, ALiBi, etc. So the question arises: if we say we can do without positional encoding, why do mainstream LLMs still include it? Isn't it a case of "the fewer complications, the better"? In this article, we provide the author's perspective from three angles:</p>
+    <ol>
+        <li>What is the role of positional encoding for Attention?</li>
+        <li>How does Causal Attention without positional encoding (NoPE) implement positional information?</li>
+        <li>What are the shortcomings of the positional encoding implemented by NoPE?</li>
+    </ol>
+
+    <h2>Positional Encoding</h2>
+    <p>In this section, let's first think about the first question: the significance of positional encoding for the Attention mechanism.</p>
+    <p>During the era when BERT was popular, many positional encoding methods were proposed (I summarized some of them in <i>"Transformer Positional Encodings that Rack Researchers' Brains"</i>). Later, in <i>"The Road to Transformer Upgrades: 1. Tracing the Origins of Sinusoidal Positional Encoding"</i>, we attempted to understand positional encoding from a perspective closer to its principles, obtaining a theoretical explanation for the original Sinusoidal positional encoding, which directly inspired the later <b>RoPE</b>.</p>
+    <p>Simply put, the most fundamental role of positional encoding is to <b>break the permutation invariance of Attention</b>. What is permutation invariance? In the BERT era, we primarily used bidirectional Attention, whose basic form is:</p>
+
+    \begin{equation}\boldsymbol{y}_n = \boldsymbol{f}(\boldsymbol{q}_n;\boldsymbol{x}_1,\boldsymbol{x}_2,\cdots,\boldsymbol{x}_L) = \frac{\sum_{m=1}^L e^{\boldsymbol{q}_n\cdot \boldsymbol{k}_m}\boldsymbol{v}_m}{\sum_{m=1}^L e^{\boldsymbol{q}_n\cdot \boldsymbol{k}_m}},\quad \boldsymbol{k}_n / \boldsymbol{v}_n= \boldsymbol{x}_n\boldsymbol{W}_{k/v} + \boldsymbol{b}_{k/v}\label{eq:bi-att}\end{equation}
+
+    <p>Suppose $\sigma_1,\sigma_2,\cdots,\sigma_L$ is any permutation of $\{1,2,\cdots,L\}$. Permutation invariance means that:</p>
+
+    \begin{equation}\boldsymbol{y}_n = \boldsymbol{f}(\boldsymbol{q}_n;\boldsymbol{x}_1,\boldsymbol{x}_2,\cdots,\boldsymbol{x}_L) = \boldsymbol{f}(\boldsymbol{q}_n;\boldsymbol{x}_{\sigma_1},\boldsymbol{x}_{\sigma_2},\cdots,\boldsymbol{x}_{\sigma_L})\end{equation}
+
+    <p>To put it plainly, $\boldsymbol{y}_n$ is independent of the sequence of the key-value pairs, which does not match the characteristics of natural language, so we must find a way to break this invariance. Using a database analogy, Attention without positional encoding is like a database without timestamps; retrieval results depend only on the query. Positional encoding is equivalent to labeling database items with sequence timestamps so that retrieval results can also depend on the item order.</p>
+
+    <h2>Prior Cognition</h2>
+    <p>Another role of positional encoding is to incorporate prior knowledge into Attention or to give Attention the ability to learn these prior properties.</p>
+    <p>For example, the Sinusoidal positional encoding mentioned earlier is an absolute positional encoding directly generated by trigonometric functions, where the similarity between two adjacent position vectors is higher. This implies the prior that adjacent tokens should have similar embeddings. The positional encoding used by BERT is also an absolute positional encoding, but it is randomly initialized and then learned as parameters; that is, it does make the proximity assumption but allows the model to learn this property if it deems it necessary.</p>
+    <p>More popular are relative positional encodings. Their prior assumption is that "relative position is more important than absolute position." Early relative positional encodings usually applied a truncation (relative positions larger than a certain value were mapped to the same value), assuming that "far-distance relative positions do not need to be as accurate." T5's positional encoding went a step further by processing relative positions in logarithmic buckets, achieving the effect of "further relative positions become blurrier." Furthermore, some relative positional encodings directly add priors to token importance; for instance, ALiBi implicitly assumes that further tokens are, on average, less important (remote decay).</p>
+    <p>Models like RNNs and CNNs essentially integrate the "closer tokens are more important" prior into their architecture, allowing them to function without positional encoding and reducing complexity to linear. However, priors are human-made and biased—to put it bluntly, they are not accurate enough. Currently, it seems the goal of LLMs is to surpass humans rather than just imitate them. This explains why mainstream architectures use Attention: because the architecture has fewer priors, meaning fewer human biases and pitfalls, and thus a higher ceiling.</p>
+
+    <h2>Unidirectional Attention</h2>
+    <p>After understanding the role of positional encoding, let's consider how NoPE works, or to what extent it can achieve the roles mentioned above.</p>
+    <p>As stated in the previous sections, bidirectional Attention has permutation invariance and requires positional encoding to break it. Therefore, NoPE is not suitable for bidirectional Attention; its prerequisite is unidirectional Attention, or Causal Attention:</p>
+
+    \begin{equation}\boldsymbol{y}_n = \boldsymbol{f}(\boldsymbol{q}_n;\boldsymbol{x}_1,\boldsymbol{x}_2,\cdots,\boldsymbol{x}_L) = \frac{\sum_{m=1}^n e^{\boldsymbol{q}_n\cdot \boldsymbol{k}_m}\boldsymbol{v}_m}{\sum_{m=1}^n e^{\boldsymbol{q}_n\cdot \boldsymbol{k}_m}},\quad \boldsymbol{k}_n / \boldsymbol{v}_n= \boldsymbol{x}_n\boldsymbol{W}_{k/v} + \boldsymbol{b}_{k/v}\label{eq:uni-att}\end{equation}
+
+    <p>The difference between this and the bidirectional Attention in Equation $\eqref{eq:bi-att}$ is just that the upper limit of the summation is changed from $L$ to $n$. From this, it can be seen that it is similar to a <code>cumsum</code>, and the result depends on the order of $\boldsymbol{x}_1,\boldsymbol{x}_2,\cdots,\boldsymbol{x}_L$. In other words, it inherently lacks permutation invariance. Therefore, the combination of "Causal + NoPE" does not, in principle, require positional encoding to achieve non-trivial results (non-trivial meaning performance on par with models weighted with positional encoding).</p>
+    <p>The paper that first pointed out this conclusion should be <i>"Transformer Language Models without Positional Encodings Still Learn Positional Information"</i>. Of course, this refers to the author being the first to announce this conclusion in a formal "experiment + paper" manner. In fact, to the best of my knowledge, this was already taken for granted by many before that paper. Additionally, later works like <i>"The Impact of Positional Encoding on Length Generalization in Transformers"</i> and <i>"Length Generalization of Causal Transformers without Position Encoding"</i> also explored the length generalization capabilities of NoPE.</p>
+
+    <h2>Position Identification via Variance</h2>
+    <p>Furthermore, through what mechanism does "Causal + NoPE" identify positional information? We can grasp this through a minimalist example.</p>
+    <p>Intuitively, $\boldsymbol{y}_n$ as defined in Equation $\eqref{eq:uni-att}$ is the (weighted) average of $n$ vectors $\boldsymbol{v}$, $\boldsymbol{y}_{n+1}$ is the (weighted) average of $n+1$ vectors $\boldsymbol{v}$, and so on. So we can first try the simplest case—a uniform distribution, considering the following Attention matrix:</p>
+
+    \begin{equation}A = \begin{pmatrix}1 & \\ \frac{1}{2} & \frac{1}{2} & \\ \frac{1}{3} & \frac{1}{3} & \frac{1}{3} & \\ \vdots & \vdots & \vdots & \ddots \\ \frac{1}{n} & \frac{1}{n} & \cdots & \cdots & \frac{1}{n}\\ \vdots & \vdots & \vdots & \vdots & \vdots & \ddots \\ \end{pmatrix}\end{equation}
+
+    <p>Under this assumption, we have:</p>
+
+    \begin{equation}\boldsymbol{y}_n = \frac{1}{n}\sum_{m=1}^n \boldsymbol{v}_m\end{equation}
+
+    <p>Next, we assume that each component of each $\boldsymbol{v}$ is independently and identically sampled from a distribution with "mean 0 and variance $\sigma^2$." Under this assumption, we can find the mean and variance of $\boldsymbol{y}_n$:</p>
+
+    \begin{align}\frac{1}{d}\sum_{i=1}^d \boldsymbol{y}_{n,i} \approx&\, \mathbb{E}[\boldsymbol{y}_{n,i}] = \mathbb{E}\left[\frac{1}{n}\sum_{m=1}^n \boldsymbol{v}_{n,i}\right] = \frac{1}{n}\sum_{m=1}^n \mathbb{E}\left[\boldsymbol{v}_{n,i}\right] = 0 \\[5pt] \frac{1}{d}\sum_{i=1}^d \boldsymbol{y}_{n,i}^2 \approx&\, \mathbb{E}[\boldsymbol{y}_{n,i}^2] = \mathbb{E}\left[\left(\frac{1}{n}\sum_{m=1}^n \boldsymbol{v}_{n,i}\right)^2\right] = \frac{1}{n^2}\sum_{m=1}^n \mathbb{E}\left[\boldsymbol{v}_{n,i}^2\right] = \frac{\sigma^2}{n} \\ \end{align}
+
+    <p>The second equation is actually the "MS (Mean Square)" in RMS Norm. It can be seen that it is related to the position $n$. Since the mean is zero, MS is equivalent to the variance. From this, we conclude that "Causal + NoPE" actually hides positional information within the variance of the components of $\boldsymbol{y}$, or equivalently, within the $\ell_2$ norm of $\boldsymbol{y}$. Of course, readers might question the assumptions. Indeed, these two assumptions apply at most to initialized models, but they are sufficient to "grasp" the principle of how NoPE identifies position: the intuitive difference between each $\boldsymbol{y}_n$ is the number of $\boldsymbol{v}_m$ vectors being averaged, and the most direct varying quantity resulting from averaging different numbers of items is the variance.</p>
+    <p>The same conclusion appears in the paper <i>"Latent Positional Information is in the Self-Attention Variance of Transformer Language Models Without Positional Embeddings"</i>, where the authors did further verification on pre-trained NoPE models and confirmed the universality of this conclusion.</p>
+
+    <h2>Shortcomings</h2>
+    <p>Let's summarize the results so far: first, the first two sections summarized two roles of positional encoding—the primary role is to break the permutation invariance of Attention, and the secondary is to inject priors. Then we showed that Causal Attention itself does not possess permutation invariance, so it "in principle" does not need positional encoding (NoPE). Finally, we discovered that NoPE mainly expresses positional information through the variance of the hidden state vectors.</p>
+    <p>Now back to the title question: Why do Decoder-only models based on Causal Attention usually still add positional encoding? The answer is what we just said—Causal Attention "in principle" does not need it. "In principle" usually means "it can barely function, but it's not good enough." To put it simply, while NoPE is okay, adding positional encoding is better.</p>
+    <p>Why is that? This brings us back to "NoPE expressing positional information through vector variance." This is equivalent to saying $\boldsymbol{y}_n$ is obtained by multiplying a vector $\boldsymbol{z}_n$ (which lacks positional info) by a scalar function $p(n)$ related to the position $n$. This implies:</p>
+    <ol>
+        <li>NoPE implements something similar to multiplicative absolute positional encoding, and it only compresses positional information into a single scalar, making it a very weak form of positional encoding;</li>
+        <li>A single scalar can represent limited information. As the input length increases, the positional encoding becomes increasingly compact and difficult to distinguish. For example, in the minimalist case $p(n)\sim \frac{1}{\sqrt{n}}$, when $n$ is large enough, $\frac{1}{\sqrt{n}}$ and $\frac{1}{\sqrt{n+1}}$ are almost indistinguishable, meaning positions $n$ and $n+1$ cannot be differentiated;</li>
+        <li>The mainstream view is that relative positional encoding is more suitable for natural language. Since NoPE implements absolute positional encoding, its efficiency is naturally inferior to supplementing the model with additional relative positional encoding;</li>
+        <li>NoPE neither adds priors such as remote decay to the model nor seems to give the model the ability to learn such priors. When the input length is large enough, problems like attention diffusion may occur.</li>
+    </ol>
+    <p>In summary, NoPE may suffer from insufficient positional resolution, low efficiency, and scattered attention for long texts. Therefore, even for Decoder-only models, we still need to supplement them with extra positional encoding (especially relative positional encoding) to refine these various shortcomings.</p>
+    <p>Of course, these analyses are mainly directed at Single-Head Attention. In fact, even if the positional information for each head is only a single scalar, with the help of Multi-Head and Multi-Layer structures, the total positional information becomes quite a substantial vector. So NoPE is not actually that terrible; it's just that adding positional encoding makes it better, as it allows the LLM itself to focus more on its overall reasoning capabilities rather than spending effort on reproducing capabilities that positional encoding can already implement.</p>
+
+    <h2>Summary</h2>
+    <p>Although some work has shown that Decoder-only models without positional encoding can achieve decent results, mainstream LLMs still include additional positional encoding. This article has attempted to provide an interpretation of this phenomenon.</p>
+</article>
+
+<hr>
+<p>
+    Original Address: <a href="translation_10347.html">https://kexue.fm/archives/10347</a>
+</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10347.html" style="color: #005fcc;">https://kexue.fm/archives/10347</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,300 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/9603">Transformer Upgrade Road: 9. A New Idea for Global Length Extrapolation</a></h1>
+    <p>By 苏剑林 | May 12, 2023</p>
+
+    <p>When discussing the reasons why Transformers cannot handle ultra-long sequences, the first thing that usually comes to mind is the quadratic complexity of Self Attention. However, even if we ignore computational power limitations, conventional Transformers still cannot handle ultra-long sequences because their <strong>Length Extrapolation</strong> is not good. Specifically, when the input sequence significantly exceeds the training length, the model's performance usually drops severely.</p>
+
+    <p>Although there has been some related work, the problem of length extrapolation is still far from being practically solved. This article introduces a reference scheme conceived by the author, which might be the only current method suitable for generative models that possesses global dependency capabilities for length extrapolation.</p>
+
+    <h2 id="method-review">Method Review</h2>
+    <p>Length extrapolation, also known as length generalization, has been partially covered in our previous posts: <a href="translation_9431.html">"Transformer Upgrade Road: 7. Length Extrapolation and Local Attention"</a> and <a href="translation_9444.html">"Transformer Upgrade Road: 8. Length Extrapolation and Position Robustness"</a>. However, they each have their own issues.</p>
+
+    <p>The various schemes introduced in the seventh post are based on the idea of localizing attention. While they show improvements in metrics, essentially the metrics just look a bit better; they fail to achieve extrapolation with global dependency, thus offering no substantial help for scenarios that truly require long-range dependency (such as In-Context Learning). The eighth post enhances robustness to positional signals through random position perturbations, which theoretically could preserve global dependency, but that method is only applicable to Encoder models and not to autoregressive generative models like GPT.</p>
+
+    <p>Therefore, length extrapolation remains an urgent but unsolved problem for Transformers. In fact, this problem exists not only in Transformers but also in the linear RNN models (including the popular RWKV) introduced in our post <a href="translation_9554.html">"Google's New Work Tries to 'Revive' RNNs: Can RNNs Shine Again?"</a>. In the current LLM era, length extrapolation capability is particularly important because we always hope models can process text of any length, yet it is impossible to extend the length of training samples indefinitely.</p>
+
+    <h2 id="translational-invariance">Translational Invariance</h2>
+    <p>Next, we will introduce our approach focusing on autoregressive Transformers, though the method is also effective for bidirectional attention Encoders. Essentially, localized attention grants the entire model "translational invariance" by limiting the inductive range of attention. A simple baseline for translational invariance is Window Attention, as shown below:</p>
+
+    <div style="text-align: center;">
+        <img src="https://kexue.fm/usr/uploads/2023/05/696173872.svg" alt="Window Attention" title="Window Attention">
+        <p>Window Attention</p>
+    </div>
+
+    <div style="text-align: center;">
+        <img src="https://kexue.fm/usr/uploads/2023/05/3582236337.svg" alt="Stacked Receptive Field Diagram" title="Stacked Receptive Field Diagram">
+        <p>Stacked Receptive Field Diagram</p>
+    </div>
+
+    <p>Assuming the model contains $L$ layers of stacked Window Attention with a window size of $w$, the maximum receptive field of each token in the last layer is $(w-1)L+1$. Therefore, assuming the training length is $N$, under the constraint of $(w-1)L+1 = \alpha N$ (where $0 < \alpha \le 1$), the model can obtain a certain degree of translational invariance because the maximum receptive field of the model does not exceed $N$, ensuring that the total receptive field is sufficiently trained. Generally, the smaller $\alpha$ is, the better the translational invariance.</p>
+
+    <p>However, while this ensures translational invariance, it brings other problems—most importantly, because the receptive field of each layer is limited to $w$, the power of the attention mechanism is significantly weakened, leading to training effects that are inferior to regular attention (referred to below as Full Attention). Furthermore, our expectation for length extrapolation is not just "translational invariance," but "translational <strong>superiority</strong>"—meaning that performance should actually improve as sequences get longer (for example, in In-Context Learning scenarios, the more examples provided, the better the performance should be). Thus, the model must also be able to capture global dependencies.</p>
+
+    <h2 id="global-dependence">Global Dependence</h2>
+    <p>To this end, the author thought: the result obtained by Window Attention is essentially a kind of n-gram feature, though $n$ becomes quite large under multi-layer stacking; whereas single-layer Full Attention can be viewed as a form of "retrieval" (as evident from terms like query, key, and value) and "fusion." Its patterns are relatively easy to analyze. Previously, in <a href="translation_8823.html">"Looking at the Scale Operation of Attention from Entropy Invariance"</a>, we concluded that a single layer of (full) attention can enhance length extrapolation by adding a $\log n$ scaling factor.</p>
+
+    <p>Thus, the author conceived an idea:</p>
+    <blockquote>
+        If the first $L-1$ layers obtain n-gram features through Window Attention, can the last layer be replaced by Full Attention with a $\log n$ factor to retrieve and integrate these features, thereby making up for the performance gap and gaining global dependency capabilities?
+    </blockquote>
+
+    <p>For this, we propose the following attention combination method (Hybrid Window-Full Attention, abbreviated as HWFA):</p>
+    <blockquote>
+        1. The first $L-1$ layers use "Window Attention + <a href="translation_8265.html">RoPE</a>" with a window size $w$, satisfying the constraint $(w-1)(L-1)+1 = \alpha N$, where $N$ is the training length. To balance training performance and extrapolation performance, it is suggested to choose $w$ as large as possible under the prerequisite of $\alpha \le 3/4$.<br><br>
+        2. The $L$-th layer uses Full Attention with a $\log n$ factor but does <strong>not</strong> use RoPE.
+    </blockquote>
+
+    <p>The reason for using RoPE in the previous layers is that many experimental results have already shown that RoPE helps enhance model performance (at least for base and large-scale models). The reason for not using RoPE in the last layer is that RoPE values exceeding the training length have not been trained, which would harm length extrapolation effects. In fact, the RoPE in the first $L-1$ layers is sufficient to provide the model with positional information; omitting RoPE in the last layer basically does not affect the training performance of the model.</p>
+
+    <h2 id="experimental-results">Experimental Results</h2>
+    <p>Clearly, HWFA is a combination of attention types. It can be used in standard Multi-Head Attention or in attention variants like <a href="translation_8934.html">GAU</a>. The author conducted experiments based on <a href="translation_9052.html">GAU_alpha</a>: training length 512, 24-layer GAU, with the first 23 layers using Window Attention (window size $w=16$). The metric tested is token-by-token accuracy, and the Baseline is the default usage where all layers are Full Attention + RoPE.</p>
+
+    <p>The results are very encouraging:</p>
+
+    <table border="1" cellpadding="5" style="border-collapse: collapse; text-align: center;">
+        <thead>
+            <tr>
+                <th>Test Length</th>
+                <th>512</th>
+                <th>4096</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Baseline</td>
+                <td>49.41%</td>
+                <td>24.17%</td>
+            </tr>
+            <tr>
+                <td>HFWA</td>
+                <td>48.70%</td>
+                <td>80.84%</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <p>512 represents training accuracy (interpolation accuracy), while 4096 represents extrapolation accuracy. Why is the training accuracy in the 40s while the extrapolation reaches a staggering 80+? This is because when constructing the test samples, the author included some repeated concatenated samples—that is, a text segment no longer than 4096 was repeatedly concatenated to reach a length of 4096. Since the later parts of these samples are repetitions of the earlier parts, the accuracy for these parts is very high (the standard answer was already given previously). This demonstrates that, as intended, this design's length extrapolation does not sacrifice global dependency capabilities.</p>
+
+    <p>If the repeated samples are filtered out, leaving only normal natural text samples, the results are still respectable:</p>
+
+    <table border="1" cellpadding="5" style="border-collapse: collapse; text-align: center;">
+        <thead>
+            <tr>
+                <th>Test Length</th>
+                <th>512</th>
+                <th>4096</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Baseline</td>
+                <td>49.41%</td>
+                <td>23.16%</td>
+            </tr>
+            <tr>
+                <td>HFWA</td>
+                <td>48.70%</td>
+                <td>48.15%</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <p>To further verify global dependency capability, the author also performed the "even pairs" task from <a href="translation_9444.html">"Transformer Upgrade Road: 8. Length Extrapolation and Position Robustness"</a> (determining whether the first and last characters are the same). The method in this paper achieved 100% extrapolation accuracy, which also indicates that the model can learn global dependencies (attention needs to span the entire sequence to accurately judge whether they are identical).</p>
+
+    <p>The author also conducted several ablation experiments, with the following results:</p>
+    <ul>
+        <li>1. If Window Attention does not include RoPE, both interpolation and extrapolation performance decrease.</li>
+        <li>2. If Full Attention includes RoPE, extrapolation performance decreases.</li>
+        <li>3. If Full Attention does not include the $\log n$ factor, extrapolation performance decreases.</li>
+        <li>4. If all layers use Window Attention, both interpolation and extrapolation performance decrease.</li>
+        <li>5. Using $L-2$ layers of Window Attention + 2 layers of Full Attention leads to a drop in extrapolation performance.</li>
+        <li>6. If $w=32$ (in which case $(w-1)(L-1) > N$), extrapolation performance decreases.</li>
+    </ul>
+
+    <h2 id="comparative-analysis">Comparative Analysis</h2>
+    <p>Some readers might ask: why are there no comparisons with other methods? The reason might be unexpected—when the author experimented with some methods from <a href="translation_9431.html">"Transformer Upgrade Road: 7"</a> on GAU, they all failed (extrapolation capability was poor)!</p>
+
+    <p>Why is this? The author's first reaction was that those related works were all experimented on standard Multi-Head Attention, while I experimented on GAU. As an attention mechanism, the biggest characteristic of GAU is that it is single-headed (different from the original GAU, the version I experimented with is also Softmax-normalized). Thus, I felt it was the difference between multi-head and single-head; schemes like ALIBI, Sandwich, and XPOS have parameter designs specifically for multi-head, and their validity on single-head indeed requires verification.</p>
+
+    <p>However, after further verification, the author found that the difference between single-head and multi-head does not affect length extrapolation as much as imagined, indicating there must be another reason. It wasn't until a few days ago that the author realized another important difference: I have always used the Post-Norm architecture, while mainstream work mostly uses Pre-Norm. As analyzed in <a href="translation_9009.html">"Why is Pre-Norm less effective than Post-Norm?"</a>, the depth of Pre-Norm actually has some "water." Therefore, when local constraints are applied to every attention layer, the features output by Pre-Norm are actually more localized, leading to better extrapolation effects.</p>
+
+    <p>Thus, from the current results, if I persist with the GAU+Post Norm combination, the method in this paper seems to be the only solution capable of achieving length extrapolation. This is guaranteed by "translational invariance" and "identical distribution." The Window Attention in the first $L-1$ layers, with a total receptive field not exceeding the training length, leads to "translational invariance," thereby resulting in a series of "identically distributed" features. The final Full Attention layer performs a weighted average of these identically distributed features. From a statistical perspective, the average result of identically distributed variables can be extrapolated stably.</p>
+
+    <p>Additionally, the author has already attempted to compare HWFA with other works under standard Multi-Head Attention. Further results will be synchronized with everyone later.</p>
+
+    <h2 id="further-thoughts">Further Thoughts</h2>
+    <p>As seen from the author's experimental results, the HWFA combination performs slightly worse than the Baseline in terms of training performance. A natural concern is whether this difference will amplify as the model scale increases. Or rather, if the number of parameters increases to billions or even hundreds of billions, will this design possess emergent capabilities similar to standard designs? This is indeed a concern for many in the LLM era regarding various architectural modifications, namely the Scaling Law issue. Admittedly, until HWFA is actually scaled up to the billion-parameter level, there is no definitive answer, but preliminary guesses suggest there might be performance bottlenecks.</p>
+
+    <p>Of course, HWFA can currently only be considered a baseline for length extrapolation. Its primary purpose is to achieve length extrapolation while retaining global dependency capabilities. Preliminary results suggest it has the potential to do so. The next step is to catch up with the Baseline's training performance while retaining global dependency. Additionally, HFWA can only capture global dependency in the final level of Full Attention, which likely creates a performance bottleneck. However, if more layers are used, it might lead to a decrease in length extrapolation capability, which is also an urgent problem to optimize.</p>
+
+    <p>It is worth mentioning that since the Window Attention in the first $L-1$ layers has only a finite receptive field, it is theoretically possible to replace them with models like CNNs, as long as the total receptive field does not exceed the training length $N$. Therefore, trying to combine the thinking behind HWFA with other fundamental architectures is also a direction worth considering.</p>
+
+    <h2 id="summary">Summary</h2>
+    <p>This article introduces a length extrapolation scheme conceived by the author. By combining Window Attention and Full Attention, it creates length extrapolation capability while retaining global dependency. It appears to be the only current method suitable for generative models that possesses global dependency capabilities for length extrapolation.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9603.html" style="color: #005fcc;">https://kexue.fm/archives/9603</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

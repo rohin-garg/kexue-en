@@ -1,0 +1,248 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/system/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/10489">The Rotation Trick for VQ: A General Generalization of Straight-Through Estimation</a></h1>
+
+<p>By 苏剑林 | October 24, 2024</p>
+
+<p>With the rapid development of multimodal LLMs, the status of VQ (Vector Quantization) has also risen. It can serve as a Tokenizer for visual and even any other modalities, unifying multimodal data into an autoregressive generation framework. Regrettably, since <a href="translation_6760.html">VQ-VAE</a> was first proposed, its theory has not seen significant progress. Issues like codebook collapse or low utilization remain urgent and unresolved. Instead, alternative solutions such as <a href="translation_9826.html">FSQ</a> have been proposed, becoming strong "competitors" to VQ.</p>
+
+<p>However, FSQ cannot replace VQ in every scenario, so improvements to VQ itself remain valuable. Recently, I read the paper <a href="https://papers.cool/arxiv/2410.06424">"Restructuring Vector Quantization with the Rotation Trick"</a>, which proposes a rotation trick claiming to improve a series of issues with VQ. In this article, let's examine it together.</p>
+
+<h2>Review</h2>
+
+<p>As early as five years ago, in the blog post <a href="translation_6760.html">"A Concise Introduction to VQ-VAE: Quantized Autoencoder"</a>, we introduced VQ-VAE. Later, in <a href="translation_9826.html">"Embarrassingly Simple FSQ: 'Rounding' Surpasses VQ-VAE"</a> when introducing FSQ, we revisited VQ-VAE in detail. Readers who are not familiar with it can read those two articles first.</p>
+
+<p>Although VQ-VAE bears the name VAE, it is actually just an AE and lacks the generative capabilities of a VAE. The difference between it and a regular AE is that its encoding result is a discrete sequence rather than a continuous vector. That is, it can encode continuous or discrete data into a discrete sequence and allow the decoder to reconstruct the original input using this discrete sequence. This is just like a text Tokenizer—transforming the input into another discrete sequence and then allowing the restoration of the original text through this discrete sequence—so it is regarded as a Tokenizer for any modality.</p>
+
+<p>In terms of formulas, a regular AE is:
+\begin{equation}z = encoder(x),\quad \hat{x}=decoder(z),\quad \mathcal{L}=\Vert x - \hat{x}\Vert^2 \end{equation}
+While VQ-VAE is:
+\begin{equation}\begin{aligned}
+z =&\, encoder(x)\\[5pt]
+z_q =&\, z + \text{sg}[q - z],\quad q = \mathop{\text{argmin}}_{e\in\{e_1,e_2,\cdots,e_K\}} \Vert z - e\Vert\\
+\hat{x} =&\, decoder(z_q)\\[5pt]
+\mathcal{L} =&\, \Vert x - \hat{x}\Vert^2 + \beta\Vert q - \text{sg}[z]\Vert^2 + \gamma\Vert z - \text{sg}[q]\Vert^2
+\end{aligned}\end{equation}
+Where "VQ" mainly refers to the process of transforming $z$ to $q$. It maps $z$ to one of $e_1,e_2,\cdots,e_K$, and these $e_i$ are called the Codebook, which are also learnable vectors. The "stroke of genius" in training VQ-VAE is the step $z_q = z + \text{sg}[q - z]$, which is called the "Straight-Through Estimator (STE)" for gradients.</p>
+
+<h2>STE</h2>
+
+<p>The Straight-Through Estimator appeared because the transformation from $z$ to $q$ involves a non-differentiable $\text{argmin}$ operation, so the gradient cannot be directly propagated to the encoder. In other words, the encoder cannot be trained. To this end, VQ-VAE devised a trick: it utilizes the stop_gradient operator and the nearest-neighbor property of $q$ and $z$ to replace $q$ with $z$ during backpropagation, which is $z_q = z + \text{sg}[q - z]$.</p>
+
+<p>In this case, the forward calculation is equivalent to $\text{sg}$ not existing, so $z_q = z + q - z = q$, meaning $q$ is sent to the Decoder. During backpropagation, the gradient of $\text{sg}$ is zero, so $\nabla z_q = \nabla z$, allowing the gradient to bypass the non-differentiable operator and reach the encoder directly. This is the "Straight-Through Estimator." However, while the encoder can now be optimized, the codebook cannot. Therefore, VQ-VAE adds $\beta\Vert q - \text{sg}[z]\Vert^2$ to the loss function to optimize the codebook. The intention is similar to K-Means, hoping that $q$ equals the center of all $z$ for which it is the nearest neighbor. The final $\gamma\Vert z - \text{sg}[q]\Vert^2$ encourages the encoder to actively cooperate to promote this clustering property.</p>
+
+<p>From the perspective of the gradient chain rule, we have
+\begin{equation}\frac{\partial \mathcal{L}}{\partial z} = \frac{\partial q}{\partial z}\frac{\partial \mathcal{L}}{\partial q}\end{equation}
+Note that here $z, q$ are both vectors, so $\frac{\partial \mathcal{L}}{\partial z}, \frac{\partial \mathcal{L}}{\partial q}$ are also vectors, while $\frac{\partial q}{\partial z}$ is a matrix. Due to the non-differentiability of the mapping from $z$ to $q$, the problem is stuck because $\frac{\partial q}{\partial z}$ is not well-defined. STE effectively assumes that $\frac{\partial q}{\partial z}=I$ (unit matrix), so $\frac{\partial \mathcal{L}}{\partial z} = \frac{\partial \mathcal{L}}{\partial q}$. This setting naturally has some rationality, but is there room for improvement?</p>
+
+<p>Intuitively, the result of STE is that for all $z$ belonging to the same $q$, their gradients are the same fixed $\frac{\partial \mathcal{L}}{\partial q}$, regardless of the distance between $z$ and $q$. This seems to be a point for improvement: can we define a more general $\frac{\partial q}{\partial z}$ that depends on the difference between $z$ and $q$? To achieve this, we first generalize the STE as:
+\begin{equation}z_q = \text{sg}[G]z + \text{sg}[q - Gz]\end{equation}
+where $G$ is a matrix. Again, following the principle that $\text{sg}$ does not exist during forward propagation and has a zero gradient during backpropagation, we get $z_q = q$ and $\frac{\partial \mathcal{L}}{\partial z} = G^{\top} \frac{\partial \mathcal{L}}{\partial z_q}$, which is equivalent to defining $\frac{\partial q}{\partial z}=G$.</p>
+
+<h2>Rotation</h2>
+
+<p>So how should we choose $G$? The paper mentioned at the beginning proposes a reference scheme based on constructing $G$ from a rotation transformation from $z$ to $q$, which is the "Rotation Trick" in the title.</p>
+
+<p>Specifically, the original paper considers the simple case where $Gz = q$. In this case, $\text{sg}[q - Gz]$ automatically becomes zero, simplifying to $z_q = \text{sg}[G]z$. To find the matrix $G$, we first normalize $z, q$ to unit vectors $\tilde{z} = \frac{z}{\Vert z\Vert}, \tilde{q} = \frac{q}{\Vert q\Vert}$, then we can construct a rotation transformation from $\tilde{z}$ to $\tilde{q}$. We already discussed the specific construction method in <a href="translation_8453.html">"An Orthogonal Matrix to Transform One Unit Vector to Another"</a>. The answer is:
+\begin{equation}R = I + 2\tilde{q}\tilde{z}^{\top}-
+\frac{(\tilde{q} + \tilde{z})(\tilde{q} + \tilde{z})^{\top}}{1 + \cos\theta} = I + 2\tilde{q}\tilde{z}^{\top}-
+2\left(\frac{\tilde{q} + \tilde{z}}{\Vert\tilde{q} + \tilde{z}\Vert}\right)\left(\frac{\tilde{q} + \tilde{z}}{\Vert\tilde{q} + \tilde{z}\Vert}\right)^{\top}
+\end{equation}
+where $\theta$ is the angle between $q$ and $z$. Using this result, we can write:
+\begin{equation}\tilde{q}=R\tilde{z}\quad\Rightarrow\quad q = \frac{\Vert q\Vert}{\Vert z\Vert} R z\quad\Rightarrow\quad G = \frac{\Vert q\Vert}{\Vert z\Vert} R\end{equation}
+To improve the efficiency of calculating $Gz$, we usually choose to use the associative property of matrix multiplication to first calculate $\tilde{z}^{\top}z$ and $\left(\frac{\tilde{q} + \tilde{z}}{\Vert\tilde{q} + \tilde{z}\Vert}\right)^{\top}z$. However, note that we actually need $\text{sg}[G]z$, so be careful to stop the gradients of $\tilde{q}, \tilde{z}, \frac{\Vert q\Vert}{\Vert z\Vert}$ before calculating $Gz$.</p>
+
+<p>From a geometric perspective, $\frac{\partial q}{\partial z}=G=\frac{\Vert q\Vert}{\Vert z\Vert} R$ makes the geometric relationship of $\frac{\partial \mathcal{L}}{\partial q}$ relative to $\frac{\partial \mathcal{L}}{\partial z}$ completely consistent with the geometric relationship of $q$ relative to $z$. For example, the angle between $\frac{\partial \mathcal{L}}{\partial q}$ and $\frac{\partial \mathcal{L}}{\partial z}$ equals the angle between $q$ and $z$, and the ratio of their norms is also equal. These properties naturally have a theoretical elegance, but can it really improve the performance of VQ-VAE? Let's move to the experimental section.</p>
+
+<h2>Experiments</h2>
+
+<p>The paper compared the old STE and the rotation trick under the same configuration and found that the performance of the rotation trick was "stunning":</p>
+
+<p style="text-align:center;">[Performance of VQ-VAE + Rotation Trick]</p>
+
+<p style="text-align:center;">[Performance of VQ-GAN + Rotation Trick]</p>
+
+<p>Simply put, metrics that should be high (codebook utilization, IS) are high, and metrics that should be low (reconstruction error, Loss, FID) are low, perfectly matching the characteristics of an ideal model. The code for the paper is also open-source, and interested readers can try running it themselves.</p>
+
+<blockquote><strong>Github: <a href="https://github.com/cfifty/rotation_trick">https://github.com/cfifty/rotation_trick</a></strong></blockquote>
+
+<h2>Thinking</h2>
+
+<p>Does this mean that all VQ-VAE/VQ-GAN models can now use the rotation trick without hesitation? I added the rotation trick to my previously written, functional VQ-VAE code and found that the results actually became worse. Specifically, the reconstruction loss $\Vert x - \hat{x}\Vert^2$ became higher, while the codebook loss $\Vert q - z\Vert^2$ became lower.</p>
+
+<p>After a brief analysis, I found the problem lies in the choice of $\frac{\partial q}{\partial z}=G=\frac{\Vert q\Vert}{\Vert z\Vert} R$. In the original STE, $\frac{\partial q}{\partial z}=I$. Here, the scale of the rotation matrix $R$ is comparable to the unit matrix $I$, so the rotation trick introduces an extra scale factor $\frac{\Vert q\Vert}{\Vert z\Vert}$. If at initialization $\Vert q\Vert \ll \Vert z\Vert$ (which happened to be the case in my VQ-VAE code), the reconstruction loss gradient under the rotation trick will be much smaller than the reconstruction loss gradient under STE. Consequently, for the encoder, the gradient of the $\gamma\Vert z - \text{sg}[q]\Vert^2$ term becomes dominant.</p>
+
+<p>In other words, the initial stage is equivalent to only optimizing $\beta\Vert q - \text{sg}[z]\Vert^2 + \gamma\Vert z - \text{sg}[q]\Vert^2$, which leads to $q, z \to 0$, i.e., codebook collapse. This explains the phenomenon of decreased codebook loss and increased reconstruction loss. Therefore, switching from STE to the rotation trick likely requires re-tuning $\gamma$. Looking briefly at the paper's open-source code, it seems they use K-Means from the initial Encoder to initialize the codebook. Thus, the orders of magnitude of $\Vert q\Vert$ and $\Vert z\Vert$ are not too far apart, allowing for a smoother switch.</p>
+
+<p>However, even after carefully tuning $\gamma$, I could not achieve better results in my own VQ-VAE code, so I remain cautious about the effectiveness of the rotation trick. Setting practice aside, I also struggle to understand the theoretical effectiveness of the rotation trick. The original paper's analysis is that when $q$ and $z$ are very close, $G$ is very close to $I$, making $\frac{\partial \mathcal{L}}{\partial z} \approx \frac{\partial \mathcal{L}}{\partial q}$ reasonable. When $q$ and $z$ are far apart, such as when $z$ is near the boundary of category $q$, $G$ deviates significantly from $I$. Thus, $\frac{\partial \mathcal{L}}{\partial z}$ significantly deviates from $\frac{\partial \mathcal{L}}{\partial q}$, and $z$ is in a "flying around" state, helping it break out of its "cage" and move towards new categories, thereby increasing codebook utilization. But obviously, this explanation feels quite "unfounded."</p>
+
+<p>Moreover, another issue with the rotation trick is that it establishes a privileged center position—the origin. It is not difficult to understand that VQ itself is similar to K-Means clustering, and K-Means is centerless and translation-invariant. Rotation, however, requires a center (origin), so the rotation trick is actually somewhat contrary to the original intent of VQ. Of course, VQ can also be changed to find the nearest neighbor based on cosine similarity, which fits the rotation trick better, but this still doesn't explain why the rotation trick also helps with Euclidean distance-based VQ. Overall, the fundamental reason why the rotation trick works remains a question worthy of deep thought.</p>
+
+<p>Finally, readers may wonder: since VQ has so many problems, why study VQ at all? Why not use the simpler FSQ? I believe that alternatives like FSQ cannot replace VQ in all scenarios. For example, in the <a href="translation_9844.html">Transformer-VQ</a> introduced in "VQ the Key, and the Transformer Complexity Becomes Linear," it is difficult to replace VQ with FSQ because it requires quantizing every layer. This implies the quantized model must be very small, and FSQ tests show it only outperforms VQ when the model is large enough.</p>
+
+<h2>Summary</h2>
+
+<p>The rotation trick is a new technique for training VQ (Vector Quantization) models proposed on arXiv recently. It generalizes the original straight-through estimator (STE) and claims to improve problems like codebook collapse or low utilization. This article provided a brief introduction and offered some of my thoughts and questions about it.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10489.html" style="color: #005fcc;">https://kexue.fm/archives/10489</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

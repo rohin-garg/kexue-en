@@ -1,0 +1,257 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/10815">MoE Grand Tour: 4. More Resources for Difficulty</a></h1>
+
+    <p>By 苏剑林 | March 28, 2025</p>
+
+
+<p>In the previous two articles, we discussed load balancing. In <a href="translation_10757.html">"MoE Grand Tour: 3. A Different Way to Allocate"</a>, while introducing the Loss-Free scheme, I left a cliffhanger: the Bias term it introduces has a redundant degree of freedom, which can be used for other interesting things. In this article, we will discuss exactly that.</p>
+
+<p>We know that MoE selects the top $k$ most matching experts for each token for computation, thereby increasing parameter capacity while saving computational costs. However, upon closer reflection, this strategy actually has obvious room for improvement: intuitively, every token has a different level of difficulty. A more reasonable scheme would be to allocate more computational resources to difficult tokens and fewer resources to simple tokens, which might maximize performance under the same limited resources.</p>
+
+<p>The extra degree of freedom in the Bias mentioned earlier happens to provide a simple way to achieve this goal.</p>
+
+<h2>Design Philosophy</h2>
+
+<p>First, let's review the basic form of MoE:
+\begin{equation}\boldsymbol{y} = \sum_{i\in \mathop{\text{argtop}}_k \boldsymbol{\rho}} \rho_i \boldsymbol{e}_i\end{equation}
+Load imbalance is a common problem in MoE training. To address this, researchers proposed Aux Loss, which we introduced in <a href="translation_10735.html">"MoE Grand Tour: 2. Not Worried about Scarcity but Inequality"</a>. Additionally, in <a href="translation_10757.html">"MoE Grand Tour: 3. A Different Way to Allocate"</a>, we introduced the Loss-Free scheme proposed by DeepSeek, which modifies MoE to:
+\begin{equation}\boldsymbol{y} = \sum_{i\in \mathop{\text{argtop}}_k \boldsymbol{\rho} + \boldsymbol{b}} \rho_i \boldsymbol{e}_i\end{equation}
+Then, by adjusting the newly introduced Bias term $\boldsymbol{b}$, load balancing is achieved. To allow each token to select a dynamic number of experts, the approach I propose is to slightly modify the Loss-Free form:
+\begin{equation}\boldsymbol{y} = \sum_{i\in \mathop{\text{argwhere}} \boldsymbol{\rho} + \boldsymbol{b} > 0} \rho_i \boldsymbol{e}_i\end{equation}
+That is, any expert satisfying $\rho_i + b_i > 0$ is selected. Thus, the number of experts selected for each token is naturally dynamic, and the need for sorting is eliminated, making it simpler in some ways.</p>
+
+<h2>Optimization Goals</h2>
+
+<p>The optimization goal for $\boldsymbol{b}$ consists of two parts: first, like Loss-Free, it must achieve <strong>load balancing</strong>; second, it must control the <strong>average</strong> number of experts selected per token to be $k$, which we can call <strong>budget control</strong>. Otherwise, simply setting $b_i = \infty$ would select all experts, which is not what we want.</p>
+
+<p>Load balancing still follows the Loss-Free training method. Define the notation $\boldsymbol{f} = [f_1, f_2, \cdots, f_n]$:
+\begin{equation}f_i = \left\{\begin{aligned}1, \quad \rho_i + b_i > 0 \\
+0, \quad \rho_i + b_i \leq 0\end{aligned}\right.\end{equation}
+Then let $\tilde{\boldsymbol{F}}=\mathbb{E}[\boldsymbol{f}]$. Consequently, $\boldsymbol{F} = \tilde{\boldsymbol{F}}/|\tilde{\boldsymbol{F}}|$ is the current expert distribution, where $|\tilde{\boldsymbol{F}}|$ is the sum of the components of $\tilde{\boldsymbol{F}}$. The update formula proposed by Loss-Free is:
+\begin{equation}\boldsymbol{b}\leftarrow \boldsymbol{b} - \alpha \mathop{\text{sign}}(\boldsymbol{F} - \boldsymbol{Q})\label{eq:aux-loss-free}\end{equation}
+where $\boldsymbol{Q}=(1/n, 1/n, \cdots, 1/n)$ is the target uniform distribution. As mentioned several times, $\boldsymbol{b}$ has a redundant degree of freedom, evidenced by the fact that adding the same constant to all components of $\boldsymbol{b}$ does not change the sorting order. In this way, we can change the update rule \eqref{eq:aux-loss-free} to:
+\begin{equation}\boldsymbol{b}\leftarrow \boldsymbol{b} - \alpha \left[\mathop{\text{sign}}(\boldsymbol{F} - \boldsymbol{Q}) - \overline{\mathop{\text{sign}}(\boldsymbol{F} - \boldsymbol{Q})}\right]\label{eq:aux-loss-free-2}\end{equation}
+Here, a bar over a vector represents the mean of all its components, which is a scalar. A vector minus a scalar means subtracting the scalar from each component. Thus, the resulting $\boldsymbol{b}$ will necessarily satisfy $\overline{\boldsymbol{b}}=0$, without changing the effect of load balancing. Consequently, we can leave this degree of freedom of $\overline{\boldsymbol{b}}$ for budget control.</p>
+
+<p>How to understand this? Obviously, if we add the same positive number to all $b_i$, the probability of satisfying $\rho_i + b_i > 0$ will increase, thereby increasing the total budget. So the approach is simple: first calculate the current average budget, which happens to be $|\tilde{\boldsymbol{F}}|$. If it is greater than $k$, decrease $\boldsymbol{b}$ slightly; otherwise, increase it. Integrated into formula \eqref{eq:aux-loss-free-2}, we get:
+\begin{equation}\boldsymbol{b}\leftarrow \boldsymbol{b} - \alpha \left[\mathop{\text{sign}}(\boldsymbol{F} - \boldsymbol{Q}) - \overline{\mathop{\text{sign}}(\boldsymbol{F} - \boldsymbol{Q})} + \mathop{\text{sign}}(|\tilde{\boldsymbol{F}}|- k)\right]\label{eq:aux-loss-free-3}\end{equation}
+If we only want to ensure the budget does not exceed $k$, rather than necessarily equaling $k$, we can change the last term to only subtract when $|\tilde{\boldsymbol{F}}| > k$:
+\begin{equation}\boldsymbol{b}\leftarrow \boldsymbol{b} - \alpha \left[\mathop{\text{sign}}(\boldsymbol{F} - \boldsymbol{Q}) - \overline{\mathop{\text{sign}}(\boldsymbol{F} - \boldsymbol{Q})} + \mathop{\text{sign}}(\max(|\tilde{\boldsymbol{F}}|- k, 0))\right]\label{eq:aux-loss-free-4}\end{equation}</p>
+
+<h2>Attempting Simplification</h2>
+
+<p>Readers might have noticed that I intentionally separated "load balancing" and "budget control" into two terms in formula \eqref{eq:aux-loss-free-3}. However, if we look closer, we might find that $\mathop{\text{sign}}(\boldsymbol{F} - \boldsymbol{Q})$ actually already contains information about both balancing and budget. If it's unbalanced, different components have different signs; if the budget is wrong, more components will be positive (or negative).</p>
+
+<p>So, can we just use formula \eqref{eq:aux-loss-free} directly? Let's check. If expert $i$ is used too much ($F_i > Q_i = 1/n$), $b_i$ will decrease, reducing its probability of being selected. This is <strong>balancing</strong>. If the average number of experts selected is too large, the average value of $F_i$ will naturally increase, so on average, $b_i$ will decrease, which in turn reduces the total budget. This is <strong>budget control</strong>.</p>
+
+<p>So it seems formula \eqref{eq:aux-loss-free} can already achieve both goals. However, the update rate for balancing and budget control is the same. Considering that if the budget isn't right, "balancing" is somewhat meaningless, it might be better to adjust the budget more aggressively. Therefore, a more general simplified version is:
+\begin{equation}\boldsymbol{b}\leftarrow \boldsymbol{b} - \alpha \left[\mathop{\text{sign}}(\boldsymbol{F} - \boldsymbol{Q}) + \lambda \mathop{\text{sign}}(|\tilde{\boldsymbol{F}}|- k)\right]\label{eq:aux-loss-free-5}\end{equation}
+where $\lambda \geq 0$ is a hyperparameter. When $\lambda=0$, it returns to formula \eqref{eq:aux-loss-free}. Formula \eqref{eq:aux-loss-free-5} basically covers all needs.</p>
+
+<h2>Initial Method</h2>
+
+<p>The "Loss-Free with dynamic expert count" scheme mentioned in this article relies on the absolute value of $\rho_i + b_i > 0$ as the threshold. In the beginning, because the Router hasn't been trained yet, the distribution of $\boldsymbol{\rho}$ is very messy. If $\boldsymbol{b}$ is initialized to 0, it's very likely that zero or almost all experts are selected. Therefore, it's necessary to select a suitable initial value for $\boldsymbol{b}$ before training starts, ensuring that the average budget is around $k$ and the load is roughly balanced.</p>
+
+<p>Balancing is easy: just set $b_i$ to be the same. The focus is on finding a scalar $b$ such that the average budget is $k$. This can be done by sampling some data and using a binary search:
+\begin{equation}b = \mathop{\text{argmin}}_b \left|\mathbb{E}[\text{number of } i \text{ such that } \rho_i + b > 0] - k\right|\end{equation}
+A simple reference code for implementation is as follows:</p>
+
+<pre><code>import torch
+
+def b_init(n_experts, k, batch_size, eps=1e-4):
+    rho = torch.randn(batch_size, n_experts).sigmoid()
+    b1, b2 = -1.0, 0.0
+    for _ in range(20):
+        b = (b1 + b2) / 2
+        if (rho + b &gt; 0).sum(1).mean() if -eps &lt; (rho + b &gt; 0).sum(1).mean() - k &lt; eps:
+            break
+        if (rho + b &gt; 0).sum(1).mean() &gt; k:
+            b2 = b
+        else:
+            b1 = b
+    return b
+
+b_init(32, 4, 1024, 6e-3)</code></pre>
+
+<p>The code assumes Sigmoid activation, so the search range is $[-1, 0]$. If using other activation functions, please adjust accordingly. However, the suggestion here is the same as in <a href="translation_10757.html">"MoE Grand Tour: 3. A Different Way to Allocate"</a>: the $\boldsymbol{\rho}$ added to $\boldsymbol{b}$ can consistently use Sigmoid activation, while the $\boldsymbol{\rho}$ multiplied by Experts can use other activations.</p>
+
+<h2>Related Work</h2>
+
+<p>Before this article, there have been some works attempting dynamic expert count designs for MoE. Below is a list of some works I found, with some brief critiques from a personal aesthetic perspective.</p>
+
+<p>Elementary approaches include <a href="https://papers.cool/arxiv/2406.13233">AdaMoE</a> and <a href="https://papers.cool/arxiv/2410.07348">MoE++</a>. They mix some low-compute experts into the expert pool, such as empty experts, identity experts, or constant experts, while encouraging load balancing. When a token selects these simple experts, it is equivalent to selecting fewer standard experts, thus indirectly achieving dynamic counts. The advantage is that this can reuse existing Top-$k$ MoE infrastructure, but it also lacks some flexibility.</p>
+
+<p>Another simple idea is changing Top-$k$ selection to Top-$p$, derived from <a href="https://papers.cool/arxiv/2403.07652">"Harder Tasks Need More Experts: Dynamic Routing in MoE Models"</a>. This transition seems natural but has many problems, such as the inability to accurately control the average budget (because the Top-$p$ proportion becomes very large when $\boldsymbol{\rho}$ approaches a uniform distribution). Thus, the original paper added an entropy loss to make $\boldsymbol{\rho}$ stay away from a uniform distribution. Overall, the problems it introduces feel more significant than the benefits.</p>
+
+<p>A unique approach is <a href="https://papers.cool/arxiv/2410.10456">Ada-K Routing</a>, which adds a module to predict the number of experts to activate and uses Reinforcement Learning (RL) for training. This is theoretically sound, but introducting RL undoubtedly increases training complexity. <a href="https://papers.cool/arxiv/2409.06669">DA-MoE</a> uses Attention scores to identify important tokens and allocate more experts to them, but this feels less fundamental, because MoE isn't in principle limited to FFN layers; if applied to Attention itself, there would be no Attention scores to use.</p>
+
+<p>The work most similar in form to the method in this article might be <a href="https://papers.cool/arxiv/2412.14711">ReMoE</a>. It also bases expert selection on a zero threshold but chooses an Aux Loss approach to achieve load balancing and budget control, while mixing in manually designed gradients for weighting the Aux Loss. Overall, it feels a bit "hand-crafted." This article, however, extends the Loss-Free philosophy, utilizing the extra degree of freedom in $\boldsymbol{b}$ to regulate this threshold, thereby achieving dynamic expert counts with minimal changes.</p>
+
+<h2>Summary</h2>
+
+<p>This article proposes an MoE design that dynamically selects the number of experts. The main idea is to slightly modify the Loss-Free MoE form and then adjust the update rule of the Bias term, using its extra degree of freedom to simultaneously achieve load balancing and budget control.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10815.html" style="color: #005fcc;">https://kexue.fm/archives/10815</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

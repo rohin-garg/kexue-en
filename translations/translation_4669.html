@@ -1,0 +1,251 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        document.querySelectorAll('script[type^="math/tex"]').forEach(function (node) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        });
+      }, '']
+    }
+  }
+};
+</script>
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/4669">A More Chic Word Vector Model (II): Modeling Language</a></h1>
+
+<p>By 苏剑林 | November 19, 2017</p>
+
+<h2>From Conditional Probability to Mutual Information <a href="https://kexue.fm/archives/4669#%E4%BB%8E%E6%9D%A1%E4%BB%B6%E6%A6%82%E7%8E%87%E5%88%B0%E4%BA%92%E4%BF%A1%E6%81%AF">#</a></h2>
+
+<p>Currently, the principle behind most word vector models is that the distribution of a word's context can reveal its semantics, much like the saying "show me who your friends are, and I'll tell you who you are." Therefore, the core of word vector models is modeling the relationship of the context. Except for GloVe, almost all word vector models attempt to model the conditional probability $P(w|\text{context})$. For example, Word2Vec's skip-gram model models the conditional probability $P(w_2|w_1)$. However, this quantity has some drawbacks. First, it is asymmetric, meaning $P(w_2|w_1)$ does not necessarily equal $P(w_1|w_2)$. Consequently, when modeling, we must distinguish between context vectors and target vectors, and they cannot reside in the same vector space. Secondly, it is a bounded, normalized quantity, which means we must use methods like Softmax to compress and normalize it, leading to optimization difficulties.</p>
+
+<p>In fact, in the world of NLP, there is a more symmetric quantity that is more important than simple $P(w_2|w_1)$, and that is</p>
+
+\begin{equation}
+\frac{P(w_1,w_2)}{P(w_1)P(w_2)}=\frac{P(w_2|w_1)}{P(w_2)} \label{eq:1}
+\end{equation}
+
+<p>Roughly speaking, this quantity represents "how many times more likely two words are to meet in reality compared to meeting by chance." If it is much greater than 1, it indicates a tendency to appear together rather than by random combination; conversely, if it is much less than 1, it means the two avoid each other deliberately. This quantity carries significant weight in the NLP field. For now, let's call it "relevance." Of course, its logarithmic value is even more famous, known as Pointwise Mutual Information (PMI):</p>
+
+\begin{equation}
+\text{PMI}(w_1,w_2)=\log \frac{P(w_1,w_2)}{P(w_1)P(w_2)} \label{eq:2}
+\end{equation}
+
+<p>Based on this theoretical foundation, we believe that directly modeling relevance is more reasonable than modeling the conditional probability $P(w_2|w_1)$. Thus, this article unfolds around this perspective. Before that, let's further demonstrate the beautiful properties of mutual information itself.</p>
+
+<h2>The Additivity of Mutual Information <a href="https://kexue.fm/archives/4669#%E4%BA%92%E4%BF%A1%E6%81%AF%E7%9A%84%E5%8F%AF%E5%8A%A0%E6%80%A7">#</a></h2>
+
+<p>Under the naive assumption, relevance (or equivalently, mutual information) possesses a very elegant decomposition property. The naive assumption refers to the independence of features, such that $P(a,b)=P(a)P(b)$, allowing for the decomposition of joint probabilities to simplify the model.</p>
+
+<p>For example, consider the mutual information between two sets of variables $Q$ and $A$, where $Q$ and $A$ are not single features but combinations of multiple features: $Q=(q_1, \dots, q_k)$ and $A=(a_1, \dots, a_l)$. Now consider their relevance, which is:</p>
+
+\begin{equation}
+\frac{P(Q,A)}{P(Q)P(A)} = \frac{P(q_1,\dots,q_k;a_1,\dots,a_l)}{P(q_1,\dots,q_k)P(a_1,\dots,a_l)} = \frac{P(q_1,\dots,q_k|a_1,\dots,a_l)}{P(q_1,\dots,q_k)} \label{eq:3}
+\end{equation}
+
+<p>Using the naive assumption, we get:</p>
+
+\begin{equation}
+\frac{P(q_1,\dots,q_k|a_1,\dots,a_l)}{P(q_1,\dots,q_k)} = \frac{\prod_{i=1}^k P(q_i|a_1,\dots,a_l)}{\prod_{i=1}^k P(q_i)} \label{eq:4}
+\end{equation}
+
+<p>Using Bayes' theorem, we get:</p>
+
+\begin{equation}
+\frac{\prod_{i=1}^k P(q_i|a_1,\dots,a_l)}{\prod_{i=1}^k P(q_i)} = \frac{\prod_{i=1}^k P(a_1,\dots,a_l|q_i)P(q_i)/P(a_1,\dots,a_l)}{\prod_{i=1}^k P(q_i)} = \prod_{i=1}^k \frac{P(a_1,\dots,a_l|q_i)}{P(a_1,\dots,a_l)} \label{eq:5}
+\end{equation}
+
+<p>Applying the naive assumption once more, we obtain:</p>
+
+\begin{equation}
+\prod_{i=1}^k \frac{P(a_1,\dots,a_l|q_i)}{P(a_1,\dots,a_l)} = \prod_{i=1}^k \frac{\prod_{j=1}^l P(a_j|q_i)}{\prod_{j=1}^l P(a_j)} = \prod_{i=1}^k \prod_{j=1}^l \frac{P(q_i,a_j)}{P(q_i)P(a_j)} \label{eq:6}
+\end{equation}
+
+<p>This shows that under the naive assumption, the relevance of two multivariate variables equals the product of the pairwise relevance of their single variables. If we take the logarithm of both sides, the result becomes even more striking:</p>
+
+\begin{equation}
+\text{PMI}(Q,A)=\sum_{i=1}^k \sum_{j=1}^l \text{PMI}(q_i,a_j) \label{eq:7}
+\end{equation}
+
+<p>In other words, the mutual information between two multivariate variables is equal to the sum of the pairwise mutual information between their single component variables. Put differently, mutual information is additive!</p>
+
+<h2>Interlude: Side Story <a href="https://kexue.fm/archives/4669#%E6%8F%92%E6%92%AD%EF%BC%9A%E7%95%AA%E5%A4%96%E7%AF%87">#</a></h2>
+
+<p>To help everyone more intuitively understand the principles of word vector modeling, let's imagine ourselves as the "Matchmaker" (Yue Lao) of the language world. Our goal is to determine the "affinity" (fate) between any two words, paving the way for each word to find its best partner~</p>
+
+<p>As the saying goes, " those with affinity meet from a thousand miles away, while those without remain strangers even face to face." For every word, its best partner must be a word with high "affinity." What makes two words have "affinity"? Naturally, it is "you have me in your eyes, and I have you in mine." As mentioned earlier, the skip-gram model cares about the conditional probability $P(w_2|w_1)$, which results in "$w_1$ has $w_2$ in its eyes, but $w_2$ may not have $w_1$ in its eyes." That is to say, $w_2$ is more of a "playboy" in the word world, like stop words such as "of" (的) or "the" (了); they can mix with anyone but may not be sincere toward anyone. Therefore, for "you in me, and me in you," one must simultaneously consider $P(w_2|w_1)$ and $P(w_1|w_2)$, or consider a more symmetric quantity—the "relevance" we discussed earlier. So, the "Matchmaker" decides to use relevance to quantitatively describe the "affinity" value between two words.</p>
+
+<p>Next, the "Matchmaker" begins his work, calculating the "affinity" between words one by one. As he calculates, he discovers serious problems.</p>
+
+<p>First, the numbers are too vast to finish. Be aware that the word world contains tens of thousands, hundreds of thousands, or even millions of words in the future. If we calculate and record the affinity for every pair, it would require a table with billions or trillions of entries. The workload is immense; the Matchmaker might be retired before finishing. Yet, from a responsible standpoint, we cannot ignore the possibility of any two words being together!</p>
+
+<p>Second, $N$ encounters between words are but a drop in the ocean relative to the long river of history. Does the fact that two words haven't met really mean they have no affinity? Just because they haven't met now doesn't mean they never will. As a cautious Matchmaker, one cannot jump to such a hasty conclusion. The relationships between words are complex; thus, even if two words have never crossed paths, one cannot cut them off entirely and must still estimate their affinity value.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_4669.html" style="color: #005fcc;">https://kexue.fm/archives/4669</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,256 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+<h1><a href="https://kexue.fm/archives/8990">Does the Gated Attention Unit (GAU) Still Need Warmup?</a></h1>
+
+    <p>By 苏剑林 | March 11, 2022</p>
+
+
+<p>After the article <a href="translation_8978.html">"What are the difficulties in training a 1000-layer Transformer?"</a> was published, a reader soon asked: what would the results be if that logic were applied to the "Gated Attention Unit (GAU)" from <a href="translation_8934.html">"FLASH: Probably the Most Interesting Efficient Transformer Design Recently"</a>? How does it differ from the standard Transformer results? This article discusses that question.</p>
+
+<h2>Conclusion First</h2>
+
+<p>In fact, GAU is a very easy-to-train model. Even if we directly use "Post Norm + Xavier initialization" without any adjustments, we can easily train a GAU with dozens of layers without needing Warmup. Therefore, many training techniques for standard Transformers may find no use here in GAU.</p>
+
+<p>Why can GAU achieve this? Quite simply, because under default settings, theoretically $\text{GAU}(\boldsymbol{x}_l)$ is nearly two orders of magnitude smaller than $\boldsymbol{x}_l$, so:</p>
+
+\begin{equation}\boldsymbol{x}_{l+1} = \text{LN}(\boldsymbol{x}_l + \text{GAU}(\boldsymbol{x}_l))\approx \boldsymbol{x}_l\end{equation}
+
+<p>Consequently, when paired with residual connections, GAU is already very close to an identity function under standard initialization. Models with this property are very easy to train and typically do not require Warmup. To map this to the conclusions of <a href="translation_8978.html">"What are the difficulties in training a 1000-layer Transformer?"</a>, these two orders of magnitude correspond to $\lambda=1, \alpha=100$. This means it automatically incorporates an effect equivalent to the DeepNorm operation for a hundred-layer model. Thus, theoretically, we can directly train hundreds of layers of a GAU model without special adjustment techniques.</p>
+
+<h2>Model Assumptions</h2>
+
+<p>We only need to perform a magnitude analysis on the inputs and outputs of the GAU. The standard GAU operations are as follows:</p>
+
+\begin{equation}\begin{aligned}
+&\boldsymbol{O}=(\boldsymbol{U}\odot\boldsymbol{A}\boldsymbol{V})\boldsymbol{W}_o,\quad \boldsymbol{A}=\frac{1}{ns}\text{relu}^2\left(\mathcal{Q}(\boldsymbol{Z})\mathcal{K}(\boldsymbol{Z})^{\top}\right)\\
+&\boldsymbol{U}=\phi(\boldsymbol{X}\boldsymbol{W}_u),\quad\boldsymbol{V}=\phi(\boldsymbol{X}\boldsymbol{W}_v),\quad\boldsymbol{Z}=\phi(\boldsymbol{X}\boldsymbol{W}_z)
+\end{aligned}\end{equation}
+
+<p>Where $\boldsymbol{X}\in\mathbb{R}^{n\times d}$, $\boldsymbol{W}_u,\boldsymbol{W}_v\in\mathbb{R}^{d\times e}$, $\boldsymbol{W}_z\in\mathbb{R}^{d\times s}$, $\boldsymbol{W}_o\in\mathbb{R}^{e\times d}$, $\mathcal{Q},\mathcal{K}$ are simple affine transformations, and $\phi$ is an activation function, default to Swish. If any parts are unclear, you can refer to <a href="translation_8934.html">"FLASH: Probably the Most Interesting Efficient Transformer Design Recently"</a>.</p>
+
+<p>We assume that the components of $\boldsymbol{X}$ are independently sampled from a standard normal distribution $\mathcal{N}(0,1)$. We also assume the initialization distribution for $\boldsymbol{W}_u,\boldsymbol{W}_v, \boldsymbol{W}_z$ is $\mathcal{N}(0,1/d)$, while for $\boldsymbol{W}_o$ it is independently sampled from $\mathcal{N}(0,1/e)$. This distribution is known as <a href="http://yann.lecun.com/exdb/publis/pdf/lecun-98b.pdf">LeCun initialization</a>. Its characteristics include keeping the output mean at 0 and maintaining consistency between the second moments of the input and output. Related content can be found in my previous article <a href="translation_8620.html">"A Brief Discussion on Initialization, Parameterization, and Normalization of Transformers"</a>.</p>
+
+<h2>Basic Integrals</h2>
+
+<p>Under these assumptions, let's estimate the distribution after each operation one by one. Combined with the assumptions, since LeCun initialization maintains the second moment, $\boldsymbol{X}\boldsymbol{W}$ can be approximated as being standard normally distributed. Thus, we can use the following equations to estimate the mean and second moment after applying the activation function $\phi$:</p>
+
+\begin{equation}\begin{aligned}
+\mu\triangleq\mathbb{E}[\phi(\varepsilon)] =&\, \int_{-\infty}^{\infty} \frac{1}{\sqrt{2\pi}}\exp\left(-\frac{1}{2}\varepsilon^2\right)\phi(\varepsilon)d\varepsilon = 0.2066\cdots \\
+\nu^2\triangleq\mathbb{E}[\phi(\varepsilon)^2] =&\, \int_{-\infty}^{\infty} \frac{1}{\sqrt{2\pi}}\exp\left(-\frac{1}{2}\varepsilon^2\right)\phi(\varepsilon)^2d\varepsilon = 0.3557\cdots
+\end{aligned}\end{equation}
+
+<p>In other words, the mean and second moment of the components of $\boldsymbol{U}, \boldsymbol{V}, \boldsymbol{Z}$ are $\mu$ and $\nu^2$ respectively. In fact, only the second moment $\nu^2$ is used later. For a simple estimation, one can take $\nu=0.6$.</p>
+
+<h2>Self-Attention</h2>
+
+<p>In the initial stage, we have $\mathcal{Q}(\boldsymbol{Z})=\mathcal{K}(\boldsymbol{Z})=\boldsymbol{Z}$. Therefore, the initial stage has $\boldsymbol{A}=\frac{1}{ns}\text{relu}^2\left(\boldsymbol{Z}\boldsymbol{Z}^{\top}\right)$, which means (below $i\neq j$):</p>
+
+\begin{equation}\begin{aligned}
+&\boldsymbol{A}_{i,i} = \frac{1}{ns}\text{relu}^2\big(\left\langle\boldsymbol{Z}_i, \boldsymbol{Z}_i\right\rangle\big) \approx \frac{1}{ns}\text{relu}^2\big(s\mathbb{E}[\phi(\varepsilon)^2]\big) = \frac{s\nu^4}{n} \\
+&\boldsymbol{A}_{i,j} = \frac{1}{ns}\text{relu}^2\big(\left\langle\boldsymbol{Z}_i, \boldsymbol{Z}_j\right\rangle\big) \approx \frac{1}{ns}\text{relu}^2\big(s\mathbb{E}[\phi(\varepsilon)]^2\big) = \frac{s\mu^4}{n}
+\end{aligned}\end{equation}
+
+<p>Notice that $\boldsymbol{A}_{i,i} / \boldsymbol{A}_{i,j} \approx \nu^4 / \mu^4 \approx 69 \gg 1$. That is, the diagonal elements are much larger than the non-diagonal elements. Therefore, in the initial stage, $\boldsymbol{A}$ is actually very close to $\frac{s\nu^4}{n}$ times the identity matrix, i.e., $\boldsymbol{A}\approx \frac{s\nu^4}{n}\boldsymbol{I}$. Consequently:</p>
+
+\begin{equation}\boldsymbol{O}=(\boldsymbol{U}\odot\boldsymbol{A}\boldsymbol{V})\boldsymbol{W}_o\approx \frac{s\nu^4}{n}(\boldsymbol{U}\odot\boldsymbol{V})\boldsymbol{W}_o\end{equation}
+
+<h2>Remaining Parts</h2>
+
+<p>For $\boldsymbol{U}\odot\boldsymbol{V}$, it is approximately the calculation of $\phi(\varepsilon_i)\phi(\varepsilon_j)$ from two independent and identically distributed variables $\varepsilon_i, \varepsilon_j$. Thus:</p>
+
+\begin{equation}\mathbb{E}[(\boldsymbol{U}\odot\boldsymbol{V})^2] \approx \mathbb{E}[\phi(\varepsilon_i)^2\phi(\varepsilon_j)^2] = \mathbb{E}[\phi(\varepsilon_i)^2]\mathbb{E}[\phi(\varepsilon_j)^2] = \nu^4\end{equation}
+
+<p>Thus we have ($\boldsymbol{W}_o$ does not change the second moment):</p>
+
+\begin{equation}\mathbb{E}[\boldsymbol{O}^2] \approx \mathbb{E}\left[\left(\frac{s\nu^4}{n}\boldsymbol{U}\odot\boldsymbol{V}\right)^2\right] = \mathbb{E}[\phi(\varepsilon_i)^2\phi(\varepsilon_j)^2] = \frac{s^2\nu^{12}}{n^2}\end{equation}
+
+<p>Therefore, the magnitude of $\boldsymbol{O}$ is:</p>
+
+\begin{equation}\boldsymbol{O} = \mathcal{O}\left(\sqrt{\frac{s^2\nu^{12}}{n^2}}\right) = \mathcal{O}\left(\frac{s\nu^{6}}{n}\right) \end{equation}
+
+<p>Taking the conventional pre-training settings $s=128, n=512$ as an example, $s\nu^6/n\approx 0.01$. Thus, in the initial stage, the result coming out of $\text{GAU}(\boldsymbol{x}_l)$ is roughly at the level of $0.01\boldsymbol{x}_l$, which is two orders of magnitude smaller. Of course, this is a theoretical result; the actual result might be larger or smaller due to random error. However, even if it were larger, there is no need to worry, because GAU also possesses the following "Crazy Scale" property.</p>
+
+<h2>Crazy Scale</h2>
+
+<p>In the reference code in the appendix of the GAU paper, the initialization method used by the authors is not LeCun initialization, but a normal distribution with a standard deviation of 0.02. For BERT-base, $d=768$, and the standard deviation given by LeCun initialization is $1/\sqrt{d}\approx 0.036$, which means the standard deviation used in the appendix is only about half that of LeCun initialization.</p>
+
+<p>When we replace all weight matrices $\boldsymbol{W}$ in the GAU with $\lambda \boldsymbol{W}$, we have:</p>
+
+\begin{equation}\begin{aligned}
+&\tilde{\boldsymbol{U}}=\phi(\boldsymbol{X}\lambda\boldsymbol{W}_u) \approx \lambda\phi(\boldsymbol{X}\boldsymbol{W}_u)=\lambda \boldsymbol{U}\\
+&\tilde{\boldsymbol{V}}=\phi(\boldsymbol{X}\lambda\boldsymbol{W}_v) \approx \lambda\phi(\boldsymbol{X}\boldsymbol{W}_v)=\lambda \boldsymbol{V}\\
+&\tilde{\boldsymbol{Z}}=\phi(\boldsymbol{X}\lambda\boldsymbol{W}_z) \approx \lambda\phi(\boldsymbol{X}\boldsymbol{W}_z)=\lambda \boldsymbol{Z}\\
+&\tilde{\boldsymbol{A}}=\frac{1}{ns}\text{relu}^2\left(\lambda^2\mathcal{Q}(\boldsymbol{Z})\mathcal{K}(\boldsymbol{Z})^{\top}\right) = \lambda^4 \boldsymbol{A}\\
+&\tilde{\boldsymbol{O}}=(\tilde{\boldsymbol{U}}\odot\tilde{\boldsymbol{A}}\tilde{\boldsymbol{V}})\lambda\boldsymbol{W}_o \approx \lambda^7 \boldsymbol{O}
+\end{aligned}\end{equation}
+
+<p>That is to say, if all initializations are scaled down to $\lambda$ times their original value, the output of the GAU will scale down to $\lambda^7$ times its original value! This is a quite "crazy" scale regarding GAU. Calculated at $\lambda=1/2$, $\lambda^7$ is also at the level of 0.01, shrinking it by another two orders of magnitude! Therefore, if we follow the initialization choices of the original paper, we could theoretically directly train a GAU model with tens of thousands of layers!</p>
+
+<h2>Article Summary</h2>
+
+<p>This article briefly analyzes the magnitude of GAU in the initial stage and concludes that GAU under standard initialization is already close to an identity function. Therefore, it possesses characteristics that make it quite easy to train, and basically, there is no need for additional adjustment even when training a hundred-layer GAU model.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8990.html" style="color: #005fcc;">https://kexue.fm/archives/8990</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

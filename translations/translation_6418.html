@@ -1,0 +1,333 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/6418">"Make Keras Cooler!": Layer-wise Learning Rates and Free Gradient Manipulation</a></h1>
+    
+    <p>By 苏剑林 | March 10, 2019</p>
+
+    <p>Raising the banner of "<a href="https://kexue.fm/search/%E8%AE%A9Keras%E6%9B%B4%E9%85%B7%E4%B8%80%E4%BA%9B/">Make Keras Cooler!</a>" to unlock the infinite possibilities of Keras~</p>
+
+    <p>Today, we will accomplish two very important things with Keras: setting layer-wise learning rates and flexibly manipulating gradients.</p>
+
+    <p>First is <strong>layer-wise learning rates</strong>. The utility of this is obvious—for example, when fine-tuning an existing model, sometimes we want to freeze certain layers, but other times we don't want to freeze them entirely; instead, we want them to update with a lower learning rate than other layers. This requirement leads us to layer-wise learning rates. There has been some discussion online about implementing this in Keras, but the conclusions usually suggest rewriting the optimizer. Clearly, that approach is unfriendly in terms of both implementation and usage.</p>
+
+    <p>Next is <strong>gradient manipulation</strong>. A direct example of manipulating gradients is gradient clipping, where gradients are kept within a certain range; Keras has this built-in. However, Keras provides global gradient clipping. What if I want to set different clipping methods for each gradient? Or what if I have other ideas for gradient manipulation? Do I have to rewrite the optimizer again?</p>
+
+    <p>This article aims to provide the simplest possible solutions to these problems.</p>
+
+    <h2>Layer-wise Learning Rates</h2>
+
+    <p>While rewriting the optimizer to set layer-wise learning rates is feasible, it is too much trouble. To seek a simpler solution, we need some mathematical knowledge to guide us.</p>
+
+    <h3>Optimization Under Parameter Transformation</h3>
+
+    <p>First, let's consider the update formula for Stochastic Gradient Descent (SGD):</p>
+    \begin{equation}\boldsymbol{\theta}_{n+1}=\boldsymbol{\theta}_{n}-\alpha \frac{\partial L(\boldsymbol{\theta}_{n})}{\partial \boldsymbol{\theta}_n}\label{eq:sgd-1}\end{equation}
+    <p>where $L$ is the loss function with parameters $\boldsymbol{\theta}$, $\alpha$ is the learning rate, and $\frac{\partial L(\boldsymbol{\theta}_{n})}{\partial \boldsymbol{\theta}_n}$ is the gradient, sometimes written as $\nabla_{\boldsymbol{\theta}} L(\boldsymbol{\theta}_{n})$. Notation is flexible; the key is understanding its meaning.</p>
+
+    <p>Now, let's consider the transformation $\boldsymbol{\theta}=\lambda \boldsymbol{\phi}$, where $\lambda$ is a fixed scalar and $\boldsymbol{\phi}$ is the parameter. If we optimize $\boldsymbol{\phi}$ instead, the corresponding update formula is:</p>
+    \begin{equation}\begin{aligned}\boldsymbol{\phi}_{n+1}=&\boldsymbol{\phi}_{n}-\alpha \frac{\partial L(\lambda\boldsymbol{\phi}_{n})}{\partial \boldsymbol{\phi}_n}\\
+    =&\boldsymbol{\phi}_{n}-\alpha \frac{\partial L(\boldsymbol{\theta}_{n})}{\partial \boldsymbol{\theta}_n}\frac{\partial \boldsymbol{\theta}_{n}}{\partial \boldsymbol{\phi}_n}\\
+    =&\boldsymbol{\phi}_{n}-\lambda\alpha \frac{\partial L(\boldsymbol{\theta}_{n})}{\partial \boldsymbol{\theta}_n}\end{aligned}\end{equation}
+    <p>The second equality is simply the chain rule. Now, if we multiply both sides by $\lambda$, we get:</p>
+    \begin{equation}\lambda\boldsymbol{\phi}_{n+1}=\lambda\boldsymbol{\phi}_{n}-\lambda^2\alpha \frac{\partial L(\boldsymbol{\theta}_{n})}{\partial \boldsymbol{\theta}_n}\quad\Rightarrow\quad\boldsymbol{\theta}_{n+1}=\boldsymbol{\theta}_{n}-\lambda^2\alpha \frac{\partial L(\boldsymbol{\theta}_{n})}{\partial \boldsymbol{\theta}_n}\label{eq:sgd-2}\end{equation}
+    <p>Comparing $\eqref{eq:sgd-1}$ and $\eqref{eq:sgd-2}$, do you see what I'm getting at?</p>
+
+    <blockquote>
+        <p>In an SGD optimizer, if we perform the parameter transformation $\boldsymbol{\theta}=\lambda \boldsymbol{\phi}$, the equivalent result is that the learning rate changes from $\alpha$ to $\lambda^2\alpha$.</p>
+    </blockquote>
+
+    <p>However, for adaptive learning rate optimizers (such as RMSprop, Adam, etc.), the situation is slightly different because the adaptive learning rate uses the gradient (in the denominator) to adjust the step size, which cancels out one $\lambda$. Thus (interested readers are encouraged to derive this themselves):</p>
+
+    <blockquote>
+        <p>In adaptive learning rate optimizers like RMSprop and Adam, if we perform the parameter transformation $\boldsymbol{\theta}=\lambda \boldsymbol{\phi}$, the equivalent result is that the learning rate changes from $\alpha$ to $\lambda\alpha$.</p>
+    </blockquote>
+
+    <h3>Adjusting Learning Rates via "Grafting"</h3>
+
+    <p>With these two conclusions, we only need to find a way to implement the parameter transformation without rewriting the optimizer to achieve layer-wise learning rates.</p>
+
+    <p>Implementing parameter transformation isn't difficult. We previously discussed a method in the Weight Normalization section of <a href="https://kexue.fm/archives/6311#%E7%81%B5%E6%B4%BB%E7%9A%84%E6%9D%83%E9%87%8D%E5%BD%92%E4%B8%80%E5%8C%96">"Make Keras Cooler!": Arbitrary Outputs and Flexible Normalization</a>. Since Keras separates the <code>build</code> and <code>call</code> steps when constructing a layer, we can insert operations after <code>build</code> and before <code>call</code> is invoked.</p>
+
+    <p>Below is an encapsulated implementation:</p>
+
+<pre><code>import keras.backend as K
+
+class SetLearningRate:
+    """A wrapper for layers, used to set the learning rate of the current layer
+    """
+
+    def __init__(self, layer, lamb, is_ada=False):
+        self.layer = layer
+        self.lamb = lamb # Learning rate multiplier
+        self.is_ada = is_ada # Whether an adaptive learning rate optimizer is used
+
+    def __call__(self, inputs):
+        with K.name_scope(self.layer.name):
+            if not self.layer.built:
+                input_shape = K.int_shape(inputs)
+                self.layer.build(input_shape)
+                self.layer.built = True
+                if self.layer._initial_weights is not None:
+                    self.layer.set_weights(self.layer._initial_weights)
+            for key in ['kernel', 'bias', 'embeddings', 'depthwise_kernel', 'pointwise_kernel', 'recurrent_kernel', 'gamma', 'beta']:
+                if hasattr(self.layer, key):
+                    weight = getattr(self.layer, key)
+                    if self.is_ada:
+                        lamb = self.lamb # Adaptive optimizers keep the lamb ratio directly
+                    else:
+                        lamb = self.lamb**0.5 # SGD (including momentum), lamb needs a square root
+                    K.set_value(weight, K.eval(weight) / lamb) # Modify initialization
+                    setattr(self.layer, key, weight * lamb) # Replace by scale
+            return self.layer(inputs)
+</code></pre>
+
+    <p>Usage example:</p>
+
+<pre><code>x_in = Input(shape=(None,))
+x = x_in
+
+# Normally: x = Embedding(100, 1000, weights=[word_vecs])(x)
+# The following indicates: Later, an adaptive learning rate optimizer will be used, 
+# and the Embedding layer will update at 1/10th of the global learning rate.
+# word_vecs are pre-trained word vectors.
+x = SetLearningRate(Embedding(100, 1000, weights=[word_vecs]), 0.1, True)(x)
+
+# Imagine the rest of the model...
+x = LSTM(100)(x)
+
+model = Model(x_in, x)
+model.compile(loss='mse', optimizer='adam') # Optimized with an adaptive optimizer
+</code></pre>
+
+    <p>A few points to note:</p>
+
+    <blockquote>
+        <p>1. Currently, this method can only be used when building the model from scratch; it cannot be applied to an already built model.</p>
+        <p>2. If there are pre-trained weights, there are two ways to load them. The first is to pass them via the <code>weights</code> parameter when defining the layer (as in the example). The second is to use <code>model.set_weights(weights)</code> after the model is built (with <code>SetLearningRate</code> already inserted), where <code>weights</code> are the original pre-trained weights "already divided by $\lambda$ or $\sqrt{\lambda}$ at the SetLearningRate positions."</p>
+        <p>3. The second method for loading weights might sound confusing, but if you understand the theory in this section, you should know what I mean. Since the learning rate adjustment is achieved via <code>weight * lamb</code>, the initialization of the weight must become <code>weight / lamb</code>.</p>
+        <p>4. This operation is essentially irreversible. For example, if you initially set the Embedding layer to update at 1/10th of the global learning rate, it is <strong>very difficult</strong> to change it to 1/5th or another ratio later. (Of course, if you truly master the principles and the weight loading logic, you could figure it out, but by then you'd likely have implemented your own solution anyway).</p>
+        <p>5. These limitations exist because we want to avoid modifying or rewriting the optimizer. If you decide to modify the optimizer yourself, please refer to <a href="translation_5879.html">"Make Keras Cooler!": Niche Custom Optimizers</a>.</p>
+    </blockquote>
+
+    <h2>Free Gradient Manipulation</h2>
+
+    <p>In this section, we will learn more flexible control over gradients. This involves modifying the optimizer, but it does not require rewriting it entirely.</p>
+
+    <h3>Structure of Keras Optimizers</h3>
+
+    <p>To modify an optimizer, one must first understand its structure. We took a brief look in <a href="translation_5879.html">"Make Keras Cooler!": Niche Custom Optimizers</a>; let's revisit it now.</p>
+
+    <p>The code for Keras optimizers is at: <a href="https://github.com/keras-team/keras/blob/master/keras/optimizers.py">https://github.com/keras-team/keras/blob/master/keras/optimizers.py</a></p>
+
+    <p>Examining any optimizer reveals that to customize one, you only need to inherit the <code>Optimizer</code> class and define the <code>get_updates</code> method. However, we don't want to create a new optimizer; we just want to control the gradients. We can see that gradient acquisition actually happens in the <code>get_gradients</code> method of the parent <code>Optimizer</code> class:</p>
+
+<pre><code> def get_gradients(self, loss, params):
+     grads = K.gradients(loss, params)
+     if None in grads:
+         raise ValueError('An operation has `None` for gradient. '
+                          'Please make sure that all of your ops have a '
+                          'gradient defined (i.e. are differentiable). '
+                          'Common ops without gradient: '
+                          'K.argmax, K.round, K.eval.')
+     if hasattr(self, 'clipnorm') and self.clipnorm > 0:
+         norm = K.sqrt(sum([K.sum(K.square(g)) for g in grads]))
+         grads = [clip_norm(g, self.clipnorm, norm) for g in grads]
+     if hasattr(self, 'clipvalue') and self.clipvalue > 0:
+         grads = [K.clip(g, -self.clipvalue, self.clipvalue) for g in grads]
+     return grads
+</code></pre>
+
+    <p>The first line of the method acquires the raw gradients, and the subsequent code provides two types of gradient clipping. It's not hard to imagine that by overriding the <code>get_gradients</code> method, we can perform any operation on the gradients without affecting the update steps of the optimizer (i.e., without affecting <code>get_updates</code>).</p>
+
+    <h3>Everything is an Object: Just Overwrite It</h3>
+
+    <p>How can we modify only the <code>get_gradients</code> method? This is thanks to the Python philosophy—"Everything is an object." Python is an object-oriented language where almost every variable you encounter is an object. While we say <code>get_gradients</code> is a method of the optimizer, it is also an attribute (an object) of the optimizer. Since it is an attribute, we can simply overwrite it.</p>
+
+    <p>Let's look at a very "brute-force" example (a prank):</p>
+
+<pre><code>def our_get_gradients(loss, params):
+    return [K.zeros_like(p) for p in params]
+
+adam_opt = Adam(1e-3)
+adam_opt.get_gradients = our_get_gradients
+
+model.compile(loss='categorical_crossentropy',
+              optimizer=adam_opt)
+</code></pre>
+
+    <p>This example is actually quite boring—it sets all gradients to zero (meaning the model won't move no matter how much you optimize it). However, this "prank" is representative: if you can set all gradients to zero, you can also perform any operation you like. For instance, you could clip gradients according to the $L_1$ norm instead of the $L_2$ norm, or make other adjustments.</p>
+
+    <p>What if I only want to manipulate gradients for specific layers? That's simple too. You need to give those layers distinguishable names when defining them, and then perform different operations based on the names in <code>params</code>. Once you reach this step, I believe "one method opens a thousand doors."</p>
+
+    <h2>The Elegance of Keras</h2>
+
+    <p>Perhaps in the eyes of many, Keras is just a user-friendly but "rigidly" encapsulated high-level framework. But in my eyes, I see only its infinite flexibility.</p>
+
+    <p>It is an impeccable encapsulation.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6418.html" style="color: #005fcc;">https://kexue.fm/archives/6418</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

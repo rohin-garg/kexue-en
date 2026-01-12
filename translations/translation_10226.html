@@ -1,0 +1,286 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    processEnvironments: true,
+    tags: 'ams',
+    packages: {'[+]': ['base', 'ams', 'noerrors', 'noundefined']}
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/10226">Aligning with Full Fine-Tuning! This is the Most Brilliant LoRA Improvement I've Seen (Part 1)</a></h1>
+
+<p>By 苏剑林 | July 12, 2024</p>
+
+<p>As is well-known, LoRA is a common parameter-efficient fine-tuning method, which we briefly introduced in <a href="translation_9590.html">"LoRA from a Gradient Perspective: Introduction, Analysis, Conjectures, and Extensions"</a>. LoRA utilizes low-rank decomposition to reduce the number of trainable parameters and save fine-tuning VRAM. At the same time, the trained weights can be merged back into the original weights, meaning the inference architecture does not need to change, making it a friendly fine-tuning solution for both training and inference. Furthermore, in <a href="translation_10001.html">"Can LoRA Improve Further with Different Learning Rates?"</a>, we discussed the asymmetry of LoRA and pointed out that setting different learning rates for $A$ and $B$ can achieve better results, a conclusion known as "LoRA+."</p>
+
+<p>To further improve performance, researchers have proposed many other LoRA variants, such as <a href="https://papers.cool/arxiv/2303.10512">AdaLoRA</a>, <a href="https://papers.cool/arxiv/2312.03732">rsLoRA</a>, <a href="https://papers.cool/arxiv/2402.09353">DoRA</a>, and <a href="https://papers.cool/arxiv/2404.02948">PiSSA</a>. While these modifications all have some merit, none felt particularly profound. However, a few days ago, <a href="https://papers.cool/arxiv/2407.05000">"LoRA-GA: Low-Rank Adaptation with Gradient Approximation"</a> caught my eye. Just scanning the abstract gave me a strong sense that it must be effective, and after careful reading, I felt it is the most brilliant LoRA improvement to date.</p>
+
+<p>Just how brilliant is it? What is the actual technical merit of LoRA-GA? Let's dive in and learn together.</p>
+
+<h2>Basic Review</h2>
+
+<p>First, let's revisit LoRA. Suppose the pre-trained parameters are $W_0 \in \mathbb{R}^{n\times m}$. The update amount during full fine-tuning would naturally be an $n\times m$ matrix. LoRA constrains the update amount to be a low-rank matrix to reduce the number of parameters during training. That is, we set $W=W_0 + AB$, where $A\in\mathbb{R}^{n\times r}, B\in\mathbb{R}^{r\times m}$, and $r\ll \min(n,m)$. The model's original parameters are replaced with the new $W$, and $W_0$ is kept fixed while only $A$ and $B$ are trained, as shown below:</p>
+
+\[\style{display: inline-block; width: 24ex; padding: 10ex 0; border: 1px solid #6C8EBF; background-color: #DAE8FC}{W_0\in\mathbb{R}^{n\times m}} \quad + \quad \style{display: inline-block; width: 8ex; padding: 10ex 0; border: 1px solid #D79B00; background-color: #FFE6CC}{A\in\mathbb{R}^{n\times r}}\quad\times\quad \style{display: inline-block; width: 24ex; padding: 3ex 0; border: 1px solid #D79B00; background-color: #FFE6CC}{B\in\mathbb{R}^{r\times m}}\]
+
+<p>To ensure the initial state of LoRA is consistent with the pre-trained model, we typically initialize one of $A$ or $B$ to zero, resulting in $A_0 B_0=0$, so the initial $W$ is $W_0$. However, this is not mandatory. If both $A$ and $B$ are initialized to non-zero values, we only need to set $W$ as:</p>
+
+\begin{equation}W = (W_0 - A_0 B_0) + AB\end{equation}
+
+<p>In other words, by changing the fixed weights from $W_0$ to $W_0 - A_0 B_0$, we can still satisfy the condition that <b>the initial $W$ equals $W_0$</b>.</p>
+
+<p>It should be noted that LoRA is often a compromise when memory is insufficient, as full fine-tuning generally outperforms LoRA. Therefore, if computing power is sufficient and you are pursuing optimal results, full fine-tuning should be prioritized. This is also one of the assumptions of LoRA-GA, as its direction of improvement is to align with full fine-tuning. Another scenario for using LoRA is when there are many small-scale customization needs; we need to store many fine-tuned results, and LoRA can reduce storage costs.</p>
+
+<h2>Aligning with Full Tuning</h2>
+
+<p>LoRA-GA proposes a very profound optimization point: through $W=(W_0 - A_0 B_0) + AB$, we ensure the initial value of $W$ equals $W_0$, meaning LoRA is equivalent to full fine-tuning at the start. Can we further adjust $A_0$ and $B_0$ so that LoRA and full fine-tuning remain as close as possible in subsequent training? For example, most simply, can we make $W_1$ (after the first step of optimization) as equal as possible?</p>
+
+<p>The more you reflect on this, the more you realize how this optimization point "hits the essence." Isn't the goal of LoRA to "achieve big with small," hoping to approach the effect of full fine-tuning? In that case, isn't aligning with the subsequent updates of full fine-tuning the most correct direction for improvement? From an approximation perspective, "initial $W$ equals $W_0$" is a zero-order approximation of full fine-tuning. Keeping subsequent $W_1, W_2, \dots$ close is equivalent to a higher-order approximation, a perfectly logical choice. This is why, after reading the abstract, I felt "this is it."</p>
+
+<p>Specifically, assuming our optimizer is SGD, for full fine-tuning, we have:</p>
+
+\begin{equation} W_1 = W_0 - \eta \frac{\partial \mathcal{L}}{\partial W_0}\end{equation}
+
+<p>where $\mathcal{L}$ is the loss function and $\eta$ is the learning rate. For LoRA, we have:</p>
+
+\begin{equation}\begin{gathered}
+A_1 = A_0 - \eta \frac{\partial \mathcal{L}}{\partial A_0} = A_0 - \eta \frac{\partial \mathcal{L}}{\partial W_0} B_0^{\top},\quad B_1 = B_0 - \eta \frac{\partial \mathcal{L}}{\partial B_0} = B_0 - \eta A_0^{\top}\frac{\partial \mathcal{L}}{\partial W_0} \\[8pt]
+W_1 = W_0 - A_0 B_0 + A_1 B_1 \approx W_0 - \eta\left(A_0 A_0^{\top}\frac{\partial \mathcal{L}}{\partial W_0} + \frac{\partial \mathcal{L}}{\partial W_0}B_0^{\top} B_0\right)
+\end{gathered}\end{equation}
+
+<p>The final approximation omits second-order terms of $\eta$. Now that both $W_1$ expressions have a similar form, to make them as close as possible, we can consider minimizing:</p>
+
+\begin{equation}\mathop{\text{argmin}}_{A_0,B_0}\left\Vert A_0 A_0^{\top}\frac{\partial \mathcal{L}}{\partial W_0} + \frac{\partial \mathcal{L}}{\partial W_0}B_0^{\top} B_0 - \frac{\partial \mathcal{L}}{\partial W_0}\right\Vert_F^2 \label{eq:loss-0}\end{equation}
+
+<p>where $\Vert\cdot\Vert_F^2$ is the squared <a href="https://en.wikipedia.org/wiki/Matrix_norm#Frobenius_norm">Frobenius norm</a>, which is the sum of the squares of all elements in the matrix.</p>
+
+<h2>Solution Process</h2>
+
+<p>For simplicity, let $G_0 = \frac{\partial \mathcal{L}}{\partial W_0}$. Then the objective $\eqref{eq:loss-0}$ can be simplified to:</p>
+
+\begin{equation}\mathop{\text{argmin}}_{A_0,B_0}\left\Vert A_0 A_0^{\top}G_0 + G_0 B_0^{\top} B_0 - G_0\right\Vert_F^2 \label{eq:loss-1}\end{equation}
+
+<p>Note that the ranks of $A_0 A_0^{\top}G_0$ and $G_0 B_0^{\top} B_0$ are at most $r$, and their sum's rank is at most $2r$. Assuming $2r < \min(n,m)$, the objective is equivalent to finding an optimal approximation of $G_0$ with rank no more than $2r$.</p>
+
+<p>First, consider the case where $G_0$ is a non-negative diagonal matrix with diagonal elements sorted in descending order. This example is simple: its best approximation with rank not exceeding $2r$ is a new diagonal matrix that only keeps the first $2r$ diagonal elements. This conclusion is called the <a href="https://en.wikipedia.org/wiki/Low-rank_approximation">"Eckart-Young-Mirsky Theorem"</a>. The $A_0, B_0$ that allow $A_0 A_0^{\top}G_0 + G_0 B_0^{\top} B_0$ to retain only the first $2r$ diagonal elements of $G_0$ can be (using block matrices):</p>
+
+\begin{equation}A_0 = (I_n)_{[:, :r]}, \quad B_0 = (I_m)_{[r:2r, :]}\end{equation}
+
+<p>where $I_n, I_m$ are $n \times n$ and $m \times m$ identity matrices, respectively, and ${}_{[:, :r]}$ and ${}_{[r:2r, :]}$ denote slicing the first $r$ columns and rows $r+1$ to $2r$ (using Python-style indexing). Note that we say "can be," meaning the solution is not unique. Essentially, we need to pick out the first $2r$ diagonal elements of $G_0$, with $A_0 A_0^{\top}G_0$ and $G_0 B_0^{\top} B_0$ each taking half. The specific distribution doesn't matter. The solution given above corresponds to $A_0 A_0^{\top}G_0$ taking the first $r$ and $G_0 B_0^{\top} B_0$ taking the next $r$ (from $r+1$ to $2r$).</p>
+
+<p>When $G_0$ is not a diagonal matrix, we apply SVD as $G_0 = U\Sigma V$, where $U\in\mathbb{R}^{n\times n}, V\in\mathbb{R}^{m\times m}$ are orthogonal matrices, and $\Sigma\in\mathbb{R}^{n\times m}$ is a diagonal matrix with non-negative diagonal elements sorted in descending order. Substituting into Eq. $\eqref{eq:loss-1}$, we get:</p>
+
+\begin{equation}\begin{aligned}
+&\, \left\Vert A_0 A_0^{\top}G_0 + G_0 B_0^{\top} B_0 - G_0\right\Vert_F^2 \\
+=&\, \left\Vert A_0 A_0^{\top}U\Sigma V + U\Sigma V B_0^{\top} B_0 - U\Sigma V\right\Vert_F^2 \\
+=&\, \left\Vert U\left[(U^{\top}A_0) (U^{\top}A_0)^{\top}\Sigma + \Sigma (B_0 V^{\top})^{\top} (B_0 V^{\top}) - \Sigma \right]V\right\Vert_F^2 \\
+=&\, \left\Vert (U^{\top}A_0) (U^{\top}A_0)^{\top}\Sigma + \Sigma (B_0 V^{\top})^{\top} (B_0 V^{\top}) - \Sigma\right\Vert_F^2 \\
+\end{aligned}\end{equation}
+
+<p>The first two equals signs are simple substitutions. The third equals sign is because orthogonal transformations do not change the Frobenius norm (reader, please prove this). Through this conversion, we find that the approximation target returns to the diagonal matrix $\Sigma$, and the independent variables become $U^{\top}A_0$ and $B_0 V^{\top}$. According to the solution derived when $G_0$ was diagonal, we get:</p>
+
+\begin{equation}A_0 = U(I_n)_{[:, :r]} = U_{[:, :r]},\quad B_0 = (I_m)_{[r:2r, :]} V = V_{[r:2r, :]}\end{equation}
+
+<h2>General Result</h2>
+
+<p>We have now derived an initialization method for LoRA:</p>
+
+<blockquote>
+<p><strong>LoRA-GA:</strong> Select a batch of samples, calculate the initial gradient $G_0 = \nabla_{W_0}\mathcal{L}$, compute the SVD $G_0 = U\Sigma V$, take the first $r$ columns of $U$ to initialize $A$, and take rows $r+1$ to $2r$ of $V$ to initialize $B$.</p>
+</blockquote>
+
+<p>This ensures that the $W_1$ obtained from LoRA + SGD is as close as possible to the $W_1$ from full fine-tuning. Furthermore, since the direction of the gradient is most important while its magnitude is less so, the initialization result can be multiplied by a scale factor. LoRA itself can also be multiplied by a scale factor, i.e., $W = (W_0 - \lambda A_0 B_0) + \lambda AB$. These are common LoRA hyperparameters and won't be discussed in detail here. Incidentally, <a href="https://papers.cool/arxiv/2404.02948">PiSSA</a> is formally similar to LoRA-GA; it performs SVD on $W_0$ to initialize $A$ and $B$, but this lacks the theoretical backing of LoRA-GA and is a purely empirical choice.</p>
+
+<p>Some readers may notice that current derivations are based on the assumption of an SGD optimizer. Should the conclusion change for the more commonly used Adam optimizer? Theoretically, yes. As we discussed in <a href="translation_10001.html">"Can LoRA Improve Further with Different Learning Rates?"</a>, for Adam, the result of the first step of optimization is $W_1 = W_0 - \eta\, \text{sign}(G_0)$ rather than $W_1 = W_0 - \eta G_0$. Repeating the previous derivation, we would get an optimization goal of:</p>
+
+\begin{equation}\mathop{\text{argmin}}_{A_0,B_0}\left\Vert A_0 \text{sign}(A_0^{\top}G_0) + \text{sign}(G_0 B_0^{\top}) B_0 - \text{sign}(G_0)\right\Vert_F^2 \label{eq:loss-adam}\end{equation}
+
+<p>Due to the presence of the sign function $\text{sign}$, we cannot find an analytical solution, so the theoretical analysis for Adam stops here.</p>
+
+<p>In this context, for the Adam optimizer, we have three choices:</p>
+
+<blockquote>
+<p>1. <strong>Faith:</strong> Directly use the SGD result, believing it can also work effectively for Adam;</p>
+<p>2. <strong>Brute Force:</strong> Use an optimizer to directly minimize the objective $\eqref{eq:loss-adam}$. Since the objective is relatively simple, the computation is acceptable;</p>
+<p>3. <strong>Speculative:</strong> Intuitively replace $G_0$ with $\text{sign}(G_0)$, then substitute into the SGD conclusion, which might be more suitable for Adam.</p>
+</blockquote>
+
+<p>It appears the original paper chose Option 1, and the paper's experimental results indeed support this choice.</p>
+
+<h2>Experimental Results</h2>
+
+<p>The experimental results in the paper are quite impressive, especially on GLUE, where it achieved results closest to full fine-tuning:</p>
+
+<p><em>Performance of LoRA-GA + T5-Base on GLUE</em></p>
+
+<p>On average, the smaller the amount of training data, the larger the relative improvement. This indicates that the strategy of aligning LoRA-GA with full fine-tuning not only helps improve the final performance but also enhances training efficiency—i.e., it can achieve better results with fewer training steps.</p>
+
+<p>The performance on LLaMA2-7b is also noteworthy:</p>
+
+<p><em>Performance of LoRA-GA + LLaMA2-7b on several benchmarks</em></p>
+
+<p>Note that the main scenario for using LoRA is insufficient memory. However, the initialization of LoRA-GA requires calculating the full gradient of all training parameters, which might be impossible due to memory constraints. To address this, the original paper suggests calculating gradients serially for each parameter rather than for all at once, which reduces the peak memory for single-step computation. While serial gradient calculation is slower, initialization is a one-time task, so a slight delay is acceptable. The implementation specifics vary across frameworks and won't be discussed in detail here.</p>
+
+<h2>Conclusion</h2>
+
+<p>This article introduced LoRA-GA, a new improvement to LoRA. While LoRA variants are common, LoRA-GA struck me with its very intuitive theoretical guidance. The improvement logic gives one the feeling of "meeting the right paper," and combined with strong experimental results, the whole process flows smoothly and is highly satisfying.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10226.html" style="color: #005fcc;">https://kexue.fm/archives/10226</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

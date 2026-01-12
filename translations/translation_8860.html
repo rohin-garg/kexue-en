@@ -1,0 +1,244 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/8860">CoSENT (2): How Big is the Gap Between Representation-Based and Interaction-Based Matching?</a></h1>
+    <p>By 苏剑林 | January 12, 2022</p>
+
+    <p>Generally speaking, text matching has two implementation schemes: interaction-based and representation-based. Interaction-based refers to concatenating two texts together and treating them as a single text for classification. Representation-based refers to two sentences being separately encoded by an encoder into sentence vectors, followed by simple fusion processing (calculating cosine similarity or passing through a shallow network). The usual conclusion is that interaction-based methods typically achieve better accuracy because they allow for thorough comparison between the two texts, but they have the clear disadvantage of poor efficiency in retrieval scenarios. Representation-based methods, on the other hand, can pre-calculate and cache sentence vectors, offering high efficiency, but since the level of interaction between sentences is shallow, their performance is usually inferior to interaction-based methods.</p>
+
+    <p>In the previous article, I introduced CoSENT, which is essentially a representation-based scheme and shows improved performance over previous representation-based methods. Naturally, my curiosity was piqued: can CoSENT compete with interaction-based methods? How large is the gap between representation-based and interaction-based matching? This article aims to make that comparison.</p>
+
+    <h2>Automatic Threshold</h2>
+    <p>In the article <a href="translation_8847.html">"CoSENT (1): A More Effective Sentence Vector Scheme than Sentence-BERT"</a>, the metric we used to evaluate CoSENT was the Spearman coefficient. It is a metric that only depends on the relative order of prediction results and does not rely on a threshold, making it suitable for evaluating retrieval scenarios. However, if the evaluation metrics are classification metrics like accuracy or F1, a threshold must be determined: prediction results greater than this value are treated as positive, and those smaller are treated as negative, before metrics can be calculated. In a binary classification scenario, we can effectively determine this threshold using the bisection method.</p>
+
+    <p>However, searching for a threshold is not unique to binary classification; general multi-classification tasks actually share the same requirement, so let's expand on this issue here. For example, for an $n$-class prediction distribution $[p_1, p_2, \dots, p_n]$, we generally use the class with the maximum probability, i.e., $\mathop{\text{argmax}}\,(p_1, p_2, \dots, p_n)$, as the predicted class. But in scenarios with class imbalance, this is not necessarily optimal. We can use a validation set to search for a vector $[t_1, t_2, \dots, t_n]$ and then use
+    \begin{equation}\mathop{\text{argmax}}\,(p_1 t_1, p_2 t_2, \dots, p_n t_n)\end{equation}
+    as the predicted category. Here, $[t_1, t_2, \dots, t_n]$ acts as the threshold in a multi-class scenario.</p>
+
+    <p>So, how do we search for $[t_1, t_2, \dots, t_n]$? The search objective is naturally to maximize the metric, but metrics like accuracy or F1 are non-differentiable, so gradient descent is definitely out of the question. Since the parameters to be searched form a multidimensional vector, the bisection method is also not very useful. Here, I introduce a solution called "Powell's method." Powell's method involves many mathematical details that I won't expand on here. Simply put, Powell's method is an algorithm for solving low-dimensional unconstrained optimization that does not require gradients and is relatively efficient. "Low-dimensional" here means the parameters to be optimized usually do not exceed 100 (you can't expect it to solve a neural network). Most importantly, Powell's method is readily available in Scipy; it can be called by specifying <code>method='Powell'</code> in <code>scipy.optimize.minimize</code>.</p>
+
+    <p>For the problem mentioned above, the reference code is as follows:</p>
+
+<pre><code>import numpy as np
+from scipy.optimize import minimize
+
+def loss(t):
+ """Here y_true.shape=[batch_size],
+ y_pred.shape=[batch_size, num_classes]
+ """
+ t = (np.tanh(t) + 1) / 2
+ return -np.mean(y_true == (y_pred * t[None]).argmax(1))
+
+options = {'xtol': 1e-10, 'ftol': 1e-10, 'maxiter': 100000}
+result = minimize(
+ loss, np.zeros_like(y_pred[:1]), method='Powell', options=options
+)
+thresholds = (np.tanh(result.x) + 1) / 2
+</code></pre>
+
+    <h2>Experimental Results</h2>
+    <p>With an automatic method for determining thresholds, we can examine classification performance. I conducted experiments on four datasets: ATEC, BQ, LCQMC, and PAWSX, comparing the effects of CoSENT, Sentence-BERT, and the interaction-based scheme (denoted as Interact). For fairness, each method used Powell's method on the validation set to determine the optimal threshold, and then reported the results on the test set using that threshold—even for the interaction-based method.</p>
+
+    <blockquote><strong>Experimental Code: <a href="https://github.com/bojone/CoSENT/tree/main/accuracy">https://github.com/bojone/CoSENT/tree/main/accuracy</a></strong></blockquote>
+
+    <p>The experimental results are as follows (the metric is accuracy):</p>
+    \begin{array}{c|cccc|c}
+    \hline
+    & \text{ATEC} & \text{BQ} & \text{LCQMC} & \text{PAWSX} & \text{Avg}\\
+    \hline
+    \text{BERT+CoSENT} & \textbf{85.81} & 83.24 & 86.67 & 76.30 & 83.00 \\
+    \text{Sentence-BERT} & 84.93 & 82.46 & 87.42 & 65.33 & 80.04\\
+    \text{BERT+Interact} & 85.49 & \textbf{83.88} & \textbf{87.80} & \textbf{81.30} & \textbf{84.62} \\
+    \hline
+    \text{RoBERTa+CoSENT} & 85.93 & 83.42 & 87.63 & 76.55 & 83.38 \\
+    \text{Sentence-RoBERTa} & 85.34 & 82.52 & 88.14 & 68.35 & 81.09 \\
+    \text{RoBERTa+Interact} & \textbf{86.04} & \textbf{83.62} & \textbf{88.22} & \textbf{83.33} & \textbf{85.30} \\
+    \hline
+    \end{array}
+
+    <p>Experimental results show that from a performance perspective, the interaction-based method indeed holds the "king" status, but the performance gap between representation-based methods (CoSENT and Sentence-BERT/RoBERTa) was not as large as I imagined. Objectively speaking, on the ATEC and BQ tasks, the interaction-based Interact and representation-based CoSENT show no significant difference. On the LCQMC task, the interaction-based Interact and representation-based Sentence-BERT/RoBERTa also show no significant difference.</p>
+
+    <p>The only dataset with a significant gap is PAWSX. As found in <a href="translation_8321.html">"Which Unsupervised Semantic Similarity Method is Strongest? We Did a Comprehensive Evaluation"</a> and <a href="translation_8348.html">"Is it Still SOTA on Chinese Tasks? Supplementing SimCSE with Experiments"</a>, almost all unsupervised sentence vector methods fail on PAWSX. Why? Because the negative samples in PAWSX are almost all "adversarial samples"—negative samples with very high literal overlap but different semantics. Therefore, for these "high-difficulty" negative samples where unsupervised methods "collapse completely," even when training with labeled data, deeper interaction is naturally required to better identify them.</p>
+
+    <h2>Theoretical Limits</h2>
+    <p>Some readers might be curious: is it possible to theoretically analyze the limit of representation-based schemes? Perhaps surprisingly, this analysis is not difficult, and the answer is:</p>
+
+    <blockquote>Theoretically, almost any effect that interaction-based methods can achieve, representation-based methods can also achieve.</blockquote>
+
+    <p>How do we arrive at this result? In fact, articles previously introduced on this blog are sufficient. First, let's assume the similarity of sample pairs is between 0 and 1, and the sample pairs are unordered, i.e., $\text{sim}(x,y)=\text{sim}(y,x)$. If there are $n$ samples, calculating the similarity between every two samples (no matter how the similarity is actually calculated) gives us a similarity matrix $S$. It is a "positive definite symmetric matrix" (or strictly, semi-positive definite). According to linear algebra, the SVD decomposition of a positive definite symmetric matrix is necessarily of the form $S=U\Lambda U^{\top}$, where $U$ is an orthogonal matrix and $\Lambda$ is a diagonal matrix. Then we have $S=U\Lambda U^{\top}=(U\sqrt{\Lambda})(U\sqrt{\Lambda})^{\top}$. This indicates that a positive definite symmetric matrix can always be decomposed into the form $S=BB^{\top}$, which is equivalent to saying that each sample $i$ can be represented as an $n$-dimensional vector $v_i$ such that $S_{i,j}=\langle v_i, v_j\rangle$.</p>
+
+    <p>At this point, all results are theoretically guaranteed and exactly equal, except that the current "$n$-dimensional vector" is far too large. So next, we should think about dimensionality reduction. Here, the "JL Lemma" (refer to <a href="translation_8679.html">"The Amazing Johnson-Lindenstrauss Lemma: Theory Part"</a>) that we introduced last year takes the stage. it tells us that regardless of the original dimensionality, $n$ vectors can be reduced to $\mathcal{O}(\log n)$ dimensions while keeping inner products approximately unchanged. In <a href="translation_8706.html">"The Amazing Johnson-Lindenstrauss Lemma: Application Part"</a>, we also estimated this magnitude to be around $8\log n$. Therefore, for BERT-base's 768-dimensional vectors, it is theoretically no problem to fit the pairwise similarity of millions of samples using inner products. Thus, a "representation-based" scheme based on inner products with hundreds of dimensions can theoretically reach interaction-based effects quite accurately.</p>
+
+    <p>Why is there a clear difference between the two on difficult datasets like PAWSX? In my personal opinion, this is caused by the contradiction between the "continuity of neural networks and cosine metrics" and the "inherent adversarial nature of text matching."</p>
+
+    <p>A neural network itself is a continuous function, and the encoder is responsible for compressing a sentence into a sentence vector. The continuity of its results is inevitably very high. Continuity here means that small changes in the sentence lead to small changes in the sentence vector. Simultaneously, the continuity of cosine similarity is also very good; that is, if $\Delta v$ is small, the gap between $\cos(u,v)$ and $\cos(u, v+\Delta v)$ is also very small. Therefore, in general, the continuity of "representation-based" schemes is excellent. However, languages designed by humans are inherently adversarial—small literal changes can lead to huge changes in labeled results. A classic example is adding the word "not" leading to so-called "semantic reversal." Simply put, the continuity is not good.</p>
+
+    <p>Consequently, in such tasks, it becomes very difficult for "representation-based" schemes with high continuity to fit datasets with obvious adversarial traits. Of course, we have already analyzed that fitting is theoretically possible, so in practice, fitting can indeed be achieved, but it requires training for more epochs to "wear down" the original continuity of the representation-based scheme. However, more epochs also cause more severe overfitting. Therefore, CoSENT's training loss can also drop close to 0 (indicating that fitting capability is not an issue), but its validation set performance is not as good as the interaction-based method. As for the interaction-based method, the model is exposed to both samples from the beginning, and in subsequent layers, the model can fit and amplify the differences on its own. Thus, in the interaction-based scheme, the contradiction between continuity and adversarial nature is not so severe, leading to better results.</p>
+
+    <h2>Summary</h2>
+    <p>This article has explored the performance gap between representation-based matching and interaction-based matching from both theoretical and experimental perspectives. Additionally, it discussed the automatic search for thresholds in multi-classification problems.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8860.html" style="color: #005fcc;">https://kexue.fm/archives/8860</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

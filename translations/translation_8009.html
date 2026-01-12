@@ -1,0 +1,262 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/8009">Optimization Algorithms from a Dynamical Perspective (VII): SGD ≈ SVM?</a></h1>
+    <p>By 苏剑林 | Dec 21, 2020</p>
+
+    <p>As is well known, before the era of deep learning, machine learning was dominated by SVM (Support Vector Machine). It was once the center of attention in the machine learning world, captivating countless researchers. Even today, "hand-deriving SVM" remains one of the popular interview questions at major tech companies. However, times have changed. When deep learning became popular, the first thing it "revolutionized" was SVM. Now, the presence of SVM is mostly found in specific scenarios where efficiency is paramount or in the aforementioned interview questions.</p>
+
+    <p>In a surprising turn of events, a recent paper on Arxiv, <a href="https://papers.cool/arxiv/2012.00152">"Every Model Learned by Gradient Descent Is Approximately a Kernel Machine"</a>, made a very "bold" declaration:</p>
+
+    <blockquote>
+        Any model learned by a gradient descent algorithm can be approximately viewed as an SVM!
+    </blockquote>
+
+    <p>This conclusion is truly "bold" because it isn't just aimed at deep learning; it suggests that as long as you optimize using gradient descent, the resulting model is nothing more than an (approximation of an) SVM. I have reviewed the analysis in the original paper and found it to be quite interesting and reasonable. It helps deepen our understanding of many models, so I would like to share it with everyone.</p>
+
+    <h2 id="SVM基础">SVM Basics</h2>
+    <p>A general SVM can be expressed in the following form:</p>
+
+    \begin{equation}
+    y=g\left(\beta+\sum_i \alpha_i K(x,x_i)\right) \label{eq:svm}
+    \end{equation}
+
+    <p>Where $\{(x_i, y_i) \}$ are training data pairs, and $\alpha_i, \beta$ are learnable parameters. The output of a standard kernel machine is a scalar, so here we consider $y, \alpha_i, \beta$ to be scalars. $K(x, x_i)$ is called the "kernel function," which measures a certain similarity between the input $x$ and the training sample $x_i$. SVM is a type of the broader "Kernel Machine" model (probably the most famous one) and belongs to the category of "kernel methods."</p>
+
+    <p>Intuitively, an SVM is actually a retrieval model. It retrieves the similarity $K(x, x_i)$ between the input and all training samples and then computes a weighted sum. Therefore, strictly speaking, the parameter set of an SVM includes not only the various $\alpha_i$ and $\beta$ but also the training inputs $x_i$. Simply put, it memorizes the entire training set. In contrast, deep learning models also have many parameters, but these parameters are directly solved by gradient descent rather than storing the training set directly. Because of this feature, deep learning models are generally thought to be able to learn more intelligent features automatically.</p>
+
+    <h2 id="解析推导">Analytical Derivation</h2>
+    <p>The theory of SVM is not the focus of this article; it is sufficient for us to know its form as shown in \eqref{eq:svm}. In this section, we will derive an analytical solution for gradient descent and discover that this solution has a very similar form to equation \eqref{eq:svm}, which is why we say that models produced by gradient descent can be approximately viewed as SVM models.</p>
+
+    <p>Suppose our model is $y=f_\theta(x)$, where $\theta$ are the trainable parameters. The loss function for a single sample is $l(y_i, f_\theta(x_i))$. Then the loss function used for training is:</p>
+
+    \begin{equation}
+    L(\theta)=\sum_i l(y_i, f_\theta(x_i))
+    \end{equation}
+
+    <p>To make the subsequent derivation more concise, we use the summation form here. Generally, an average is used, but this does not affect the final result. In the <a href="https://kexue.fm/search/%E4%BB%8E%E5%8A%A8%E5%8A%9B%E5%AD%A6%E8%A7%92%E5%BA%A6%E7%9C%8B%E4%BC%98%E5%8C%96%E7%AE%97%E6%B3%95/">"Optimization Algorithms from a Dynamical Perspective"</a> series of articles, we maintain the view that solving for parameters $\theta$ using gradient descent is equivalent to solving the dynamical system:</p>
+
+    \begin{equation}
+    \frac{d\theta}{dt}=-\frac{\partial L(\theta)}{\partial \theta}=-\sum_i \frac{\partial l(y_i, f_\theta(x_i))}{\partial \theta}=-\sum_i \frac{\partial l(y_i, f_\theta(x_i))}{\partial f_\theta(x_i)} \frac{\partial f_\theta(x_i)}{\partial \theta}
+    \end{equation}
+
+    <p>This is also the key starting point of this article. Now, let's consider the change in $f_\theta(x)$:</p>
+
+    \begin{equation}
+    \frac{df_\theta(x)}{dt}=\sum_j \frac{\partial f_\theta(x)}{\partial \theta_j} \frac{d\theta_j}{dt}=-\sum_j \frac{\partial f_\theta(x)}{\partial \theta_j} \sum_i \frac{\partial l(y_i, f_\theta(x_i))}{\partial f_\theta(x_i)} \frac{\partial f_\theta(x_i)}{\partial \theta_j}=-\sum_i \frac{\partial l(y_i, f_\theta(x_i))}{\partial f_\theta(x_i)} \sum_j \frac{\partial f_\theta(x)}{\partial \theta_j} \frac{\partial f_\theta(x_i)}{\partial \theta_j}
+    \end{equation}
+
+    <p>We can see that the summation step over $j$ is actually the inner product of the gradients $\langle \nabla_\theta f_\theta(x), \nabla_\theta f_\theta(x_i) \rangle$. In neural networks, this has a very cool name called the "<a href="https://papers.cool/arxiv/1806.07572">Neural Tangent Kernel</a>," which we denote as:</p>
+
+    \begin{equation}
+    K_\theta(x, x_i) = \langle \nabla_\theta f_\theta(x), \nabla_\theta f_\theta(x_i) \rangle = \sum_j \frac{\partial f_\theta(x)}{\partial \theta_j} \frac{\partial f_\theta(x_i)}{\partial \theta_j}
+    \end{equation}
+
+    <p>And by denoting $\alpha_{\theta,i} = -\frac{\partial l(y_i, f_\theta(x_i))}{\partial f_\theta(x_i)}$, we have:</p>
+
+    \begin{equation}
+    \frac{df_\theta(x)}{dt} = \sum_i \alpha_{\theta,i} K_\theta(x, x_i)
+    \end{equation}
+
+    <p>It can be seen that the rate of change of the model $f_\theta(x)$ at each moment is an SVM. If we already know the trajectory of $\theta$ during the optimization process as $\theta(t), t \in [0, T]$, then the final model is:</p>
+
+    \begin{equation}
+    f_{\theta_T}(x) = f_{\theta_0}(x) + \sum_i \int_0^T \alpha_{\theta(t),i} K_{\theta(t)}(x, x_i) dt \label{eq:sgdf}
+    \end{equation}
+
+    <h2 id="结果分析">Results Analysis</h2>
+    <p>After deriveing equation \eqref{eq:sgdf}, we have the theoretical solution for gradient descent when the learning rate approaches 0. From the derivation process, we see that this result only depends on gradient descent itself and is independent of the specific model structure. We can understand equation \eqref{eq:sgdf} from the following perspective.</p>
+
+    <p>First, we let $\beta(x) = f_{\theta_0}(x)$, which is the initial model. Although it theoretically depends on $x$, in many cases it behaves close to a constant (for example, in multi-class models, the output of the initialized model is usually close to a uniform distribution); thus, we can treat it as a constant term. Then, we can denote:</p>
+
+    \begin{equation}
+    \alpha_i(x) = \frac{\int_0^T \alpha_{\theta(t),i} K_{\theta(t)}(x, x_i) dt}{\int_0^T K_{\theta(t)}(x, x_i) dt}, \quad K(x, x_i) = \int_0^T K_{\theta(t)}(x, x_i) dt
+    \end{equation}
+
+    <p>Then:</p>
+
+    \begin{equation}
+    f_{\theta_T}(x) = \beta(x) + \sum_i \alpha_i(x) K(x, x_i)
+    \end{equation}
+
+    <p>This is very similar in form to an SVM. The difference is that in an SVM, $\alpha_i, \beta$ should be independent of $x$, whereas here they depend on $x$. We have already analyzed $\beta(x)$. As for $\alpha_i(x)$, since it is in the form of a mathematical expectation where the expected object does not depend on $x$ but the weights do, its dependence on $x$ might be relatively weak. Therefore, like $\beta(x)$, we might be able to approximately ignore its dependence on $x$. However, in my view, whether it depends on $x$ is not the key point. The most important thing is that the final result presents the form $\sum_i \alpha_i(x) K(x, x_i)$, which means that to some extent it has learned a process of retrieving the training set. This is the true similarity it shares with SVM.</p>
+
+    <p>The above discussion focuses on models with scalar outputs. If the output is a $d$-dimensional vector, the final form is identical, except that $\beta(x), \alpha_i(x)$ are also $d$-dimensional vectors, and $K(x, x_i)$ is a $d \times d$ matrix. In this case, even if $\beta(x)$ and $\alpha_i(x)$ are independent of $x$, it is still not the (multi-class) SVM model in the conventional sense. However, it still possesses the form $\sum_i \alpha_i(x) K(x, x_i)$, so in some sense, it remains an operation of retrieving the training set.</p>
+
+    <p>Furthermore, the above conclusion is for (full-batch) gradient descent. For Stochastic Gradient Descent (SGD), we no longer use the full dataset to calculate the loss function. We discussed this in the first article <a href="translation_5655.html">"Optimization Algorithms from a Dynamical Perspective (I): From SGD to Momentum Acceleration"</a>. We can consider that SGD introduces noise on top of gradient descent; that is, the convergence path $\theta(t)$ carries random noise, while the rest of the results remain basically unchanged. Therefore, the above conclusion also holds for SGD.</p>
+
+    <h2 id="拓展思考">Extension Thinking</h2>
+    <p>So, what kind of conceptual impact can this result bring us? The original paper devoted a considerable length to discussing this in the "Discussion" section. Let's reflect on this as well.</p>
+
+    <p>From the perspective of deep learning, this result reveals the connection between deep neural network models and traditional kernel methods, using the interpretability of kernel methods to enhance the interpretability of neural networks. For example, by using the inner product of gradients as a measure of similarity, we might be able to retrieve training samples from the training set that are similar to the input to explain the decision-making process of the output. Furthermore, if this direction can be more precisely quantified, it could greatly improve methods for incremental learning—that is, for new labeled samples, we might only need to find a way to add terms like $\alpha_i(x) K(x, x_i)$ to the model without retraining it from scratch.</p>
+
+    <p>Conversely, this result might promote the development of kernel machines and kernel methods. Traditional kernel functions rely on manual definitions, whereas the above gradient inner product form of kernel functions brings us new ideas for constructing kernel functions, enhancing the modeling capabilities of kernel methods for complex functions. At the same time, due to the similarity between gradient descent and kernel machines, we might eventually train kernel machines through gradient descent, thereby overcoming the difficulties of training kernel machines on large-scale data, and so on.</p>
+
+    <p>There are some other "brainstorms" to explore. For instance, we know that convex optimization problems have a unique solution, and theoretically, gradient descent can always find this solution. Since the previous argument states that gradient descent is equivalent to an SVM, does this imply that the solution to every convex optimization problem is equivalent to an SVM? Is this a big enough brainstorm?</p>
+
+    <p>In summary, revealing the connection between gradient descent and kernel machines helps in mutual learning and integration between the two, and potentially opens up new research avenues.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8009.html" style="color: #005fcc;">https://kexue.fm/archives/8009</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

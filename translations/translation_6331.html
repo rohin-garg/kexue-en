@@ -1,0 +1,440 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/6331">GAN from an Energy Perspective (II): GAN = "Analysis" + "Sampling"</a></h1>
+
+<p>By 苏剑林 | February 15, 2019</p>
+
+<p>In this series, we attempt to understand GANs from the perspective of energy. We will find this perspective to be so beautiful and intuitive that it is truly remarkable.</p>
+
+<p>In the previous article, we provided a straightforward and powerful energy landscape. This landscape allowed us to easily understand many aspects of GANs; in other words, a popular explanation was sufficient to achieve most of the understanding, and the final conclusions were already laid out. In this article, we continue to understand GANs from the energy perspective, aiming this time to derive the previous simple and blunt descriptions using relatively rigorous mathematical language.</p>
+
+<p>As with the first article, this derivation process is directly inspired by the new work from Bengio's team: <a href="https://papers.cool/arxiv/1901.08508" target="_blank">"Maximum Entropy Generators for Energy-Based Models"</a>.</p>
+
+<p>Original author's open-source implementation: <a href="https://github.com/ritheshkumar95/energy_based_generative_models" target="_blank">https://github.com/ritheshkumar95/energy_based_generative_models</a></p>
+
+<p>The main contents of this article are as follows:</p>
+
+<blockquote>
+    1. Deriving the update formulas for the adversarial interaction between positive and negative phases under energy distribution;<br>
+    2. Comparing the differences between theoretical analysis and experimental sampling, and combining the two to obtain the GAN framework;<br>
+    3. Deriving the supplementary loss for the generator, which theoretically prevents mode collapse;<br>
+    4. Briefly mentioning MCMC sampling based on the energy function.
+</blockquote>
+
+<h2>Energy from a Mathematical Perspective</h2>
+
+<p>In this section, we first briefly introduce the energy model and derive the theoretical update formulas for the energy model, pointing out its characteristic competition between positive and negative phases.</p>
+
+<h3>Energy Distribution Model</h3>
+
+<p>First, we have a batch of data $x_1, x_2, \dots, x_n \sim p(x)$. We hope to fit it using a probabilistic model. The model we choose is:</p>
+
+\begin{equation}q_{\theta}(x) = \frac{e^{-U_{\theta}(x)}}{Z_{\theta}}\end{equation}
+
+<p>where $U_{\theta}$ is an undetermined function with parameters $\theta$, which we call the "energy function," and $Z_{\theta}$ is the normalization factor (partition function):</p>
+
+\begin{equation}Z_{\theta} = \int e^{-U_{\theta}(x)}dx\label{eq:z}\end{equation}
+
+<p>Such a distribution can be called an "energy distribution," also known in physics as the "Boltzmann distribution."</p>
+
+<p>As for why we choose such an energy distribution, there are many explanations. It can be said to be inspired by physics, or by the principle of maximum entropy, or you can simply think it is used because this distribution is relatively easy to handle. But undeniably, this distribution is very common and practical; the softmax activation we use so frequently is actually based on the assumption of this distribution.</p>
+
+<p>The current difficulty lies in how to solve for the parameter $\theta$, and the source of this difficulty is that the partition function \eqref{eq:z} is usually difficult to calculate explicitly. Of course, despite the practical calculation difficulties, it does not stop us from continuing the derivation.</p>
+
+<h3>Competition between Positive and Negative Phases</h3>
+
+<p>To solve for the parameter $\theta$, we first define the log-likelihood function:</p>
+
+\begin{equation}\mathbb{E}_{x\sim p(x)} \big[\log q_{\theta}(x)\big]\end{equation}
+
+<p>We want it to be as large as possible, which means we want:</p>
+
+\begin{equation}L_{\theta}=\mathbb{E}_{x\sim p(x)} \big[-\log q_{\theta}(x)\big]\end{equation}
+
+<p>to be as small as possible. To this end, we use gradient descent on $L_{\theta}$. We have:</p>
+
+\begin{equation}\begin{aligned}\nabla_{\theta}\log q_{\theta}(x)=&\nabla_{\theta}\log e^{-U_{\theta}(x)}-\nabla_{\theta}\log Z_{\theta}\\
+=&-\nabla_{\theta} U_{\theta}(x)-\frac{1}{Z_{\theta}}\nabla_{\theta} Z_{\theta}\\
+=&-\nabla_{\theta} U_{\theta}(x)-\frac{1}{Z_{\theta}}\nabla_{\theta} \int e^{-U_{\theta}(x)}dx\\
+=&-\nabla_{\theta} U_{\theta}(x)+\frac{1}{Z_{\theta}} \int e^{-U_{\theta}(x)}\nabla_{\theta} U_{\theta}(x) dx\\
+=&-\nabla_{\theta} U_{\theta}(x)+\int \frac{e^{-U_{\theta}(x)}}{Z_{\theta}}\nabla_{\theta} U_{\theta}(x) dx\\
+=&-\nabla_{\theta} U_{\theta}(x)+\mathbb{E}_{x\sim q_{\theta}(x)}\big[\nabla_{\theta} U_{\theta}(x)\big]
+\end{aligned}\end{equation}
+
+<p>So</p>
+
+\begin{equation}\nabla_{\theta} L_{\theta} = \mathbb{E}_{x\sim p(x)}\big[\nabla_{\theta} U_{\theta}(x)\big] - \mathbb{E}_{x\sim q_{\theta}(x)}\big[\nabla_{\theta} U_{\theta}(x)\big]\label{eq:q-grad}\end{equation}
+
+<p>This means the update formula for gradient descent is:</p>
+
+\begin{equation}\theta \leftarrow \theta - \varepsilon \Big(\mathbb{E}_{x\sim p(x)}\big[\nabla_{\theta} U_{\theta}(x)\big] - \mathbb{E}_{x\sim q_{\theta}(x)}\big[\nabla_{\theta} U_{\theta}(x)\big]\Big)\label{eq:q-grad-gd}\end{equation}
+
+<p>Notice the characteristics of equation \eqref{eq:q-grad}: it is the difference between the mean of $\nabla_{\theta}U_{\theta}(x)$ under the true distribution and its mean under the fitted distribution. This is the famous decomposition into "positive phase" and "negative phase" in machine learning. Equation \eqref{eq:q-grad} reflects the confrontation between the positive and negative phases, which some have likened to our dreaming process.</p>
+
+<h2>Capitalizing on Strengths and Avoiding Weaknesses ⇒ GAN</h2>
+
+<p>In this section, we show that "ease of analysis" and "ease of sampling" are hard to reconcile. Models that are easy for theoretical analysis are difficult to sample and calculate experimentally, while models that are easy to sample and calculate are difficult to perform concise theoretical derivations on. Attempting to combine the advantages of both leads to the GAN model.</p>
+
+<h3>Theoretical Analysis vs. Experimental Sampling</h3>
+
+<p>In fact, equations \eqref{eq:q-grad} and \eqref{eq:q-grad-gd} show that the theoretical analysis of the energy distribution model we initially assumed is not difficult. However, when it comes to experimental implementation, we find that we must complete the sampling from $q_{\theta}$: $\mathbb{E}_{x\sim q_{\theta}(x)}$. In other words, given a specific $U_{\theta}(x)$, we need to find a way to sample a batch of $x$ from $q_{\theta}(x)=e^{-U_{\theta}(x)}/Z_{\theta}$.</p>
+
+<p>However, currently, we do not have much experience in sampling from $q_{\theta}(x)=e^{-U_{\theta}(x)}/Z_{\theta}$. For us, the convenient sampling process is as follows:</p>
+
+\begin{equation}z\sim q(z),\quad x = G_{\varphi}(z)\end{equation}
+
+<p>Here $q(z)$ represents a standard normal distribution. That is, we can sample a $z$ from the standard normal distribution and then transform it into the $x$ we want through a fixed model $G_{\varphi}$. This means the theoretical expression for this distribution is:</p>
+
+\begin{equation}q_{\varphi}(x) = \int \delta\big(x - G_{\varphi}(z)\big)q(z)dz\label{eq:q-varphi}\end{equation}
+
+<p>The problem is that if we replace the original $q_{\theta}(x)$ with $q_{\varphi}(x)$, while sampling becomes convenient, similar theoretical derivations become difficult. In other words, we cannot derive a result similar to \eqref{eq:q-grad-gd}.</p>
+
+<h3>The Birth of GAN</h3>
+
+<p>So, a creative idea is: can we combine the two, letting each perform in the area they are best at?</p>
+
+<p>Is $\mathbb{E}_{x\sim q_{\theta}(x)}$ in equation \eqref{eq:q-grad-gd} difficult to implement? Then let's just replace that part with $\mathbb{E}_{x\sim q_{\varphi}(x)}$:</p>
+
+\begin{equation}\theta \leftarrow \theta - \varepsilon \Big(\mathbb{E}_{x\sim p(x)}\big[\nabla_{\theta} U_{\theta}(x)\big] - \mathbb{E}_{x\sim q_{\varphi}(x)}\big[\nabla_{\theta} U_{\theta}(x)\big]\Big)\end{equation}
+
+<p>which is</p>
+
+\begin{equation}\theta \leftarrow \theta - \varepsilon \Big(\mathbb{E}_{x\sim p(x)}\big[\nabla_{\theta} U_{\theta}(x)\big] - \mathbb{E}_{x=G_{\varphi}(z),z\sim q(z)}\big[\nabla_{\theta} U_{\theta}(x)\big]\Big)\label{eq:q-grad-gd-new}\end{equation}
+
+<p>Now sampling is convenient, but the prerequisite is that $q_{\varphi}(x)$ must be close enough to $q_{\theta}(x)$ (because $q_{\theta}(x)$ is the standard, correct one). Therefore, we use KL divergence to measure the difference between the two:</p>
+
+\begin{equation}\begin{aligned}KL\big(q_{\varphi}(x)\big\Vert q_{\theta}(x)\big)=&\int q_{\varphi}(x) \log \frac{q_{\varphi}(x)}{q_{\theta}(x)}dx \\
+=& - H_{\varphi}(X) + \mathbb{E}_{x\sim q_{\varphi}(x)}\big[U_{\theta}(x)\big]+\log Z_{\theta}\end{aligned}\end{equation}
+
+<p>The prerequisite for equation \eqref{eq:q-grad-gd-new} to be effective is that $q_{\varphi}(x)$ is close enough to $q_{\theta}(x)$, meaning the above expression is small enough. For a fixed $q_{\theta}(x)$, $Z_{\theta}$ is a constant, so the optimization goal for $\varphi$ is:</p>
+
+\begin{equation}\varphi =\mathop{\text{argmin}}_{\varphi} - H_{\varphi}(X) + \mathbb{E}_{x\sim q_{\varphi}(x)}\big[U_{\theta}(x)\big]\label{eq:varphi-gd}\end{equation}
+
+<p>Here $H_{\varphi}(X) = - \int q_{\varphi}(x) \log q_{\varphi}(x) dx$ represents the entropy of $q_{\varphi}(x)$. $-H_{\varphi}(X)$ desires the entropy to be as large as possible, which implies diversity; $\mathbb{E}_{x\sim q_{\varphi}(x)}[U_{\theta}(x)]$ desires the image potential energy to be as small as possible, which implies authenticity.</p>
+
+<p>On the other hand, notice that equation \eqref{eq:q-grad-gd-new} is actually the gradient descent formula for the objective:</p>
+
+\begin{equation}\theta =\mathop{\text{argmin}}_{\theta} \mathbb{E}_{x\sim p(x)}\big[U_{\theta}(x)\big] - \mathbb{E}_{x=G_{\varphi}(z),z\sim q(z)}\big[U_{\theta}(x)\big]\label{eq:theta-gd}\end{equation}
+
+<p>Therefore, we find that the entire process is actually an alternating gradient descent of \eqref{eq:theta-gd} and \eqref{eq:varphi-gd}. As mentioned in the first article, this objective for $\theta$ might lead to numerical instability. Based on the reasons stated in the first article, true samples should be near the local minimum, so we can supplement \eqref{eq:theta-gd} with a gradient penalty term, resulting in the final process:</p>
+
+\begin{equation}\begin{aligned}\theta =&\, \mathop{\text{argmin}}_{\theta} \mathbb{E}_{x\sim p(x)}\big[U_{\theta}(x)\big] - \mathbb{E}_{x=G_{\varphi}(z),z\sim q(z)}\big[U_{\theta}(x)\big] + \lambda \mathbb{E}_{x\sim p(x)}\big[\|\nabla_x U_{\theta}(x)\|^2\big]\\
+\varphi =&\, \mathop{\text{argmin}}_{\varphi} - H_{\varphi}(X) + \mathbb{E}_{x=G_{\varphi}(z),z\sim q(z)}\big[U_{\theta}(x)\big]
+\end{aligned}\label{eq:gan-energy}\end{equation}
+
+<p>This is the GAN model based on gradient penalty. We already "brainstormed" it in <a href="translation_6316.html" target="_blank">"GAN from an Energy Perspective (I)"</a>, and now we have derived it from the mathematical analysis of energy models.</p>
+
+<p>So, GAN is essentially the result of energy models and sampling models each capitalizing on their strengths and avoiding their weaknesses.</p>
+
+<h2>Addressing H(X) directly!</h2>
+
+<p>Now, the only thing missing to fully implement the model is $H_{\varphi}(X)$. We have already said that:</p>
+
+\begin{equation}H_{\varphi}(X) = - \int q_{\varphi}(x) \log q_{\varphi}(x) dx\end{equation}
+
+<p>represents the entropy of $q_{\varphi}(x)$, and the theoretical expression for $q_{\varphi}(x)$ is \eqref{eq:q-varphi}, for which the integral is difficult to calculate, making $H_{\varphi}(X)$ also difficult to calculate.</p>
+
+<p>The idea to break through this predicament is to transform entropy into mutual information, and then into an estimate of mutual information. There are two ways to estimate it: estimation via f-divergence (theoretically precise) or estimation via information lower bounds.</p>
+
+<h3>Maximum Entropy and Mutual Information</h3>
+
+<p>First, we can utilize the fact that $x=G_{\varphi}(z)$: $x=G_{\varphi}(z)$ implies that the conditional probability $q_{\varphi}(x|z) = \delta\big(x - G(z)\big)$. This can be understood as a deterministic model, or as a Gaussian distribution $\mathcal{N}(x;G_{\varphi}(z),0)$ with mean $G(z)$ and variance 0.</p>
+
+<p>Then we consider the mutual information $I(X,Z)$:</p>
+
+\begin{equation}\begin{aligned}I_{\varphi}(X,Z)=&\iint q_{\varphi}(x|z)q(z)\log \frac{q_{\varphi}(x|z)}{q_{\varphi}(x)}dxdz\\
+=&\iint q_{\varphi}(x|z)q(z)\log q_{\varphi}(x|z) dxdz - \iint q_{\varphi}(x|z)q(z) \log q_{\varphi}(x)dxdz\\
+=&\int q(z)\left(\int q_{\varphi}(x|z)\log q_{\varphi}(x|z) dx\right)dz + H(X)
+\end{aligned}\end{equation}
+
+<p>Now we have found the relationship between $I_{\varphi}(X,Z)$ and $H_{\varphi}(X)$. Their difference is:</p>
+
+\begin{equation}\int q(z)\left(\int q_{\varphi}(x|z)\log q_{\varphi}(x|z) dx\right)dz\triangleq -H_{\varphi}(X|Z)\end{equation}
+
+<p>In fact, $H_{\varphi}(X|Z)$ is called "conditional entropy."</p>
+
+<p>If we are dealing with discrete distributions, since $x=G_{\varphi}(z)$ is deterministic, $q_{\varphi}(x|z)\equiv 1$, then $H_{\varphi}(X|Z)$ is 0, meaning $I_{\varphi}(X,Z)=H_{\varphi}(X)$. If it is a continuous distribution, as mentioned before, it can be understood as a Gaussian distribution $\mathcal{N}(x;G_{\varphi}(z),0)$ with variance 0. We can first consider the case of constant variance $\mathcal{N}(x;G(z),\sigma^2)$, finding that $H_{\varphi}(X|Z)\sim \log \sigma^2$ is a constant, and then take $\sigma \to 0$, though the result is infinity. Infinity in principle cannot be calculated, but in fact, the variance does not need to equal 0; it only needs to be small enough that it is indistinguishable to the naked eye.</p>
+
+<p>Therefore, overall, we can determine that mutual information $I_{\varphi}(X,Z)$ and entropy $H_{\varphi}(X)$ differ only by an insignificant constant. So in equation \eqref{eq:gan-energy}, $H_{\varphi}(X)$ can be replaced by $I_{\varphi}(X,Z)$:</p>
+
+\begin{equation}\begin{aligned}\theta =&\, \mathop{\text{argmin}}_{\theta} \mathbb{E}_{x\sim p(x)}\big[U_{\theta}(x)\big] - \mathbb{E}_{x=G_{\varphi}(z),z\sim q(z)}\big[U_{\theta}(x)\big] + \lambda \mathbb{E}_{x\sim p(x)}\big[\|\nabla_x U_{\theta}(x)\|^2\big]\\
+\varphi =&\, \mathop{\text{argmin}}_{\varphi} - I_{\varphi}(X,Z) + \mathbb{E}_{x=G_{\varphi}(z),z\sim q(z)}\big[U_{\theta}(x)\big]
+\end{aligned}\label{eq:gan-energy-2}\end{equation}
+
+<p>Now we want to minimize $-I_{\varphi}(X,Z)$, which means maximizing mutual information $I_{\varphi}(X,Z)$. Intuitively, this is not hard to understand, as this term is used to prevent mode collapse. If mode collapse occurs, almost any $z$ generates the same $x$, and the mutual information between $X$ and $Z$ will certainly not be large.</p>
+
+<p>However, changing the objective from $H_{\varphi}(X)$ to $I_{\varphi}(X,Z)$ seems to be just a formal conversion and does not yet seem to have solved the problem. Fortunately, research on maximizing mutual information has already been conducted. The method can be found in the section "The Essence of Mutual Information" in <a href="https://kexue.fm/archives/6024#%E4%BA%92%E4%BF%A1%E6%81%AF%E6%9C%AC%E8%B4%A8" target="_blank">"Mutual Information in Deep Learning: Unsupervised Feature Extraction"</a>. That is, a solution for directly estimating mutual information already exists. Readers can refer directly to that article; I will not repeat the discussion here.</p>
+
+<h3>Mutual Information and Information Lower Bound</h3>
+
+<p>If an exact estimation of mutual information is not required, then the ideas from InfoGAN can be used to obtain a lower bound for mutual information and optimize that lower bound.</p>
+
+<p>Starting from the definition of mutual information:</p>
+
+\begin{equation}I_{\varphi}(X,Z)=\iint q_{\varphi}(x|z)q(z)\log \frac{q_{\varphi}(x|z)q(z)}{q_{\varphi}(x)q(z)}dxdz\end{equation}
+
+<p>Let $q_{\varphi}(z|x) = q_{\varphi}(x|z)q(z)/q_{\varphi}(x)$, which represents the exact posterior distribution. Then for any approximate posterior distribution $p(z|x)$, we have:</p>
+
+\begin{equation}\begin{aligned}I_{\varphi}(X,Z)=&\iint q_{\varphi}(x|z)q(z)\log \frac{q_{\varphi}(z|x)}{q(z)}dxdz\\
+=&\iint q_{\varphi}(x|z)q(z)\log \frac{p(z|x)}{q(z)}dxdz + \iint q_{\varphi}(x|z)q(z)\log \frac{q_{\varphi}(z|x)}{p(z|x)}dxdz\\
+=&\iint q_{\varphi}(x|z)q(z)\log \frac{p(z|x)}{q(z)}dxdz + \int q_{\varphi}(x)KL\Big(q_{\varphi}(z|x) \Big\Vert p(z|x)\Big)dz\\
+\geq &\iint q_{\varphi}(x|z)q(z)\log \frac{p(z|x)}{q(z)}dxdz\\
+=& \iint q_{\varphi}(x|z)q(z)\log p(z|x) - \underbrace{\iint q_{\varphi}(x|z)q(z)\log q(z) dxdz}_{=\int q(z)\log q(z)dz\,\,\text{is a constant}}
+\end{aligned}\end{equation}
+
+<p>In other words, mutual information is greater than or equal to $\iint q_{\varphi}(x|z)q(z)\log p(z|x)$ plus a constant. To maximize mutual information, one can consider maximizing this lower bound. Since $p(z|x)$ is arbitrary, we can simply assume $p(z|x)=\mathcal{N}\left(z;E(x),\sigma^2\right)$, where $E(x)$ is an encoder with parameters. Substituting and calculating while omitting redundant constants, we find it is equivalent to adding a loss term to the generator:</p>
+
+\begin{equation}\mathbb{E}_{z\sim q(z)} \big[\| z - E(G(z)) \|^2\big]\end{equation}
+
+<p>Therefore, based on the information lower bound approach of InfoGAN, equation \eqref{eq:gan-energy} becomes:</p>
+
+\begin{equation}\begin{aligned}\theta =&\, \mathop{\text{argmin}}_{\theta} \mathbb{E}_{x\sim p(x)}\big[U_{\theta}(x)\big] - \mathbb{E}_{z\sim q(z)}\big[U_{\theta}(G_{\varphi}(z))\big] + \lambda_1 \mathbb{E}_{x\sim p(x)}\big[\|\nabla_x U_{\theta}(x)\|^2\big]\\
+\varphi,E =&\, \mathop{\text{argmin}}_{\varphi,E} \mathbb{E}_{z\sim q(z)}\big[U_{\theta}(G_{\varphi}(z)) + \lambda_2 \| z - E(G_{\varphi}(z)) \|^2\big]
+\end{aligned}\label{eq:gan-energy-3}\end{equation}
+
+<p>By this point, we have addressed $H_{\varphi}(X)$ from two perspectives, thus completing the derivation of GAN and the energy model.</p>
+
+<h2>MCMC Enhancement</h2>
+
+<p>Recalling the beginning, we derived the GAN model starting from the energy distribution, where the energy function $U(x)$ acts as the discriminator in the GAN model. Since $U(x)$ carries the meaning of an energy function, once training is complete, we can utilize the properties of the energy function to do more valuable things, such as introducing MCMC to improve results.</p>
+
+<h3>Introduction to MCMC</h3>
+
+<p>Actually, I only have a basic understanding of the meaning of MCMC and do not fully grasp its methods or essence. This "introduction" merely provides some basic concepts. MCMC stands for "Markov Chain Monte Carlo method." In my understanding, it is something like this: it is difficult for us to directly sample from a given distribution $q(x)$, but we can construct the following stochastic process:</p>
+
+\begin{equation}x_{n+1} = f(x_n, \alpha)\label{eq:suijidigui}\end{equation}
+
+<p>where $\alpha$ is a stochastic process that is easy to implement, such as sampling from a binary or normal distribution. Consequently, starting from some $x_0$, the resulting sequence $\{x_1, x_2, \dots, x_n, \dots\}$ is random.</p>
+
+<p>If it can be further proven that the stationary distribution of equation \eqref{eq:suijidigui} is exactly $q(x)$, then it means the sequence $\{x_1, x_2, \dots, x_n, \dots\}$ consists of samples drawn from $q(x)$. Thus, sampling from $q(x)$ is achieved, albeit with the results in a certain order.</p>
+
+<h3>Langevin Equation</h3>
+
+<p>A special case of equation \eqref{eq:suijidigui} is the Langevin equation:</p>
+
+\begin{equation}x_{t+1} = x_t - \frac{1}{2}\varepsilon \nabla_x U(x_t) + \sqrt{\varepsilon}\alpha,\quad \alpha \sim \mathcal{N}(\alpha;0,1)\label{eq:sde}\end{equation}
+
+<p>It is also called a stochastic differential equation. As $\varepsilon \to 0$, its stationary distribution is exactly the energy distribution:</p>
+
+\begin{equation}p(x) = \frac{e^{-U(x)}}{Z}\end{equation}
+
+<p>In other words, given the energy function $U(x)$, we can implement sampling from the energy distribution via equation \eqref{eq:sde}. This is the original idea of MCMC sampling for energy distributions.</p>
+
+<p>Of course, directly sampling $x$ from the energy function and equation \eqref{eq:sde} might not be very realistic because the dimension of $x$ (under common scenarios, $x$ represents an image) is too large, making controllability difficult to guarantee. On the other hand, the last term in equation \eqref{eq:sde} is Gaussian noise, so as long as $\varepsilon \neq 0$, the result will inevitably be noisy, and image authenticity will be hard to maintain.</p>
+
+<p>An interesting transformation is: we can choose not to consider MCMC sampling directly in $x$, but rather MCMC sampling in $z$. Because in the previous model, we eventually obtained both the energy function $U_{\theta}(x)$ and the generative model $G_{\varphi}(z)$, which implies that the energy function for $z$ is:</p>
+
+\begin{equation}U_{\theta}(G_{\varphi}(z))\end{equation}
+
+<blockquote>
+    <strong>Note:</strong> This result is not strictly rigorous and can only be considered an empirical formula. Strictly speaking, it only holds when the Jacobian determinant of $G$ is 1. I once discussed this with the author on GitHub, and he also pointed out that there is no strict theoretical derivation for this; it's just based on intuition. For details, refer to: <a href="https://github.com/ritheshkumar95/energy_based_generative_models/issues/4" target="_blank">https://github.com/ritheshkumar95/energy_based_generative_models/issues/4</a>
+</blockquote>
+
+<p>With an energy function for $z$, we can implement MCMC sampling for $z$ via equation \eqref{eq:sde}:</p>
+
+\begin{equation}z_{t+1} = z_t - \frac{1}{2}\varepsilon \nabla_z U_{\theta}(G_{\varphi}(z_t)) + \sqrt{\varepsilon}\alpha,\quad \alpha \sim \mathcal{N}(\alpha;0,1)\label{eq:sde-2}\end{equation}
+
+<p>In this way, all the previously mentioned problems are gone because the dimension of $z$ is generally much smaller than that of $x$. Moreover, there's no need to worry about the noise introduced by $\varepsilon \neq 0$, because $z$ itself is originally noise.</p>
+
+<h3>Better Truncation Tricks</h3>
+
+<p>By now, a reader whose head is not yet spinning might realize: isn't the distribution of $z$ just the standard normal distribution? Isn't sampling from it very easy? Why bother with a set of MCMC sampling?</p>
+
+<p>In an ideal situation, the energy distribution corresponding to the energy function $U_{\theta}(G_{\varphi}(z))$:</p>
+
+\begin{equation}q_{\theta,\varphi}(z)=\frac{e^{-U_{\theta}(G_{\varphi}(z))}}{Z}\end{equation}
+
+<p>should indeed be the standard normal distribution $q(z)$ that we originally passed to it. But in reality, there is always a gap between the ideal and the real. When we train a generative model using a standard normal distribution, the noise that produces realistic samples often ends up being narrower. This necessitates certain truncation tricks or screening tricks.</p>
+
+<p>For example, in flow-based generative models after training is complete, an "annealing" trick is often used, which sets the variance of the noise smaller during generation to produce more "stable" samples; refer to <a href="https://kexue.fm/archives/5776#%E9%80%80%E7%81%AB%E5%8F%82%E6%95%B0" target="_blank">"A Detailed Flow into NICE: Basic Concepts and Implementation of Flow Models"</a>. BigGAN, released last year, also discussed truncation tricks for noise in GANs.</p>
+
+<p>If we believe in our model and believe that both the energy function $U_{\theta}(x)$ and the generative model $G_{\varphi}(z)$ are valuable, then we have reason to believe that $e^{-U_{\theta}(G_{\varphi}(z))}/Z$ would be a better distribution for $z$ than the standard normal distribution (a distribution for $z$ that can generate more realistic $x$, because it incorporates $G_{\varphi}(z)$ into the definition of the distribution). Therefore, sampling from $e^{-U_{\theta}(G_{\varphi}(z))}/Z$ would be superior to sampling from $q(z)$. That is to say, MCMC sampling \eqref{eq:sde-2} can improve the quality of generation after sampling. The original paper has already verified this point. We can understand it as a better truncation trick.</p>
+
+<h3>More Efficient MALA</h3>
+
+<p>The sampling process \eqref{eq:sde-2} can still be relatively inefficient. In the original paper, an improved version called MALA (Metropolis-adjusted Langevin algorithm) was actually used. It further introduces a screening process on top of \eqref{eq:sde-2}:</p>
+
+\begin{equation}\begin{aligned}\tilde{z}_{t+1} =& z_t - \frac{1}{2}\varepsilon \nabla_z U_{\theta}(G_{\varphi}(z_t)) + \sqrt{\varepsilon}\alpha,\quad \alpha \sim \mathcal{N}(\alpha;0,1)\\
+\\
+z_{t+1} =& \left\{\begin{aligned}&\tilde{z}_{t+1}, \quad \text{if }\beta < \gamma\\ &z_t, \quad \text{otherwise}\end{aligned}\right.,\quad \beta \sim U[0,1]\\
+\\
+\gamma =& \min\left\{1, \frac{q(\tilde{z}_{t+1})q(z_t|\tilde{z}_{t+1})}{q(z_{t})q(\tilde{z}_{t+1}|z_t)}\right\}
+\end{aligned}\end{equation}
+
+<p>Here:</p>
+
+\begin{equation}\begin{aligned}q(z)\propto&\, \exp\Big(-U_{\theta}(G_{\varphi}(z))\Big)\\
+q(z'|z)\propto&\, \exp\left(-\frac{1}{2}\varepsilon\| z' - z + \varepsilon \nabla_z U_{\theta}(G_{\varphi}(z))\|^2\right)
+\end{aligned}\end{equation}
+
+<p>This means $z_{t+1}=\tilde{z}_{t+1}$ is accepted with probability $\gamma$, and it remains unchanged with probability $1-\gamma$. According to <a href="https://en.wikipedia.org/wiki/Metropolis-adjusted_Langevin_algorithm" target="_blank">Wikipedia</a>, this improvement gives the sampling process a better chance to sample high-probability samples, which means it can generate more realistic samples. (I don't fully understand this set of theories myself, so I'm just relaying them!)</p>
+
+<h2>A Powerful Energy Perspective</h2>
+
+<p>This is another long article filled with formulas. Finally, we have clarified the mathematical derivation of GANs under the energy distribution. GANs are a product of reconciling the contradiction between "theoretical analysis" and "experimental sampling." On the whole, I find the entire derivation process quite inspiring; it helps clarify the key points and problems of GANs.</p>
+
+<p>The energy perspective is one tilted towards mathematical physics. Once machine learning and mathematical physics can be linked, one can directly draw inspiration from mathematical physics, making the corresponding machine learning no longer a "black box." Such a perspective is often intoxicating and gives a sense of power.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6331.html" style="color: #005fcc;">https://kexue.fm/archives/6331</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

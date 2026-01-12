@@ -1,0 +1,311 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    tags: 'ams',
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script type="text/javascript" id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
+
+<h1><a href="https://kexue.fm/archives/10085">Diffusion Model Notes (25): Identity-Based Distillation (Part I)</a></h1>
+
+<p>By 苏剑林 | May 01, 2024</p>
+
+<p>Today, we share the paper <a href="https://papers.cool/arxiv/2404.04057">"Score identity Distillation: Exponentially Fast Distillation of Pretrained Diffusion Models for One-Step Generation"</a>. As the name suggests, this paper explores how to distill diffusion models faster and better.</p>
+
+<p>Even without prior experience in distillation, one can likely guess the conventional steps: randomly sample a large number of inputs, use the diffusion model to generate corresponding results as outputs, and then use these input-output pairs as training data to supervise the training of a new model. However, it is well known that the original diffusion model (the teacher) usually requires multiple steps (e.g., 1000 steps) of iteration to generate high-quality outputs. Therefore, regardless of internal training details, a significant drawback of this scheme is that generating training data is time-consuming and labor-intensive. Additionally, the student model after distillation usually suffers from some degree of performance loss.</p>
+
+<p>Is there a method that can solve these two drawbacks at once? This is exactly what the aforementioned paper attempts to address.</p>
+
+<h2>Re-emerging in the Scene</h2>
+
+<p>The paper calls the proposed scheme "Score identity Distillation (SiD)". The name is derived from the fact that it designs and derives the entire framework based on several identities. Choosing this somewhat casual name is likely intended to highlight the critical role of identity transformations in SiD, which is indeed the core contribution of SiD.</p>
+
+<p>As for the training philosophy of SiD, it is actually almost identical to the paper <a href="https://papers.cool/arxiv/2001.02728">"Learning Generative Models using Denoising Density Estimators"</a> (abbreviated as "DDE"), which was introduced previously in <a href="translation_7038.html">"From Denoising Autoencoders to Generative Models"</a>. Even the final form shares fifty to sixty percent similarity. It's just that at that time, diffusion models had not yet risen to prominence, so DDE was proposed as a new type of generative model, which seemed very niche back then. In today's era of popular diffusion models, it can be reformulated as a distillation method for diffusion models, as it requires a trained denoising autoencoder—which happens to be the core of a diffusion model.</p>
+
+<p>Next, I will introduce SiD using my own line of thought. Suppose we have a teacher diffusion model $\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t,t)$ trained on a target dataset. it requires multi-step sampling to generate high-quality images. Our goal is to train a student model $\boldsymbol{x} = \boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z})$ for one-step sampling, which is essentially a GAN-like generator that can directly generate images meeting requirements given a noise input $\boldsymbol{z}$. If we had many $(\boldsymbol{z},\boldsymbol{x})$ pairs, we could perform supervised training directly (of course, the loss function and other details would need further determination; readers can refer to relevant works for this). But what if we don't? It's certainly not impossible to train, because we could train even without $\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t,t)$, like a GAN. So the key is how to leverage the pre-trained diffusion model to provide better signals.</p>
+
+<p>SiD and its predecessor DDE use a logic that seems roundabout but is quite clever:</p>
+
+<blockquote>If the data distribution produced by $\boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z})$ is very similar to the target distribution, then if we take the dataset generated by $\boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z})$ to train a diffusion model $\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t,t)$, it should also be very similar to $\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t,t)$?</blockquote>
+
+<h2>Initial Form</h2>
+
+<p>The cleverness of this idea lies in the fact that it bypasses the need for the teacher model to generate samples and does not require the real samples used to train the teacher model. This is because "using the dataset generated by $\boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z})$ to train a diffusion model" only requires the data generated by the student model $\boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z})$ (referred to as "student data"). Since $\boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z})$ is a one-step model, using it to generate data is very time-efficient.</p>
+
+<p>Of course, this is still just an idea. Converting it into a practically feasible training scheme still requires some work. First, let's review diffusion models, using the form from <a href="translation_9164.html">"Diffusion Model Notes (3): DDPM = Bayesian + Denoising"</a>. We add noise to the input $\boldsymbol{x}_0$ in the following way:
+\begin{equation}\boldsymbol{x}_t = \bar{\alpha}_t\boldsymbol{x}_0 + \bar{\beta}_t\boldsymbol{\varepsilon},\quad \boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})\end{equation}
+In other words, $p(\boldsymbol{x}_t|\boldsymbol{x}_0)=\mathcal{N}(\boldsymbol{x}_t;\bar{\alpha}_t\boldsymbol{x}_0,\bar{\beta}_t^2 \boldsymbol{I})$. The method for training $\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t,t)$ is denoising:
+\begin{equation}\boldsymbol{\varphi}^* = \mathop{\text{argmin}}_{\boldsymbol{\varphi}} \mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0),\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\varphi}}(\bar{\alpha}_t\boldsymbol{x}_0 + \bar{\beta}_t\boldsymbol{\varepsilon},t) - \boldsymbol{\varepsilon}\Vert^2\right] \label{eq:d-real-data}\end{equation}
+Here $\tilde{p}(\boldsymbol{x}_0)$ is the training data of the teacher model. Similarly, if we want to train a diffusion model using the student data from $\boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z})$, the training objective is:
+\begin{equation}\begin{aligned}
+\boldsymbol{\psi}^* =&\, \mathop{\text{argmin}}_{\boldsymbol{\psi}} \mathbb{E}_{\boldsymbol{x}_0^{(g)}\sim p_{\boldsymbol{\theta}}(\boldsymbol{x}_0^{(g)}),\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\psi}}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\varepsilon}\Vert^2\right] \\
+=&\, \mathop{\text{argmin}}_{\boldsymbol{\psi}} \mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\psi}}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\varepsilon}\Vert^2\right]
+\end{aligned}\label{eq:dloss}\end{equation}
+Here $\boldsymbol{x}_t^{(g)}=\bar{\alpha}_t\boldsymbol{x}_0^{(g)} + \bar{\beta}_t\boldsymbol{\varepsilon}=\bar{\alpha}_t\boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z}) + \bar{\beta}_t\boldsymbol{\varepsilon}$ is a sample after adding noise to the student data. The distribution of the student data is denoted as $p_{\boldsymbol{\theta}}(\boldsymbol{x}_0^{(g)})$; the second equality uses the fact that "$\boldsymbol{x}_0^{(g)}$ is directly determined by $\boldsymbol{z}$", so the expectation over $\boldsymbol{x}_0^{(g)}$ is equivalent to the expectation over $\boldsymbol{z}$. Now we have two diffusion models. The difference between them measures, to some extent, the difference between the data distributions generated by the teacher and the student models. Thus, an intuitive idea is to learn the student model by minimizing the difference between them:
+\begin{equation}
+\boldsymbol{\theta}^* = \mathop{\text{argmin}}_{\boldsymbol{\theta}} \underbrace{\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\Vert^2\right]}_{\mathcal{L}_1}\label{eq:gloss-1}\end{equation}
+Note that the optimization of Eq. $\eqref{eq:dloss}$ depends on $\boldsymbol{\theta}$. Therefore, when $\boldsymbol{\theta}$ changes through Eq. $\eqref{eq:gloss-1}$, the value of $\boldsymbol{\psi}^*$ changes as well. Thus, Eq. $\eqref{eq:dloss}$ and Eq. $\eqref{eq:gloss-1}$ actually need to be optimized alternately, similar to a GAN.
+
+<h2>The Masterstroke</h2>
+
+Speaking of GANs, some readers might "pale at the mention" because they are notoriously difficult to train. Unfortunately, the proposed scheme of alternating optimization for Eq. $\eqref{eq:dloss}$ and Eq. $\eqref{eq:gloss-1}$ suffers from the same problem. Theoretically, it is sound, but the issue lies in the gap between theory and practice, mainly reflected in two points:
+
+<blockquote>1. Theory requires solving for the optimal $\boldsymbol{\psi}^*$ in Eq. $\eqref{eq:dloss}$ before optimizing Eq. $\eqref{eq:gloss-1}$. However, in practice, due to training costs, we do not train it to optimality before moving to optimize Eq. $\eqref{eq:gloss-1}$;
+
+2. Theoretically, $\boldsymbol{\psi}^*$ changes with $\boldsymbol{\theta}$, i.e., it should be written as $\boldsymbol{\psi}^*(\boldsymbol{\theta})$. Thus, when optimizing Eq. $\eqref{eq:gloss-1}$, there should be an additional term for the gradient of $\boldsymbol{\psi}^*(\boldsymbol{\theta})$ with respect to $\boldsymbol{\theta}$. In practice, however, when optimizing Eq. $\eqref{eq:gloss-1}$, we treat $\boldsymbol{\psi}^*$ as a constant.</blockquote>
+
+These two problems are very fundamental and are the root causes of instability in GAN training. The paper <a href="https://papers.cool/arxiv/2205.10146">"Revisiting GANs by Best-Response Constraint: Perspective, Methodology, and Application"</a> previously improved GAN training specifically starting from the second point. It seems that neither problem can be easily solved. Especially for the first point, it is almost impossible to always obtain the optimal $\boldsymbol{\psi}$, as the cost is absolutely unacceptable. As for the second point, in an alternating training scenario, we have no good way to obtain any effective information about $\boldsymbol{\psi}^*(\boldsymbol{\theta})$, making it even more impossible to obtain its gradient with respect to $\boldsymbol{\theta}$.
+
+Fortunately, for the aforementioned diffusion model distillation problem, SiD proposes a scheme to effectively mitigate these two problems. SiD's idea is quite "naive": <b>Since using an approximate value for $\boldsymbol{\psi}^*$ and treating $\boldsymbol{\psi}^*$ as a constant are unavoidable, the only way is to use identity transformations to minimize the dependence of the optimization objective $\eqref{eq:gloss-1}$ on $\boldsymbol{\psi}^*$.</b> As long as the dependence of Eq. $\eqref{eq:gloss-1}$ on $\boldsymbol{\psi}^*$ is sufficiently weak, the negative impact brought by the above two problems will also be sufficiently weak.
+
+This is the core contribution of SiD and the "masterstroke" that makes one want to applaud.
+
+<h2>Identity Transformations</h2>
+
+Next, let's look at the specific identity transformations performed. Let's first look at Eq. $\eqref{eq:d-real-data}$. Its optimization objective can be equivalently rewritten as:
+\begin{equation}\begin{aligned}
+&\, \mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0),\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\varphi}}(\bar{\alpha}_t\boldsymbol{x}_0 + \bar{\beta}_t\boldsymbol{\varepsilon},t) - \boldsymbol{\varepsilon}\Vert^2\right] \\
+=&\, \mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0),\boldsymbol{x}_t\sim p(\boldsymbol{x}_t|\boldsymbol{x}_0)}\left[\left\Vert\boldsymbol{\epsilon}_{\boldsymbol{\varphi}}(\boldsymbol{x}_t,t) - \frac{\boldsymbol{x}_t - \bar{\alpha}_t \boldsymbol{x}_0}{\bar{\beta}_t}\right\Vert^2\right] \\
+=&\, \mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0),\boldsymbol{x}_t\sim p(\boldsymbol{x}_t|\boldsymbol{x}_0)}\left[\left\Vert\boldsymbol{\epsilon}_{\boldsymbol{\varphi}}(\boldsymbol{x}_t,t) + \bar{\beta}_t\nabla_{\boldsymbol{x}_t}\log p(\boldsymbol{x}_t|\boldsymbol{x}_0)\right\Vert^2\right]
+\end{aligned}\end{equation}
+According to the score matching results in <a href="translation_9209.html">"Diffusion Model Notes (5): SDE Version of the General Framework"</a>, the optimal solution for the above objective is $\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t,t)=-\bar{\beta}_t\nabla_{\boldsymbol{x}_t}\log p(\boldsymbol{x}_t)$. Similarly, the optimal solution for Eq. $\eqref{eq:dloss}$ is $\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)=-\bar{\beta}_t\nabla_{\boldsymbol{x}_t^{(g)}}\log p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)})$. At this point, the objective function in Eq. $\eqref{eq:gloss-1}$ can be equivalently rewritten as:
+\begin{equation}\begin{aligned}
+&\,\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\Vert^2\right] \\[5pt]
+=&\, \mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\left\langle\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t), \boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) + \bar{\beta}_t\nabla_{\boldsymbol{x}_t^{(g)}}\log p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)})\right\rangle\right] \\[5pt]
+=&\, \color{green}{\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\left\langle\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t), \boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t)\right\rangle\right]} \\[5pt]
+&\, + \color{red}{\mathbb{E}_{\boldsymbol{x}_t^{(g)}\sim p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)})}\left[\left\langle\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t), \bar{\beta}_t\nabla_{\boldsymbol{x}_t^{(g)}}\log p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)})\right\rangle\right]}
+\end{aligned}\end{equation}
+Next, we use an identity proved in <a href="translation_9509.html">"Diffusion Model Notes (18): Score Matching = Conditional Score Matching"</a> to simplify the red part of the above equation:
+\begin{equation}\nabla_{\boldsymbol{x}_t}\log p(\boldsymbol{x}_t) = \mathbb{E}_{\boldsymbol{x}_0\sim p(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\nabla_{\boldsymbol{x}_t} \log p(\boldsymbol{x}_t|\boldsymbol{x}_0)\right] \label{eq:id}\end{equation}
+This identity is derived from the definition of probability density and Bayes' rule, and does not depend on the specific forms of $p(\boldsymbol{x}_t), p(\boldsymbol{x}_t|\boldsymbol{x}_0)$, or $p(\boldsymbol{x}_0|\boldsymbol{x}_t)$. Substituting this identity into the red part, we have:
+\begin{equation}\color{red}{\begin{aligned}
+&\,\mathbb{E}_{\boldsymbol{x}_t^{(g)}\sim p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)})}\left[\left\langle\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t), \bar{\beta}_t\nabla_{\boldsymbol{x}_t^{(g)}}\log p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)})\right\rangle\right] \\[5pt]
+= &\, \mathbb{E}_{\boldsymbol{x}_t^{(g)}\sim p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)}),\boldsymbol{x}_0^{(g)}\sim p_{\boldsymbol{\theta}}(\boldsymbol{x}_0^{(g)}|\boldsymbol{x}_t^{(g)})}\left[\left\langle\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t), \bar{\beta}_t\nabla_{\boldsymbol{x}_t^{(g)}} \log p(\boldsymbol{x}_t^{(g)}|\boldsymbol{x}_0^{(g)})\right\rangle\right] \\[5pt]
+= &\, -\mathbb{E}_{\boldsymbol{x}_0^{(g)}\sim p_{\boldsymbol{\theta}}(\boldsymbol{x}_0^{(g)}),\boldsymbol{x}_t^{(g)}\sim p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)}|\boldsymbol{x}_0^{(g)})}\left[\left\langle\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t), \frac{\boldsymbol{x}_t - \bar{\alpha}_t \boldsymbol{x}_0}{\bar{\beta}_t}\right\rangle\right] \\[5pt]
+= &\, -\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\left\langle\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t), \boldsymbol{\varepsilon}\right\rangle\right]
+\end{aligned}}\end{equation}
+Combining this with the green part, we obtain the new loss function for the student model:
+\begin{equation}\mathcal{L}_2 = \mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\left\langle \boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t), \boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\varepsilon} \right\rangle\right]\label{eq:gloss-2}\end{equation}
+This is the core result of SiD. The experimental results in the original paper show that it can efficiently achieve distillation, whereas Eq. $\eqref{eq:gloss-1}$ failed to produce meaningful results.
+
+Compared to Eq. $\eqref{eq:gloss-1}$, $\boldsymbol{\psi}^*$ obviously appears fewer times in Eq. $\eqref{eq:gloss-2}$, meaning the dependence on $\boldsymbol{\psi}^*$ is weaker. Furthermore, the above equation is derived based on the optimal solution $\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)=-\bar{\beta}_t\nabla_{\boldsymbol{x}_t^{(g)}}\log p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)})$. That is to say, it is as if it (partially) pre-glimpsed the exact value of $\boldsymbol{\psi}^*$, which is another reason for its superiority.
+
+<h2>Other Details</h2>
+
+Up to this point, the derivation in this article is essentially a repetition of the derivation in the original paper. However, besides some minor inconsistencies in notation, there are some differences in details. Below I will briefly clarify them to avoid confusing readers.
+
+First, the derivation in the paper defaults to $\bar{\alpha}_t=1$, following the setup from the paper <a href="https://papers.cool/arxiv/2206.00364">"Elucidating the Design Space of Diffusion-Based Generative Models"</a>. However, while $\bar{\alpha}_t=1$ is representative and can simplify the form, it doesn't cover all types of diffusion models well, so $\bar{\alpha}_t$ is retained in this article's derivation. Secondly, the paper's results are given based on the standard of $\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t) = \frac{\boldsymbol{x}_t - \bar{\beta}_t \boldsymbol{\epsilon}(\boldsymbol{x}_t,t)}{\bar{\alpha}_t}$. This clearly differs from the common diffusion model standard which uses $\boldsymbol{\epsilon}(\boldsymbol{x}_t,t)$. For now, I haven't grasped the superiority of the original paper's representation.
+
+Finally, the original paper found that the loss function $\mathcal{L}_1$ (i.e., $\eqref{eq:gloss-1}$) was too unstable and often played a negative role in performance. Therefore, SiD ended up taking the negative of Eq. $\eqref{eq:gloss-1}$ as an additional loss function, added as a weighted term to the improved loss function $\eqref{eq:gloss-2}$. That is, the final loss is $\mathcal{L}_2 - \lambda\mathcal{L}_1$ (Note: the weight notation in the original paper is $\alpha$, but since $\alpha$ is used here for the noise schedule, $\lambda$ is used instead). In some cases, this can achieve even better distillation results. As for specific experimental details and data, readers can look them up in the original paper.
+
+Compared to other distillation methods, SiD's drawback is its high memory requirement, as it needs to maintain three models at once: $\boldsymbol{\epsilon}_{\boldsymbol{\varphi}}(\boldsymbol{x}_t,t)$, $\boldsymbol{\epsilon}_{\boldsymbol{\psi}}(\boldsymbol{x}_t,t)$, and $\boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z})$. They are of the same size. Although they don't undergo backpropagation at the same time, the overlapping roughly doubles the total video memory required. Addressing this, SiD suggests at the end of the text that future attempts could be made to use LoRA on the pre-trained model as the two additional models to further reduce memory requirements.
+
+<h2>Further Thoughts</h2>
+
+I believe that many readers with a solid theoretical foundation and deep thinking might have arrived at the "initial form"—the alternating optimization of Eq. $\eqref{eq:dloss}$ and Eq. $\eqref{eq:gloss-1}$—on their own, especially since DDE served as "exemplary work before it". Deducing it doesn't seem like a particularly unpredictable feat. But the brilliance of SiD is that it didn't stop there. Instead, it proposed the subsequent identity transformations, making training more stable and efficient. This reflects the authors' very deep understanding of diffusion models and optimization theory.
+
+At the same time, SiD leaves several questions worth further thought and exploration. For example, has the identity simplification of the student model's loss Eq. $\eqref{eq:gloss-2}$ reached its limit? No, because $\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)$ still appears on the left side of its inner product, so it could be simplified in the same way. Specifically, we have:
+\begin{equation}\begin{aligned}
+&\,\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\Vert^2\right] \\[5pt]
+=&\,\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t)\Vert^2 - 2\left\langle\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t),\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\right\rangle + \Vert\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\Vert^2\right] \\[5pt]
+=&\,\mathbb{E}_{\boldsymbol{x}_t^{(g)}\sim p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)})}\left[
+\scriptsize{\Vert\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t)\Vert^2 - 2\left\langle\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t),-\bar{\beta}_t\nabla_{\boldsymbol{x}_t^{(g)}}\log p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)})\right\rangle + \left\langle\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t),-\bar{\beta}_t\nabla_{\boldsymbol{x}_t^{(g)}}\log p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)})\right\rangle}
+\right] \\[5pt]
+\end{aligned}\end{equation}
+Every $-\bar{\beta}_t\nabla_{\boldsymbol{x}_t^{(g)}}\log p_{\boldsymbol{\theta}}(\boldsymbol{x}_t^{(g)})$ here can be transformed into a single $\boldsymbol{\varepsilon}$ using the same identity transformation $\eqref{eq:id}$ (but note that in $\Vert\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\Vert^2=\langle\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t),\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\rangle$, only one can be transformed). Eq. $\eqref{eq:gloss-2}$ is equivalent to transforming only a portion. Would it be better if all were transformed? Since there are no experimental results, we don't know for now. However, there is a particularly interesting form: if we only transform the middle part above, the loss function can be written as:
+\begin{equation}\begin{aligned}
+&\,\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\Vert^2\right] \\[5pt]
+=&\,\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t)\Vert^2 - 2\left\langle\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t),\boldsymbol{\varepsilon}\right\rangle + \Vert\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\Vert^2\right] \\[5pt]
+=&\,\mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\varepsilon}\Vert^2 + \Vert\boldsymbol{\epsilon}_{\boldsymbol{\psi}^*}(\boldsymbol{x}_t^{(g)},t)\Vert^2\right] + \text{constant} \\[5pt]
+\end{aligned}\label{eq:gloss-3}\end{equation}
+This is the loss for the student model (the generator). Now let's compare it with the loss for the denoising model trained on student data, Eq. $\eqref{eq:dloss}$:
+\begin{equation}\boldsymbol{\psi}^* = \mathop{\text{argmin}}_{\boldsymbol{\psi}} \mathbb{E}_{\boldsymbol{z},\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0}, \boldsymbol{I})}\left[\Vert\boldsymbol{\epsilon}_{\boldsymbol{\psi}}(\boldsymbol{x}_t^{(g)},t) - \boldsymbol{\varepsilon}\Vert^2\right]\label{eq:dloss-1}\end{equation}
+Looking at these two equations together, we can see that the student model is essentially aligning itself with the teacher model while trying to distance itself from the denoising model trained on the student's own data. Formally, this looks similar to <a href="https://papers.cool/arxiv/1611.04076">LSGAN</a>, where $\boldsymbol{\epsilon}_{\boldsymbol{\psi}}(\boldsymbol{x}_t^{(g)},t)$ acts like the GAN discriminator. The difference is that a GAN's discriminator typically has two additive loss terms while the generator has one; SiD has the reverse. This actually reflects two different learning strategies:
+
+<blockquote>1. GAN: At the beginning, both the counterfeiter (generator) and the authenticator (discriminator) are novices. The authenticator improves its appraisal skills by constantly comparing genuine works and counterfeits, and the counterfeiter improves its forgery skills through the authenticator's feedback.
+
+2. SiD: There are no genuine works at all, but there is an absolute authority as a master appraiser (teacher model). The counterfeiter (student model) constantly creates fakes while simultaneously training their own authenticator (the denoising model trained on student data). Then, through the interaction between their private authenticator and the master appraiser, the counterfeiter improves.</blockquote>
+
+Some readers might ask: why doesn't the counterfeiter in SiD just consult the master directly, instead of indirectly obtaining feedback by training its own authenticator? This is because if one only consults the master directly, there's a risk of only discussing techniques for the same single work for a long time, eventually only creating one type of forgery that looks real (mode collapse). Training its own authenticator helps avoid this to some extent. The counterfeiter's learning strategy is to "get as much praise from the master as possible, while minimizing praise from its own authenticator." If the counterfeiter still only produces one type of fake, both the master and its own authenticator will give more and more praise, which doesn't fit the counterfeiter's learning strategy. This forces the counterfeiter to constantly develop new products rather than stagnating.
+
+Furthermore, readers might notice that the entire SiD training doesn't utilize any information from the recursive sampling of the diffusion model. In other words, it purely utilizes the denoising model trained via the denoising objective. Then a natural question arises: if the goal is purely to train a one-step generative model, rather than to distill an existing diffusion model, would it be better to train a denoising model with only a single noise intensity? For example, like DDE, by fixing $\bar{\alpha}_t=1$ and $\bar{\beta}_t=\beta=\text{some constant}$ and using that to train a denoising model, and then repeating the SiD training process—would this simplify the training difficulty and improve efficiency? This is also a question worth further verification.
+
+<h2>Summary</h2>
+
+In this article, we introduced a new scheme for distilling diffusion models into one-step generative models. Its logic can be traced back to work from a couple of years ago on training generative models using denoising autoencoders. It doesn't require access to the teacher model's real training set, nor does it require iterating the teacher model to generate sample pairs. Instead, it introduces alternating training similar to GANs, and proposes key identity transformations to stabilize the training process. The entire method offers much to learn from.
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10085.html" style="color: #005fcc;">https://kexue.fm/archives/10085</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

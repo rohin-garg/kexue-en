@@ -1,0 +1,465 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/5743">Sentence Similarity Model Based on GRU and AM-Softmax</a></h1>
+
+<p>By 苏剑林 | July 29, 2018</p>
+
+<p>Friends in the Computer Vision community know that AM-Softmax is a milestone achievement in face recognition. This article explores borrowing techniques from face recognition to build sentence similarity models, while also introducing how to implement various margin losses in Keras.</p>
+
+<h2 id="background">Background <a href="https://kexue.fm/archives/5743#%E8%83%8C%E6%99%AF">#</a></h2>
+
+<p>Upon closer inspection, sentence similarity and face recognition share many similarities.</p>
+
+<h3 id="existing-methods">Existing Practices <a href="https://kexue.fm/archives/5743#%E5%B7%B2%E6%9C%89%E7%9A%84%E5%81%9A%E6%B3%95">#</a></h3>
+
+<p>In the research I've searched, there are primarily two approaches for using deep learning for sentence similarity: the first is to input a pair of sentences and output a 0/1 label representing the degree of similarity, treating it as a binary classification problem. For example, the model in <a href="http://www.aclweb.org/anthology/W16-1617">"Learning Text Similarity with Siamese Recurrent Networks"</a> looks like this:</p>
+
+<p><em>Treating sentence similarity as a binary classification model</em></p>
+
+<p>This format was also used in this year's PPD "Magic Mirror Cup." The second approach is to input a triplet "(Sentence A, Sentence similar to A, Sentence dissimilar to A)" and solve it using triplet loss, as described in <a href="https://papers.cool/arxiv/1508.01585">"Applying Deep Learning To Answer Selection: A Study And An Open Task"</a>.</p>
+
+<p>These two practices can essentially be seen as one; they are fundamentally the same, with differences only in the loss function and training method. However, both methods suffer from a serious problem: severe undersampling of negative samples, leading to very slow performance improvements.</p>
+
+<h3 id="use-cases">Use Cases <a href="https://kexue.fm/archives/5743#%E4%BD%BF%E7%94%A8%E5%9C%BA%E6%99%AF">#</a></h3>
+
+<p>Let's review the scenarios where we use sentence similarity models. Typically, we have a pre-stored database of many FAQ pairs (Question-Answer pairs). When a new question comes in, we need to compare this new question with all the questions in the database to find the most similar one and decide whether to provide an answer based on its similarity and a threshold.</p>
+
+<p>Note that this involves two critical elements: first, "all"—theoretically, we compare against every question in the database to find the top match; second, "threshold"—since we don't know if the new question has an answer in the database, this threshold determines whether we respond. If we blindly take the Top-1 result as the answer regardless of actual similarity, the user experience will be poor.</p>
+
+<p>Our main concern is "all" (in fact, if "all" is solved, "threshold" follows). "All" implies that during training, for every sentence, except for the few sentences explicitly marked as similar (positive samples), all other sentences in the dataset should serve as negative samples. Under previous approaches, it is difficult to sample all negative samples comprehensively, and even if possible, training time would be extremely long. This is the drawback mentioned earlier.</p>
+
+<h3 id="help-from-face-recognition">Help from Face Recognition <a href="https://kexue.fm/archives/5743#%E6%9D%A5%E8%87%AA%E4%BA%BA%E8%84%B8%E7%9A%84%E5%B8%AE%E5%8A%A9">#</a></h3>
+
+<p>I have always felt that in the field of machine learning, one shouldn't "draw lines" too strictly. For instance, some readers identifying as NLP specialists might avoid anything related to computer vision, and vice-versa. In reality, the gap between subfields is not that wide; many underlying principles are identical, just applied to different scenarios. For example, the so-called sentence similarity model corresponds almost perfectly to the face recognition task, which is currently quite mature. Clearly, we can learn from it.</p>
+
+<p>Before discussing models, imagine a face recognition scenario. In a company attendance system, once we have a face recognition model, we first store photos of all employees. When shifting in, a new photo of an employee is taken (captured in real-time, obviously not identical to the stored photo). We need to determine if they are a company employee, and if so, identify who they are.</p>
+
+<p>If you replace "face" with "sentence" in the scenario above, isn't that exactly the application scenario for a sentence similarity model?</p>
+
+<p>Clearly, the sentence similarity model can be seen as face recognition for NLP.</p>
+
+<h2 id="model">Model <a href="https://kexue.fm/archives/5743#%E6%A8%A1%E5%9E%8B">#</a></h2>
+
+<p>Sentence similarity and face recognition are remarkably similar in every aspect: from model usage and construction to the scale of datasets. Consequently, almost all models and techniques from face recognition can be applied to sentence similarity models.</p>
+
+<h3 id="as-a-classification-problem">As a Classification Problem <a href="https://kexue.fm/archives/5743#%E4%BD%9C%E4%B8%BA%E5%88%86%E7%B1%BB%E9%97%AE%E9%A2%98">#</a></h3>
+
+<p>In fact, the triplet loss mentioned earlier is also one of the standard methods for training face recognition models. Triplet loss itself isn't wrong; if parameters are fine-tuned and training is restructured, the effect can be excellent. It's just that in many cases, it is simply too inefficient. Today, the standard practice is to treat it as a multi-classification problem.</p>
+
+<p>For example, suppose the training set contains 100,000 different individuals, with 5 face images each, totaling 500,000 training images. We train a CNN model to extract features and build a 100,000-way classification model. Yes, it's just a classification problem like MNIST, but with many more classes—as many as there are unique individuals. Similarly, sentence similarity can be handled this way: divide the training set into many groups of "synonymous sentences," where each group represents a class.</p>
+
+<p>Note that this is only for training; the resulting classification model itself might be useless. This isn't hard to imagine: we can train a model on a public face database, but our actual use case might be company attendance, meaning the faces to be recognized are company employees who are certainly not in the public training set. Thus, the classification model is meaningless; what matters is the feature extraction model before classification. A typical CNN classification model can be simplified into two steps:</p>
+
+\begin{align}
+\boldsymbol{z} &= CNN(\boldsymbol{x}) \\
+\boldsymbol{p} &= \text{softmax}(\boldsymbol{z}\boldsymbol{W})
+\end{align}
+
+<p>where $\boldsymbol{x}$ is the input and $\boldsymbol{p}$ is the probability output for each class. Here, softmax does not need a bias term. During training as a classification problem, we output image $\boldsymbol{x}$ and the one-hot label $\boldsymbol{p}$. However, at inference time, we don't use the whole model; we only use $CNN(\boldsymbol{x})$, which is responsible for converting an image into a fixed-length vector.</p>
+
+<p>With this conversion model (encoder), we can encode any new face in any scenario and convert the problem into comparing these encoding vectors, thereby removing dependency on the original classification model. Thus, the classification model is a training scheme; once training is complete, it retires, leaving behind the encoding model.</p>
+
+<h3 id="classification-vs-ranking">Classification and Ranking <a href="https://kexue.fm/archives/5743#%E5%88%86%E7%B1%BB%E4%B8%8E%E6%8E%92%E5%BA%8F">#</a></h3>
+
+<p>Is that enough? No. As mentioned, our goal is a feature extraction model (encoder), using classification as a training scheme, and the final usage involves comparison and ranking of features.</p>
+
+<p><strong>We want to perform feature ranking, but we use classification for training. Are these two equivalent?</strong></p>
+
+<p>The answer is: they are related but not equivalent. How does classification work? Intuitively, it selects class centers and says:</p>
+
+<blockquote>Each sample belongs to the class whose center is nearest to it.</blockquote>
+
+<p>Of course, these class centers are also trained. "Distance" here can take several forms, such as Euclidean distance, cosine value, or dot product. Standard softmax corresponds to the dot product. This classification approach can lead to the following possible results:</p>
+
+<p><em>A possible classification result, where red dots represent class centers and other dots represent samples</em></p>
+
+<p>What's the problem with this classification result? Look at samples $\boldsymbol{z}_1, \boldsymbol{z}_2, \boldsymbol{z}_3$. Here, $\boldsymbol{z}_1$ and $\boldsymbol{z}_3$ are closest to center $\boldsymbol{c}_1$, so they belong to Class 1. $\boldsymbol{z}_2$ is closest to $\boldsymbol{c}_2$, so it belongs to Class 2. Assuming this classification is correct, $\boldsymbol{z}_1$ and $\boldsymbol{z}_3$ might be synonymous sentences (or the same person's face), while $\boldsymbol{z}_2$ is not synonymous with them.</p>
+
+<p>From a classification perspective, this result is reasonable. But as stated, we want to skip the classification model and compare features directly. The problem is obvious: $\boldsymbol{z}_1$ and $\boldsymbol{z}_2$ are very close but belong to different classes, while $\boldsymbol{z}_1$ and $\boldsymbol{z}_3$ are far apart but belong to the same class. If we use feature ranking to find a synonym for $\boldsymbol{z}_1$, we would find $\boldsymbol{z}_2$ rather than $\boldsymbol{z}_3$, leading to an error.</p>
+
+<h2 id="loss">Loss <a href="https://kexue.fm/archives/5743#loss">#</a></h2>
+
+<p>The issue described above is the non-equivalence of classification and ranking: classification is correct, but feature ranking fails. Of course, classification still provides most features with a reasonable distribution; the issues occur near the boundaries.</p>
+
+<h3 id="margin-softmax">Margin Softmax <a href="https://kexue.fm/archives/5743#margin%20softmax">#</a></h3>
+
+<p>As you can imagine, problems arise at the decision boundaries. The reason is that the classification condition is too loose. If we tighten the classification condition, we can improve ranking. For example:</p>
+
+<blockquote>The distance between a sample and its assigned class center must be less than half of its distance to any other class center.</blockquote>
+
+<p>Previously, we only required it to be smaller than the distance to other centers. Now, we require it to be less than half that distance. This significantly tightens the condition. The classification result in the previous figure would no longer be good enough because although $\|\boldsymbol{z}_1 - \boldsymbol{c}_1\| < \|\boldsymbol{z}_1 - \boldsymbol{c}_2\|$, it is not true that $\|\boldsymbol{z}_1 - \boldsymbol{c}_1\| < \frac{1}{2}\|\boldsymbol{z}_1 - \boldsymbol{c}_2\|$. Thus, further loss optimization is needed.</p>
+
+<p>If training is completed under this condition, we can imagine that the distance between $\boldsymbol{z}_1$ and $\boldsymbol{z}_2$ is pushed apart, while the distance between $\boldsymbol{z}_1$ and $\boldsymbol{z}_3$ is pulled together. This is exactly what we want: increasing inter-class distance and decreasing intra-class distance.</p>
+
+<p>In fact, the logic described above is essentially the famous <a href="https://papers.cool/arxiv/1612.02295">L-Softmax</a> scheme in face recognition. Many similar losses have been proposed to address the non-equivalence between classification and ranking, such as <a href="https://papers.cool/arxiv/1704.08063">A-Softmax</a>, <a href="https://papers.cool/arxiv/1801.05599">AM-Softmax</a>, and <a href="https://papers.cool/arxiv/1801.07698">AAM-Softmax</a>. These are collectively known as <strong>Margin Softmax</strong>. Furthermore, there are other methods like Center Loss and improved versions of Triplet Loss.</p>
+
+<h3 id="am-softmax">AM-Softmax <a href="https://kexue.fm/archives/5743#AM-Softmax">#</a></h3>
+
+<p>I am not a CV specialist, so I won't go further into the history of face recognition. Let's return to our topic. We've established that the sentence similarity model needs a margin softmax. Among them, AM-Softmax is highly effective and easy to implement. We will use it as an example to illustrate how to implement these losses for sentence similarity.</p>
+
+<p>The logic of AM-Softmax is quite simple. Originally, softmax is $\boldsymbol{p} = \text{softmax}(\boldsymbol{z}\boldsymbol{W})$. Let:</p>
+\begin{equation}
+\boldsymbol{W} = (\boldsymbol{c}_1, \boldsymbol{c}_2, \dots, \boldsymbol{c}_n)
+\end{equation}
+<p>Then softmax can be rewritten as:</p>
+\begin{equation}
+\boldsymbol{p} = \text{softmax}(\langle\boldsymbol{z}, \boldsymbol{c}_1\rangle, \langle\boldsymbol{z}, \boldsymbol{c}_2\rangle, \dots, \langle\boldsymbol{z}, \boldsymbol{c}_n\rangle)
+\end{equation}
+<p>Taking the cross-entropy loss, we get:</p>
+\begin{equation}
+-\log p_t = - \log \frac{e^{\langle\boldsymbol{z}, \boldsymbol{c}_t\rangle}}{\sum_{i=1}^n e^{\langle\boldsymbol{z}, \boldsymbol{c}_i\rangle}}
+\end{equation}
+<p>where $t$ is the target label. AM-Softmax does two things:</p>
+
+<blockquote>
+1. Performs L2 normalization on both $\boldsymbol{z}$ and $\boldsymbol{c}_i$, meaning the dot product becomes the cosine value.<br>
+2. Subtracts a positive constant $m$ from the target cosine value and scales it by $s$.
+</blockquote>
+
+<p>The loss becomes:</p>
+\begin{equation}
+-\log p_t = - \log \frac{e^{s\cdot(\cos\theta_t - m)}}{e^{s\cdot (\cos\theta_t - m)} + \sum_{i \neq t} e^{s\cdot\cos\theta_i}}
+\end{equation}
+<p>where $\theta_i$ represents the angle between $\boldsymbol{z}$ and $\boldsymbol{c}_i$. In the original AM-Softmax paper, $s=30$ and $m=0.35$ are used.</p>
+
+<p>In AM-Softmax, we see the solution to the problems mentioned earlier. First, the presence of $s$ is necessary because $\cos$ ranges from $[-1, 1]$. Scaling is required to allow $p_t$ to approach 1 if necessary. Of course, $s$ doesn't change relative magnitude, so it isn't the core change. The core change is replacing $\cos\theta_t$ with $\cos\theta_t - m$.</p>
+
+<h3 id="arbitrary-margins">Arbitrary Margins <a href="https://kexue.fm/archives/5743#%E9%9A%8F%E5%BF%83%E6%89%80%E6%AC%B2%E5%9C%B0margin">#</a></h3>
+
+<p>As mentioned, the non-equivalence between classification and ranking can be solved by tightening classification conditions. Tightening essentially means using a new function $\psi(\theta_t)$ to replace $\cos\theta_t$, as long as:</p>
+\begin{equation}
+\psi(\theta_t) < \cos\theta_t
+\end{equation}
+<p>Any such choice can be considered a form of tightening. AM-Softmax chooses $\psi(\theta_t) = \cos\theta_t - m$, which is likely the simplest brute-force solution (and luckily, it works very well).</p>
+
+<p>With this idea, we can construct various $\psi(\theta_t)$. For L-Softmax and A-Softmax, they chose $\psi(\theta_t) = \cos m\theta_t$, where $m$ is an integer. However, $\cos m\theta_t < \cos \theta_t$ isn't always true, so those papers constructed a piecewise function, which is quite cumbersome and makes the model difficult to converge. I have tested the following:</p>
+\begin{equation}
+\psi(\theta_t) = \min(\cos m\theta_t, \cos\theta_t)
+\end{equation}
+<p>The results were comparable to AM-Softmax (in the sentence similarity task). This can serve as a simpler alternative to L-Softmax and A-Softmax, which I call <strong>simpler-a-softmax</strong>. Interested readers can try it on face recognition tasks.</p>
+
+<h2 id="implementation">Implementation <a href="https://kexue.fm/archives/5743#%E5%AE%9E%E7%8E%B0">#</a></h2>
+
+<p>Finally, let's introduce the Keras implementation of these losses. The test environment uses Python 2.7, Keras 2.1.5, and a TensorFlow backend.</p>
+
+<h3 id="basic-implementation">Basic Implementation <a href="https://kexue.fm/archives/5743#%E5%9F%BA%E6%9C%AC%E5%AE%9E%E7%8E%B0">#</a></h3>
+
+<p>Implementing AM-Softmax in its simplest form is not difficult:</p>
+
+<pre><code class="language-python">from keras.models import Model
+from keras.layers import *
+import keras.backend as K
+from keras.constraints import unit_norm
+
+x_in = Input(shape=(maxlen,))
+x_embedded = Embedding(len(chars)+2, word_size)(x_in)
+x = CuDNNGRU(word_size)(x_embedded)
+x = Lambda(lambda x: K.l2_normalize(x, 1))(x)
+
+pred = Dense(num_train, 
+             use_bias=False, 
+             kernel_constraint=unit_norm())(x)
+
+encoder = Model(x_in, x) # The goal is to obtain an encoder
+model = Model(x_in, pred) # Classification for training
+
+def amsoftmax_loss(y_true, y_pred, scale=30, margin=0.35):
+    y_pred = y_true * (y_pred - margin) + (1 - y_true) * y_pred
+    y_pred *= scale
+    return K.categorical_crossentropy(y_true, y_pred, from_logits=True)
+
+model.compile(loss=amsoftmax_loss,
+              optimizer='adam',
+              metrics=['accuracy'])
+</code></pre>
+
+<h3 id="sparse-implementation">Sparse Implementation <a href="https://kexue.fm/archives/5743#Sparse%E7%89%88%E5%AE%9E%E7%8E%B0">#</a></h3>
+
+<p>The code above is easy to understand. It relies on the target <code>y_true</code> being a one-hot input. Thus, we can use simple multiplication to extract the target cosine value, subtract the margin, and add back the other parts.</p>
+
+<p>If you're just playing with something like MNIST (10 classes), this code is sufficient. But in face recognition or sentence similarity, we face tens or even hundreds of thousands of classes. In such cases, one-hot input is very memory-intensive (and preparing the data is tedious). Ideally, we want <code>y_true</code> to be just the integer class ID. Keras provides <code>sparse_categorical_crossentropy</code> for this; can we write a Sparse version for AM-Softmax?</p>
+
+<p>One simple way is to perform the one-hot conversion inside the loss function:</p>
+
+<pre><code class="language-python">def sparse_amsoftmax_loss(y_true, y_pred, scale=30, margin=0.35):
+    y_true = K.cast(y_true[:, 0], 'int32') # Ensure y_true.shape=(None,), dtype=int32
+    y_true = K.one_hot(y_true, K.int_shape(y_pred)[-1]) # Convert to one-hot
+    y_pred = y_true * (y_pred - margin) + (1 - y_true) * y_pred
+    y_pred *= scale
+    return K.categorical_crossentropy(y_true, y_pred, from_logits=True)
+</code></pre>
+
+<p>This works, but it just shifts the problem rather than truly skipping the one-hot conversion. We can use TensorFlow's <code>gather_nd</code> function to truly avoid the one-hot process. Here is the reference code:</p>
+
+<pre><code class="language-python">def sparse_amsoftmax_loss(y_true, y_pred, scale=30, margin=0.35):
+    y_true = K.expand_dims(y_true[:, 0], 1) # Ensure y_true.shape=(None, 1)
+    y_true = K.cast(y_true, 'int32') # Ensure y_true.dtype=int32
+    batch_idxs = K.arange(0, K.shape(y_true)[0])
+    batch_idxs = K.expand_dims(batch_idxs, 1)
+    idxs = K.concatenate([batch_idxs, y_true], 1)
+    y_true_pred = K.tf.gather_nd(y_pred, idxs) # Extract target feature with tf.gather_nd
+    y_true_pred = K.expand_dims(y_true_pred, 1)
+    y_true_pred_margin = y_true_pred - margin # Subtract margin
+    _Z = K.concatenate([y_pred, y_true_pred_margin], 1) # Concatenate for partition function
+    _Z = _Z * scale # Scale cos values [-1, 1]
+    logZ = K.logsumexp(_Z, 1, keepdims=True) # Use logsumexp to avoid gradient vanishing
+    logZ = logZ + K.log(1 - K.exp(scale * y_true_pred - logZ)) # Subtract exp(scale * y_true_pred) from Z
+    return - y_true_pred_margin * scale + logZ
+</code></pre>
+
+<p>This code is slightly faster than the one-hot version. The key is using <code>tf.gather_nd</code> to extract target columns and <code>logsumexp</code> to calculate the log partition function, which is a standard method for implementing cross-entropy. Based on this, it can be modified for other margin softmax losses. Now you can input only class IDs, just like <code>sparse_categorical_crossentropy</code>. This can also be implemented in other frameworks.</p>
+
+<h3 id="results-preview">Results Preview <a href="https://kexue.fm/archives/5743#%E6%95%88%E6%9E%9C%E9%A2%84%E8%A7%88">#</a></h3>
+
+<p>A complete sentence similarity model can be found here:<br>
+<a href="https://github.com/bojone/margin-softmax/blob/master/sent_sim.py">https://github.com/bojone/margin-softmax/blob/master/sent_sim.py</a><br>
+This is a character-based model using GRU as the encoder. The corpus used is shown (corpus not shared, please prepare your own according to this format):</p>
+
+<p><em>Sentence similarity corpus format</em></p>
+
+<p>The IDs at the front represent sentence groups, separated by <code>\t</code>. Sentences in the same group are considered synonymous; sentences in different groups are non-synonymous.</p>
+
+<p><strong>Training results:</strong> In the training classification task, accuracy reached 90%+. On the validation set (via the <code>evaluate</code> function), the Top-1, Top-5, and Top-10 accuracies for several losses were as follows (without fine-tuning):</p>
+
+\begin{array}{c|c|c|c}
+\hline
+& \text{top1 acc} & \text{top5 acc} & \text{top10 acc}\\
+\hline
+\text{softmax} & 0.9077 & 0.9565 & 0.9673\\
+\text{AM-Softmax} & 0.9172 & 0.9607 & 0.9709\\
+\text{simpler-asoftmax} & 0.9135 & 0.9587 & 0.9697 \\
+\hline
+\end{array}
+
+<p><strong>It is worth mentioning that the <code>evaluate</code> function is tested exactly according to the real production environment. That is, no sentence in the validation set appears in the training set. When running <code>evaluate</code>, ranking is performed solely within the validation set. If a synonym for the input sentence appears within the Top-N results after sorting by similarity, the Top-N hit count is incremented.</strong></p>
+
+<p>Thus, the accuracy is quite impressive and suitable for engineering use. Below are a few random matching examples:</p>
+
+\begin{array}{c|c}
+\hline
+\text{Source Sentence} & \text{Number of bus stations in Guangzhou}\\
+\hline
+\text{Similarity Ranking} & \begin{array}{c|c}\text{Similar Sentence} & \text{Similarity}\\
+\hline
+\text{How many bus stations are in Guangzhou?} & 0.8281\\
+\text{Guangzhou has how many passenger bus stations} & 0.7980 \\
+\text{How many bus stations in Tianhe, Guangzhou} & 0.6781\\
+\text{How many bus stations in Tianhe District, Guangzhou?} & 0.6527\\
+\end{array}\\
+\hline
+\end{array}
+
+<br>
+
+\begin{array}{c|c}
+\hline
+\text{Source Sentence} & \text{How high is a sofa usually}\\
+\hline
+\text{Similarity Ranking} & \begin{array}{c|c}\text{Similar Sentence} & \text{Similarity}\\
+\hline
+\text{What is the usual height of a sofa} & 0.8658\\
+\text{How high is a living room sofa usually} & 0.7458 \\
+\text{What is the normal height of a typical sofa} & 0.7173\\
+\text{What is the general size for sofa height} & 0.6872\\
+\end{array}\\
+\hline
+\end{array}
+
+<br>
+
+\begin{array}{c|c}
+\hline
+\text{Source Sentence} & \text{Can ps format be converted to ai format}\\
+\hline
+\text{Similarity Ranking} & \begin{array}{c|c}\text{Similar Sentence} & \text{Similarity}\\
+\hline
+\text{How to convert a ps format image to ai format?} & 0.9351\\
+\text{What format should a photoshop file be for AI} & 0.6825 \\
+\text{ps files can be changed to ai format files} & 0.6531\\
+\text{Conversion mode for video format conversion} & 0.5880\\
+\end{array}\\
+\hline
+\end{array}
+
+<h2 id="conclusion">Conclusion <a href="https://kexue.fm/archives/5743#%E7%BB%93%E8%AE%BA">#</a></h2>
+
+<p>This article explains my understanding of sentence similarity models. I believe the best approach is neither binary classification nor triplet loss, but rather mimicking margin losses from face recognition—this being the fastest way to improve results. Of course, I haven't exhaustively compared all methods, but based on my superficial knowledge of face recognition, this seems to be the way. Readers are welcome to test and discuss this further.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_5743.html" style="color: #005fcc;">https://kexue.fm/archives/5743</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

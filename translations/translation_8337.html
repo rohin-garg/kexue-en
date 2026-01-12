@@ -1,0 +1,230 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="MathJax-script"></script>
+
+<h1><a href="https://kexue.fm/archives/8337">Sohu Text Matching: A Multi-Task Baseline Based on Conditional LayerNorm</a></h1>
+
+<p>By 苏剑林 | April 16, 2021</p>
+
+<p>Not long ago, I saw the "<a href="https://www.biendata.xyz/competition/sohu_2021/">2021 Sohu Campus Text Matching Algorithm Competition</a>" and found the problem quite interesting, so I gave it a try. However, since the competition itself is only for students, I cannot participate as an official contestant. Therefore, I am open-sourcing my approach as a baseline for everyone's reference.</p>
+
+<blockquote>
+    <strong>Github Link: <a href="https://github.com/bojone/sohu2021-baseline">https://github.com/bojone/sohu2021-baseline</a></strong>
+</blockquote>
+
+<h2 id="Task-Introduction">Task Introduction</h2>
+
+<p>As the name suggests, the task is text matching—determining whether two texts are similar. This is normally a conventional task, but what's interesting here is that it is divided into multiple subtasks. Specifically, it is divided into two major categories, A and B. Category A has more relaxed matching standards, while Category B has stricter standards. Each major category is further divided into three sub-categories: "Short-Short Matching," "Short-Long Matching," and "Long-Long Matching." Therefore, although the task type is the same, strictly speaking, there are six different subtasks.</p>
+
+<p>Generally speaking, completing this task would require at least two models, as the classification criteria for types A and B are different. If one wanted to be even more precise, one might even create six models. However, the problem is that training six models independently is often laborious, and the models cannot learn from each other to improve performance. Naturally, we should think about sharing a portion of the parameters to turn this into a multi-task learning problem.</p>
+
+<h2 id="Model-Introduction">Model Introduction</h2>
+
+<p>Of course, viewing this as a standard multi-task learning problem might be too generic. Given the characteristics of these tasks—"same form, different standards"—I conceived a plan to use a single model for all six subtasks through <strong>Conditional LayerNorm</strong>.</p>
+
+<p>Regarding Conditional LayerNorm, we previously introduced it in the article <a href="translation_7124.html">"Conditional Text Generation based on Conditional Layer Normalization."</a> Although the example there was text generation, its applicable scenarios are not limited to that. Simply put, Conditional LayerNorm is a scheme for adding condition vectors into a Transformer to control output results; it incorporates the conditions into the $\beta$ and $\gamma$ of the LayerNorm layer.</p>
+
+<p>For the six tasks in this competition, we only need to pass the task type as a condition into the model. This allows a single model to handle six different tasks. The schematic diagram is as follows:</p>
+
+<p>
+    <a href="https://kexue.fm/usr/uploads/2021/04/2746310308.png">
+        <img src="https://kexue.fm/usr/uploads/2021/04/2746310308.png" alt="Handling multiple similar tasks with Conditional LayerNorm" title="Click to view original image" />
+    </a>
+    <br />
+    <em>Handling multiple similar tasks with Conditional LayerNorm</em>
+</p>
+
+<p>In this way, the entire model is shared. We simply input the task type ID alongside the sentence input, achieving maximum parameter sharing.</p>
+
+<h2 id="Code-Reference">Code Reference</h2>
+
+<p>The implementation of Conditional LayerNorm has long been integrated into <code>bert4keras</code>. Once this design was conceived, implementing it with <code>bert4keras</code> became a smooth process. Reference code is as follows:</p>
+
+<blockquote>
+    <strong>Github Link: <a href="https://github.com/bojone/sohu2021-baseline">https://github.com/bojone/sohu2021-baseline</a></strong>
+</blockquote>
+
+<p>The code uses <a href="translation_8265.html">RoFormer</a> as the base model. This is mainly because in "Long-Long Matching," the total length of the two concatenated texts can be very long. Using the token-based RoFormer can shorten the sequence length, allowing longer texts to be processed with the same computational power. Furthermore, the RoPE (Rotary Positional Embedding) used by RoFormer can theoretically handle sequences of any length. After testing the code a few times, the offline F1 score was around 0.74, and the online test set F1 score after submission was around 0.73. On a 3090, a single epoch takes about an hour, and 4 or 5 epochs are generally sufficient.</p>
+
+<p>The current code mixes all the data together for random training. This has a small drawback: shorter sequence samples are padded to the maximum length, which slows down the training speed for short sequences (though it is certainly faster than training six models independently). An optimization that could be made is to ensure samples within a batch have similar lengths during batching, but I was too lazy to write that part—I'll leave that optimization to everyone else!</p>
+
+<h2 id="Summary">Summary</h2>
+
+<p>This article shares a baseline for the Sohu text matching competition. It primarily uses Conditional LayerNorm to increase model diversity, enabling a single model to process different types of data and generate different outputs.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8337.html" style="color: #005fcc;">https://kexue.fm/archives/8337</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

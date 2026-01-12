@@ -1,0 +1,254 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9797">EMO: A Classification Loss Function Designed Based on Optimal Transport</a></h1>
+
+<p>By 苏剑林 | October 13, 2023</p>
+
+<p>As is well-known, the standard loss for classification tasks is Cross Entropy (equivalent to Maximum Likelihood Estimation, or MLE). It is characterized by its simplicity and efficiency, but in certain scenarios, it reveals issues such as deviation from evaluation metrics and overconfidence. Correspondingly, there have been many improvement efforts. We have previously introduced some, such as <a href="translation_7708.html">"Revisiting the Class Imbalance Problem: Comparison and Connection between Weight Adjustment and Modified Loss"</a>, <a href="translation_9098.html">"How to Train Your Accuracy?"</a>, and <a href="translation_9526.html">"A Simple Solution to Mitigate Overconfidence in Cross Entropy"</a>. Since the training of Large Language Models (LLMs) can also be understood as a token-by-token classification task with cross-entropy as the default loss, these improvement works remain valuable in today's LLM-dominated era.</p>
+
+<p>In this article, we introduce a work titled <a href="https://papers.cool/arxiv/2310.04691">"EMO: Earth Mover Distance Optimization for Auto-Regressive Language Modeling"</a>. It proposes a new improved loss function, EMO, based on the principle of Optimal Transport, claiming to significantly improve the fine-tuning effects of LLMs. Let’s explore the details.</p>
+
+<h2>Probability Divergence</h2>
+
+<p>Suppose $p_i$ is the probability of the $i$-th category predicted by the model, $i=1,2,\dots,n$, and $t$ is the target category. The cross-entropy loss is:</p>
+\begin{equation}\mathcal{L} = - \log p_t\end{equation}
+<p>If the label $t$ is represented as a distribution $\tau$ in one-hot form (i.e., $\tau_t=1, \tau_i=0$ for $i \neq t$ and $i \in [1,n]$), it can be rewritten as:</p>
+\begin{equation}\mathcal{L} = - \sum_i \tau_i \log p_i\end{equation}
+<p>This form also applies to non-one-hot labels $\tau$ (i.e., soft labels), and it is equivalent to optimizing the KL divergence between $\tau$ and $p$:</p>
+\begin{equation}KL(\tau\Vert p) = \sum_i \tau_i\log \frac{\tau_i}{p_i} = \color{skyblue}{\sum_i \tau_i\log \tau_i} - \sum_i \tau_i\log p_i\end{equation}
+<p>When $\tau$ is given, the first term on the far right is a constant, so the objective is equivalent to cross-entropy.</p>
+
+<p>This result indicates that when we perform MLE, or use cross-entropy as a loss, we are essentially minimizing the KL divergence between the target distribution and the predicted distribution. Since the general generalization of KL divergence is f-divergence (see <a href="https://kexue.fm/archives/6016#f%E6%95%A3%E5%BA%A6">"Introduction to f-GAN: The Production Workshop of GAN Models"</a>), it is natural to think that switching to other f-divergences might have an improvement effect. Indeed, many works have followed this path. For example, the method introduced in <a href="translation_9526.html">"A Simple Solution to Mitigate Overconfidence in Cross Entropy"</a> takes "Total Variation distance" (also a type of f-divergence) as its starting point.</p>
+
+<h2>Optimal Transport</h2>
+
+<p>However, every f-divergence has more or less some issues. When it comes to the ideal metric between probability distributions, the "Earth Mover's Distance (EMD)" based on Optimal Transport ideas stands out. Readers unfamiliar with this can refer to the author's previous post <a href="translation_6280.html">"From Wasserstein Distance and Duality Theory to WGAN"</a>.</p>
+
+<p>Simply put, the Earth Mover's Distance is defined as the optimal transport cost between two distributions:</p>
+\begin{equation}\mathcal{C}[p,\tau]=\inf_{\gamma\in \Pi[p,\tau]} \sum_{i,j} \gamma_{i,j} c_{i,j} \end{equation}
+<p>Substituting $\gamma\in \Pi[p,\tau]$ means that $\gamma$ is any joint distribution with $p$ and $\tau$ as marginal distributions. $c_{i,j}$ is a pre-specified cost function representing the "cost of transporting from $i$ to $j$." $\inf$ is the infimum, meaning that the lowest transportation cost is used as the measure of difference between $p$ and $\tau$. Just as switching from vanilla GANs based on f-divergence to Wasserstein GANs based on optimal transport yields better convergence properties, we hope that replacing the classification loss with the W-distance between two distributions will also lead to better results.</p>
+
+<p>When $\tau$ is a one-hot distribution, the target distribution is a single point $t$. In this case, "optimality" is irrelevant because there is only one transport scheme: moving everything from $p$ to the same point $t$. Thus:</p>
+\begin{equation}\mathcal{C}[p,\tau]= \sum_i p_i c_{i,t} \label{eq:emo}\end{equation}
+
+<p>If $\tau$ is a general soft label distribution, calculating $\mathcal{C}[p,\tau]$ is a linear programming problem, which is complex to solve. Since the distribution defined by $p_i \tau_j$ belongs to $\Pi[p,\tau]$, we have:</p>
+\begin{equation}\mathcal{C}[p,\tau]=\inf_{\gamma\in \Pi[p,\tau]} \sum_{i,j} \gamma_{i,j} c_{i,j} \leq \sum_{i,j} p_i \tau_j c_{i,j} \end{equation}
+<p>This is an upper bound that is easy to compute and can also serve as an optimization target. Equation \eqref{eq:emo} corresponds to $\tau_j = \delta_{j,t}$, where $\delta$ is the <a href="https://en.wikipedia.org/wiki/Kronecker_delta">Kronecker delta function</a>.</p>
+
+<h2>Cost Function</h2>
+
+<p>Now back to the scenario the original paper focuses on—fine-tuning of LLMs, including continued pre-training and fine-tuning for downstream tasks. As mentioned at the beginning of this article, LLM training can be understood as a token-by-token classification task (where the categories are all tokens). Each label is one-hot, making it suitable for Equation \eqref{eq:emo}.</p>
+
+<p>Equation \eqref{eq:emo} still requires defining the cost function $c_{i,t}$. If we simply assume that as long as $i \neq t$, the cost is 1 (i.e., $c_{i,t} = 1 - \delta_{i,t}$), then:</p>
+\begin{equation}\mathcal{C}[p,\tau]= \sum_i p_i c_{i,t} = \sum_i (p_i - p_i \delta_{i, t}) = 1 - p_t\end{equation}
+<p>This is essentially a smooth approximation of maximizing accuracy (refer to <a href="https://kexue.fm/archives/6620#%E6%AD%A3%E7%A1%AE%E7%8E%87">"Discussions on Function Smoothing: Differentiable Approximations of Non-differentiable Functions"</a>). However, intuitively, penalizing all $i \neq t$ equally seems too simplistic. Ideally, different costs should be designed for different $i$ based on similarity—the greater the similarity, the lower the transport cost. Thus, we can design the transport cost as:</p>
+\begin{equation}c_{i,t} = 1 - \cos(\boldsymbol{e}_i,\boldsymbol{e}_t) = 1 - \left\langle\frac{\boldsymbol{e}_i}{\|\boldsymbol{e}_i\|}, \frac{\boldsymbol{e}_t}{\|\boldsymbol{e}_t\|}\right\rangle\end{equation}
+<p>Here $\boldsymbol{e}_i, \boldsymbol{e}_t$ are pre-obtained Token Embeddings. The original paper uses the LM Head of the pre-trained model as the Token Embeddings. According to the definition of optimal transport, the cost function must be fixed beforehand; therefore, the Token Embeddings used to calculate similarity must remain constant during training.</p>
+
+<p>With the cost function, we can calculate:</p>
+\begin{equation}\mathcal{C}[p,\tau]= \sum_i p_i c_{i,t} = \sum_i \left(p_i - p_i \left\langle\frac{\boldsymbol{e}_i}{\|\boldsymbol{e}_i\|}, \frac{\boldsymbol{e}_t}{\|\boldsymbol{e}_t\|}\right\rangle\right) = 1 - \left\langle \sum_i p_i \frac{\boldsymbol{e}_i}{\|\boldsymbol{e}_i\|}, \frac{\boldsymbol{e}_t}{\|\boldsymbol{e}_t\|}\right\rangle\end{equation}
+<p>This is the final training loss for EMO (<strong>E</strong>arth <strong>M</strong>over Distance <strong>O</strong>ptimization). Since the <code>embedding_size</code> is typically much smaller than the <code>vocab_size</code>, first calculating $\sum_i p_i \frac{\boldsymbol{e}_i}{\|\boldsymbol{e}_i\|}$ can significantly reduce the computational load.</p>
+
+<h2>Experimental Results</h2>
+
+<p>Since the author's research on LLM is currently at the pre-training stage and has not yet touched upon fine-tuning, there are no personal experimental results yet. Let's look at the original paper's experiments for now. It must be said that the experimental results in the original paper are quite striking.</p>
+
+<p>First are the continued pre-training experiments on small models. Compared to Cross-Entropy (MLE), the improvements are as high as 10 points in some cases, and it achieved SOTA across the board:</p>
+
+<p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2023/10/3745672223.png" alt="Continued pre-training comparison experiments on small models" /></p>
+
+<p>It is worth mentioning that the evaluation metric used here is MAUVE (the larger, the better), proposed in <a href="https://papers.cool/arxiv/2102.01454">"MAUVE: Measuring the Gap Between Neural Text and Human Text using Divergence Frontiers"</a>. It is one of the automatic evaluation metrics most highly correlated with human evaluation. Additionally, the TaiLr comparison method was briefly introduced in <a href="translation_9526.html">"A Simple Solution to Mitigate Overconfidence in Cross Entropy"</a>.</p>
+
+<p>Some readers might wonder if EMO is better simply because the evaluation metric was chosen favorably. Not so. Surprisingly, models trained with EMO even show better PPL (perplexity), despite PPL being more directly related to MLE:</p>
+
+<p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2023/10/2437599059.png" alt="Comparison of different evaluation metrics" /></p>
+
+<p>Then comes the performance of fine-tuning LLAMA-7B/13B for few-shot tasks on downstream datasets, which is also excellent:</p>
+
+<p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2023/10/3004051025.png" alt="Effect of fine-tuning LLAMA-7B/13B on downstream tasks" /></p>
+
+<p>Finally, the paper compared effects across different model scales and data sizes, showing that EMO performs well across various configurations:</p>
+
+<p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2023/10/1629007624.png" alt="Effects on different model scales/data scales" /></p>
+
+<h2>Personal Thoughts</h2>
+
+<p>Overall, the "report card" of the original paper is very impressive and worth trying. The only concern might be that the experimental data sizes in the original paper are not actually that large; it remains unclear whether the gap between EMO and MLE will narrow as the data volume increases significantly.</p>
+
+<p>In the author's view, the reason EMO achieves better results is that it calculates similarity via embeddings to assign more reasonable losses to "synonyms," thereby making the model's learning more logical. While form-wise LLM is a classification task, it is not a simple right-or-wrong problem. Just because the next predicted token is not identical to the target token doesn't mean the sentence is unreasonable. Therefore, introducing semantic similarity to design the loss is helpful for LLM training. One could further speculate that for larger <code>vocab_size</code> and larger token granularity, EMO's effect might be even more pronounced because a larger <code>vocab_size</code> potentially means more "synonyms."</p>
+
+<p>Of course, introducing semantic similarity also means EMO is not suitable for training from scratch because it requires a pre-trained LM Head as the Token Embedding. One possible solution is to consider other ways, such as using classic Word2Vec to pre-train the Token Embeddings, but this carries a risk: whether Token Embeddings trained by classic methods would lower the ceiling of LLM capability (due to inconsistency).</p>
+
+<p>Furthermore, even if the Token Embeddings are not an issue, training from scratch with pure EMO might suffer from slow convergence. This is based on the perspective on loss functions proposed at the end of the author's post <a href="translation_9098.html">"How to Train Your Accuracy?"</a>:</p>
+
+<blockquote>First, find a smooth approximation of the evaluation metric, preferably expressed as an expectation for each sample. Then, drive the error in the wrong direction towards infinity (to ensure the model focuses more on incorrect samples), while ensuring it remains a first-order approximation of the original form in the correct direction.</blockquote>
+
+<p>That is to say, to ensure convergence speed (for training from scratch), it is best to push errors in the wrong direction toward infinity, whereas EMO clearly does not satisfy this. Therefore, when using EMO for training from scratch, it would likely require a weighted combination of EMO and MLE to balance convergence speed with final performance.</p>
+
+<h2>Summary</h2>
+
+<p>This article introduced a new "replacement" for the cross-entropy loss—EMO, based on Optimal Transport. Unlike the minor improvements seen in the past, EMO achieved noticeably significant gains in LLM fine-tuning experiments.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9797.html" style="color: #005fcc;">https://kexue.fm/archives/9797</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

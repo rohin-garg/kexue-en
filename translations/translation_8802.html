@@ -1,0 +1,346 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/8802">Seq2Seq+Prefix Tree: A New Paradigm for Retrieval Tasks (Taking KgCLUE as an Example)</a></h1>
+
+<p>By 苏剑林 | Dec 17, 2021</p>
+
+<p>Two years ago, in <a href="translation_7115.html">"Universal Seq2Seq: Reading Comprehension Question Answering Based on Seq2Seq"</a> and <a href="translation_7148.html">"'Non-Autoregressive' Is Not Bad Either: MLM-Based Reading Comprehension Question Answering"</a>, we explored using "Seq2Seq+Prefix Tree" and "MLM+Prefix Tree" formats for extractive reading comprehension tasks and achieved good results. At ICLR 2021 last year, Facebook's paper <a href="https://papers.cool/arxiv/2010.00904">"Autoregressive Entity Retrieval"</a> also utilized the "Seq2Seq+Prefix Tree" combination, achieving a "win-win" in both effectiveness and efficiency for entity linking and document retrieval.</p>
+
+<p>In fact, the "Seq2Seq+Prefix Tree" combination can theoretically be applied to any retrieval-type task, making it a "new paradigm" for retrieval tasks. This article will once again review the ideas behind "Seq2Seq+Prefix Tree" and use it to implement a baseline for the recently released <a href="https://github.com/CLUEbenchmark/KgCLUE">KgCLUE (Knowledge Graph Question Answering) benchmark</a>.</p>
+
+<h2>Retrieval Tasks</h2>
+
+<p>Speaking of retrieval tasks, everyone is likely familiar with them. Besides conventional similar question retrieval, many tasks in NLP can be viewed as retrieval, such as extractive reading comprehension, entity linking, and even knowledge graph-based question answering, among others.</p>
+
+<p>Taking similar question retrieval as an example, the workflow of a conventional retrieval system is:</p>
+
+<blockquote>
+    1. Train a sentence encoding model, which usually involves a complex negative sample construction process; the quality of negative samples directly affects the final performance;<br>
+    2. Encode each sentence into a vector and store it in a vector retrieval library such as Faiss; this step usually consumes a considerable amount of space;<br>
+    3. Encode the query sentence into a vector, perform the search, and return the Top-k results and their similarities.
+</blockquote>
+
+<p>What if I told you there is a new retrieval scheme where you don't need to spend effort picking negative samples, nor do you need to consume massive memory for a vector retrieval library, and the final performance and speed are no worse than the old scheme? Would you be eager to try it? Indeed, this is the protagonist of today's article: "Seq2Seq+Prefix Tree."</p>
+
+<h2>Seq2Seq</h2>
+
+<p>First, let's set aside all the tedious details and think about what a retrieval task is actually doing. For similar question retrieval, we input a question and hope to output the most similar sentence in the database; for entity linking, we input a sentence containing an entity and hope to output the entity name or ID from the knowledge base that correctly interprets that entity; and so on.</p>
+
+<p>Leaving aside certain constraints, we can see that these tasks can essentially be abstracted as:</p>
+
+<blockquote>
+    Input a sentence, output another sentence.
+</blockquote>
+
+<p>Isn't this exactly what Seq2Seq is best at? So, isn't using Seq2Seq a very natural choice? Of course, some readers might say, "But I want to output a sentence that already exists in the database. What if Seq2Seq 'overflows' (decodes a sentence that doesn't exist in the database)?" This is where the Prefix Tree comes in. We can use it to constrain the decoding process, ensuring that the generated results are in the database. We will discuss this in detail shortly.</p>
+
+<p>Without the worry of "overflowing," we find that the Seq2Seq approach collects many advantages:</p>
+
+<blockquote>
+    1. Training a Seq2Seq model only requires the input and the target. This means we only need positive samples, eliminating the trouble of constructing negative samples—effectively treating all other sentences as negative samples;<br>
+    2. Seq2Seq directly decodes the target sentence, eliminating the need for sentence vector storage and retrieval, thus bypassing tools like Faiss;<br>
+    3. Seq2Seq includes token-level interaction between the target and input sentences, which theoretically allows for finer comparison than inner-product-based vector retrieval, leading to better retrieval results.
+</blockquote>
+
+<h2>Prefix Decoding</h2>
+
+<p>Now let's detail how the Prefix Tree is used to constrain the decoding process to ensure output results are in the database. Suppose the database contains the following sentences (in Chinese):</p>
+
+<blockquote>
+    明月几时有 (When will the bright moon appear)<br>
+    明天会更好 (Tomorrow will be better)<br>
+    明天下雨 (Tomorrow it rains)<br>
+    明天下午开会 (Meeting tomorrow afternoon)<br>
+    明天下午放假 (Holiday tomorrow afternoon)<br>
+    明年见 (See you next year)<br>
+    今夕是何年 (What year is tonight)<br>
+    今天去哪里玩 (Where to play today)
+</blockquote>
+
+<p>We will use a Prefix Tree (Trie) to store these sentences:</p>
+
+<p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2021/12/2855218556.png" alt="Prefix Tree Diagram" /><br>
+<em>Prefix Tree Diagram: Essentially a compressed representation of sequences.</em></p>
+
+<p>The process essentially aggregates identical tokens at the same positions from left to right. Every complete path on the tree (starting with [BOS] and ending with [EOS]) represents a sentence in the database. It is called a "Prefix Tree" because this structure allows us to quickly find which words/sentences start with a certain prefix. As seen in the figure, the first character can only be "明" (Ming) or "今" (Jin). After "明", the next character must be "月", "天", or "年". After "明天", the next character must be "会" or "下", and so on.</p>
+
+<p>With a Prefix Tree, constraining Seq2Seq decoding is not difficult. For example, since the first character can only be "明" or "今", when predicting the first token, we can set the probabilities of all other tokens to zero. This way, the model only chooses between these two. If the first character is determined as "明", then when predicting the second token, we can set probabilities to zero for everything except "月", "天", or "年". Consequently, the decoded results are guaranteed to follow the branches of the Prefix Tree and remain within the database's existing sentences.</p>
+
+<p>Compared to conventional vector retrieval, "Seq2Seq+Prefix Tree" replaces stored retrieval vectors with a Prefix Tree. Since a Prefix Tree is essentially a "compressed representation" of the original sentences, the storage space required is much less than dense retrieval vectors. In Python, implementing a Prefix Tree can be easily done using nested dictionary structures; refer to the KgCLUE code later for examples.</p>
+
+<h2>KgCLUE</h2>
+
+<p>Practice is the only criterion for testing truth. Let's implement a KgCLUE baseline using the "Seq2Seq+Prefix Tree" scheme to verify its effectiveness.</p>
+
+<h3>Task Introduction</h3>
+
+<p><a href="https://github.com/CLUEbenchmark/KgCLUE">KgCLUE</a> is a Chinese knowledge graph QA evaluation task recently launched by the CLUE organization. The data is standardized and suitable for research testing. Specifically, it uses about 20 million triplets as a knowledge base. Each triplet is in the $(S, P, O)$ format (Subject-Predicate-Object), as shown below:</p>
+
+<p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2021/12/3238680650.png" alt="KgCLUE Knowledge Base Screenshot" /><br>
+<em>KgCLUE Knowledge Base Screenshot</em></p>
+
+<p>It also provides a set of annotated data for training. Each sample consists of a simple question and its answer. Essentially, the question is abstracted as "What is the $P$ of $S$?", and the answer is the corresponding triplet $(S, P, O)$, as shown below:</p>
+
+<p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2021/12/3294511210.png" alt="KgCLUE Annotated Data Screenshot" /><br>
+<em>KgCLUE Annotated Data Screenshot</em></p>
+
+<p>In principle, as long as $(S, P)$ is determined, the corresponding $O$ can be extracted from the knowledge base. Therefore, our primary task is to parse the correct $S$ and $P$ from the question.</p>
+
+<h3>General Approach</h3>
+
+<p>A naive way to complete this task is in two steps: first, train a labeling model responsible for extracting $S$ from the question; then, find all triplets corresponding to that $S$ from the knowledge base, combine $S$ with each $P$, and calculate similarity with the question one by one. Thus, the second step is a similarity model.</p>
+
+<p>However, it is important to note that many homonymous entities may exist in the knowledge base. For example, "Cowherd and Weaver Girl" (牛郎织女) might refer to a myth, a book, or a song. To distinguish them, the knowledge base uses the concept of "Meaning" ($M$), which specifies the specific referent in parentheses after the Subject, such as "Cowherd and Weaver Girl (Chinese Folk Tale)" or "Cowherd and Weaver Girl (Book published by Oriental Press in 2015)". When extracting from a question, typically only the part outside the parentheses is caught. Therefore, in practice, we usually treat each knowledge piece as a quadruplet $(S, M, P, O)$ rather than a triplet.</p>
+
+<p>Determining which Meaning a Subject belongs to based on a question is the "Entity Linking" problem. But in the current KgCLUE task, since the corpus is not massive, for a two-step model, we can consider entity linking to be integrated into the similarity model rather than being a separate task.</p>
+
+<h3>This Solution</h3>
+
+<p>If we use "Seq2Seq+Prefix Tree," the model training becomes very simple.</p>
+
+<p>Specifically, we only need a Seq2Seq model. We treat the question as the Seq2Seq input and use $(S, P, M)$ concatenated with [SEP] as the target for normal Seq2Seq training. A trick here is that concatenating in the order of $(S, P, M)$ yields much better results (8-10 percentage points) than the order of $(S, M, P)$. This is because predicting $S$ and $P$ from a question is easier than predicting $M$; we should predict the easier parts first to reduce the number of candidate answers.</p>
+
+<p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2021/12/2857413554.png" alt="Baseline Model Diagram" /><br>
+<em>Baseline Model Diagram in this article</em></p>
+
+<p>In the reference code, the Seq2Seq model used is RoFormer-Sim-FT, introduced in <a href="translation_8454.html">"SimBERTv2: RoFormer-Sim Model Integrating Retrieval and Generation"</a> and <a href="translation_8541.html">"Enhancing RoFormer-Sim with Open-Source Human-Annotated Data"</a>. It is a similar question generation model pre-trained using the <a href="translation_6933.html">UniLM</a> objective. Compared to using vanilla RoFormer, RoFormer-Sim-FT improves performance by at least 2 percentage points. This also shows that similar question generation is an effective pre-training method for this approach.</p>
+
+<h3>Error Analysis</h3>
+
+<p>During decoding, we first build a Prefix Tree for all $(S, P, M)$ combinations. Decoding according to the tree ensures the result falls into a triplet in the knowledge base. This process has been described; I won't repeat it.</p>
+
+<p>However, when observing bad cases, the model occasionally makes very "simple" mistakes. For example, for "How far is the Pudong Shangri-La Hotel from the train station?", the correct $(S, P)$ should be "(Pudong Shangri-La Hotel, Distance from train station)". But the model might generate "(Pudong Shangri-La Hotel, Hotel star rating)". Sometimes for "What does XXX hate?", it generates "(XXX, Likes)". Such errors occur in seemingly simple questions.</p>
+
+<p>Upon reflection, I believe these bad cases are caused by inherent weaknesses of Seq2Seq, mainly: 1. Exposure Bias during training; 2. The greedy nature of Beam Search during decoding. Since Seq2Seq is given the true previous label during training, it weakens training difficulty and results in a lack of "global perspective." During decoding, even with Beam Search, it remains essentially greedy, making it difficult to predict the current token while considering subsequent ones. In the "XXX主讲课程" (Main courses taught by XXX) example, the model greedily generates "主要" (Mainly/Principal), but according to the Trie constraints, "主要" can only be followed by "成就" (Achievement) because the correct answer's first characters were "主讲" (Mainly taught). Thus, it outputs "主要成就" (Major achievements).</p>
+
+<p>Theoretically, applying strategies to mitigate Exposure Bias—such as those in <a href="translation_7259.html">"Analysis and Countermeasures for Exposure Bias in Seq2Seq"</a> or <a href="translation_7818.html">"TeaForN: Making Teacher Forcing More 'Farsighted'"</a>—should help. These methods vary in complexity and are left for readers to explore.</p>
+
+<h3>"Look-ahead" Strategy</h3>
+
+<p>Here I propose another "look-ahead" strategy to mitigate this problem.</p>
+
+<p>In the "Seq2Seq+Prefix Tree" scheme, the model isn't generating arbitrary text; it performs what is essentially a retrieval operation under Trie constraints. Once $S$ is decoded, we know the allowed subsequent $P$ candidates, which are usually not many. We can enumerate all allowed $P$s and adjust the prediction of the current token based on how well each $P$ covers the question.</p>
+
+<p>Specifically, assume for question $Q$, we have already decoded $S$ and the first $t-1$ characters of $P$, denoted as $P_{< t}$. Now we need to predict the $t$-th character $P_t$. Based on $S$ and $P_{< t}$, we retrieve all possible candidates $P^{(1)}, P^{(2)}, \dots, P^{(n)}$, where each $P^{(k)}$ is represented as $[P_{< t}, P_t^{(k)}, P_{> t}^{(k)}]$. We then use a coverage function—here, the Longest Common Subsequence ($\text{LCS}$)—to calculate the coverage gain brought by each candidate $P$:</p>
+
+\begin{equation}\Delta^{(k)} = \text{LCS}(P^{(k)}, Q) - \text{LCS}(P_{< t}, Q)\end{equation}
+
+<p>This gain is treated as the "potential benefit" of predicting $P_t$ as $P_t^{(k)}$. If multiple $P_t^{(k)}$ map to the same character, we take the maximum gain.</p>
+
+<p>Thus, for all candidate values $k$ of $P_t$, we have calculated a potential benefit $\Delta^{(k)}$. We can adjust the Seq2Seq prediction probabilities to strengthen tokens with higher $\Delta^{(k)}$. The reinforcement rule I used is:</p>
+
+\begin{equation}p_k \leftarrow p_k^{1/(\Delta^{(k)} + 1)}\end{equation}
+
+<p>Since probabilities are less than 1, taking the root effectively amplifies the probability. This strategy brought about a 4-percentage-point improvement. Other reinforcement rules can be tried as well.</p>
+
+<h3>Effectiveness Analysis</h3>
+
+<p>The code for this article is shared at:</p>
+
+<blockquote>
+    <strong>Github: <a href="https://github.com/bojone/KgCLUE-bert4keras">https://github.com/bojone/KgCLUE-bert4keras</a></strong>
+</blockquote>
+
+<p>The final results are:</p>
+
+$$\begin{array}{c|ccc}
+\hline
+& \text{F1} & \text{EM} & \text{Average} \\
+\hline
+\text{valid} & 89.20 & 91.04 & 90.12 \\
+\text{test} & 90.25 & 92.48 & 91.37 \\
+\text{Online} & 86.03 & 88.45 & 87.24 \\
+\hline
+\end{array}$$
+
+<p>Currently ranked second on the leaderboard:</p>
+
+<p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2021/12/321852445.png" alt="KgCLUE Leaderboard Screenshot" /><br>
+<em>Current KgCLUE Leaderboard Screenshot</em></p>
+
+<p>The debugging journey was roughly:</p>
+
+<blockquote>
+    1. Initially used RoFormer+UniLM predicting in $(S, M, P)$ order; Validation EM was around 70+;<br>
+    2. Changed to $(S, P, M)$ order; Validation EM reached 82;<br>
+    3. Replaced pre-trained model with RoFormer-Sim-FT; increased to 84-85;<br>
+    4. Finally added the "look-ahead" strategy, reaching the current 89.
+</blockquote>
+
+<h2>Some Drawbacks</h2>
+
+<p>So far, we have introduced the "Seq2Seq+Prefix Tree" scheme in detail and shared a specific baseline for KgCLUE. Overall, while it has clear advantages and competitive performance, there are points to ponder.</p>
+
+<p>The most typical issue is the inherent problem of Seq2Seq mentioned earlier. While the "look-ahead" strategy helps, the problem isn't completely solved. How to solve it more naturally or design better decoding rules remains an open question. Additionally, general strategies for Exposure Bias haven't been tested yet.</p>
+
+<p>Another issue is that the "Seq2Seq+Prefix Tree" relies on the model "generating" results. If a rare character is identified as [UNK], the model will likely fail, especially if the first character of $S$ is [UNK]. How to better handle [UNK] tokens is worth investigating. One might also try a traditional Copy mechanism.</p>
+
+<p>Finally, while "Seq2Seq+Prefix Tree" performs well on evaluation metrics, it has a drawback for engineering: fixing bad cases is difficult. In traditional methods, you can just add samples. In this scheme, you may need to modify the decoding process, which is often much harder.</p>
+
+<h2>Conclusion</h2>
+
+<p>This article introduced a new paradigm for retrieval models—"Seq2Seq+Prefix Tree"—and provided a concrete baseline using KgCLUE. This scheme offers advantages like simplicity in training and low spatial overhead. Despite some shortcomings, it is a concise and competitive solution.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8802.html" style="color: #005fcc;">https://kexue.fm/archives/8802</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,286 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/4413">Exploration of General Purpose Crawlers (Part I): A Crawler Suitable for General Websites</a></h1>
+    <p>By 苏剑林 | June 06, 2017</p>
+
+    <p><strong>This is a simplified version of the paper the author submitted for this year's Teddy Cup Question C. Although it ended up only receiving a consolation prize, I personally feel that some of the ideas presented here are still quite valuable for web crawling work. Therefore, I am sharing them here for everyone's reference.</strong></p>
+
+    <h2>Introduction</h2>
+    <p>A crawler can be divided into two steps: 1. Downloading the web page; 2. Extracting the required information from the web page. Both steps present their own technical difficulties. For the first step, the difficulty lies in dealing with the anti-crawling measures and features of various websites, such as IP blocking or CAPTCHAs if the access frequency is too high. This requires designing specific anti-crawling strategies for different websites, and theoretically, a universal solution does not exist. For the second step, the traditional approach is to design corresponding regular expressions. However, as website designs become increasingly diverse, writing regular expressions has become correspondingly difficult.</p>
+
+    <p>Clearly, trying to obtain a universal crawler solution using traditional regular expression methods is quite difficult. But if we jump out of the limitations of regular expression thinking and look at a website from a global perspective, combining it with DOM tree parsing, we can obtain a fairly universal solution. Therefore, the main content of this article revolves around the second step of web crawling. The work in this article is divided into two parts: first, a scheme for information extraction suitable for general websites is proposed, and then, this scheme is refined and applied specifically to information extraction from forums.</p>
+
+    <h2>Process</h2>
+    <p>It sounds sophisticated, but the core idea can actually be summed up in one sentence: "doing subtraction": Webpage Content - Webpage Template = Effective Content. Where does the webpage template come from? It is the intersection of all pages on the same website!</p>
+
+    <p>The specific process is roughly as follows:</p>
+    <blockquote>
+        1. Download the pages of the target website and parse them into a DOM tree;<br>
+        2. Compare the DOM trees of several pages to obtain the website's basic template;<br>
+        3. Traverse the DOM tree in a "depth-first" manner and number every node and leaf of the tree;<br>
+        4. Compare the DOM tree of each page with the standard template; the differing parts are the effective text;<br>
+        5. Further filter through some manual rules;<br>
+        6. Using the numbers of nodes and leaves as values, perform clustering and blocking on the effective text.
+    </blockquote>
+
+    <h2>Analysis</h2>
+    <p>The following is a brief explanation of the above process.</p>
+
+    <p>The source code of a normal web page is a mixture of HTML tags and effective text. Moreover, different websites have different templates, which brings difficulties to general crawling. However, within different pages of the same website, there is consistency between pages. In common terms: on the same website, different pages look more or less the same; the only difference is the main content of the page.</p>
+
+    <p>Therefore, for a general crawler, our design idea is: utilize different pages of the same website to construct a standard template for that website, and compare any page of the same website with the standard template. The differences are the effective text we need to extract. In this process, we use the DOM tree to perform syntax parsing of the web page source code.</p>
+
+    <h3>HTML Code</h3>
+    <p>A normal and relatively standard HTML page source code looks something like this:</p>
+<pre><code>&lt;html&gt;
+&lt;head&gt;
+&lt;title&gt;This is the Website Title&lt;/title&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id="content"&gt;
+&lt;h2 class="title"&gt;This is Article Title 1&lt;/h2&gt;
+&lt;p&gt;This is the text of the first article.&lt;/p&gt;
+&lt;h2 class="title"&gt;This is Article Title 2&lt;/h2&gt;
+&lt;p&gt;This is the text of the second article.&lt;/p&gt;
+&lt;/div&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+
+    <h3>DOM Tree</h3>
+    <p>We can parse the source code of an HTML page into a tree structure called a DOM tree, which stands for Document Object Model. It is a document object model that use an object representation to represent the corresponding document structure and its content. For the HTML page shown previously, it can be represented as the following DOM tree structure:</p>
+
+    <p><a href="https://kexue.fm/usr/uploads/2017/06/3254423032.png"><img src="https://kexue.fm/usr/uploads/2017/06/3254423032.png" alt="DOM Tree" title="Click to view original image"></a></p>
+    <p>DOM Tree</p>
+
+    <p>In other words, a webpage is actually layers upon layers of nested HTML tags. Each tag is a node or a leaf in the tree, and the text content of the webpage is inside these tags. One benefit of parsing it into a DOM tree is that we can ignore the interference of specific styles. For example:</p>
+<pre><code>&lt;div&gt;
+&lt;h2 id="title_1" class="main_title"&gt;Title 1&lt;/h2&gt;
+&lt;h2 id="title_2" class="sub_title"&gt;Title 2&lt;/h2&gt;
+&lt;/div&gt;</code></pre>
+    <p>Here, the div and h2 are fixed tags, but in order to assign different styles to different titles, each &lt;h2&gt; tag has different id and class attributes. The id and class can be set freely (or automatically generated according to some rules), which creates difficulties for general crawling. However, if parsed into a DOM tree, these specific markers are automatically ignored, and only the universal div and h2 markers are retained.</p>
+
+    <p>Another benefit of parsing into a DOM tree is the ability to describe the hierarchical structure of a webpage, allowing us to traverse an HTML page in an orderly manner and divide the crawled content through the division of different page levels.</p>
+
+    <h3>Standard Template</h3>
+    <p>For the same website, we first download several pages and parse them into DOM trees. Then, we represent each node or leaf in the form of "tag path + tag text". For the HTML page shown earlier, its website title can be represented as "html_head_title_This is the Website Title", and its article title can be represented as "html_body_div_h2_This is Article Title 1". Note that not every tag has text content; tags like &lt;img&gt; generally do not have text, and here we only consider tags with text.</p>
+
+    <p>At this point, every webpage is represented as a collection of tags. We can define the website's standard template as:</p>
+    \begin{equation}S = \bigcap_{h\in H} h\end{equation}
+    <p>Where $H$ is the collection of all webpages of that website. In other words, the standard template is the intersection of all web pages. At this point, extracting the effective text of a webpage is very simple:</p>
+    \begin{equation}\text{effective} = h\backslash S\end{equation}
+    <p>That is to say, the effective text of page $h$ is the set difference between set $h$ and set $S$.</p>
+
+    <p>Through this scheme, we can <b>automatically build a standard template for any designated website</b>, thereby extracting the effective text of the page. This process is valid based on the assumption that "content that is identical across web pages is meaningless, while content that differs is what is worth crawling." In this way, regardless of the website's hierarchical structure or whether there are embedded advertisements, we can effectively filter out the invalid text. Thus, we have obtained a universal crawling scheme.</p>
+
+    <h3>Stream Generation</h3>
+    <p>Although we define the standard template as the intersection of all pages, we do not need to crawl all pages before obtaining the standard template. At the beginning, we can use only two pages and take their intersection as the standard template. Then, every time a new page is crawled, we can update the standard template, making it increasingly accurate. This stream-based scheme meets the requirements of a production environment.</p>
+
+    <h3>Rule Filtering</h3>
+    <p>On some websites, different pages wrap different codes; therefore, crawling using the previous scheme will also save these codes at the same time, reducing the precision of the effective text. Therefore, some filtering rules are needed to filter them out.</p>
+
+    <p><strong>Engineering Rules</strong></p>
+    <p>From a production perspective, people are usually willing to sacrifice some precision in exchange for higher speed. Therefore, quite obviously, the easiest method to implement for engineering is to count the ratio of Chinese to English characters in each segment of effective text obtained earlier. Then, based on the assumption that "webpage content is basically Chinese," we can confidently remove parts with a low proportion of Chinese.</p>
+
+    <p>Of course, this will also remove information like dates and usernames. Therefore, we should first identify dates and usernames to prevent accidental deletion. For dates, the patterns are relatively fixed, such as "2017-04-15", "April 15, 2017", etc., and they are usually accompanied by words like "Release Time" or "Published on". Thus, they are relatively easy to identify. For usernames, they are typically a combination of Chinese, English, numbers, and underscores, without allowing spaces; coincidentally, code contains many spaces. Therefore, based on this filter, usernames can be identified in advance.</p>
+
+    <p>So, the overall rules are:</p>
+    <blockquote>
+        1. Text with date formats needs to be preserved;<br>
+        2. Text composed purely of a combination of Chinese, English, numbers, and underscores needs to be preserved;<br>
+        3. In the remaining parts, if the proportion of Chinese is greater than a certain threshold, it needs to be preserved;<br>
+        4. All other content is filtered out directly.
+    </blockquote>
+
+    <p><strong>Academic Scheme</strong></p>
+    <p>Engineering rules are simple and efficient but only applicable to specific situations. For example, the above rules are suitable for crawling general Chinese websites, but if it's an English website, these rules are not suitable.</p>
+
+    <p>In general, this is actually a problem of determining whether a segment of text is natural language. We can use language models. A language model models the probability of a sentence. A sentence consists of $n$ words $w_1, w_2, \dots, w_n$. We consider the probability:</p>
+    \begin{equation}P(w_1,w_2,\dots,w_n)\end{equation}
+    <p>According to the formulas of probability theory, we get:</p>
+    \begin{equation}P(w_1,w_2,\dots,w_n)=P(w_1)P(w_2|w_1)P(w_3|w_1,w_2)\dots P(w_n|w_1,w_2,\dots,w_{n-1})\end{equation}
+    <p>The right side of the above equation is generally very difficult to estimate accurately. To this end, we make a truncation: <i>the probability of a subsequent word only depends on the probability of the previous word</i>. In this way, we get:</p>
+    \begin{equation}\label{eq:score}P(w_1,w_2,\dots,w_n)=P(w_1)P(w_2|w_1)P(w_3|w_2)\dots P(w_n|w_{n-1})\end{equation}
+    <p>In this way, we only need to count the probability of each word $P(w_i)$ and the co-occurrence probability of adjacent words $P(w_{i-1}, w_{i})$ to calculate the transition probability:</p>
+    \begin{equation}P(w_i|w_{i-1}) = \frac{P(w_{i-1}, w_{i})}{P(w_{i-1})}\end{equation}
+    <p>Once we have the transition probabilities, we can use formula \eqref{eq:score} to score each segment of text and set a threshold. Only when it is greater than this threshold do we conclude it is natural language, thereby preserving it. This scheme is simultaneously applicable to all languages (requiring only the language model of the corresponding language) and is theoretically a more elegant model.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_4413.html" style="color: #005fcc;">https://kexue.fm/archives/4413</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

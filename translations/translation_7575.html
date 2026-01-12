@@ -1,0 +1,263 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/7575">BERT-of-Theseus: A Model Compression Method Based on Module Replacement</a></h1>
+
+<p>By 苏剑林 | July 17, 2020</p>
+
+<p>Recently, I learned about a BERT model compression method called "BERT-of-Theseus," from the paper <a href="https://papers.cool/arxiv/2002.02925">"BERT-of-Theseus: Compressing BERT by Progressive Module Replacing"</a>. This is a model compression scheme built around the starting point of "replaceability." Compared to conventional means such as pruning and distillation, the entire process is more elegant and concise. In this article, I will give a brief introduction to the method, provide an implementation based on <a href="https://github.com/bojone/bert4keras">bert4keras</a>, and verify its effectiveness.</p>
+
+<p>BERT-of-Theseus, original illustration</p>
+
+<h2>Model Compression</h2>
+
+<p>First, let's briefly introduce model compression. However, since I am not a specialist in model compression and haven't conducted a particularly systematic investigation, this introduction might appear unprofessional; I hope readers will understand.</p>
+
+<h3>Basic Concepts</h3>
+
+<p>Simply put, model compression is "simplifying a large model to obtain a small model with faster inference speed." Of course, model compression generally involves certain sacrifices; most notably, the final evaluation metrics will drop to some extent. After all, "better and faster" free lunches are rare, so the prerequisite for choosing model compression is being able to tolerate a certain loss in precision. Secondly, the speedup from model compression usually only manifests during the prediction phase. In other words, it typically requires a longer training time. Therefore, if your bottleneck is training time, model compression may not be suitable for you.</p>
+
+<p>The reason model compression takes longer is that it requires "training the large model first, then compressing it into a small model." Readers might wonder: why not just train a small model directly? The answer is that many current experiments have shown that training a large model first and then compressing it usually results in higher final precision compared to training a small model directly. That is to say, for the same inference speed, the model obtained through compression is superior. For related discussions, you can refer to the paper <a href="https://papers.cool/arxiv/2002.11794">"Train Large, Then Compress: Rethinking Model Size for Efficient Training and Inference of Transformers"</a>, as well as the discussion on Zhihu: <a href="https://www.zhihu.com/question/303922732">"Why compress models instead of training a small CNN directly?"</a>.</p>
+
+<h3>Common Methods</h3>
+
+<p>Common model compression techniques can be divided into two categories: 1. Directly simplifying a large model to get a small model; 2. Using a large model to help retrain a small model. Both methods share the commonality of needing to train an effective large model first before subsequent operations.</p>
+
+<p>Representative methods of the first category are Pruning and Quantization. Pruning, as the name suggests, attempts to remove some components of the original large model to make it a small model while keeping the performance within an acceptable range. As for quantization, it refers to not changing the original model structure but switching the numeric format of the model without seriously reducing performance. Usually, when we build and train models, we use the float32 type; switching to float16 can speed up inference and save video memory. If we can further convert to 8-bit integers or even 2-bit integers (binarization), the effects on speed and memory savings will be even more significant.</p>
+
+<p>A representative method of the second category is Distillation. The basic idea of distillation is to use the output of a large model as a label for training a small model. Taking a classification problem as an example: actual labels are in one-hot form, while the large model's output (such as logits) contains richer signals, allowing the small model to learn better features from them. Besides learning the output of the large model, many times, to further improve the effect, the small model also needs to learn the intermediate layer results, attention matrices, correlation matrices, etc., of the large model. Therefore, a good distillation process usually involves multiple losses. How to reasonably design these losses and adjust their weights is one of the research themes in the field of distillation.</p>
+
+<h2>Theseus</h2>
+
+<p>The compression method introduced in this article is called "BERT-of-Theseus," which belongs to the second category of compression methods mentioned above. That is, it also uses a large model to train a small model, but it is designed based on the replaceability of modules.</p>
+
+<blockquote>The naming of BERT-of-Theseus originates from the thought experiment "Ship of Theseus": If the wood on Theseus's ship is gradually replaced until all the wood is no longer the original wood, is that ship still the original ship?</blockquote>
+
+<h3>Core Idea</h3>
+
+<p>As mentioned earlier, when using distillation for model compression, there is often a desire not only to align the output of the small model with that of the large model but also to align the intermediate results. What does "alignment" mean? It means replaceability! Thus, the idea of BERT-of-Theseus is: why go through the trouble of adding various losses to achieve replaceability? Why not just replace modules of the large model with modules of the small model and train them directly?</p>
+
+<p>To use a practical analogy:</p>
+
+<blockquote>Suppose there are two teams, A and B, each with five people. Team A is a star team with extraordinary strength; Team B is a novice team waiting to be trained. To train Team B, we pick one person from Team B to replace one person in Team A, and then let this "4+1" Team A practice and play matches continuously. After some time, the new member's skill will increase, and this "4+1" team will possess strength close to the original Team A. Repeat this process until all members of Team B have been sufficiently trained, then finally the people from Team B can form a team with outstanding strength on their own. In contrast, if you only had Team B from the beginning, training and playing on their own, even if their strength gradually improves, they might not reach a standout level of strength without the help of the superior Team A.</blockquote>
+
+<h3>Process Details</h3>
+
+<p>Returning to BERT compression, suppose we have a 6-layer BERT and we fine-tune it directly on a downstream task to get a model with decent performance, which we call the Predecessor. Our goal is to obtain a 3-layer BERT that performs close to the Predecessor on downstream tasks—at least better than just fine-tuning the first 3 layers of BERT (otherwise, it would be a waste of effort). We call this small model the Successor. How does BERT-of-Theseus achieve this? As shown in the figure (right):</p>
+
+<p>Schematic of Predecessor and Successor models</p>
+
+<p>Schematic of the BERT-of-Theseus training process</p>
+
+<p>In the entire BERT-of-Theseus process, the weights of the Predecessor are fixed. The 6-layer Predecessor is divided into 3 modules, which correspond one-to-one with the 3 layers of the Successor model. During training, the corresponding module of the Predecessor is randomly replaced by a Successor layer, and then fine-tuned directly using the downstream task optimization goal (training only the Successor layers). After sufficient training, the entire Successor is separated and continues to be fine-tuned on the downstream task for a while until the validation set metrics stop rising.</p>
+
+<p>The equivalent model of the above</p>
+
+<p>In implementation, it is actually a process similar to Dropout. Both the Predecessor and Successor models are executed simultaneously, and one of the outputs of each corresponding module is zeroed out before being summed and sent to the next layer, i.e.,</p>
+
+\begin{equation}\begin{aligned}
+&\varepsilon^{(l)}\sim U(\{0, 1\})\\
+&x^{(l)} = x_p^{(l)} \times \varepsilon^{(l)} + x_s^{(l)} \times \left(1 - \varepsilon^{(l)}\right)\\
+&x_p^{(l+1)} = F_p^{(l+1)}\left(x^{(l)}\right)\\
+&x_s^{(l+1)} = F_s^{(l+1)}\left(x^{(l)}\right)
+\end{aligned}\end{equation}
+
+<p>Since $\varepsilon$ is either 0 or 1 (without adjustment, a random selection with 0.5 probability works well enough), each branch is equivalent to only one module being selected, so the right figure above corresponds to the right model structure. Since each zeroing is random, after training for enough steps, every layer of the Successor will be well-trained.</p>
+
+<h3>Method Analysis</h3>
+
+<p>Compared to distillation, what are the advantages of BERT-of-Theseus? First of all, since this has been published, the performance is at least comparable, so we won't compare the effects, but rather the method itself. Obviously, the main characteristic of BERT-of-Theseus is: simplicity.</p>
+
+<p>As mentioned before, distillation most of the time also needs to match intermediate layer outputs, which involves many training targets: downstream task loss, intermediate layer output loss, correlation matrix loss, attention matrix loss, etc. Thinking about balancing these losses is a headache. In contrast, BERT-of-Theseus directly forces the Successor to have outputs similar to the Predecessor through the replacement operation, and the final training goal is only the downstream task loss—it couldn't be simpler. Furthermore, BERT-of-Theseus has a special advantage: many distillation methods must be applied to both the pre-training and fine-tuning phases for the results to be prominent, whereas BERT-of-Theseus can achieve comparable results by being applied directly to the fine-tuning of downstream tasks. This advantage is not apparent in the algorithm itself but is an experimental conclusion.</p>
+
+<p>From a formal perspective, the random replacement idea of BERT-of-Theseus is somewhat like the data augmentation schemes SamplePairing and mixup in imaging (refer to <a href="translation_5693.html">"From SamplePairing to mixup: Magical Regularization Terms"</a>), which both randomly sample two objects and perform weighted summation to enhance the original model; it also resembles the progressive training scheme of <a href="https://papers.cool/arxiv/1710.10196">PGGAN</a>, which uses a certain degree of mixing between two models to achieve a transition between them. Readers familiar with these might subsequently raise some extensions or questions about BERT-of-Theseus: does $\varepsilon$ necessarily have to be 0 or 1? Would any random number from $0 \sim 1$ work? Or, instead of being random, could $\varepsilon$ slowly change from 1 to 0? These ideas have not yet been fully experimented with; interested readers can modify the code below to experiment themselves.</p>
+
+<h2>Experimental Results</h2>
+
+<p>The original authors have open-sourced their PyTorch implementation at <a href="https://github.com/JetRunner/BERT-of-Theseus">JetRunner/BERT-of-Theseus</a>. Qiu Zhenyu also shared his <a href="https://zhuanlan.zhihu.com/p/112787764">explanation</a> and a TensorFlow implementation based on the original BERT at <a href="https://github.com/qiufengyuyi/bert-of-theseus-tf">qiufengyuyi/bert-of-theseus-tf</a>. Of course, since I decided to write this introduction, there is certainly a Keras implementation based on bert4keras:</p>
+
+<blockquote><a href="https://github.com/bojone/bert-of-theseus">https://github.com/bojone/bert-of-theseus</a></blockquote>
+
+<p>This is probably the most concise and readable BERT-of-Theseus implementation to date, bar none.</p>
+
+<p>For the results of the original paper, please see the paper itself. I experimented with several text classification tasks, and the results were more or less the same, consistent with Qiu's experimental conclusions. Among them, the experimental results on CLUE's iflytek dataset are as follows:</p>
+
+$$\begin{array}{c|c|c}
+\hline
+& \text{Direct Fine-tuning} & \text{BERT-of-Theseus}\\
+\hline
+\begin{array}{c}\text{Layers} \\ \text{Performance}\end{array} & \begin{array}{ccc}\text{Full 12 Layers} & \text{First 6 Layers} & \text{First 3 Layers} \\ 60.11\% & 58.99\% & 57.96\%\end{array} & \begin{array}{cc}\text{6 Layers} & \text{3 Layers} \\ 59.61\% & 59.36\% \end{array}\\
+\hline
+\end{array}$$
+
+<p>As can be seen, BERT-of-Theseus does bring a certain performance improvement compared to directly fine-tuning the first few layers. For the random zeroing scheme, in addition to the equal probability selection of 0/1, the original paper also tried other strategies, which showed slight improvements but introduced extra hyperparameters, so I did not experiment with them. Interested readers can modify and try them themselves.</p>
+
+<p>Additionally, for distillation, if the Successor and Predecessor have the same structure (same-model distillation), the final performance of the Successor is usually even better than the Predecessor. Does BERT-of-Theseus have this characteristic? I also experimented with this idea and found the conclusion to be negative; that is, in the same-model case, the Successor trained by BERT-of-Theseus was not better than the Predecessor. It seems that although BERT-of-Theseus is good, it cannot entirely replace distillation.</p>
+
+<h2>Summary</h2>
+
+<p>This article introduced and experimented with a BERT model compression method called "BERT-of-Theseus." The characteristic of this method is its clarity and simplicity, using purely replacement operations to allow a small model to learn the behavior of a large model, enabling state-of-the-art model compression effects with only a single loss.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7575.html" style="color: #005fcc;">https://kexue.fm/archives/7575</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

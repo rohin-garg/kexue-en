@@ -1,0 +1,249 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']},
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/7427">Have Your Cake and Eat It Too: The SimBERT Model for Joint Retrieval and Generation</a></h1>
+
+<p>By 苏剑林 | May 18, 2020</p>
+
+<p>Some time ago, we released the model weights for a project called <a href="https://github.com/ZhuiyiTechnology/pretrained-models#simbert-base">SimBERT</a>. It is based on Google's open-source BERT model and uses Microsoft's <a href="https://papers.cool/arxiv/1905.03197">UniLM</a> ideology to design a task that integrates retrieval and generation. After further fine-tuning, the resulting model possesses both the ability to generate similar questions and retrieve similar sentences. At the time of the release, we only provided a weight file and an example script without further explaining the model's principles and training process. In this article, we will supplement that information.</p>
+
+<blockquote>
+<p><strong>Open Source Address: <a href="https://github.com/ZhuiyiTechnology/simbert">https://github.com/ZhuiyiTechnology/simbert</a></strong></p>
+</blockquote>
+
+<h2 id="UniLM">UniLM</h2>
+
+<p>UniLM (Unified Language Model) is a Transformer model that fuses NLU (Natural Language Understanding) and NLG (Natural Language Generation) capabilities. It was proposed by Microsoft in May last year, and in February this year, it was upgraded to <a href="https://papers.cool/arxiv/2002.12804">v2</a>. Our previous article <a href="translation_6933.html">"From Language Models to Seq2Seq: Transformer is All About the Mask"</a> briefly introduced UniLM, and it has already been integrated into <a href="https://github.com/bojone/bert4keras">bert4keras</a>.</p>
+
+<p>The core of UniLM is the use of a special Attention Mask to grant the model Seq2Seq capabilities. For example, if the input is "What do you want to eat?" and the target sentence is "White-cut chicken," UniLM concatenates these two sentences into one: [CLS] What do you want to eat [SEP] White-cut chicken [SEP], and then applies the Attention Mask as shown in the figure:</p>
+
+<p>
+  <a href="https://kexue.fm/usr/uploads/2019/09/1625339461.png">
+    <img src="https://kexue.fm/usr/uploads/2019/09/1625339461.png" alt="UniLM's Mask" title="Click to view original image" style="max-width:100%;">
+  </a>
+  <br>
+  UniLM's Mask
+</p>
+
+<p>In other words, the tokens in "[CLS] What do you want to eat [SEP]" have bidirectional Attention between them, while the tokens in "White-cut chicken [SEP]" have unidirectional Attention. This allows the model to recursively predict the "White-cut chicken [SEP]" tokens, giving it text generation capabilities.</p>
+
+<p>
+  <a href="https://kexue.fm/usr/uploads/2019/09/1879768703.png">
+    <img src="https://kexue.fm/usr/uploads/2019/09/1879768703.png" alt="Schematic of UniLM as a Seq2Seq model." title="Click to view original image" style="max-width:100%;">
+  </a>
+  <br>
+  Schematic of UniLM as a Seq2Seq model. Internal bidirectional Attention for the input part, and only unidirectional Attention for the output part.
+</p>
+
+<p>Seq2Seq only explains UniLM's NLG capability. Why did we say it possesses both NLU and NLG capabilities? Because of UniLM's special Attention Mask, the first 6 tokens "[CLS] What do you want to eat [SEP]" only perform Attention among themselves and have nothing to do with "White-cut chicken [SEP]". This means that although the latter is appended, it does not affect the encoding vectors of the first 6 tokens. To be clearer, the first 6 encoding vectors are equivalent to the encoding results of just "[CLS] What do you want to eat [SEP]". If the [CLS] vector represents the sentence vector, then it is the sentence vector for "What do you want to eat," rather than the vector for the sentence combined with "White-cut chicken."</p>
+
+<p>Due to this characteristic, random [MASK] tokens can also be added to the input part, allowing the input part to perform the MLM (Masked Language Model) task while the output part performs the Seq2Seq task. MLM enhances NLU capabilities, and Seq2Seq enhances NLG capabilities, achieving two goals at once.</p>
+
+<h2 id="SimBERT">SimBERT</h2>
+
+<p>Once you understand UniLM, it is not difficult to understand the training method of SimBERT. SimBERT belongs to supervised training. The training corpus consists of collected pairs of similar sentences. The Seq2Seq part is constructed through a similar sentence generation task where one sentence predicts the other. As mentioned before, the [CLS] vector effectively represents the input's sentence vector, so it can be simultaneously used to train a retrieval task, as shown below:</p>
+
+<p>
+  <a href="https://kexue.fm/usr/uploads/2020/05/2840550561.png">
+    <img src="https://kexue.fm/usr/uploads/2020/05/2840550561.png" alt="Schematic of SimBERT training method" title="Click to view original image" style="max-width:100%;">
+  </a>
+  <br>
+  Schematic of SimBERT training method
+</p>
+
+<p>Assume SENT_a and SENT_b are a pair of similar sentences. In the same batch, both "[CLS] SENT_a [SEP] SENT_b [SEP]" and "[CLS] SENT_b [SEP] SENT_a [SEP]" are added to the training to perform a similar sentence generation task; this is the Seq2Seq part.</p>
+
+<p>On the other hand, the [CLS] vectors for the entire batch are extracted to obtain a sentence vector matrix \(\boldsymbol{V}\in\mathbb{R}^{b\times d}\) (where \(b\) is batch_size and \(d\) is hidden_size). Then, \(l_2\) normalization is applied to the \(d\) dimension to obtain \(\tilde{\boldsymbol{V}}\). Pairwise dot products are computed to obtain a \(b\times b\) similarity matrix \(\tilde{\boldsymbol{V}}\tilde{\boldsymbol{V}}^{\top}\). This is then multiplied by a scale (we used 30), and the diagonal is masked out. Finally, a softmax is performed on each row to train it as a classification task, where the target label for each sample is its corresponding similar sentence (as the self-similarity has been masked). Essentially, all non-similar samples within the batch are treated as negative samples, and softmax is used to increase the similarity of the similar samples while decreasing the similarity of the others.</p>
+
+<p>Ultimately, the key is that "<strong>the [CLS] vector effectively represents the input sentence vector</strong>," so it can be used for NLU-related tasks. The final loss is the sum of the Seq2Seq loss and the similarity sentence classification loss.</p>
+
+<h2 id="Other_Details">Other Details</h2>
+
+<p>Since the source code has been released, more training details can be found by reading the code. The model is implemented using keras + bert4keras. The code is very clear, so most doubts can be resolved by reading it.</p>
+
+<p>Effect demonstration:</p>
+
+<pre><code class="language-python"># Example usage:
+# >>> gen_synonyms(u'Which is better to use, WeChat or Alipay?')
+# [
+#     u'Which one is better, WeChat or Alipay?',
+#     u'Alipay and WeChat, which is easier to use?',
+#     u'Which one is more useful, WeChat or Alipay?',
+#     u'Between WeChat and Alipay, which one do you prefer?',
+#     ...
+# ]
+</code></pre>
+
+<p>Many readers may be concerned about the training data. Here is a unified answer: Since the training data cannot be publicly disclosed and it is inconvenient to share privately, please do not ask about the data. The data source was scraped from similar questions recommended by Baidu Zhidao, which were then filtered by simple algorithms. If readers have a large number of question sentences, they can also use common retrieval algorithms to retrieve some similar sentences to serve as training data. In short, there are no strictly rigid requirements for training data; theoretically, any data with a degree of similarity can be used.</p>
+
+<p>Regarding training hardware, the open-sourced model was trained on a single TITAN RTX (22G VRAM, batch_size=128) for about 4 days. VRAM and time are not strictly fixed requirements and depend on your actual situation. If VRAM is smaller, simply reduce the batch_size accordingly. If the corpus itself is not very large, the training time does not need to be that long (generally enough to iterate through the dataset a few times).</p>
+
+<p>That's all I can think of for now. If there are any other questions, feel free to leave a comment for discussion.</p>
+
+<h2 id="Summary">Summary</h2>
+
+<p>This article introduced the training principles of the previously released SimBERT model and open-sourced the training code. SimBERT, trained based on UniLM concepts, possesses both retrieval and generation capabilities. Everyone is welcome to use and test it!</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7427.html" style="color: #005fcc;">https://kexue.fm/archives/7427</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,391 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    enableMenu: false
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/10907">The Road to Transformer Upgrades: 20. What Makes MLA So Good? (Part 1)</a></h1>
+    
+    <p>By 苏剑林 | May 04, 2025</p>
+
+    <p>Since the explosive popularity of DeepSeek, its proposed Attention variant, MLA (<strong>M</strong>ulti-head <strong>L</strong>atent <strong>A</strong>ttention), has garnered increasing attention. Through ingenious design, MLA achieves free switching between MHA (Multi-Head Attention) and MQA (Multi-Query Attention), allowing the model to choose the optimal form based on different training and inference characteristics (Compute-Bound or Memory-Bound), maximizing efficiency as much as possible.</p>
+
+    <p>Admittedly, while MLA is highly effective, some argue it is not "elegant" enough, and efforts to find alternatives to MLA have persisted, including our own attempts. However, after a period of experimentation, we found that many Attention variants with the same or even larger KV Cache sizes ultimately do not perform as well as MLA. This has forced us to reflect: What exactly is the key reason behind MLA's outstanding performance?</p>
+
+    <p>In this article, I will detail my thought process and the related experimental results surrounding this question.</p>
+
+    <h2>Observations</h2>
+
+    <p>MLA was introduced in <a href="https://papers.cool/arxiv/2405.04434">DeepSeek-V2</a>. This article assumes the reader is already familiar with MLA, or at least understands the content introduced in the previous blog post <a href="translation_10091.html">"The Tug-of-War Between Cache and Performance: From MHA, MQA, GQA to MLA"</a>. Therefore, the specific details of MLA itself will not be overly expanded upon.</p>
+
+    <p>The main characteristics of MLA are as follows:</p>
+
+    <blockquote>
+        <p>1. In the training phase, MLA is an MHA with qk_head_dims=(128+64) and v_head_dims=128;</p>
+        <p>2. In the decoding phase, MLA is a KV-Shared MQA with qk_head_dims=(512+64) and v_head_dims=512;</p>
+        <p>3. The splicing of [qc, qr] and [kc, kr] in MLA can be understood as a form of <a href="https://kexue.fm/archives/10122#%E9%83%A8%E5%88%86%E6%97%8B%E8%BD%AC">Partial RoPE</a>.</p>
+    </blockquote>
+
+    <h2>Conjectures</h2>
+
+    <p>The head_dims commonly used in MHA and GQA is 128. For MLA, whether it is the 128+64 seen from training or the 512+64 seen from inference, it is larger than 128. Combined with the experience from <a href="translation_7325.html">"Breaking Bottlenecks: Building a Stronger Transformer"</a>, we have:</p>
+
+    <blockquote>
+        <p><strong>Conjecture 1</strong>: Increasing head_dims is a key reason for MLA's success.</p>
+    </blockquote>
+
+    <p>Additionally, the KV-Shared feature allows for increasing the head_dims or num_groups of GQA under the same KV Cache size. Thus:</p>
+
+    <blockquote>
+        <p><strong>Conjecture 2</strong>: KV-Shared is a key reason for MLA's success.</p>
+    </blockquote>
+
+    <p>Finally, previous theories and experiments have shown that Partial RoPE might positively impact performance (refer to <a href="https://kexue.fm/archives/10122#%E9%83%A8%E5%88%86%E6%97%8B%E8%BD%AC">"The Road to Transformer Upgrades: 18. Principles for Choosing the RoPE Base"</a>), so:</p>
+
+    <blockquote>
+        <p><strong>Conjecture 3</strong>: Partial RoPE is a key reason for MLA's success.</p>
+    </blockquote>
+
+    <h2>Experiments</h2>
+
+    <p>We will now test the above conjectures one by one through experiments.</p>
+
+    <h3>Settings</h3>
+
+    <p>The hyperparameters common to all experiments are as follows:</p>
+
+    <blockquote>
+        <p>1. Dense model similar to LLAMA3;</p>
+        <p>2. hidden_size=2048, num_layers=12, num_heads=16;</p>
+        <p>3. The optimizer is <a href="translation_10592.html">Muon</a>, with per-head updates for the Attention part;</p>
+        <p>4. Training length of 4096, total tokens of 16B, total training steps of 16k;</p>
+        <p>5. All experiments only change the Attention, so parameter counts are not strictly aligned.</p>
+    </blockquote>
+
+    <h3>Part I</h3>
+
+    <p>MLA's KV Cache size is 512+64, which is approximately equal to GQA2-128 (the first number is num_groups, the second is head_dims). Therefore, the baselines used for comparison are GQA2-128 and GQA1-256. To verify Partial RoPE, we added GQA1-256-PR, which splits the 256 dimensions of Q and K into 192+64, adds RoPE to the 64, and leaves the 192 without it.</p>
+
+    <p>The results are as follows:</p>
+    \[\begin{array}{c|ccc}
+    \hline
+    & \text{Params} & \text{Loss} & \text{Cache} \\
+    \hline
+    \text{MLA} & 894M & 2.721 & 576 \\
+    \text{GQA2-128} & 842M & 2.75 & 512 \\
+    \text{GQA1-256} & 943M & 2.72 & 512 \\
+    \text{GQA1-256-PR} & 943M & 2.711 & 512 \\
+    \hline
+    \end{array}\]
+
+    <p>That is:
+    $$\text{GQA2-128} < \text{MLA} \lesssim \text{GQA1-256} < \text{GQA1-256-PR}$$
+    This provides preliminary verification for the roles of increasing head_dims and Partial RoPE. From this perspective, the seemingly "compromised" design of splicing RoPE and NoPE in MLA is likely the key reason for its superior performance! The original paper claims MLA even outperforms MHA, which is likely because the MHA it was compared against only had a head_dims of 128.</p>
+
+    <h3>Part II</h3>
+
+    <p>To further verify the effect of increasing head_dims, we ran additional experiments for MHA, GQA2-192, and MLA-256. MHA is the conventional MHA with head_dims=128. GQA2-192 directly increases the head_dims of GQA2 to 192. MLA-256 increases MLA's 128+64 to 192+64. The comparison is as follows:</p>
+
+    \[\begin{array}{c|ccc}
+    \hline
+    & \text{Params} & \text{Loss} & \text{Cache} \\
+    \hline
+    \text{MHA} & 931M & 2.721 & 4096 \\
+    \text{MLA} & 894M & 2.721 & 576 \\
+    \text{MLA-256} & 989M & 2.705 & 576 \\
+    \text{GQA2-128} & 842M & 2.75 & 512 \\
+    \text{GQA2-192} & 899M & 2.729 & 768 \\
+    \text{GQA1-256} & 943M & 2.72 & 512 \\
+    \text{GQA1-256-PR} & 943M & 2.711 & 512 \\
+    \hline
+    \end{array}\]
+
+    <p>As can be seen, although MHA has a higher total parameter count and a KV Cache 7 times larger than MLA, its loss only barely matches MLA. This is close to the conclusion in DeepSeek-V2. Furthermore, GQA2-192 outperforms GQA2-128 but is inferior to GQA1-256. When MLA's head_dims is increased to (192+64), it shows further improvement compared to (128+64). All these phenomena indicate that increasing head_dims is far more effective than increasing num_groups.</p>
+
+    <h3>Part III</h3>
+
+    <p>Next, we verify KV-Shared, meaning K and V share all or most dimensions. Here, we mainly consider GQA variants with head_dims not exceeding 256 and control the total KV Cache size to be close to MLA. Thus, with KV-Shared, we can consider up to GQA2-256.</p>
+
+    <p>Since KV-Shared is not fully compatible with RoPE, following the approach of MLA, we divide the 256 dimensions into 192+64 parts, where:</p>
+    <blockquote>
+        <p>1. The 192 part does not have RoPE and is shared between K and V;</p>
+        <p>2. The 64 part has RoPE and is used only for K;</p>
+        <p>3. V additionally projects 64 dims, which are concatenated to the shared 192 dims.</p>
+    </blockquote>
+    <p>In this setup, the head_dims for both K and V are 256. The total KV Cache size is (192+64+64)*2=640, slightly larger than MLA's 512+64=576. We denote this version as "GQA2-(192+64)-S1", where "S1" stands for "Shared-1".</p>
+
+    <h3>Part IV</h3>
+
+    <p>Another KV-Shared scheme is:</p>
+    <blockquote>
+        <p>1. The 192 part does not have RoPE and is shared between K and V;</p>
+        <p>2. The 64 part has RoPE and is also shared between K and V;</p>
+        <p>3. Perform Attention; since V carries RoPE, this results in an absolute position encoding effect;</p>
+        <p>4. To ensure relative position encoding, the output is divided into 192+64 parts, and the 64 part undergoes an inverse RoPE transform.</p>
+    </blockquote>
+    <p>In this approach, K and V are fully shared. The KV Cache size is (192+64)*2=512, slightly smaller than MLA. We call this version "GQA2-(192+64)-S2", where "S2" stands for "Shared-2". The principle behind this is the VO-RoPE newly proposed by the author; refer to <a href="translation_10862.html">"The Road to Transformer Upgrades: 19. The Second Type of Rotary Position Encoding"</a>.</p>
+
+    <h3>Part V</h3>
+
+    <p>Additionally, based on the same logic, we supplemented the experiments with GQA4 and GQA1. All experimental results are summarized as follows:</p>
+
+    \[\begin{array}{c|ccc|c}
+    \hline
+    & \text{Params} & \text{Loss} & \text{Cache} & \text{Note} \\
+    \hline
+    \text{MLA} & 894M & 2.721 & 576 & \\
+    \text{MLA-256} & 989M & 2.705 & 576 & \\
+    \text{GQA2-(192+64)-S1} & 946M & 2.714 & 640 & \\
+    \text{GQA2-(192+64)-S2} & 943M & 2.708 & 512 & \text{Introduces VO-RoPE} \\
+    \text{GQA4-(64+64)-S2} & 842M & 2.738 & 512 & \\
+    \text{GQA4-(128+64)-S2} & 899M & 2.713 & 768 & \text{Largest KV Cache} \\
+    \text{GQA1-(512+64)-S3} & 1171M & 2.677 & 576 & \text{Largest head\_dims} \\
+    \hline
+    \end{array}\]
+
+    <p>Here "GQA1-(512+64)-S3" is an MQA implemented according to MLA's inference form, with a structure caught between S1 and S2. Its main feature is the large head_dims.</p>
+
+    <p>Interpretation of results:</p>
+    <blockquote>
+        <p>1. KV-Shared GQA inherently includes Partial RoPE;</p>
+        <p>2. KV-Shared GQA2-256 can also outperform MLA;</p>
+        <p>3. The introduction of VO-RoPE seems beneficial (S1 ≲ S2);</p>
+        <p>4. For the same KV Cache, larger head_dims are better;</p>
+        <p>5. GQA2-(192+64)-S2 slightly outperforms GQA1-256-PR;</p>
+        <p>6. GQA4-(128+64)-S2 has the largest KV Cache, but its performance is not optimal, again indicating head_dims is more critical.</p>
+    </blockquote>
+
+    <p>Regarding KV-Shared, there are two additional observations:</p>
+    <blockquote>
+        <p>1. During training, GQA1-256-PR leads significantly in the early stages compared to GQA2-(192+64)-S2, but is capped or slightly overtaken in the later stages, suggesting GQA1-256-PR might suffer from insufficient "stamina";</p>
+        <p>2. Without KV-Shared, GQA is at most GQA1-256, meaning head_dims is capped at 256. But with KV-Shared, GQA can reach GQA1-512-S. Purely from a head_dims perspective, KV-Shared has a higher ceiling.</p>
+    </blockquote>
+
+    <h3>Part VI</h3>
+
+    <p>Since parameter counts were not strictly aligned, readers might wonder "whether increasing parameters or increasing head_dims is more fundamental." Therefore, we supplement with several experiments aligning parameter counts.</p>
+
+    <p>We consider three ways to align parameters:</p>
+    <blockquote>
+        <p>1. <strong>double-heads</strong>: Using "GQA2-128 vs GQA1-256" as an example, doubling the num_heads of GQA2-128 allows its parameter count to match GQA1-256;</p>
+        <p>2. <strong>Reducing MLP</strong>: Shrinking the intermediate_size of the MLP (SwiGLU) can make the parameter count of GQA1-256 roughly equivalent to GQA2-128;</p>
+        <p>3. <strong>Q&O LoRA</strong>: The main parameter count of GQA comes from the projection matrices of Query and Output. Using LoRA for these two matrices can reduce the parameter count of GQA1-256.</p>
+    </blockquote>
+
+    <p>The experimental results are as follows:</p>
+
+    \[\begin{array}{c|ccc|ccc}
+    \hline
+    & \text{Params} & \text{Loss} & \text{Cache} & \text{num\_heads} & \text{intermediate\_size} & \text{qo\_lora} \\
+    \hline
+    \text{MLA} & 894M & 2.721 & 576 & 16 & 5456 & \text{No}\\
+    \hline
+    \text{GQA2-128} & 842M & 2.75 & 512 & 16 & 5456 & \text{No}\\
+    \text{GQA1-256} & 943M & 2.72 & 512 & 16 & 5456 & \text{No}\\
+    \hline
+    \text{GQA2-128} & 943M & 2.723 & 512 & \color{red}{32} & 5456 & \text{No} \\
+    \text{GQA1-256} & 843M & 2.747 & 512 & 16 & \color{red}{4096} & \text{No} \\
+    \text{GQA1-256} & 842M & 2.726 & 512 & 16 & 5456 & \color{red}{\text{Yes}} \\
+    \hline
+    \text{GQA4-(64+64)-S2} & 842M & 2.738 & 512 & 16 & 5456 & \text{No} \\
+    \text{GQA2-(192+64)-S2} & 943M & 2.708 & 512 & 16 & 5456 & \text{No} \\
+    \hline
+    \text{GQA4-(64+64)-S2} & 943M & 2.711 & 512 & \color{red}{32} & 5456 & \text{No} \\
+    \text{GQA2-(192+64)-S2} & 843M & 2.733 & 512 & 16 & \color{red}{4096} & \text{No} \\
+    \text{GQA2-(192+64)-S2} & 842M & 2.708 & 512 & 16 & 5456 & \color{red}{\text{Yes}} \\
+    \hline
+    \end{array}\]
+
+    <p>The results fall into three main points:</p>
+    <blockquote>
+        <p>1. Doubling heads vs. doubling head_dims results in a loss difference consistently around 0.003;</p>
+        <p>2. Shrinking MLP is consistently better than halving head_dims by a loss of about 0.004;</p>
+        <p>3. Q&O LoRA has the smallest performance loss; it can achieve doubling of head_dims without increasing parameter count, and the loss decreases significantly.</p>
+    </blockquote>
+
+    <p>Conclusion: If viewed from the perspective of increasing parameter count, increasing head_dims might be the direction with the largest performance gain. Combined with Q&O LoRA, it's possible to keep parameter counts almost unchanged while still reaping significant benefits.</p>
+
+    <h2>Summary</h2>
+
+    <p>The preliminary conclusions are:</p>
+    <blockquote>
+        <p>1. Increasing head_dims provides the greatest benefit;</p>
+        <p>2. Partial RoPE also helps with Loss;</p>
+        <p>3. KV-Shared likely also plays a role.</p>
+    </blockquote>
+    <p>In this light, our previous attempts to find an MLA alternative while keeping head_dims=128 were structurally disadvantaged from the start; no wonder we couldn't match MLA. To catch up with MLA, head_dims should probably start at 192, supplemented by Partial RoPE. As for KV-Shared, it likely helps, but probably requires larger-scale verification.</p>
+
+    <h2>Significance</h2>
+
+    <p>The significance here depends on how strong our determination is to replace MLA.</p>
+
+    <p>Suppose GQA2-(192+64)-S2 can replace MLA, but MLA can also be increased to 256. Currently, GQA2-(192+64)-S2 does not match MLA-256. Then, the only two benefits of replacing MLA are:</p>
+    <blockquote>
+        <p>1. A simpler structure, making it convenient to add QK-Norm;</p>
+        <p>2. In the decoding stage, the head_dims changes from 512+64 to 256, and with num_groups changing to 2, it allows for Tensor Parallelism (TP).</p>
+    </blockquote>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10907.html" style="color: #005fcc;">https://kexue.fm/archives/10907</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

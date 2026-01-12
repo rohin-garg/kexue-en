@@ -1,0 +1,288 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']},
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/10563">How does Adam's epsilon affect the Scaling Law of learning rate?</a></h1>
+    <p>By 苏剑林 | November 18, 2024</p>
+
+    <p>In the previous article <a href="translation_10542.html">"When Batch Size increases, how should the learning rate change?"</a> we discussed the scaling laws between learning rate and Batch Size from multiple perspectives. For the Adam optimizer, we used the SignSGD approximation, which is a common technique for analyzing Adam. A natural question follows: how scientifically sound is it to approximate Adam using SignSGD?</p>
+
+    <p>We know that the denominator of the Adam optimizer's update includes an $\epsilon$. Its original purpose was to prevent division-by-zero errors, so its value is usually set very close to zero, to the point where we typically choose to ignore it in theoretical analysis. However, in current LLM (Large Language Model) training, especially low-precision training, we often choose a relatively large $\epsilon$. This results in $\epsilon$ often exceeding the magnitude of the gradient squares in the middle and late stages of training, making the existence of $\epsilon$ 사실상 non-negligible.</p>
+
+    <p>Therefore, in this article, we attempt to explore how $\epsilon$ affects the Scaling Law of Adam's learning rate and Batch Size, providing a reference calculation scheme for related issues.</p>
+
+    <h2 id="SoftSign">SoftSign</h2>
+
+    <p>Since this is a follow-up to the previous article, I won't repeat the related background. To investigate the role of $\epsilon$, we switch from SignSGD to SoftSignSGD, where $\tilde{\boldsymbol{u}}_B = \text{sign}(\tilde{\boldsymbol{g}}_B)$ becomes $\tilde{\boldsymbol{u}}_B = \text{softsign}(\tilde{\boldsymbol{g}}_B)$, where</p>
+    \begin{equation}\text{sign}(x)=\frac{x}{\sqrt{x^2}}\quad\to\quad\text{softsign}(x, \epsilon)=\frac{x}{\sqrt{x^2+\epsilon^2}}\end{equation}
+    <p>This form is undoubtedly closer to Adam. But before that, we need to confirm whether $\epsilon$ is truly non-negligible to determine if there is value in further research.</p>
+
+    <p>In Keras's implementation of Adam, the default value of $\epsilon$ is $10^{-7}$, and in Torch, it is $10^{-8}$. At these values, the probability of the absolute value of the gradient being smaller than $\epsilon$ is not very high. However, in LLMs, a common value for $\epsilon$ is $10^{-5}$ (such as in <a href="https://papers.cool/arxiv/2307.09288">LLAMA2</a>). Once training enters the "right track," components where the absolute gradient is smaller than $\epsilon$ will become very common, so the impact of $\epsilon$ is significant.</p>
+
+    <p>This also has a certain relationship with the number of parameters in the LLM. For a model that can be trained stably, regardless of the parameter size, its gradient norm order of magnitude is roughly the same, which is determined by the stability of backpropagation (refer to <a href="translation_8978.html">"What exactly is the difficulty in training a 1000-layer Transformer?"</a>). Therefore, for models with more parameters, the average absolute gradient value for each parameter becomes relatively smaller, making the role of $\epsilon$ more prominent.</p>
+
+    <p>It is worth noting that the introduction of $\epsilon$ actually provides an interpolation between Adam and SGD. This is because when $x\neq 0$</p>
+    \begin{equation}\lim_{\epsilon\to \infty}\epsilon\,\text{softsign}(x, \epsilon)=\lim_{\epsilon\to \infty}\frac{x \epsilon}{\sqrt{x^2+\epsilon^2}} = x\end{equation}
+    <p>So, the larger the $\epsilon$, the more Adam behaves like SGD.</p>
+
+    <p>(<strong>Note:</strong> The concept of SoftSign in this article originates from an ongoing collaboration between the author and Liyuan Liu from MSR and Chengyu Dong. After mutual agreement, we decided to share this part of the results first. Please stay tuned for more follow-up conclusions.)</p>
+
+    <h2 id="S型近似">S-shaped Approximation</h2>
+
+    <p>After confirming the necessity of introducing $\epsilon$, we begin our analysis. During the analysis, we will repeatedly encounter S-shaped functions, so another preparatory task is to explore simple approximations for S-shaped functions.</p>
+
+    <p>S-shaped functions are hardly rare; the $\text{softsign}$ function introduced in the previous section is one, the $\text{erf}$ function used in the previous article's analysis is another, and there are also $\tanh$, $\text{sigmoid}$, etc. Next, we deal with an S-shaped function $S(x)$ that satisfies the following properties:</p>
+
+    <blockquote>
+        <p>1. Globally smooth and monotonically increasing;<br>
+        2. Odd function, with a range of $[-1, 1];$<br>
+        3. Slope at the origin is $k > 0$.</p>
+    </blockquote>
+
+    <p>For such functions, we consider two approximations. The first approximation is similar to $\text{softsign}$:</p>
+    \begin{equation}S(x)\approx \frac{x}{\sqrt{x^2 + 1/k^2}}\end{equation}
+    <p>It is probably the simplest function that retains the three properties mentioned above. The second approximation is based on the $\text{clip}$ function:</p>
+    \begin{equation}S(x)\approx \text{clip}(kx, -1, 1) \triangleq \left\{\begin{aligned}&1, &kx\geq 1 \\ &kx, &-1 < kx < 1\\ &-1, &kx \leq -1\end{aligned}\right.\end{equation}
+    <p>This is essentially a piecewise linear function. Although it sacrifices global smoothness, piecewise linearity makes integration much easier, as we will soon see.</p>
+
+    <p style="text-align: center;">Erf function and its two approximations</p>
+
+    <h2 id="均值估计">Mean Estimation</h2>
+
+    <p>Without further ado, following the method of the previous article, the starting point is still</p>
+    \begin{equation}\mathbb{E}[\mathcal{L}(\boldsymbol{\theta} - \eta\tilde{\boldsymbol{u}}_B)] \approx \mathcal{L}(\boldsymbol{\theta}) - \eta\mathbb{E}[\tilde{\boldsymbol{u}}_B]^{\top}\boldsymbol{g} + \frac{1}{2}\eta^2 \text{Tr}(\mathbb{E}[\tilde{\boldsymbol{u}}_B\tilde{\boldsymbol{u}}_B^{\top}]\boldsymbol{H})\end{equation}
+    <p>What we need to do is estimate $\mathbb{E}[\tilde{\boldsymbol{u}}_B]$ and $\mathbb{E}[\tilde{\boldsymbol{u}}_B\tilde{\boldsymbol{u}}_B^{\top}]$.</p>
+
+    <p>In this section, we calculate $\mathbb{E}[\tilde{\boldsymbol{u}}_B]$. To do this, we use the $\text{clip}$ function to approximate the $\text{softsign}$ function:</p>
+    \begin{equation}\text{softsign}(x, \epsilon)\approx \text{clip}(x/\epsilon, -1, 1) = \left\{\begin{aligned}&1, & x/\epsilon \geq 1 \\ & x / \epsilon, & -1 < x/\epsilon < 1 \\ &-1, & x/\epsilon \leq -1 \\ \end{aligned}\right.\end{equation}
+    <p>Then we have</p>
+    \begin{equation}\begin{aligned}
+    \mathbb{E}[\tilde{u}_B] =&\, \mathbb{E}[\text{softsign}(g + \sigma z/\sqrt{B}, \epsilon)] \approx \mathbb{E}[\text{clip}(g/\epsilon + \sigma z/\epsilon\sqrt{B},-1, 1)] \\[5pt]
+    =&\, \frac{1}{\sqrt{2\pi}}\int_{-\infty}^{\infty} \text{clip}(g/\epsilon + \sigma z/\epsilon\sqrt{B},-1, 1) e^{-z^2/2}dz \\[5pt]
+    =&\, \frac{1}{\sqrt{2\pi}}\int_{-\infty}^{-(g+\epsilon)\sqrt{B}/\sigma} (-1)\times e^{-z^2/2}dz + \frac{1}{\sqrt{2\pi}}\int_{-(g-\epsilon)\sqrt{B}/\sigma}^{\infty} 1\times e^{-z^2/2}dz \\[5pt]
+    &\, \qquad\qquad + \frac{1}{\sqrt{2\pi}}\int_{-(g+\epsilon)\sqrt{B}/\sigma}^{-(g-\epsilon)\sqrt{B}/\sigma} (g/epsilon + \sigma z/\epsilon\sqrt{B})\times e^{-z^2/2}dz
+    \end{aligned}\end{equation}
+    <p>The integral form is complex, but calculating it with Mathematica is not difficult. The result can be expressed using the $\text{erf}$ function:</p>
+    \begin{equation}\frac{1}{2}\left[\text{erf}\left(\frac{a+b}{\sqrt{2}}\right)+\text{erf}\left(\frac{a-b}{\sqrt{2}}\right)\right]+\frac{a}{2b}\left[\text{erf}\left(\frac{a+b}{\sqrt{2}}\right)-\text{erf}\left(\frac{a-b}{\sqrt{2}}\right)\right]+\frac{e^{-(a+b)^2/2} - e^{-(a-b)^2/2}}{b\sqrt{2\pi}}\end{equation}
+    <p>where $a = g\sqrt{B}/\sigma, b=\epsilon \sqrt{B}/\sigma$. This function looks complicated, but it happens to be an S-shaped function of $a$, with a range of $(-1, 1)$ and a slope at $a=0$ of $\text{erf}(b/\sqrt{2})/b$. Thus, using the first approximation form:</p>
+    \begin{equation}\mathbb{E}[\tilde{u}_B]\approx\frac{a}{\sqrt{a^2 + b^2 / \text{erf}(b/\sqrt{2})^2}}\approx \frac{a}{\sqrt{a^2 + b^2 + \pi / 2}}=\frac{g/\sigma}{\sqrt{(g^2+\epsilon^2)/\sigma^2 + \pi / 2B}}\label{eq:E-u-approx}\end{equation}
+    <p>The second approximation sign uses $\text{erf}(x)\approx x / \sqrt{x^2 + \pi / 4}$ to handle the $\text{erf}(b/\sqrt{2})$ in the denominator. One could say we are quite lucky—the final form is not too complex. Next, we have:</p>
+    \begin{equation}\mathbb{E}[\tilde{\boldsymbol{u}}_B]_i \approx \frac{g_i/\sigma_i}{\sqrt{(g_i^2+\epsilon^2)/\sigma_i^2 + \pi / 2B}} = \frac{\text{softsign}(g_i, \epsilon)}{\sqrt{1 + \pi \sigma_i^2 /(g_i^2+\epsilon^2)/2B}}\approx \frac{\text{softsign}(g_i, \epsilon)}{\sqrt{1 + \pi \kappa^2/2B}} = u_i \beta\end{equation}
+    <p>Just like in the previous article, the last approximation uses a mean-field approximation, where $\kappa^2$ is some average of all $\sigma_i^2 /(g_i^2+\epsilon^2)$, while $u_i = \text{softsign}(g_i, \epsilon)$ and $\beta = (1 + \pi\kappa^2 / 2B)^{-1/2}$.</p>
+
+    <h2 id="方差估计">Variance Estimation</h2>
+
+    <p>The mean (first moment) is resolved; now it is the second moment's turn:</p>
+    \begin{equation}\begin{aligned}
+    \mathbb{E}[\tilde{u}_B^2] =&\, \mathbb{E}[\text{softsign}(g + \sigma z/\sqrt{B}, \epsilon)^2] \approx \mathbb{E}[\text{clip}(g/\epsilon + \sigma z/\epsilon\sqrt{B},-1, 1)^2] \\[5pt]
+    =&\, \frac{1}{\sqrt{2\pi}}\int_{-\infty}^{\infty} \text{clip}(g/\epsilon + \sigma z/\epsilon\sqrt{B},-1, 1)^2 e^{-z^2/2}dz \\[5pt]
+    =&\, \frac{1}{\sqrt{2\pi}}\int_{-\infty}^{-(g+\epsilon)\sqrt{B}/\sigma} (-1)^2\times e^{-z^2/2}dz + \frac{1}{\sqrt{2\pi}}\int_{-(g-\epsilon)\sqrt{B}/\sigma}^{\infty} 1^2\times e^{-z^2/2}dz \\[5pt]
+    &\, \qquad\qquad + \frac{1}{\sqrt{2\pi}}\int_{-(g+\epsilon)\sqrt{B}/\sigma}^{-(g-\epsilon)\sqrt{B}/\sigma} (g/\epsilon + \sigma z/\epsilon\sqrt{B})^2\times e^{-z^2/2}dz
+    \end{aligned}\end{equation}
+    <p>The result can also be expressed with the $\text{erf}$ function but is even more lengthy, so I won't write it out here. As I said, for Mathematica, this is no trouble. When viewed as a function of $a$, the result is an inverted bell-shaped curve, symmetric about the $y$-axis, with an upper bound of $1$ and a minimum value occurring within $(0, 1)$. Referring to the approximate formula for $\mathbb{E}[\tilde{u}_B]$ in $\eqref{eq:E-u-approx}$, we choose the following approximation:</p>
+    \begin{equation}\mathbb{E}[\tilde{u}_B^2] \approx 1 - \frac{b^2}{a^2 + b^2 + \pi / 2} = 1 - \frac{\epsilon^2/(g^2+\epsilon^2)}{1 + \pi\sigma^2/(g^2+\epsilon^2) / 2B}\end{equation}
+    <p>To be honest, the accuracy of this approximation isn't very high; it's mainly for computational convenience, but it retains key properties: inverted bell shape, $y$-axis symmetry, upper bound of 1, result of 1 when $b=0$, and result of 0 when $b \to \infty$. We continue applying the mean-field approximation:</p>
+    \begin{equation}\mathbb{E}[\tilde{\boldsymbol{u}}_B\tilde{\boldsymbol{u}}_B^{\top}]_{i,i} \approx 1 - \frac{\epsilon^2/(g_i^2+\epsilon^2)}{1 + \pi\sigma_i^2/(g_i^2+\epsilon^2) / 2B}\approx 1 - \frac{\epsilon^2/(g_i^2+\epsilon^2)}{1 + \pi\kappa^2 / 2B} = u_i^2 \beta^2 + (1 - \beta^2)\end{equation}
+    <p>So $\mathbb{E}[\tilde{\boldsymbol{u}}_B\tilde{\boldsymbol{u}}_B^{\top}]_{i,j}\approx u_i u_j \beta^2 + \delta_{i,j}(1-\beta^2)$. The term $\delta_{i,j}(1-\beta^2)$ represents the covariance matrix of $\tilde{\boldsymbol{u}}$, which is $(1-\beta^2)\boldsymbol{I}$, a diagonal matrix. This is expected because one of our assumptions is the independence between components of $\tilde{\boldsymbol{u}}$, so the covariance matrix must be diagonal.</p>
+
+    <h2 id="结果初探">Initial Exploration of Results</h2>
+
+    <p>From this we obtain:</p>
+    \begin{equation}\eta^* \approx \frac{\mathbb{E}[\tilde{\boldsymbol{u}}_B]^{\top}\boldsymbol{g}}{\text{Tr}(\mathbb{E}[\tilde{\boldsymbol{u}}_B\tilde{\boldsymbol{u}}_B^{\top}]\boldsymbol{H})} \approx \frac{\beta\sum_i u_i g_i}{\beta^2\sum_{i,j} u_i u_j H_{i,j} + (1-\beta^2)\sum_i H_{i,i} }\end{equation}
+    <p>Note that except for $\beta$, the other symbols do not depend on $B$, so the above formula already provides the dependency relationship between $\eta^*$ and $B$. Note that to ensure the existence of a minimum, we assume the positive definiteness of the $\boldsymbol{H}$ matrix, under which assumption $\sum_{i,j} u_i u_j H_{i,j} > 0$ and $\sum_i H_{i,i} > 0$ must hold.</p>
+
+    <p>In the previous article, we said Adam's most important characteristic is the possible occurrence of the "Surge phenomenon," where $\eta^*$ is no longer a globally monotonically increasing function of $B$. Next, we will prove that the introduction of $\epsilon > 0$ reduces the probability of the Surge phenomenon occurring, and it disappears completely when $\epsilon \to \infty$. The proof is not difficult; obviously, a necessary condition for the Surge phenomenon is:</p>
+    \begin{equation}\sum_{i,j} u_i u_j H_{i,j} - \sum_i H_{i,i} > 0\end{equation}
+    <p>If not, $\eta^*$ is monotonically increasing with respect to $\beta$. Since $\beta$ is monotonically increasing with respect to $B$, the entire $\eta^*$ is monotonically increasing with $B$, and no Surge phenomenon exists. Don't forget that $u_i = \text{softsign}(g_i, \epsilon)$ is a monotonically decreasing function of $\epsilon$ ($|u_i|$ decreases as $\epsilon$ increases). Therefore, as $\epsilon$ increases, $\sum_{i,j} u_i u_j H_{i,j}$ will be smaller, making the above inequality less likely to hold. Furthermore, as $\epsilon \to \infty$, $u_i$ approaches zero, the inequality cannot possibly hold, and thus the Surge phenomenon disappears.</p>
+
+    <p>Further, we can prove that as $\epsilon \to \infty$, the result is consistent with SGD. We only need to notice that</p>
+    \begin{equation}\frac{\eta^*}{\epsilon} \approx \frac{\beta\sum_i (\epsilon u_i) g_i}{\beta^2\sum_{i,j} (\epsilon u_i)(\epsilon u_j) H_{i,j} + \epsilon^2(1-\beta^2)\sum_i H_{i,i} }\end{equation}
+    <p>We have the limits:</p>
+    \begin{equation}\lim_{\epsilon\to\infty} \beta = 1,\quad\lim_{\epsilon\to\infty} \epsilon u_i = g_i, \quad \lim_{\epsilon\to\infty} \epsilon^2(1-\beta^2) = \pi \sigma^2 / 2B\end{equation}
+    <p>Here $\sigma^2$ is some average of all $\sigma_i^2$. Thus we get that when $\epsilon$ is large enough, we have the approximation:</p>
+    \begin{equation}\frac{\eta^*}{\epsilon} \approx \frac{\sum_i g_i^2}{\sum_{i,j} g_i g_j H_{i,j} + \left(\pi \sigma^2\sum_i H_{i,i}\right)/2B }\end{equation}
+    <p>The right side is exactly the result for SGD assuming the gradient covariance matrix is $(\pi\sigma^2/2B)\boldsymbol{I}$.</p>
+
+    <h2 id="文章小结">Article Summary</h2>
+
+    <p>This article continues the method of the previous article, attempting to analyze the impact of Adam's $\epsilon$ on the Scaling Law between learning rate and Batch Size. The result is a form that lies between SGD and SignSGD. The larger the $\epsilon$, the closer the result is to SGD, and the lower the probability of the "Surge phenomenon" occurring. Overall, the calculation results hold no particular surprises, but the process can serve as a reference for analyzing the role of $\epsilon$.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10563.html" style="color: #005fcc;">https://kexue.fm/archives/10563</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

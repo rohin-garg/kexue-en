@@ -1,0 +1,416 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    processEscapes: true,
+    packages: {'[+]': ['base', 'ams', 'amsmath', 'amssymb', 'amsbsy', 'amsfonts']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const script of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!script.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(script.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          script.parentNode.replaceChild(text, script);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/8046">SPACES: "Extractive-Abstractive" Long-Text Summarization (Summary of "CAIL")</a></h1>
+
+<p>By 苏剑林 | Jan 01, 2021</p>
+
+<p>The "CAIL" (China AI+Law Challenge) has become one of the most well-known NLP competitions in recent years. This year marks the third edition, featuring four tracks, among which the "Judicial Summarization" track caught our interest. After learning more, we found it focuses on long-text summarization generation for judicial judgment documents in the legal field. This is likely the first public long-text generation task and dataset in China. Over the past year or so, we have continuously invested in and explored text generation, so we decided to choose this track as a "touchstone" to verify our research results. Fortunately, we ultimately won first place in this track with a slim margin. Here, we provide a summary and sharing of our competition model.</p>
+
+<p align="center">
+  <img src="https://kexue.fm/usr/uploads/2021/01/2402179830.png" alt="Competition Ranking Screenshot" />
+  <br />
+  <em>Screenshot of the competition ranking</em>
+</p>
+
+<p>In this competition, we stepped away from pure "alchemy" (trial-and-error hyperparameter tuning) and improved model performance through versatile new methods such as a novel Copy mechanism and Sparse Softmax. Overall, our model is relatively concise, effective, and capable of end-to-end operation. I believe our results have certain reference value for both engineering and research.</p>
+
+<h3>Task Analysis</h3>
+
+<p>Observing and analyzing the task data is the first and a very important step in NLP. It relates to our subsequent model selection and the direction of improvements.</p>
+
+<h4>Statistics</h4>
+
+<p>In this competition, the organizers provided a total of 9,484 labeled samples in the form of pairs like "(Original Text, Summary)". The original training data also included some auxiliary annotation information, but for the sake of model universality, we did not use these auxiliary details. Therefore, in principle, our model is applicable to any supervised summarization task where the sample format is "(Original Text, Summary)".</p>
+
+<p>Below are some statistics of the training data:</p>
+<ol>
+  <li>Total items: 9,484;</li>
+  <li>Input: Average characters 2,568, standard deviation 1,122, max 13,064, min 866;</li>
+  <li>Output: Average characters 283, standard deviation 36, max 474, min 66;</li>
+  <li>Metric: Word-based weighted ROUGE.</li>
+</ol>
+
+<p>Thus, simply put, this is essentially a text generation task of "inputting 3,000 words and outputting 300 words." The difficulty lies in the fact that the average length of over 2,000 characters far exceeds the text length we usually process. Of the 9,484 total samples, the first stage data currently downloadable online consists of 4,047 items. In fact, one can achieve decent results directly with this amount. The model's dependence on data volume is not particularly severe, so readers need not worry too much about the dataset size.</p>
+
+<h4>Sample Preview</h4>
+
+<p align="center">
+  <img src="https://kexue.fm/usr/uploads/2021/01/2807353986.png" alt="CAIL 2020 Judicial Summarization Sample" />
+  <br />
+  <em>Demonstration of a sample from the CAIL 2020 Judicial Summarization track</em>
+</p>
+
+<p>The image above demonstrates a specific sample from the training set, where the top is the input (original judgment document) and the bottom is the output (manually labeled summary). The green parts highlight the "Longest Common Subsequence" (LCS) between the two. As seen, the output overlaps significantly with the input.</p>
+
+<h3>Modeling Approach</h3>
+
+<p>Considering the data characteristics mentioned above, it is natural to think of adopting a combination of "Extractive + Abstractive" methods for summarization, coupled with new techniques to ensure summary faithfulness and enhance final results. We named the final model <strong>SPACES</strong>:</p>
+
+<ul>
+  <li><strong>S</strong>: Sparse Softmax (a newly designed replacement for Softmax);</li>
+  <li><strong>P</strong>: Pretrained Language Model;</li>
+  <li><strong>A</strong>: Abstractive (generative);</li>
+  <li><strong>C</strong>: Copy Mechanism (a newly designed Copy mechanism);</li>
+  <li><strong>E</strong>: Extractive;</li>
+  <li><strong>S</strong>: Special Words (adding specialized words to the pretrained model).</li>
+</ul>
+
+<p>Clearly, this was "painstakingly" pieced together by the author (facepalm) to correspond to one of the domains of this blog, "<a href="https://spaces.ac.cn">spaces.ac.cn</a>". However, the above abbreviations truly list the primary technical points of our model. Below, we will introduce in detail what SPACES consists of.</p>
+
+<h3>Extractive Model</h3>
+
+<p>In this section, we will briefly introduce the extractive model part. The idea is to first convert the original abstractive corpus into a sequence labeling corpus using rules, and then model it using the DGCNN model, which I frequently use.</p>
+
+<h4>Corpus Conversion</h4>
+
+<p>First, we must remember that the extractive model is a process, not the result. We still need to feed the extraction results into the Seq2Seq model for optimization. Therefore, the principle for the extractive model is "completeness"—that is, trying to cover as much information as possible needed for the final summary. To this end, we converted the original training corpus into an extractive corpus according to the following rules:</p>
+<ol>
+  <li>Construct a custom sentence splitting function to make the sentence granularity finer;</li>
+  <li>For each sentence in the manual summary, match the most similar sentence in the original text (allowing repeated matches);</li>
+  <li>Use all matched sentences from the original text as the extractive sentence labels.</li>
+</ol>
+
+<p>Note that we removed a fourth point in the final model, which was originally the default choice in our first version. In fact, adding the fourth point helps improve the metrics of the extractive model, but after integrating the generative model, the final score actually dropped. This is easy to understand: the generative model itself has deletion and modification capabilities and performs them better than the extractive model; if the extractive model accidentally deletes a key sentence that should have been extracted, it is difficult for the generative model to recover it, leading to performance degradation. In other words, the fourth point did not meet the "completeness" principle of the extractive model—we should leave the deletion work to the generative model and not the extractive model.</p>
+
+<h4>Metric Problem</h4>
+
+<p>The conversion process mentioned above involves choosing a "similarity" metric. According to the previous introduction, this competition chose "word-based weighted ROUGE" as the evaluation metric, so we could have directly chosen this weighted ROUGE as the similarity metric. In fact, we did do this initially, but later found during debugging that this was not a good choice. We ultimately chose "character-based weighted ROUGE."</p>
+
+<p>What is the difference between the two? We can understand the official's purpose in using word-based metrics: to ensure exact matches for proper nouns. For example, if the original text is "Specialized Law for the Protection of Minors of the People's Republic of China" and you predict "Specialized Law for the Protection of Cultural Relics of the People's Republic of China," use of character-based metrics would see a long common subsequence covering most of it, thus scoring high. But with word-based metrics, the two are different tokens, resulting in a zero score. Therefore, <strong>word-based metrics favor more precision in matching proper nouns</strong>.</p>
+
+<p>However, word-based metrics have a serious side effect: they <strong>reduce the weight of long words</strong>. For example, in "According to the relevant provisions of the 《Law for the Protection of Minors of the People's Republic of China》", the weight of the core term "Law for the Protection of Minors of the People's Republic of China" is only 1, while the remaining words like "According," "to," "the," "relevant," "provisions," "of," "《", "》" (which we consider insignificant) each have a weight of 1, occupying the majority. Consequently, the model would rather match common words than fit the core legal term. To put it bluntly, with word-based metrics, a high-scoring summary might not necessarily contain key information.</p>
+
+<p>How to reconcile the two? In fact, the best solution should still be word-based, but when calculating the metric, weight should be assigned based on the number of characters in each word. For example, matching "Law for the Protection of Minors of the People's Republic of China" should grant 20 points (assuming 20 characters) instead of 1. However, this requires implementing a custom ROUGE calculation function, which is a bit troublesome. We ultimately chose character-based weighted ROUGE for corpus conversion, which was sufficient because, in this task, we know the summary and original text describe the same case, so it is unlikely for "Protection of Minors" to be wrongly predicted as "Protection of Cultural Relics."</p>
+
+<h4>Model Structure</h4>
+
+<p>Returning to the model, we use a sentence-based sequence labeling model as the extractive model. Sentence vectors are generated using "BERT + Average Pooling" and are kept fixed. The main body of the labeling model is built using the DGCNN model. For more on the DGCNN model, please refer to <a href="translation_5424.html">"DGCNN: A CNN-based Reading Comprehension Question Answering Model"</a>, <a href="translation_5733.html">"Open Sourcing a DGCNN Reading Comprehension QA Model (Keras Version)"</a>, and <a href="translation_6671.html">"A Lightweight Information Extraction Model Based on DGCNN and Probabilistic Graphs."</a></p>
+
+<p align="center">
+  <img src="https://kexue.fm/usr/uploads/2021/01/1899175373.png" alt="SPACES Extractive Model Diagram" />
+  <br />
+  <em>Schematic diagram of the SPACES extractive model</em>
+</p>
+
+<p>One detail worth noting is that during the training of the extractive model, we used a threshold of 0.3 for EarlyStopping, but ultimately used a threshold of 0.2 to construct data for the generative model. The reasoning remains the "completeness" principle for the extractive model.</p>
+
+<h4>Output Data</h4>
+
+<p>We need to take the original text as input, output the extracted summary through the extractive model, and then use that extracted summary as the input for the generative model to output the final summary. However, there is a problem: we have seen the training data, but the data we truly predict is unseen. If we directly train an extractive model and use it to extract summaries from the training set, the scores will be biased high because the model was trained on them, whereas performance on new samples would be lower, causing inconsistency between training and prediction.</p>
+
+<p>The solution here is cross-validation. Specifically, we divide the labeled data into $n$ parts, train the extractive model on $n-1$ parts, and use it to predict the extracted summary for the remaining part. By repeating this $n$ times, we obtain the extracted summaries for all data, minimizing the inconsistency between the training and prediction stages.</p>
+
+<h3>Generative Model</h3>
+
+<p>The generative model is where we spent most of our time and represents our primary contribution. The generative model is a Seq2Seq model that takes the output of the extractive model as input and uses manually labeled summaries as output for training. We can understand this as "polishing" the extraction results.</p>
+
+<h4>Model Overview</h4>
+
+<p>If the generative model were summarized in a single diagram, it would look like this:</p>
+
+<p align="center">
+  <img src="https://kexue.fm/usr/uploads/2021/01/1183145455.png" alt="SPACES Generative Model Diagram" />
+  <br />
+  <em>Schematic diagram of the SPACES generative model</em>
+</p>
+
+<p>Next, we will introduce the various modules of the model.</p>
+
+<h4>Base Architecture</h4>
+
+<p>For the Seq2Seq model, we chose the classic UniLM (refer to <a href="translation_6933.html">"From Language Models to Seq2Seq: Transformer is All About Masking"</a>). Considering that the total length of "input + output" basically exceeds 512, we chose Huawei's NEZHA model as the base architecture because NEZHA uses relative position encoding and is not limited by length.</p>
+
+<p>Of course, that was the choice at the time. Currently, we have at least the following two options:</p>
+<ol>
+  <li>Refer to the method of directly extending absolute position encoding in <a href="translation_7947.html">"Hierarchical Decomposition of Position Encoding: Enabling BERT to Handle Ultra-Long Text"</a>, allowing BERT to process longer sequences (theoretically up to 260,000) for use in "BERT + UniLM";</li>
+  <li>Use the multilingual version of T5 (mT5) introduced in <a href="translation_7867.html">"The T5 Model that Swept the Leaderboards Can Now Be Played with in Chinese"</a>. It also uses relative position encoding with no length limit, though one should note the T5 tokenizer converts full-width commas to half-width commas, which can lower evaluation scores.</li>
+</ol>
+
+<p>Furthermore, regarding the use of pretrained models, we pioneered the addition of certain words into the NEZHA model, moving away from the common choice of character-level units in Chinese pretrained models. This improved both model performance and speed. These results were published in a previous article <a href="translation_7758.html">"Speed Up Without Performance Loss: Word-Level Chinese WoBERT."</a></p>
+
+<h4>BIO Copy</h4>
+
+<p>Copy mechanisms are not new in summarization models; they could even be considered standard. Conventional Copy mechanisms usually follow the approach of <a href="https://arxiv.org/abs/1506.03134">"Pointer Networks,"</a> but that approach has two shortcomings: 1. It can only copy one token at a time and cannot guarantee the copying of a continuous segment (n-gram); 2. Implementation is complex and not "plug-and-play" enough. For this reason, we conceived a new type of Copy mechanism, temporarily called <strong>BIO Copy</strong>, which is very simple to implement and has the ability to copy continuous segments.</p>
+
+<p>The previous diagram already showed this Copy mechanism. It simply adds a sequence prediction task to the Decoder part. Originally, the Decoder models the distribution of each Token $p(y_t|y_{< t}, x)$; now it predicts an additional label distribution, becoming:</p>
+
+<p>
+\begin{equation}p(y_t, z_t|y_{&lt; t}, x) = p(y_t|y_{&lt; t}, x) p(z_t|y_{&lt; t}, x)\end{equation}
+</p>
+
+<p>Where $z_t\in\{\text{B},\text{I},\text{O}\}$, with the following meanings:</p>
+<ul>
+  <li><strong>B</strong>: Indicates the token is copied;</li>
+  <li><strong>I</strong>: Indicates the token is copied and forms a continuous fragment with the previous token;</li>
+  <li><strong>O</strong>: Indicates the token is not copied.</li>
+</ul>
+
+<p>So where do the labels for $z$ come from during training? We use a very simple method: calculate the "Longest Common Subsequence" (LCS) between the summary and the original text. Any token appearing in the LCS is considered "Copied," and labels are set based on the specific meaning of BIO. For example, using the sentence fragment "I really very much love my motherland" and "I love my motherland," the LCS is "I love my motherland." The first "I" is a single character, so its label is B; "love my motherland" is a continuous fragment, so its labels are "B I I", and others are O. The total labels would be "B O B I I."</p>
+
+<p>During the training phase, this is just an additional sequence prediction task with known labels, which is easy to implement and adds negligible computational cost. During the prediction phase, for each step, we first predict the label $z_t$. If $z_t$ is O, nothing changes. If $z_t$ is B, we mask all tokens in the token distribution that are not in the original text. If $z_t$ is I, we mask all tokens that cannot form a corresponding n-gram found in the original text. That is to say, decoding still happens step-by-step, not generating a whole fragment at once, but the mask ensures the characters in the BI positions correspond to a fragment from the original text.</p>
+
+<p>It should be noted that the introduction of the Copy mechanism might not significantly increase the score (it seemed to improve it by about 0.5% in my memory), but it ensures the faithfulness of the summary to the original text and avoids professional errors, which is quite necessary in practical use.</p>
+
+<h4>Sparse Softmax</h4>
+
+<p>In this competition, we also discovered a Softmax and Cross-Entropy alternative, which we call <strong>Sparse Softmax</strong>. We found that Sparse Softmax can replace Softmax in a wide range of classification problems (including regular classification, text generation, etc.) and provide a certain performance boost.</p>
+
+<p>The idea of Sparse Softmax originates from papers like <a href="https://arxiv.org/abs/1602.02068">"From Softmax to Sparsemax: A Sparse Model of Attention and Multi-Label Classification"</a> and <a href="https://arxiv.org/abs/1704.06229">"Sparse Sequence-to-Sequence Models"</a>, where the authors proposed sparsifying Softmax to enhance interpretability and even performance. However, I found their designs too cumbersome, so I devised a simpler version:</p>
+
+<table border="1" cellpadding="5" cellspacing="0" align="center">
+  <tr>
+    <th></th>
+    <th>Original</th>
+    <th>Sparse Version</th>
+  </tr>
+  <tr>
+    <td>Softmax</td>
+    <td align="center">$p_i = \frac{e^{s_i}}{\sum\limits_{j=1}^{n} e^{s_j}}$</td>
+    <td>$p_i=\left\{\begin{aligned}&\frac{e^{s_i}}{\sum\limits_{j\in\Omega_k} e^{s_j}},\,i\in\Omega_k\\ &\quad 0,\,i\not\in\Omega_k\end{aligned}\right.$</td>
+  </tr>
+  <tr>
+    <td>Cross-Entropy</td>
+    <td align="center">$\log\left(\sum\limits_{i=1}^n e^{s_i}\right) - s_t$</td>
+    <td align="center">$\log\left(\sum\limits_{i\in\Omega_k} e^{s_i}\right) - s_t$</td>
+  </tr>
+</table>
+
+<p>Where $\Omega_k$ is the set of indices of the top $k$ elements after sorting $s_1, s_2, \dots, s_n$ from largest to smallest. Simply put, the Sparse Softmax we proposed only keeps the top $k$ values when calculating probability, and the rest are set to zero. $k$ is a hyperparameter; in this competition, we chose $k=10$. When calculating cross-entropy, the original <code>logsumexp</code> operation over all categories is changed to only the top $k$ categories, where $t$ represents the target category.</p>
+
+<p>Why is it effective after sparsification? We believe this is because it avoids Softmax's over-learning issue. Suppose classification is already successful, then we have $s_{\max}=s_t$ (the target category score is the largest). We can derive an inequality for the original cross-entropy:</p>
+
+<p>
+\begin{equation}\begin{aligned} 
+\log\left(\sum\limits_{i=1}^n e^{s_i}\right)-s_{\max} &amp;= \log\left(1+\sum\limits_{i\neq t} e^{s_i-s_{\max}}\right)\\ 
+&amp;\geq \log\left(1+(n-1) e^{s_{\min}-s_{\max}}\right) 
+\end{aligned}\end{equation}
+</p>
+
+<p>Assuming the current cross-entropy value is $\varepsilon$, then solving this gives:</p>
+
+<p>
+\begin{equation}s_{\max} - s_{\min}\geq \log (n-1) - \log \left(e^{\varepsilon} - 1\right) 
+\end{equation}
+</p>
+
+<p>Take $\varepsilon=\ln 2 \approx 0.69$ as an example. At this point, $\log(e^{\varepsilon}-1)=0$, so $s_{\max} - s_{\min} \geq \log(n-1)$. That is to say, to drop the loss to 0.69, the difference between the max logit and the min logit must be greater than $\log(n-1)$. When $n$ is large, this is an unnecessarily large margin for classification, because we only want the target class's logit to be slightly larger than the non-target classes; it doesn't necessarily need to be $\log(n-1)$ larger. Therefore, regular cross-entropy easily causes over-learning leading to overfitting, while truncation prevents this issue.</p>
+
+<p>In this competition, the improvement brought by Sparse Softmax was likely around 2% (not tested rigorously)! Meanwhile, we privately conducted many additional experiments including NLP and CV tasks and found it yields a 1% improvement in most tasks, so everyone is very welcome to try it! However, we also found that Sparse Softmax is only suitable for scenarios with pre-training, as pre-trained models are already well-trained and thus need to prevent overfitting during fine-tuning. If you are training a model from scratch, Sparse Softmax will cause performance degradation because only $k$ categories are learned at each step, potentially leading to insufficient learning (underfitting).</p>
+
+<h4>Other Details</h4>
+
+<p>When training the generative model, we incorporated EMA (Exponential Moving Average), which makes the training process more stable and can even improve model results. In fact, EMA is a standard feature of my competition entries; it saves us from some effort in tuning training strategies.</p>
+
+<p>Furthermore, when discussing the BIO Copy mechanism, we said that theoretically only an additional BIO prediction at the Decoder is needed. However, during actual training, we added it to both the Encoder and the Decoder, and found that this improved the final model performance. Intuitively, it works because adding both enhances the synchronization between the Encoder and Decoder, guiding the Decoder to attend more precisely to reasonable positions in the Encoder.</p>
+
+<p>As for other things to add, I am still thinking; I will add them if they come to mind.</p>
+
+<h3>Code Release</h3>
+
+<p>The source code for the SPACES model has been published on GitHub:</p>
+<p><strong>URL: <a href="https://github.com/bojone/SPACES">https://github.com/bojone/SPACES</a></strong></p>
+
+<p>Usage instructions are also on GitHub and won't be repeated here. If you have questions, feel free to open an issue or leave a comment. Open sourcing is the driving force of technical progress; in non-commercial interest situations, I strive to open source as much as possible and encourage everyone to do the same.</p>
+
+<p>Some readers might want to see how far current automatic summarization has progressed. Here is a demonstration of an example (a sample from the validation set, no manual modification. The first line is the original text, the second is the standard summary, and the third is the model summary. The green part is the LCS between the standard and model summaries):</p>
+
+<p align="center">
+  <img src="https://kexue.fm/usr/uploads/2021/01/530391294.png" alt="Final generation effect 1" />
+  <br />
+  <em>Demonstration of final generation results (1)</em>
+</p>
+
+<p align="center">
+  <img src="https://kexue.fm/usr/uploads/2021/01/2192736413.png" alt="Final generation effect 2" />
+  <br />
+  <em>Demonstration of final generation results (2)</em>
+</p>
+
+<h3>Article Summary</h3>
+
+<p>This article summarized our experience in the CAIL judicial summarization task, proposing a long-text summarization model named SPACES. By using a "First Extract, then Generate" approach combined with our self-developed BIO Copy mechanism and Sparse Softmax, we were able to obtain reliable summary results. We welcome everyone to exchange ideas and use it.</p>
+
+<hr />
+<p><strong>Note for reposting:</strong> please include the original address of this article: <a href="translation_8046.html">https://kexue.fm/archives/8046</a></p>
+
+<p>If you have any doubts or suggestions, please continue the discussion in the comment section below.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8046.html" style="color: #005fcc;">https://kexue.fm/archives/8046</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

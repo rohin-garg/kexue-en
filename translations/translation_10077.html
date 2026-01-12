@@ -1,0 +1,246 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/10077">Diffusion Model Discourse (24): Taking Fewer Shortcuts to Arrive Faster</a></h1>
+
+<p>By 苏剑林 | April 23, 2024</p>
+
+<p>How to reduce the number of sampling steps while ensuring generation quality is a key issue in the application of diffusion models. Among early efforts, <a href="translation_9181.html">"Diffusion Model Discourse (4): DDIM = High-Perspective DDPM"</a> introduced DDIM as the first attempt at accelerated sampling. Later, works introduced in <a href="translation_9209.html">"Diffusion Model Discourse (5): General Framework - SDE Edition"</a> and <a href="translation_9228.html">"Diffusion Model Discourse (5): General Framework - ODE Edition"</a> connected diffusion models with SDEs and ODEs. Consequently, corresponding numerical integration techniques were directly applied to accelerate diffusion model sampling. Among these, the relatively simple ODE acceleration techniques are the most abundant, an example of which we introduced in <a href="translation_9881.html">"Diffusion Model Discourse (21): Accelerating ODE Sampling with the Mean Value Theorem"</a>.</p>
+
+<p>In this article, we introduce another particularly simple and effective acceleration trick—Skip Tuning, from the paper <a href="https://papers.cool/arxiv/2402.15170">"The Surprising Effectiveness of Skip-Tuning in Diffusion Sampling"</a>. To be precise, it is used in conjunction with existing acceleration techniques to further improve generation quality. This means that while maintaining the same generation quality, it can further compress the number of sampling steps, thereby achieving acceleration.</p>
+
+<h2>Model Review</h2>
+
+<p>Everything starts with the U-Net, which is the mainstream architecture for current diffusion models. The later <a href="https://papers.cool/arxiv/2209.12152">U-ViT</a> also maintains roughly the same form, simply replacing CNN-based ResBlocks with Attention-based ones.</p>
+
+<p>U-Net originated from the paper <a href="https://papers.cool/arxiv/1505.04597">"U-Net: Convolutional Networks for Biomedical Image Segmentation"</a>, originally designed for image segmentation. Its characteristic is that the input and output sizes are consistent, which perfectly fits the modeling requirements of diffusion models, so it was naturally migrated into the field. Formally, U-Net is very similar to a conventional AutoEncoder, involving gradual downsampling followed by gradual upsampling. However, it adds extra Skip Connections to solve the information bottleneck of the AutoEncoder:</p>
+
+<p align="center">
+    <a href="https://kexue.fm/usr/uploads/2024/04/1852677073.png">
+        <img src="https://kexue.fm/usr/uploads/2024/04/1852677073.png" alt="Schematic diagram from the U-Net paper" title="Click to view original image" />
+    </a>
+    <br />
+    <em>Schematic diagram from the U-Net paper</em>
+</p>
+
+<p>Different papers implementing U-Net may vary in details, but they all share the same Skip Connection structure. Broadly speaking, the output of the first layer (block) has a "shortcut" directly to the last layer, the output of the second layer has a "shortcut" to the second-to-last layer, and so on. These "shortcuts" are the Skip Connections. Without Skip Connections, due to the "barrel effect" (limiting factor), the model's information flow would be restricted by the feature map with the smallest resolution. For tasks that require complete information, such as reconstruction or denoising, this would result in blurry outcomes.</p>
+
+<p>In addition to avoiding information bottlenecks, Skip Connections also play a role in linear regularization. Obviously, if layers near the output only use Skip Connections as input, it is equivalent to the subsequent layers being added for nothing, and the model becomes more like a shallow or even linear model. Therefore, the addition of Skip Connections encourages the model to prioritize using the simplest possible predictive logic (i.e., closer to linear) and only use more complex logic when necessary—this is one of the inductive biases.</p>
+
+<h2>Just a Few Lines</h2>
+
+<p>Once you understand U-Net, Skip Tuning can be explained in just a few sentences. We know that the sampling of a diffusion model is a multi-step recursive process from $\boldsymbol{x}_T$ to $\boldsymbol{x}_0$, which constitutes a complex non-linear mapping from $\boldsymbol{x}_T$ to $\boldsymbol{x}_0$. For practical considerations, we always hope to reduce the number of sampling steps. Regardless of which specific acceleration technique is used, it inherently reduces the non-linear capability of the entire sampling mapping.</p>
+
+<p>The idea of many algorithms, such as <a href="translation_9497.html">ReFlow</a>, is to adjust the noise schedule so that the sampling process follows a path that is as "straight" as possible. This makes the sampling function itself as linear as possible, thereby reducing the quality degradation caused by acceleration techniques. Skip Tuning, conversely, thinks: <strong>Since acceleration techniques lose non-linear capability, can we compensate for it from somewhere else?</strong> The answer lies in the Skip Connections. As we just mentioned, their presence encourages the model to simplify its predictive logic. If the Skip Connection weight is higher, the model is closer to a simple linear or even identity model. Conversely, by reducing the weight of the Skip Connections, one can increase the model's non-linear capability.</p>
+
+<p>Of course, this is just one way to increase the model's non-linear capability. There is no guarantee that the non-linearity it adds is exactly the non-linearity lost by sampling acceleration. However, the experimental results of Skip Tuning show a certain equivalence between the two! So, as the name suggests, by performing a certain amount of Tuning on the weights of the Skip Connections, one can further improve the sampling quality after acceleration, or reduce the number of sampling steps while maintaining quality. The method of tuning is simple: assuming there are $k+1$ Skip Connections, we multiply the Skip Connection closest to the input layer by $\rho_{\text{top}}$, and the Skip Connection furthest from the input layer by $\rho_{\text{bottom}}$. The rest change uniformly according to depth. In most cases, we set $\rho_{\text{top}}=1$, so there is basically only one parameter, $\rho_{\text{bottom}}$, that needs to be tuned.</p>
+
+<p>The experimental results of Skip Tuning are quite impressive. Two tables are excerpted below; for more experimental results and images, you can read the original paper.</p>
+
+<p align="center">
+    <a href="https://kexue.fm/usr/uploads/2024/04/2791145414.png">
+        <img src="https://kexue.fm/usr/uploads/2024/04/2791145414.png" alt="Skip Tuning Result 1" />
+    </a>
+    <br />
+    <em>Skip Tuning Result 1</em>
+</p>
+
+<p align="center">
+    <a href="https://kexue.fm/usr/uploads/2024/04/2167809826.png">
+        <img src="https://kexue.fm/usr/uploads/2024/04/2167809826.png" alt="Skip Tuning Result 2" />
+    </a>
+    <br />
+    <em>Skip Tuning Result 2</em>
+</p>
+
+<h2>Personal Thoughts</h2>
+
+<p>This is probably the simplest article in the diffusion series—no long-winded passages, no complex formulas. Readers could certainly understand Skip Tuning by reading the original paper directly, but I still wanted to introduce it. Like the previous article <a href="translation_10055.html">"Diffusion Model Discourse (23): SNR and Large Image Generation (Part 2)"</a>, it reflects the authors' unique imagination and power of observation, something I personally feel I lack quite a bit.</p>
+
+<p>A paper relatively related to Skip Tuning is <a href="https://papers.cool/arxiv/2309.11497">"FreeU: Free Lunch in Diffusion U-Net"</a>. it analyzes the roles of different components in the U-Net within diffusion models and finds that Skip Connections are mainly responsible for adding high-frequency details, while the backbone part is mainly responsible for denoising. In this way, we seem to be able to understand Skip Tuning from another perspective: Skip Tuning mainly experiments with ODE-based diffusion models. Such models often show increased noise when reducing sampling steps. Therefore, shrinking the Skip Connections relatively increases the weight of the backbone, enhancing the denoising capability, which is a "targeted remedy." Conversely, if it is an SDE-based diffusion model, the reduction ratio of Skip Connections might need to be decreased, or one might even need to increase the Skip Connection weights, because such models often produce overly smooth results when reducing sampling steps.</p>
+
+<p>Skip Tuning adjusts Skip Connections. Does this mean models like <a href="https://papers.cool/arxiv/2212.09748">DiT</a>, which lack Skip Connections, have no chance to apply this? Probably not. Although DiT doesn't have Skip Connections, it still has residuals. The design of identity branches is inherently a linear regularization inductive bias. So, if there are no Skip Connections, tuning the residuals might also yield gains.</p>
+
+<h2>Summary</h2>
+
+<p>This article introduced a technique that can effectively improve the generation quality of diffusion models after accelerated sampling—reducing the weight of the U-Net "shortcuts" (i.e., Skip Connections). The entire methodological framework is very simple, clear, and intuitive, making it well worth learning.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10077.html" style="color: #005fcc;">https://kexue.fm/archives/10077</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

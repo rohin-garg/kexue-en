@@ -1,0 +1,412 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    macros: {
+      mclip: ["\\mathop{\\text{mclip}}"],
+      msign: ["\\mathop{\\text{msign}}"],
+      clip: ["\\mathop{\\text{clip}}"],
+      sign: ["\\mathop{\\text{sign}}"]
+    },
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/11059">Calculating Singular Value Clipping mclip via msign (Part 2)</a></h1>
+
+    <p>By 苏剑林 | June 23, 2025</p>
+
+
+<p>Previously, in <a href="translation_10996.html">"Calculating Singular Value Clipping mclip via msign (Part 1)"</a>, we discussed the numerical calculation of singular value clipping $\mclip$. The core idea came from @leloykun’s article <a href="https://leloykun.github.io/ponder/spectral-clipping/">"Numerically Stable Spectral Clipping Via Newton-Schulz Iteration"</a> (now revised and renamed). By finding an expression based on $\msign$, we avoid needing to find a separate Newton-Schulz iteration. In that article, the author proposed a nested $\msign$ scheme with lower computational costs. However, a few days ago, @leloykun pointed out on <a href="https://x.com/leloykun/status/1803738096181755910">Twitter</a> that the author's scheme suffers from high numerical errors in actual calculations. This article specifically analyzes this issue and provides a more efficient, lower-error new scheme.</p>
+
+<h2>Basic Concepts</h2>
+
+<p>As per convention, let's first organize the basic concepts. First is the $\clip$ operator for a scalar $x$, which we define generally as:</p>
+
+\begin{equation}\clip\nolimits_{[\alpha,\beta]}(x) = \max(\min(x, \beta), \alpha) = \left\{\begin{aligned}\beta, & \quad x \geq \beta \\ 
+x, & \quad x\in(\alpha, \beta)\\ 
+\alpha, & \quad x\leq \alpha 
+\end{aligned}\right.\end{equation}
+
+<p>When the interval is not specified, the default interval is $[-1,1]$, i.e., $\clip(x) = \clip_{[-1,1]}(x)$. Let the SVD of the matrix $\boldsymbol{M}\in\mathbb{R}^{n\times m}$ be $\boldsymbol{M}=\boldsymbol{U}\boldsymbol{\Sigma}\boldsymbol{V}^{\top}$, where $\boldsymbol{U}\in\mathbb{R}^{n\times n}$ and $\boldsymbol{V}\in\mathbb{R}^{m\times m}$ are orthogonal matrices, and $\boldsymbol{\Sigma}\in\mathbb{R}^{n\times m}$ is the diagonal matrix of singular values. Then we define:</p>
+
+\begin{equation}\mclip\nolimits_{[\alpha,\beta]}(\boldsymbol{M}) = \boldsymbol{U}\clip\nolimits_{[\alpha,\beta]}(\boldsymbol{\Sigma})\boldsymbol{V}^{\top}\end{equation}
+
+<p>Applying $\clip$ to a diagonal matrix means applying $\clip$ to its diagonal elements individually. Simply put, $\mclip_{[\alpha,\beta]}$ clips the singular values of $\boldsymbol{M}$ to within $[\alpha,\beta]$. Since singular values are non-negative, when $\alpha < 0$, we have $\mclip_{[\alpha,\beta]}(\boldsymbol{M})=\mclip_{[0,\beta]}(\boldsymbol{M})$. However, as we will see later, due to actual calculation errors, considering negative $\alpha$ can have some magical error-canceling effects.</p>
+
+<h2>Theoretical General Solution</h2>
+
+<p>The goal of this section is to represent $\mclip$ in terms of $\msign$. The starting point is the identity:</p>
+
+\begin{equation}\mclip\nolimits_{[\alpha,\beta]} (x) = \frac{\alpha + \beta + (\alpha - x)\sign(\alpha - x) - (\beta - x)\sign(\beta - x)}{2}\end{equation}
+
+<p>The key to finding this identity is to represent $\clip$ as a linear combination of absolute values and the variable itself, and then transition to the $\sign$ operator via $|x|=x\sign(x)$. We won't expand on that here. For simplicity, let's first assume $\boldsymbol{M}$ is a full-rank square matrix. Based on this identity, we have:</p>
+
+\begin{equation}2\mclip\nolimits_{[\alpha,\beta]}(\boldsymbol{M}) = \boldsymbol{U}\Big((\alpha + \beta)\boldsymbol{I} + (\alpha \boldsymbol{I} - \boldsymbol{\Sigma})\sign(\alpha \boldsymbol{I} - \boldsymbol{\Sigma}) - (\beta \boldsymbol{I} - \boldsymbol{\Sigma})\sign(\beta \boldsymbol{I} - \boldsymbol{\Sigma})\Big)\boldsymbol{V}^{\top}\end{equation}
+
+<p>Expanding the right-hand side, it contains several types of terms (where $\gamma\in\{\alpha,\beta\}$):</p>
+
+<table border="1" style="margin: auto; border-collapse: collapse; text-align: center;"> 
+<thead>
+<tr>
+<th>Original</th> 
+<th>Simplified</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>$\boldsymbol{U}\boldsymbol{V}^{\top}$</td> 
+<td>$\msign(\boldsymbol{M})$</td> 
+</tr> 
+<tr> 
+<td>$\boldsymbol{U}\sign(\gamma \boldsymbol{I} - \boldsymbol{\Sigma})\boldsymbol{V}^{\top}$</td> 
+<td> 
+$\begin{aligned}&\, \msign(\gamma \boldsymbol{U}\boldsymbol{V}^{\top} - \boldsymbol{U}\boldsymbol{\Sigma}\boldsymbol{V}^{\top}) \\ 
+=&\, \msign(\gamma \msign(\boldsymbol{M}) - \boldsymbol{M}) 
+\end{aligned}$ 
+</td> 
+</tr> 
+<tr> 
+<td>$\boldsymbol{U}\boldsymbol{\Sigma}\sign(\gamma \boldsymbol{I} - \boldsymbol{\Sigma})\boldsymbol{V}^{\top}$</td> 
+<td>$\begin{aligned}&\, \boldsymbol{U}\boldsymbol{\Sigma}\boldsymbol{V}^{\top}\boldsymbol{V}\boldsymbol{U}^{\top}\boldsymbol{U}\sign(\gamma \boldsymbol{I} - \boldsymbol{\Sigma})\boldsymbol{V}^{\top} \\ 
+=&\, \boldsymbol{M}\msign(\boldsymbol{M})^{\top}\msign(\gamma \msign(\boldsymbol{M}) - \boldsymbol{M}) 
+\end{aligned}$</td> 
+</tr> 
+</tbody>
+</table>
+
+<p>Substituting and rearranging, we get:</p>
+
+\begin{equation}\mclip\nolimits_{[\alpha,\beta]}(\boldsymbol{M}) = \frac{1}{2}\left\{\begin{aligned}&\,(\alpha + \beta)\msign(\boldsymbol{M}) \\ 
++ &\, (\alpha \boldsymbol{I} - \boldsymbol{M}\msign(\boldsymbol{M})^{\top})\msign(\alpha \msign(\boldsymbol{M}) - \boldsymbol{M})\\ 
+- &\, (\beta \boldsymbol{I} - \boldsymbol{M}\msign(\boldsymbol{M})^{\top})\msign(\beta \msign(\boldsymbol{M}) - \boldsymbol{M}) 
+\end{aligned}\right\}\label{eq:general}\end{equation}
+
+<p>For non-square or non-full-rank matrices, one can verify this by substituting $\msign(\boldsymbol{M})=\boldsymbol{U}_{[:,:r]}\boldsymbol{V}_{[:,:r]}^{\top}$. Thus, the above equation is the theoretical general solution for $\mclip$.</p>
+
+<h2>Initial Form</h2>
+
+<p>Equation \eqref{eq:general} appears to require calculating $\msign$ at least three times, and the input for the last two $\msign$ calls involves the result of the first $\msign$. Thus, it is formally a nested $\msign$. When we take $\alpha=0, \beta=1$, the number of $\msign$ operations can be reduced to two:</p>
+
+\begin{equation}\mclip(\boldsymbol{M}) = \frac{1}{2}\Big[\boldsymbol{M} + \msign(\boldsymbol{M}) + (\boldsymbol{I} - \boldsymbol{M}\msign(\boldsymbol{M})^{\top}) \msign(\boldsymbol{M} - \msign(\boldsymbol{M}))\Big]\label{eq:mclip-1}\end{equation}
+
+<p>This is the result the author gave in the previous article <a href="translation_10996.html">"Calculating Singular Value Clipping mclip via msign (Part 1)"</a>, requiring only two $\msign$ operations. However, actual tests show that when the singular values of $\boldsymbol{M}$ are large and the precision of the $\msign$ calculation is low, this equation generates significant errors—far greater than the scheme provided by @leloykun. But @leloykun’s scheme requires calculating $\msign$ on a matrix approximately four times larger, $\begin{bmatrix}\boldsymbol{I} & \boldsymbol{M} \\ \boldsymbol{M}^{\top} & \boldsymbol{I}\end{bmatrix}$, which is costly. Therefore, we want to see if the scheme here can be improved.</p>
+
+<h2>Removing Nesting</h2>
+
+<p>Intuitively, the source of error is the cumulative error caused by the nested $\msign$. Fortunately, using a simple trick, the nesting can indeed be removed! First, it can be proven that:</p>
+
+\begin{equation}\begin{aligned} 
+&\,(\boldsymbol{I} - \boldsymbol{M}\msign(\boldsymbol{M})^{\top}) \msign(\boldsymbol{M} - \msign(\boldsymbol{M})) \\[6pt] 
+=&\, (\msign(\boldsymbol{M}) - \boldsymbol{M}) \msign(\msign(\boldsymbol{M})^{\top}\boldsymbol{M} - \boldsymbol{I}) 
+\end{aligned}\end{equation}
+
+<p>Then we have:</p>
+
+\begin{equation}\msign(\boldsymbol{M})^{\top}\boldsymbol{M} - \boldsymbol{I} = \boldsymbol{V}\boldsymbol{\Sigma}\boldsymbol{V}^{\top} - \boldsymbol{I} = \boldsymbol{V}(\boldsymbol{\Sigma}-\boldsymbol{I})\boldsymbol{V}^{\top}\end{equation}
+
+<p>Based on the above, we assert:</p>
+
+\begin{equation}\msign(\msign(\boldsymbol{M})^{\top}\boldsymbol{M} - \boldsymbol{I}) = \msign(\boldsymbol{M}^{\top}\boldsymbol{M} - \boldsymbol{I}) = \msign(\boldsymbol{V}(\boldsymbol{\Sigma}^2-\boldsymbol{I})\boldsymbol{V}^{\top})\end{equation}
+
+<p>This utilizes a very simple property: $\forall x \geq 0, \sign(x-1) = \sign(x^2-1)$. Using this result, we can obtain:</p>
+
+\begin{equation}\mclip(\boldsymbol{M}) = \frac{1}{2}\Big[\boldsymbol{M} + \msign(\boldsymbol{M}) + (\msign(\boldsymbol{M}) - \boldsymbol{M}) \msign(\boldsymbol{M}^{\top}\boldsymbol{M} - \boldsymbol{I})\Big]\label{eq:mclip-2}\end{equation}
+
+<p>It still requires two $\msign$ operations, but they are no longer nested, meaning that theoretically, the cumulative error from nesting is gone. Tests show that the error of Equation \eqref{eq:mclip-2} is indeed about half that of Equation \eqref{eq:mclip-1}, but it is still inferior to @leloykun's scheme in extreme cases. This indicates that nesting is not the primary source of error.</p>
+
+<h2>Mutual Cancellation</h2>
+
+<p>Is there any other room for improvement? @leloykun's scheme is required to be an odd function, so it actually considers $\mclip_{[-1,1]}$ rather than $\mclip_{[0,1]}$. Could it be that this choice allows errors in certain parts to cancel each other out, thereby obtaining better computational precision? To verify this, we substitute $\alpha=-1, \beta=1$ into Equation \eqref{eq:general}, obtaining:</p>
+
+\begin{equation}\mclip(\boldsymbol{M}) = \frac{1}{2}\left\{\begin{aligned} 
+&\,(\boldsymbol{I} + \boldsymbol{M}\msign(\boldsymbol{M})^{\top})\msign(\msign(\boldsymbol{M}) + \boldsymbol{M}) \\ 
+- &\,(\boldsymbol{I} - \boldsymbol{M}\msign(\boldsymbol{M})^{\top})\msign(\msign(\boldsymbol{M}) - \boldsymbol{M}) 
+\end{aligned}\right\}\end{equation}
+
+<p>Based on the same de-nesting trick as in the previous section, we get:</p>
+
+\begin{equation}\mclip(\boldsymbol{M}) = \frac{1}{2}\left\{\begin{aligned} 
+&\,(\msign(\boldsymbol{M}) + \boldsymbol{M})\msign(\boldsymbol{M}^{\top}\boldsymbol{M} + \boldsymbol{I}) \\ 
++ &\,(\msign(\boldsymbol{M}) - \boldsymbol{M})\msign(\boldsymbol{M}^{\top}\boldsymbol{M} - \boldsymbol{I}) 
+\end{aligned}\right\}\label{eq:mclip-3}\end{equation}
+
+<p>Note that $\boldsymbol{M}^{\top}\boldsymbol{M} + \boldsymbol{I}$ is certainly a positive-definite symmetric matrix, so theoretically $\msign(\boldsymbol{M}^{\top}\boldsymbol{M} + \boldsymbol{I})=\boldsymbol{I}$, which allows us to recover Equation \eqref{eq:mclip-2}. However, in actual calculations, the error between $\msign(\boldsymbol{M}^{\top}\boldsymbol{M} + \boldsymbol{I})$ and $\boldsymbol{I}$ might cancel out the error introduced by $\msign(\boldsymbol{M}^{\top}\boldsymbol{M} - \boldsymbol{I})$. Thus, we decide via experiments whether to keep it. As expected, the numerical error of Equation \eqref{eq:mclip-3} is even smaller than that of @leloykun's scheme! This confirms our hypothesis that setting $\alpha=-1$ and $\beta=1$ to make $\mclip$ an odd function helps cancel out errors.</p>
+
+<h2>Reflections on the Cause</h2>
+
+<p>Why do the errors cancel out so conveniently? We can perform a brief quantitative analysis. The occurrence of large errors has two prerequisites: first, $\boldsymbol{M}$ has very large singular values; second, the number of $\msign$ iterations is not high, leading to low precision of the $\msign$ result itself. Observing Equation \eqref{eq:mclip-3}, it can be split into a sum of four terms. The terms $\msign(\boldsymbol{M})\msign(\boldsymbol{M}^{\top}\boldsymbol{M} \pm \boldsymbol{I})$ are bounded; even if the $\msign$ precision is low, they basically cannot diverge. Thus, the main error comes from:</p>
+
+\begin{equation}\boldsymbol{M}\msign(\boldsymbol{M}^{\top}\boldsymbol{M} + \boldsymbol{I}) - \boldsymbol{M}\msign(\boldsymbol{M}^{\top}\boldsymbol{M} - \boldsymbol{I})\label{eq:error-1}\end{equation}
+
+<p>This is proportional to $\boldsymbol{M}$ and is most likely to amplify the error. Correspondingly, the main error term in Equation \eqref{eq:mclip-2} is:</p>
+
+\begin{equation}\boldsymbol{M} - \boldsymbol{M}\msign(\boldsymbol{M}^{\top}\boldsymbol{M} - \boldsymbol{I})\label{eq:error-2}\end{equation}
+
+<p>Consider singular values much larger than 1. If $\msign$ were exact, then the result of $\msign$ would be 1, and the parts corresponding to large singular values in both equations above would be the expected 0. However, if $\msign$ is calculated with few iteration steps, it might result in a value like $0.6$ or $1.4$. In Equation \eqref{eq:error-2}, the corresponding part would then exhibit a huge error of $\sim\pm 0.4 \boldsymbol{M}$. But for Equation \eqref{eq:error-1}, when the singular values are very large, the relative difference between $\boldsymbol{M}^{\top}\boldsymbol{M} - \boldsymbol{I}$ and $\boldsymbol{M}^{\top}\boldsymbol{M} + \boldsymbol{I}$ is small. Therefore, the difference between $\msign(\boldsymbol{M}^{\top}\boldsymbol{M} \pm \boldsymbol{I})$ is very small, so Equation \eqref{eq:error-1} can still cancel out most of the error. But remember, this always assumes that $\boldsymbol{M}$ has singular values significantly larger than 1 and that the iteration count is low. If these conditions are not met, then the original error of Equation \eqref{eq:mclip-2} is not large, and Equation \eqref{eq:mclip-3} might instead increase the error because of the extra $\msign$ calculation. Therefore, which formula performs best in practice needs to be analyzed case by case.</p>
+
+<h2>Comparison Code</h2>
+
+<p>Construct a set of singular values with values both greater than and less than 1, with the maximum singular value near 1,000. Then test each algorithm under bfloat16 precision. Reference code is as follows (approximate results are written in comments):</p>
+
+<pre><code>import numpy as np
+import jax.numpy as jnp
+import jax.lax as lax
+
+def msign(x, steps=4, eps=1e-20):
+    """The coefficients come from https://kexue.fm/archives/10996
+    """
+    abc = [
+        (8.287212018145622, -23.59588651909882, 17.300387312530923),
+        (4.107059111542197, -2.9478499167379084, 0.54484310829266),
+        (3.9486908534822938, -2.908902115962947, 0.5518191394370131),
+        (3.3184196573706055, -2.488488024314878, 0.5100489401237208),
+        (2.3006520199548186, -1.6689039845747518, 0.4188073119525678),
+        (1.8913014077874002, -1.2679958271945908, 0.37680408948524996),
+        (1.875, -1.25, 0.375)
+    ]
+    y = x.mT if x.shape[-2] &gt; x.shape[-1] else x
+    y = y * lax.rsqrt((y**2).sum(axis=[-2, -1], keepdims=True) + eps)
+    for a, b, c in abc[:steps] + max(steps - 7, 0) * abc[-1:]:
+        a, b, c = a / 1.01, b / 1.01**3, c / 1.01**5
+        y = a * y + (b * (u := y @ y.mT) + c * u @ u) @ y
+    return y.mT if x.shape[-2] &gt; x.shape[-1] else y
+
+def mclip1(m):
+    """1st version (2 nested msign)
+    """
+    ms2 = msign(m - (ms1 := msign(m)))
+    return (m + ms1 + ms2 - m @ ms1.mT @ ms2) / 2
+
+def mclip2(m):
+    """2nd version (2 non-nested msign)
+    """
+    ms1 = msign(m)
+    ms2 = msign(m.mT @ m - jnp.eye(m.shape[-1]))
+    return (m + ms1 + (ms1 - m) @ ms2) / 2
+
+def mclip3(m):
+    """3rd version (3 non-nested msign)
+    """
+    ms1 = msign(m)
+    ms2 = msign(m.mT @ m + jnp.eye(m.shape[-1]))
+    ms3 = msign(m.mT @ m - jnp.eye(m.shape[-1]))
+    return ((ms1 + m) @ ms2 + (ms1 - m) @ ms3) / 2
+
+def spectral_clip(W):
+    """@leloykun verision: https://leloykun.github.io/ponder/spectral-clipping/
+    """
+    m, n = W.shape
+    H = jnp.block([[jnp.eye(m), W], [W.T, jnp.eye(n)]])
+    OH = msign(H)
+    P, Q = OH[:m, :m], OH[:m, m:]
+    return Q + P @ W
+
+m = np.random.randn(4096, 1024)
+u, s, vh = jnp.linalg.svd(m, full_matrices=False)
+s = np.concatenate([np.linspace(1, 1000, 128), np.linspace(0, 1, 896)])
+s = np.sort(s)[::-1]
+m = u @ jnp.diag(s) @ vh # matrix with large singular values
+result0 = u @ np.diag(s.clip(0, 1)) @ vh # exact result via SVD
+
+result1 = mclip1(m.astype('bfloat16'))
+result2 = mclip2(m.astype('bfloat16'))
+result3 = mclip3(m.astype('bfloat16'))
+result4 = spectral_clip(m.astype('bfloat16'))
+
+# spectral norm of the resulting matrix, closer to 1 is better.
+# jnp.linalg.svd(result0.astype('float32'))[1][0] # = 1
+# jnp.linalg.svd(result1.astype('float32'))[1][0] # ≈ 700
+# jnp.linalg.svd(result2.astype('float32'))[1][0] # ≈ 250
+# jnp.linalg.svd(result3.astype('float32'))[1][0] # ≈ 1.5
+# jnp.linalg.svd(result4.astype('float32'))[1][0] # ≈ 13
+
+# mean absolute error of singular values, closer to 0 is better.
+# jnp.abs(jnp.linalg.svd(result1.astype('float32'))[1] - s.clip(0, 1)).mean() # ≈ 20
+# jnp.abs(jnp.linalg.svd(result2.astype('float32'))[1] - s.clip(0, 1)).mean() # ≈ 10
+# jnp.abs(jnp.linalg.svd(result3.astype('float32'))[1] - s.clip(0, 1)).mean() # ≈ 0.5
+# jnp.abs(jnp.linalg.svd(result4.astype('float32'))[1] - s.clip(0, 1)).mean() # ≈ 0.7
+
+# mean absolute error of total matrix, closer to 0 is better.
+# jnp.abs(result0 - result1).mean() # ≈ 1
+# jnp.abs(result0 - result2).mean() # ≈ 0.5
+# jnp.abs(result0 - result3).mean() # ≈ 0.01
+# jnp.abs(result0 - result4).mean() # ≈ 0.02
+</code></pre>
+
+<h2>Summary</h2>
+
+<p>This article continues to refine the scheme for calculating $\mclip$ using $\msign$ discussed in the previous article. By removing the nesting of $\msign$ and introducing an additional correction term, we have successfully reduced calculation errors.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_11059.html" style="color: #005fcc;">https://kexue.fm/archives/11059</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

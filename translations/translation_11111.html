@@ -1,0 +1,294 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/11111">Transformer Upgrade Path: 21. What makes MLA so good? (Part 2)</a></h1>
+
+<p>By 苏剑林 | July 10, 2025</p>
+
+<p>In the article <a href="translation_10907.html">"Transformer Upgrade Path: 20. What makes MLA so good? (Part 1)"</a>, we conducted ablation experiments on several changes in <a href="translation_10091.html">MLA</a> compared to common MHA, GQA, and MQA. These changes included "increasing head_dims," "Partial RoPE," and "KV sharing." The preliminary results of these experiments suggested that all three changes are likely reasons for MLA's excellent performance.</p>
+
+<p>In this article, we will depart from a more theoretical perspective to understand the success of MLA.</p>
+
+<h2>Partial Rotation <a name="Partial-Rotation" href="#Partial-Rotation">#</a></h2>
+
+<p>First, let's put the final assertion up front:</p>
+
+<blockquote>
+<p>Under the same training and inference costs, MLA is likely the best-performing Full Attention variant.</p>
+</blockquote>
+
+<p>Clearly, this judgment places MLA in a very high position. This conclusion is based on the experimental results from the previous article and the theoretical analysis to follow, under relatively ideal and simplified assumptions. Since actual training and inference involve many complex factors, this conclusion is likely to have some deviations, but we can at least conclude that MLA is moving in the right direction for improvement.</p>
+
+<p>The reason MLA can perform so well has a major prerequisite: that the effect of <a href="translation_10122.html">Partial RoPE</a> (partially rotated position embeddings) is not inferior to, and may even be superior to, the full version of RoPE. Partial RoPE can have two meanings here: first, when applying RoPE to the Attention $\boldsymbol{Q}$ and $\boldsymbol{K}$, we can apply it to only a small portion of the dimensions while keeping the rest unchanged; second, we can consider alternating RoPE and NoPE (No Position Embedding) between layers, with NoPE layers potentially being the majority.</p>
+
+<p>In short, RoPE only needs to be added "a little bit," but it cannot be omitted entirely; omiting it completely leads to poor performance. For a theoretical basis, I agree with the explanation in <a href="translation_10122.html">"Transformer Upgrade Path: 18. Principles for Choosing the Base of RoPE"</a>, which suggests that Partial RoPE allows retrieval results to better balance position and semantics. Furthermore, new works such as <a href="https://papers.cool/arxiv/2503.02130">FoX</a> and <a href="https://papers.cool/arxiv/2410.17980">SBA</a> also show potential, but for MLA, these variants are equivalent to NoPE and thus do not change the conclusion.</p>
+
+<p>The conclusion that "Partial RoPE performance is not bad" allows us to shift the main computational complexity of Attention to the NoPE portion, which provides more room for maneuvering; MLA benefits precisely from this.</p>
+
+<h2>Key-Value Sharing <a name="Key-Value-Sharing" href="#Key-Value-Sharing">#</a></h2>
+
+<p>The evolution of Full Attention generally went from <a href="translation_4765.html">MHA</a>, <a href="https://papers.cool/arxiv/1911.02150">MQA</a>, <a href="https://papers.cool/arxiv/2305.13245">GQA</a>, and then to MLA. While MQA can be seen as a special case of GQA, chronologically GQA came later. After MLA, two more variants appeared: <a href="https://papers.cool/arxiv/2412.19255">MFA</a> and <a href="https://papers.cool/arxiv/2501.06425">TPA</a>. These variants essentially aim to compress the KV Cache as much as possible to increase generation speed while maintaining performance as much as possible.</p>
+
+<p>Put simply, the complexity of an Attention model can be divided into three parts: Training, Prefill, and Decoding. Since training and prefill are similar, there are essentially two parts: Prefill and Decoding. Prefill refers to the phase where the model processes input until it outputs the first token; we will discuss this in the next section. Decoding refers to the token-by-token generation phase, which can be accelerated using the KV Cache mechanism, but this also makes the KV Cache size almost the sole bottleneck for Decoding speed.</p>
+
+<p>Therefore, compressing the KV Cache is the way to increase Decoding speed. Now I ask you a question: <strong>In the context of NoPE, given a fixed KV Cache size, what is the best Attention architecture?</strong> If we do not consider differences in the number of parameters and only discuss within a single layer of MHA/GQA/MQA (we will discuss TPA and MFA later), then the answer will be:</p>
+
+<blockquote>
+<strong>An MQA where the head_dims equals the KV Cache size, and K and V are shared.</strong>
+</blockquote>
+
+<p>Does this seem surprising? It's actually not hard to understand. Because MHA and MQA can both be seen as special cases of GQA, we only need to analyze GQA. As we showed in <a href="translation_10091.html">"The Ultimate Tug-of-War between Cache and Performance: From MHA, MQA, GQA to MLA"</a>, GQA can be reformulated as a model where K and V are concatenated:</p>
+
+\begin{equation}\underbrace{\left[\boldsymbol{k}_i^{(1)},\cdots,\boldsymbol{k}_i^{(g)},\boldsymbol{v}_i^{(1)},\cdots,\boldsymbol{v}_i^{(g)}\right]}_{\boldsymbol{c}_i\in\mathbb{R}^{g(d_k+d_v)}} = \boldsymbol{x}_i \underbrace{\left[\boldsymbol{W}_k^{(1)},\cdots,\boldsymbol{W}_k^{(g)},\boldsymbol{W}_v^{(1)},\cdots,\boldsymbol{W}_v^{(g)}\right]}_{\boldsymbol{W}_c\in\mathbb{R}^{d\times g(d_k+d_v)}}\end{equation}
+
+<p>Here $g(d_k+d_v)$ is exactly the total KV Cache size for a single token. Next, when we calculate Attention, the transformations from $\boldsymbol{c}$ to $\boldsymbol{k}$ and $\boldsymbol{v}$ are absorbed into the $\boldsymbol{W}_q$ and $\boldsymbol{W}_o$ sides, resulting in an MQA where both K and V are $\boldsymbol{c}$. Therefore, "an MQA where head_dims equals the KV Cache size and K/V are shared" is actually a "superset" of MHA/GQA/MQA for a given KV Cache size, so it is theoretically the best choice.</p>
+
+<h2>Double Projection <a name="Double-Projection" href="#Double-Projection">#</a></h2>
+
+<p>In summary, if we want optimal performance at the same Decoding speed, we should train an MQA with a specified head_dims and shared KV. For example, if we agree that the KV Cache should not exceed 512, then an MQA with head_dims=512 and shared KV is the optimal choice. In fact, MLA is precisely a shared-KV MQA (in the NoPE part) during the Decoding phase; this is one manifestation of it being on the right track.</p>
+
+<p>However, while increasing head_dims to 512 is fine for Decoding, it is difficult to accept for Training and Prefill, because the bottleneck for both is computation, and the main factor affecting computation speed is num_heads and head_dims. To ensure performance, there isn't much room to change num_heads, so head_dims can be considered the sole indicator of computational volume. Increasing head_dims to 512 means the computation volume increases to 4 times the original (compared to head_dims=128).</p>
+
+<p>Now let's ask another question: <strong>Again in the context of NoPE, given num_heads and head_dims, what is the best Attention architecture?</strong> I believe everyone can accept the answer to this question, which is <strong>MHA</strong>, because it has the fewest constraints. Therefore, from the perspective of training and prefill costs, what we want is to train an MHA with head_dims=128.</p>
+
+<p>How can we reconcile the different expectations of Prefill and Decoding? This is MLA's "ultimate move." It obtains K and V through two projection steps: first, it projects the input into a single 512-dimensional vector, then it projects that vector into multiple 128-dimensional vectors. Then, by utilizing the inherent identity transformation properties of "Attention + NoPE," the model can switch freely between MHA-128 and MQA-512.</p>
+
+$$\require{cancel}\begin{array}{c|c}
+\text{Training/Prefill} & \text{Decoding} \\
+\\
+\begin{gathered}
+\boldsymbol{o}_t = \left[\boldsymbol{o}_t^{(1)}, \boldsymbol{o}_t^{(2)}, \cdots, \boldsymbol{o}_t^{(h)}\right] \\[10pt]
+\boldsymbol{o}_t^{(s)} = \frac{\sum_{i\leq t}\exp\left(\boldsymbol{q}_t^{(s)} \boldsymbol{k}_i^{(s)}{}^{\top}\right)\boldsymbol{v}_i^{(s)}}{\sum_{i\leq t}\exp\left(\boldsymbol{q}_t^{(s)} \boldsymbol{k}_i^{(s)}{}^{\top}\right)} \\[15pt]
+\boldsymbol{q}_i^{(s)} = \boldsymbol{x}_i\boldsymbol{W}_q^{(s)}\in\mathbb{R}^{d_k},\quad \boldsymbol{W}_q^{(s)}\in\mathbb{R}^{d\times d_k}\\
+\boldsymbol{k}_i^{(s)} = \boldsymbol{c}_i\boldsymbol{W}_k^{(s)}\in\mathbb{R}^{d_k},\quad \boldsymbol{W}_k^{(s)}\in\mathbb{R}^{d_c\times d_k} \\
+\boldsymbol{v}_i^{(s)} = \boldsymbol{c}_i\boldsymbol{W}_v^{(s)}\in\mathbb{R}^{d_v},\quad \boldsymbol{W}_v^{(s)}\in\mathbb{R}^{d_c\times d_v} \\[10pt]
+\boldsymbol{c}_i = \boldsymbol{x}_i \boldsymbol{W}_c\in\mathbb{R}^{d_c},\quad \boldsymbol{W}_c\in\mathbb{R}^{d\times d_c}
+\end{gathered}
+&
+\begin{gathered}
+\boldsymbol{o}_t = \left[\boldsymbol{o}_t^{(1)}\boldsymbol{W}_v^{(1)}, \boldsymbol{o}_t^{(2)}\boldsymbol{W}_v^{(2)}, \cdots, \boldsymbol{o}_t^{(h)}\boldsymbol{W}_v^{(h)}\right] \\[10pt]
+\boldsymbol{o}_t^{(s)} = \frac{\sum_{i\leq t}\exp\left(\boldsymbol{q}_t^{(s)} \boldsymbol{k}_i^{\color{#ccc}{\smash{\bcancel{(s)}}}}{}^{\top}\right)\boldsymbol{v}_i^{\color{#ccc}{\smash{\bcancel{(s)}}}} }{\sum_{i\leq t}\exp\left(\boldsymbol{q}_t^{(s)} \boldsymbol{k}_i^{\color{#ccc}{\smash{\bcancel{(s)}}}}{}^{\top}\right)} \\[15pt]
+\boldsymbol{q}_i^{(s)} = \boldsymbol{x}_i\boldsymbol{W}_q^{(s)}\boldsymbol{W}_k^{(s)}{}^{\top}\in\mathbb{R}^{d_c}\\
+\boldsymbol{k}_i^{\color{#ccc}{\smash{\bcancel{(s)}}}} = \boldsymbol{v}_i^{\color{#ccc}{\smash{\bcancel{(s)}}}} = \boldsymbol{c}_i= \boldsymbol{x}_i \boldsymbol{W}_c\in\mathbb{R}^{d_c}
+\end{gathered}
+\end{array}$$
+
+<h2>Summary <a name="Summary" href="#Summary">#</a></h2>
+
+<p>Let's summarize the preceding reasoning logic:</p>
+
+<blockquote>
+<p>1. Major premise: The performance of Partial RoPE is no worse than, and may even be better than, RoPE, which allows us to focus our main efforts on NoPE;</p>
+<p>2. The main bottleneck for Decoding is KV Cache; the model with the best theoretical performance is MQA where head_dims=KV Cache size and KV are shared;</p>
+<p>3. The main bottleneck for Training and Prefill is head_dims; the model with the best theoretical performance is MHA with head_dims at the desired value;</p>
+<p>4. Under the NoPE premise, Attention possesses an identity transformation property, which allows us to use LoRA to satisfy both ideal directions as much as possible, which is exactly what MLA does.</p>
+</blockquote>
+
+<p>What remains is to concatenate a shared low-dimensional RoPE to K, providing MLA with positional information at minimum cost, while also "killing two birds with one stone": the practice of concatenating RoPE aligns with "Partial RoPE" and also increases the head_dims, which matches the conclusion of the previous article. In other words, the intentional or unintentional use of Partial RoPE and the increase in head_dims are the main reasons why MLA can still rival MHA under extreme compression.</p>
+
+<p>From the perspective of MQA, MLA adds LoRA with rank=128 to Q; from the perspective of MHA, MLA adds LoRA with rank=512 to K and V. It can be said that MLA is a supreme "magic show" combining NoPE and LoRA, MHA and MQA, successfully achieving a "convergence" of Prefill and Decoding.</p>
+
+<p>Of course, the above thinking process certainly has some oversimplified areas. For example, actual training and inference involve many detailed factors, and it is not completely accurate to summarize them simply as head_dims and KV Cache. For example, MQA cannot use TP (Tensor Parallelism) during the Decoding phase, which may bring new efficiency issues; also, in the analysis, we did not pay much attention to the alignment of parameter counts. For instance, when head_dims=128, we could also consider increasing the projection complexity of Q, K, and V to improve performance, rather than necessarily increasing the head_dims; and so on.</p>
+
+<p>In short, these two articles aim to provide some experiments and reflections to argue for the optimality of MLA within a certain range. Of course, MLA was first proposed by DeepSeek, and for third parties to use MLA always feels a bit like copying DeepSeek. However, until a better variant appears or serious defects are discovered, MLA remains a very competitive choice. It would be quite unwise to avoid using MLA simply to show that one is not "following" DeepSeek.</p>
+
+<p>As an example, hybrid models of Linear Attention and Softmax Attention are now showing great competitiveness. But if we mix Linear Attention with the GQA8-128 used by LLAMA at a 3:1 ratio, the KV Cache is reduced roughly to 1/4 of GQA8-128, yet MLA itself can already reduce the KV Cache to 1/4 of GQA8-128.</p>
+
+<h2>Supplementary Discussion <a name="Supplementary-Discussion" href="#Supplementary-Discussion">#</a></h2>
+
+<p>While we have been discussing MHA, GQA, MQA, and MLA, in this section let's briefly chat about two Attention variants that are less frequently discussed: TPA and MFA.</p>
+
+<p>TPA stands for Tensor Product Attention. The author gave it the name "Tensor Product," which sounds quite "daunting," but it is actually an intermediate product between GQA and MLA. Taking a target KV Cache of 512 as an example, TPA first projects into a 512-dimensional vector, then reshapes it to (4, 128), and then splits it into two (2, 128) representing K Cache and V Cache respectively. Up to this point, TPA's approach is consistent with GQA2-128.</p>
+
+<p>Next, borrowing MLA's idea, TPA re-projects the (2, 128) K/V into Multi-Head. However, instead of projecting across the entire vector like MLA, it projects along the dimension of "2." Simply put, it creates head_dims different linear combinations of the two 128-dimensional vectors. Obviously, the upper bound of TPA is inferior to MLA, which projects directly from the entire 512-dimensional vector. To alleviate this problem, TPA also introduced data-dependent combination coefficients to enhance the expressive power of K and V, but even so, I believe its upper bound is inferior to MLA.</p>
+
+<p>Why did TPA design it this way? Mostly to be compatible with RoPE, which is its greatest "advantage" compared to MLA. However, this "advantage" should be in quotation marks, because in the context where Partial RoPE is not inferior or even superior, compatibility with RoPE feels a bit ironic. Also, this design of TPA blocks its space to increase head_dims; for example, if head_dims wants to increase to 256, then the K Cache and V Cache would only have the shape (1, 256), and a single vector has no degrees of freedom for linear combination.</p>
+
+<p>Now let's look at MFA, which stands for "Multi-matrix Factorization Attention." This name also sounds "daunting," but it is actually an MQA with Q-LoRA and head_dims=256. Does this configuration sound familiar? Because this configuration perfectly matches the conclusion of our previous article—increasing head_dims to 256 to improve MQA performance, while keeping the KV Cache close to MLA and controlling the number of parameters through Q-LoRA.</p>
+
+<p>So, I am not surprised that MFA can "beat" MLA; we already experimented with a similar approach in the previous article. Furthermore, in the previous article, we proposed two other directions to improve MQA performance: one is Partial RoPE, which has been mentioned multiple times in this article, and the other is realizing complete KV sharing through <a href="translation_10862.html">QKVO-RoPE</a>, making MQA become GQA2-256. If these two are added, MFA should be able to gain a bit more.</p>
+
+<h2>Article Summary <a name="Article-Summary" href="#Article-Summary">#</a></h2>
+
+<p>Based on the experimental results of the previous article, this article provides a theoretical thought process to argue for the optimality of MLA within a certain range. Overall, in the context of Partial RoPE, MLA seems to be an extremely difficult Attention variant to surpass.</p>
+
+<p><em><strong>Reprinted with the address:</strong> <a href="translation_11111.html">https://kexue.fm/archives/11111</a></em></p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_11111.html" style="color: #005fcc;">https://kexue.fm/archives/11111</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

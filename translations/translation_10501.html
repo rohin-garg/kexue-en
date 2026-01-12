@@ -1,0 +1,286 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/10501">The Path to Low-Rank Approximation (Part 4): ID</a></h1>
+
+    <p>By 苏剑林 | October 30, 2024</p>
+
+
+<p>The protagonist of this article is ID (Interpolative Decomposition). It can also be understood as a low-rank decomposition with a specific structure, where one side consists of several columns of the matrix (of course, if you prefer rows, selecting rows is also fine). In other words, ID attempts to find several key columns from a matrix as a "skeleton" (usually also called a "sketch") to approximate the original matrix.</p>
+
+<p>Many readers may have never heard of ID, and even Wikipedia has only a few vague sentences of introduction (<a href="https://en.wikipedia.org/wiki/Interpolative_decomposition">Link</a>). However, ID, like SVD, has long been built into SciPy (see <a href="https://docs.scipy.org/doc/scipy/reference/linalg.interpolative.html">scipy.linalg.interpolative</a>), which side-evidences its practical value.</p>
+
+<h2>Basic Definition</h2>
+
+<p>In the previous three articles, we introduced <a href="translation_10366.html">Pseudo-inverse</a>, <a href="translation_10407.html">SVD</a>, and <a href="translation_10427.html">CR Approximation</a>. They can all be viewed as seeking a low-rank approximation with a specific structure:
+\begin{equation}\mathop{\text{argmin}}_{\text{rank}(\tilde{\boldsymbol{M}})\leq r}\Vert \tilde{\boldsymbol{M}} - \boldsymbol{M}\Vert_F^2\end{equation}
+where $\boldsymbol{M}\in\mathbb{R}^{n\times m}$. When no other constraints are added, the optimal solution is given by SVD; when we agree that $\tilde{\boldsymbol{M}}=\boldsymbol{A}\boldsymbol{B}$ and one of $\boldsymbol{A}$ or $\boldsymbol{B}$ is already given, the optimal solution for the other half can be provided via the pseudo-inverse; if we agree that $\boldsymbol{M}=\boldsymbol{X}\boldsymbol{Y}$ and $\tilde{\boldsymbol{M}}=\boldsymbol{X}_{[:, S]}\boldsymbol{Y}_{[S,:]}$, then that is the concern of CR approximation.</p>
+
+<p>CR approximation constructs a low-rank approximation by selecting rows/columns from the original matrix, which makes the approximation more interpretable and also applicable to some non-linear scenarios. However, the premise of CR approximation is that the matrix $\boldsymbol{M}$ itself is formed by the multiplication of two matrices, and its original intention is to reduce the amount of matrix computation. For scenarios where the matrix $\boldsymbol{M}$ is given directly, a similar low-rank approximation is provided by ID.</p>
+
+<p>Specifically, in ID, we have $\tilde{\boldsymbol{M}}=\boldsymbol{C}\boldsymbol{Z}$, where $\boldsymbol{C}=\boldsymbol{M}_{[:,S]}$ consists of several columns of $\boldsymbol{M}$, and $\boldsymbol{Z}$ is arbitrary. That is, it uses several columns of $\boldsymbol{M}$ as a skeleton to approximate itself:
+\begin{equation}\mathop{\text{argmin}}_{S,\boldsymbol{Z}}\Vert \underbrace{\boldsymbol{M}_{[:,S]}}_{\boldsymbol{C}}\boldsymbol{Z} - \boldsymbol{M}\Vert_F^2\quad\text{s.t.}\quad S\subset\{0,1,\cdots,m-1\},|S|=r,\boldsymbol{Z}\in\mathbb{R}^{r\times m}\end{equation}
+According to the results in <a href="translation_10366.html">"The Path to Low-Rank Approximation (Part 1): Pseudo-inverse"</a>, if $\boldsymbol{C}$ is already determined, the optimal solution for $\boldsymbol{Z}$ is $\boldsymbol{C}^{\dagger} \boldsymbol{M}$. Therefore, the actual difficulty of ID lies only in the optimization of $S$, i.e., column selection. This is a combinatorial optimization problem, and solving it exactly is NP-Hard. Thus, the main goal is to find approximate algorithms with appropriate efficiency and accuracy.</p>
+
+<h2>Geometric Meaning</h2>
+
+<p>Before attempting to solve it, let's further explore the geometric meaning of ID, which helps us better understand its application scenarios and solution ideas. Let's first represent $\boldsymbol{C}$ in column vector form $\boldsymbol{C}=(\boldsymbol{c}_1,\boldsymbol{c}_2,\cdots,\boldsymbol{c}_r)$. Then for any column vector $\boldsymbol{z}=(z_1,z_2,\cdots,z_r)^{\top}$, we have
+\begin{equation}\boldsymbol{C}\boldsymbol{z} = \begin{pmatrix}\boldsymbol{c}_1 & \boldsymbol{c}_2 & \cdots & \boldsymbol{c}_r\end{pmatrix}\begin{pmatrix}z_1 \\ z_2 \\ \vdots \\ z_r\end{pmatrix} = \sum_{i=1}^r z_i \boldsymbol{c}_i\end{equation}
+So the geometric meaning of $\boldsymbol{C}\boldsymbol{z}$ is a linear combination of the column vectors of $\boldsymbol{C}$. Note that $\boldsymbol{c}_1,\boldsymbol{c}_2,\cdots,\boldsymbol{c}_r$ are selected from $\boldsymbol{M}=(\boldsymbol{m}_1,\boldsymbol{m}_2,\cdots,\boldsymbol{m}_m)$. Therefore, ID says to select several columns as (approximate) basis vectors and express the remaining columns as linear combinations of these bases. This is the meaning of "I" (Interpolatory) in ID.</p>
+
+<p>We know that "Interpolatory" more accurately means "interpolation." To better highlight this characteristic, some literature adds the condition $|z_{i,j}| \leq 1$ to the definition of ID (where $z_{i,j}$ is any element of matrix $\boldsymbol{Z}$). Of course, this condition is actually quite harsh, and ensuring it holds strictly may also be NP-Hard. Therefore, many papers relax it to $|z_{i,j}| \leq 2$. The actual performance of most approximation algorithms allows this bound to hold. If there are no other requirements and only the optimality of the approximation error is considered, this restriction can also be removed.</p>
+
+<h2>QR Decomposition</h2>
+
+<p>Algorithms for solving ID are divided into two categories: deterministic and randomized. Deterministic algorithms have higher computational costs but often better approximation quality; conversely, randomized algorithms have higher computational efficiency but slightly lower accuracy. Note that they are both just approximate algorithms with acceptable practical behavior, and none rule out the possibility of extreme cases where they might fail completely.</p>
+
+<p>The first algorithm considered a standard approximation is based on QR decomposition, specifically Column-Pivoting QR decomposition. Why is ID associated with QR decomposition? We can understand this starting from the method of finding $\boldsymbol{Z}$.</p>
+
+<p>As mentioned earlier, if $\boldsymbol{C}$ is given, the optimal solution for $\boldsymbol{Z}$ is $\boldsymbol{C}^{\dagger}\boldsymbol{M}$. While correct, this is not very intuitive. Without loss of generality, assume $\boldsymbol{c}_1,\boldsymbol{c}_2,\cdots,\boldsymbol{c}_r$ are linearly independent. From a geometric perspective, finding the optimal approximation in the form of $\boldsymbol{C}\boldsymbol{Z}$ is actually projecting each column vector of $\boldsymbol{M}$ into the $r$-dimensional subspace formed by $\boldsymbol{c}_1,\boldsymbol{c}_2,\cdots,\boldsymbol{c}_r$. To find this projection, we can first perform Gram-Schmidt orthogonalization on $\boldsymbol{c}_1,\boldsymbol{c}_2,\cdots,\boldsymbol{c}_r$ to turn them into an orthonormal basis. Projecting onto an orthonormal basis is much simpler, and the process of orthogonalization naturally corresponds to QR decomposition.</p>
+
+<p>Gram-Schmidt orthogonalization recursively performs the following steps:
+\begin{equation}\boldsymbol{q}_1 = \frac{\boldsymbol{c}_1}{\Vert\boldsymbol{c}_1\Vert},\quad \boldsymbol{q}_k = \frac{\hat{\boldsymbol{q}}_k}{\Vert\hat{\boldsymbol{q}}_k\Vert},\quad\hat{\boldsymbol{q}}_k = \boldsymbol{c}_k - \sum_{i=1}^{k-1} (\boldsymbol{c}_k^{\top} \boldsymbol{q}_i)\boldsymbol{q}_i,\quad k = 2,3,\cdots,r\end{equation}
+The result represents $\boldsymbol{C}$ as:
+\begin{equation}\boldsymbol{C} = \underbrace{\begin{pmatrix}\boldsymbol{q}_1 & \boldsymbol{q}_2 & \cdots & \boldsymbol{q}_r\end{pmatrix}}_{\boldsymbol{Q}}\underbrace{\begin{pmatrix}R_{1,1} & R_{1,2} & \cdots & R_{1,r} \\
+0 & R_{2,2} & \cdots & R_{2,r} \\
+\vdots & \vdots & \ddots & \vdots \\
+0 & 0 & \cdots & R_{r,r} \\
+\end{pmatrix}}_{\boldsymbol{R}}\end{equation}
+With $\boldsymbol{q}_1,\boldsymbol{q}_2,\cdots,\boldsymbol{q}_r$, the optimal approximation and error of the $k$-th column $\boldsymbol{m}_k$ of matrix $\boldsymbol{M}$ onto $\boldsymbol{C}$ are, respectively:
+\begin{equation}\sum_{i=1}^r (\boldsymbol{m}_k^{\top} \boldsymbol{q}_i)\boldsymbol{q}_i\qquad\text{and}\qquad \left\Vert\boldsymbol{m}_k - \sum_{i=1}^r (\boldsymbol{m}_k^{\top} \boldsymbol{q}_i)\boldsymbol{q}_i\right\Vert^2\end{equation}</p>
+
+<h2>Column-Pivoting QR</h2>
+
+<p>Of course, the above results were obtained assuming $\boldsymbol{C}$ is known. How do we select $r$ relatively good columns from $\boldsymbol{M}$ to form $\boldsymbol{C}$? Column-Pivoting QR decomposition provides a reference answer.</p>
+
+<p>Generally, if we want to perform Gram-Schmidt orthogonalization on $\boldsymbol{m}_1,\boldsymbol{m}_2,\cdots,\boldsymbol{m}_m$, we do it in order, starting from $\boldsymbol{m}_1$, followed by $\boldsymbol{m}_2, \boldsymbol{m}_3, \cdots$. Column-Pivoting QR decomposition modifies the order of orthogonalization based on the vector norm. Written as a formula:
+\begin{equation}\begin{gathered}
+\boldsymbol{q}_1 = \frac{\boldsymbol{m}_{\rho_1}}{\Vert\boldsymbol{m}_{\rho_1}\Vert},\quad
+\boldsymbol{q}_k = \frac{\hat{\boldsymbol{q}}_k}{\Vert\hat{\boldsymbol{q}}_k\Vert},\quad\hat{\boldsymbol{q}}_k = \boldsymbol{m}_{\rho_k} - \sum_{i=1}^{k-1} (\boldsymbol{m}_{\rho_k}^{\top} \boldsymbol{q}_i)\boldsymbol{q}_i \\
+\rho_1 = \mathop{\text{argmax}}_{i\in\{1,2,\cdots,m\}} \Vert \boldsymbol{m}_i\Vert,\quad \rho_k = \mathop{\text{argmax}}_{i\in\{1,2,\cdots,m\}\backslash\{\rho_1,\rho_2,\cdots,\rho_{k-1}\}} \left\Vert \boldsymbol{m}_i - \sum_{j=1}^{k-1} (\boldsymbol{m}_i^{\top} \boldsymbol{q}_j)\boldsymbol{q}_j\right\Vert
+\end{gathered}\end{equation}
+In short, Column-Pivoting QR decomposition chooses the column with the largest remaining error at each step to perform orthonormalization. Other than the change in the order of execution, Column-Pivoting QR decomposition is no different from standard QR decomposition. Thus, the final form of Column-Pivoting QR decomposition can be expressed as:
+\begin{equation}\boldsymbol{M}\boldsymbol{\Pi} = \underbrace{\begin{pmatrix}\boldsymbol{q}_1 & \boldsymbol{q}_2 & \cdots & \boldsymbol{q}_m\end{pmatrix}}_{\boldsymbol{Q}}\underbrace{\begin{pmatrix}R_{1,1} & R_{1,2} & \cdots & R_{1,m} \\
+0 & R_{2,2} & \cdots & R_{2,m} \\
+\vdots & \vdots & \ddots & \vdots \\
+0 & 0 & \cdots & R_{m,m} \\
+\end{pmatrix}}_{\boldsymbol{R}}\end{equation}
+where $\boldsymbol{\Pi}$ is a column permutation matrix. Since each step picks the column with the maximum error (norm), we have that for any $k$, the norm of the first column of the submatrix $\boldsymbol{R}_{[k-1:, k-1:]}$ is the largest, being no smaller than the norm of any remaining column:
+\begin{equation}R_{k,k}^2 \geq \sum_{i=k}^j R_{i,j}^2,\quad \forall j = k,k+1,\cdots,m\end{equation}
+From this, it can also be inferred that $|R_{1,1}|\geq |R_{2,2}| \geq \cdots \geq |R_{m,m}|$. These properties lead us to believe that if we want a rank-$r$ approximation of $\boldsymbol{M}\boldsymbol{\Pi}$, retaining only the first $r$ rows of $\boldsymbol{R}$ should be a good choice:
+\begin{equation}\boldsymbol{M}\boldsymbol{\Pi} = \boldsymbol{Q}\boldsymbol{R} \approx \boldsymbol{Q}_{[:,:r]}\boldsymbol{R}_{[:r,:]}=\boldsymbol{Q}_{[:,:r]}\big[\boldsymbol{R}_{[:r,:r]},\boldsymbol{R}_{[:r,r:]}\big]=\boldsymbol{Q}_{[:,:r]}\boldsymbol{R}_{[:r,:r]}\big[\boldsymbol{I}_r,\boldsymbol{R}_{[:r,:r]}^{-1}\boldsymbol{R}_{[:r,r:]}\big]\end{equation}
+Note that we previously agreed that slicing has higher priority than inversion, so the meaning of $\boldsymbol{R}_{[:r,:r]}^{-1}$ here is $(\boldsymbol{R}_{[:r,:r]})^{-1}$. It's not hard to see that $\boldsymbol{Q}_{[:,:r]}\boldsymbol{R}_{[:r,:r]}$ is actually $r$ columns of matrix $\boldsymbol{M}$, so the above formula actually provides an ID approximation:
+\begin{equation}\boldsymbol{M} \approx \boldsymbol{C}\boldsymbol{Z},\quad \boldsymbol{C}=\boldsymbol{Q}_{[:,:r]}\boldsymbol{R}_{[:r,:r]},\quad \boldsymbol{Z}=\big[\boldsymbol{I}_r,\boldsymbol{R}_{[:r,:r]}^{-1}\boldsymbol{R}_{[:r,r:]}\big]\boldsymbol{\Pi}^{\top}\end{equation}
+The above is the ID solving algorithm based on Column-Pivoting QR decomposition, which is also the solving algorithm built into SciPy (when <code>rand=False</code>). Note that this algorithm cannot guarantee $|z_{i,j}| \leq 1$ or $|z_{i,j}| \leq 2$, but according to feedback from many documents, it almost never appears that $|z_{i,j}| > 2$ in practice, so this is considered a fairly good algorithm. Additionally, SciPy has built-in Column-Pivoting QR decomposition; simply set <code>pivoting=True</code> in <code>scipy.linalg.qr</code> to enable it.</p>
+
+<h2>Randomized Solvers</h2>
+
+<p>Each orthogonalization step in Column-Pivoting QR requires traversing all remaining vectors to find the one with the maximum error, which is often unacceptable when $m$ is very large. On the other hand, if $n$ is very large, the computational cost of norm and dot product calculations will also be very high. Consequently, randomized algorithms emerged, which manage to reduce the value of $n$ or $m$ to lower the computational complexity.</p>
+
+<p>First, let's look at the approach of reducing $n$, which means reducing the dimensionality of each column vector of $\boldsymbol{M}$. A common method is random projection, similar to the "JL Lemma" described in <code class="language-plaintext"><a href="translation_8679.html">"The Amazing Johnson-Lindenstrauss Lemma: Theory Edition"</a></code>. Specifically, suppose $\boldsymbol{\Omega}\in\mathbb{R}^{d\times n}$ is a random projection matrix (where $d\ll n$), whose elements are independently and identically sampled from a distribution such as $\mathcal{N}(0,1/n)$. We then consider performing Column-Pivoting QR decomposition on the small matrix $\boldsymbol{\Omega}\boldsymbol{M}\in\mathbb{R}^{d\times m}$ to determine the positions of the selected $r$ columns. For a more detailed introduction, see <a href="https://users.oden.utexas.edu/~pgm/Talks/2021_ENLA.pdf">"Randomized algorithms for pivoting and for computing interpolatory and CUR factorizations"</a>.</p>
+
+<p>According to my limited research, the randomized algorithm in SciPy for solving ID follows a similar idea, but replaces the randomly sampled matrix with a more structured "Subsampled Randomized Fourier Transform (SRFT)", allowing the computational cost of the $\boldsymbol{\Omega}\boldsymbol{M}$ step to be reduced from $\mathcal{O}(mnd)$ to $\mathcal{O}(mn\log d)$. However, the author is not familiar with the implementation details of SRFT or SciPy. Interested readers can delve deeper into resources such as <a href="https://amath.colorado.edu/faculty/martinss/Talks/2010_banff.pdf">"Enabling very large-scale matrix computations via randomization"</a> and <a href="https://anthony-nouy.github.io/tutorials/morss/morss_2019_rla.pdf">"A brief introduction to Randomized Linear Algebra"</a>.</p>
+
+<p>Another reason for not delving into complex random projection methods like SRFT is that the paper <a href="https://papers.cool/arxiv/2105.07076">"Efficient Algorithms for Constructing an Interpolative Decomposition"</a> found that simpler column sampling often yields better results. This method is particularly easy to understand: randomly sample $k > r$ columns from $\boldsymbol{M}$, then use Column-Pivoting QR to select $r$ columns from these $k$ columns as $\boldsymbol{C}$, and finally solve for $\boldsymbol{Z}$ based on $\boldsymbol{C}$. This reduces the size of the matrix for Column-Pivoting QR from $n\times m$ to $n\times k$.</p>
+
+<p>Experiments show that this simple approach only slightly increases the risk of $|z_{i,j}| > 2$ in a few tasks, but offers a clear advantage in terms of error:</p>
+
+<p style="text-align:center;"><em>(Comparison of maximum absolute values of the Z matrix between column sampling (Optim-RID) and SciPy's built-in algorithm (SciPy-RID))</em></p>
+
+<p style="text-align:center;"><em>(Error comparison between column sampling (Optim-RID) and SciPy's built-in algorithm (SciPy-RID))</em></p>
+
+<p style="text-align:center;"><em>(Efficiency comparison between column sampling (Optim-RID) and SciPy's built-in algorithm (SciPy-RID))</em></p>
+
+<h2>Improving Accuracy</h2>
+
+<p>From the above tables, one might notice a perhaps surprising result: the randomized column sampling of Optim-RID is not only better in terms of error than SciPy-RID (also a randomized algorithm), but in some individual tasks, it even outperforms deterministic algorithms like SciPy-ID and Optim-ID (which are mathematically equivalent, both based on full Column-Pivoting QR decomposition, differing only in implementation efficiency).</p>
+
+<p>This seemingly counter-intuitive phenomenon actually demonstrates a fact: while Column-Pivoting QR decomposition serves as a good baseline for ID, its ability to select bases might not be much better than random selection. The main role of Column-Pivoting QR is just to guarantee that $|z_{i,j}| < 2$ with high probability. In fact, this is not hard to understand. Taking $r=1$ as an example, Column-Pivoting QR decomposition simply returns the column with the largest norm. But is the column with the largest norm necessarily a good basis (one that minimizes reconstruction error)? Obviously not. A good basis should be the direction towards which most vectors point; a maximum norm does not reflect this.</p>
+
+<p>For ID, Column-Pivoting QR decomposition is essentially a greedy algorithm that greedily transforms the selection of $r$ columns into multiple recursions of selecting 1 column. When $r=1$, in scenarios where $m$ is not too large or high precision is required, the complexity of solving exactly through enumeration is acceptable:
+\begin{equation}\mathop{\text{argmin}}_i \sum_{j=1}^m \left\Vert\boldsymbol{m}_j - \frac{(\boldsymbol{m}_j^{\top} \boldsymbol{m}_i)\boldsymbol{m}_i}{\Vert\boldsymbol{m}_i\Vert^2}\right\Vert^2\end{equation}
+That is, iterate through all $\boldsymbol{m}_i$, project all remaining columns onto $\boldsymbol{m}_i$ to calculate the total error, and choose the $\boldsymbol{m}_i$ that yields the minimum total error. The complexity is proportional to $m^2$. If the operation of selecting the maximum norm in each step of Column-Pivoting QR is changed to selecting the minimum total error as shown above, then better bases can be found, resulting in lower reconstruction error (at the cost of higher complexity, and even less guarantee that $|z_{i,j}| < 2$).</p>
+
+<p>Overall, due to the NP-Hard nature of exact solving, there are many approaches to solving ID. The ones listed above are just a few limited examples. Interested readers can search further using keywords such as "Randomized Linear Algebra" and "Column Subset Selection." Notably, Randomized Linear Algebra, which aims to accelerate various matrix operations through stochastic methods, has itself become a rich discipline. The randomized ID in this article and the sampling-based CR approximation in the previous article are both classic examples of this field.</p>
+
+<h2>Conclusion</h2>
+
+<p>This article introduced ID (Interpolative Decomposition), which approximates the original matrix by selecting several columns to serve as a "skeleton." It is a low-rank decomposition with a specific structure, and its geometric meaning is relatively intuitive. Its core difficulty lies in column selection, which is essentially an NP-Hard discrete optimization problem.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10501.html" style="color: #005fcc;">https://kexue.fm/archives/10501</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

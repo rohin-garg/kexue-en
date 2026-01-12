@@ -1,0 +1,297 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/5607">A Simple Python Implementation of Gillespie Simulation</a></h1>
+    
+    <p>By 苏剑林 | June 07, 2018</p>
+
+    <p>Due to professional requirements, I needed to perform stochastic simulations of the master equation. Since I couldn't find a suitable Python implementation online, I wrote one myself and am sharing the source code. As for the Gillespie algorithm itself, I won't introduce it here; readers who need it will naturally understand, and those who don't are advised not to bother.</p>
+
+    <h2 id="Source-Code">Source Code</h2>
+    <p>In fact, the basic Gillespie simulation algorithm is very simple and easy to implement. Below is a reference example:</p>
+
+<pre><code class="language-python">import numpy as np
+
+class System:
+    def __init__(self, num_elements):
+        self.num_elements = num_elements
+        self.reactions = []
+    def add_reaction(self, rate, num_lefts, num_rights):
+        assert len(num_lefts) == self.num_elements
+        assert len(num_rights) == self.num_elements
+        self.reactions.append([rate, np.array(num_lefts), np.array(num_rights)])
+    def evolute(self, max_steps, init_nums):
+        init_nums = np.array(init_nums)
+        ts, nums = [0], [init_nums]
+        for i in range(max_steps):
+            propensities = []
+            for rate, num_lefts, num_rights in self.reactions:
+                p = rate
+                for j in range(self.num_elements):
+                    if num_lefts[j] > 0:
+                        p *= init_nums[j] 
+                propensities.append(p)
+            propensities = np.array(propensities)
+            p_sum = propensities.sum()
+            if p_sum > 0:
+                tau = np.random.exponential(1/p_sum)
+                ts.append(ts[-1] + tau)
+                r = np.random.rand() * p_sum
+                idx = np.searchsorted(np.cumsum(propensities), r)
+                init_nums = init_nums - self.reactions[idx][1] + self.reactions[idx][2]
+                nums.append(init_nums)
+            else:
+                break
+        return np.array(ts), np.array(nums)</code></pre>
+
+    <h2 id="Usage">Usage</h2>
+    <p>For ease of use, I encapsulated the reactions. Now, you only need to provide the reaction equations to perform the simulation directly without additional programming operations. For instance, consider a simple gene expression model:</p>
+
+    \begin{aligned}
+    DNA &\xrightarrow{\quad 20\quad} DNA + m\\
+    m &\xrightarrow{\quad 2.5\quad} m + n\\
+    m &\xrightarrow{\,\quad 1\,\,\quad} \phi\\
+    n &\xrightarrow{\,\quad 1\,\,\quad} \phi
+    \end{aligned}
+
+    <p>Here $m, n$ respectively represent the number of mRNA and protein molecules, and $\phi$ is empty, meaning degradation or "creation from nothing". The first reaction can be simplified to $\phi \xrightarrow{\quad 20\quad} m$, so there are actually four reaction formulas for two types of substances $m, n$.</p>
+
+<pre><code class="language-python">num_elements = 2 # mRNA: 0, protein: 1
+system = System(num_elements)
+
+# phi -> m
+system.add_reaction(20, [0, 0], [1, 0])
+# m -> m + n
+system.add_reaction(2.5, [1, 0], [1, 1])
+# m -> phi
+system.add_reaction(1, [1, 0], [0, 0])
+# n -> phi
+system.add_reaction(1, [0, 1], [0, 0])
+
+ts, nums = system.evolute(100000, [0, 0])</code></pre>
+
+    <p>Then you can gather statistics and plot the results:</p>
+
+<pre><code class="language-python">import matplotlib.pyplot as plt
+
+plt.figure(figsize=(10, 5))
+plt.plot(ts, nums[:, 1])
+plt.xlabel('Time')
+plt.ylabel('Protein Number')
+plt.show()
+
+plt.figure(figsize=(10, 5))
+plt.hist(nums[2000:, 1], bins=50, density=True)
+plt.xlabel('Protein Number')
+plt.ylabel('Probability')
+plt.show()</code></pre>
+
+    <p>The results are:</p>
+
+    <p>
+        <a href="https://kexue.fm/usr/uploads/2018/06/3539304969.png" title="Click to view original image">
+            <img src="https://kexue.fm/usr/uploads/2018/06/3539304969.png" alt="Change of protein over time (trajectory)" />
+        </a>
+        <br />
+        Change of protein over time (trajectory)
+    </p>
+
+    <p>
+        <a href="https://kexue.fm/usr/uploads/2018/06/2197217957.png" title="Click to view original image">
+            <img src="https://kexue.fm/usr/uploads/2018/06/2197217957.png" alt="Statistical distribution of protein" />
+        </a>
+        <br />
+        Statistical distribution of protein
+    </p>
+
+    <hr />
+
+    <p>
+        <em><strong>When reposting, please include the original address of this article:</strong> <a href="translation_5607.html" title="A Simple Python Implementation of Gillespie Simulation">https://kexue.fm/archives/5607</a></em>
+    </p>
+
+    <p>
+        <em><strong>For more detailed reposting matters, please refer to:</strong> <a href="https://kexue.fm/archives/6508#%E6%96%87%E7%AB%A0%E5%A6%82%E4%BD%95%E8%BD%AC%E8%BD%BD/%E5%BC%95%E7%94%A8" title="Scientific Space FAQ">"Scientific Space FAQ"</a></em>
+    </p>
+
+    <p><strong>If you still have any doubts or suggestions, you are welcome to continue the discussion in the comments section below.</strong></p>
+
+    <p><strong>If you find this article helpful, you are welcome to <a href="https://kexue.fm/archives/5607#share">share</a> / <a href="https://kexue.fm/archives/5607#pay">donate</a> to this post. Donations are not for profit, but to know how much sincere attention Scientific Spaces has received from its readers. Of course, if you choose to ignore it, it will not affect your reading. Welcome and thank you once again!</strong></p>
+
+    <p>
+        <strong>If you need to cite this article, please refer to:</strong>
+    </p>
+    <p>
+        Su Jianlin. (Jun. 07, 2018). "A Simple Python Implementation of Gillespie Simulation" [Blog post]. Retrieved from <a href="translation_5607.html">https://kexue.fm/archives/5607</a>
+    </p>
+
+<p>
+        Category: <a href="https://kexue.fm/category/Phy-chem">Physical Chemistry</a> | 
+        Tags: <a href="https://kexue.fm/tag/%E6%A6%82%E7%8E%87/">Probability</a>, <a href="https://kexue.fm/tag/%E6%A8%A1%E6%8B%9F/">Simulation</a>, <a href="https://kexue.fm/tag/%E9%9A%8F%E6%9C%BA/">Stochastic</a>, <a href="https://kexue.fm/tag/%E4%B8%BB%E6%96%B9%E7%A8%8B/">Master Equation</a>
+    </p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_5607.html" style="color: #005fcc;">https://kexue.fm/archives/5607</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,267 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/6612">GAN Models from the Perspective of Energy (Part 3): Generative Model = Energy Model</a></h1>
+    
+    <p>By 苏剑林 | May 10, 2019</p>
+
+    <figure>
+        <img src="https://kexue.fm/usr/uploads/2019/05/1812678280.png" alt="Conditional generation results on ImageNet (128x128) using this model">
+        <figcaption>Conditional generation results on ImageNet (128x128) using the model discussed in this article.</figcaption>
+    </figure>
+
+    <p>The results to be introduced today are still related to energy-based models, originating from the paper <a href="https://papers.cool/arxiv/1903.08689">"Implicit Generation and Generalization in Energy-Based Models"</a>. Of course, it is no longer strictly related to GANs, but since it shares a strong connection with the energy models introduced in the <a href="translation_6331.html">second post of this series</a>, I decided to include it in this series as well.</p>
+
+    <p>I originally noticed this paper due to a report from <i>JiQiZhiXin</i> titled <i>"MIT Undergraduate God Reboots Energy-Based Generative Models; New Framework Rivals GANs"</i>. To be honest, the article itself might feel redundant to some—it’s essentially a "reinvention of the wheel." The media headline was somewhat accurate in using the word "reboot." The paper points out that an energy-based model is essentially the stationary solution of a specific Langevin equation, and then uses that Langevin equation to perform sampling. With a sampling process in place, the training of the energy model can be completed. These theories have existed for a long time; I had similar thoughts while studying stochastic differential equations, and I believe many others have as well. Therefore, in my view, the authors' contribution lies in implementing this straightforward idea through a series of "alchemy" (fine-tuning) techniques.</p>
+
+    <p>Nonetheless, being able to train such a model successfully is a significant achievement. Furthermore, for readers who haven't encountered this topic before, it serves as an excellent case study of energy-based models. Thus, I will summarize the overall logic of the paper to help readers gain a more comprehensive understanding of energy models.</p>
+
+    <h2 id="energy-distribution">Energy Distribution</h2>
+
+    <p>Similar to <a href="translation_6331.html">"GAN Models from the Perspective of Energy (Part 2): GAN = 'Analysis' + 'Sampling'"</a>, suppose we have a set of data $x_1, x_2, \dots, x_n \sim p(x)$. We wish to fit it using a probabilistic model, which we define as:</p>
+    
+    \begin{equation}q_{\theta}(x) = \frac{e^{-U_{\theta}(x)}}{Z_{\theta}}\end{equation}
+
+    <p>where $U_{\theta}$ is an undetermined function with parameters $\theta$, called the "energy function," and $Z_{\theta}$ is the normalization factor (partition function):</p>
+
+    \begin{equation}Z_{\theta} = \int e^{-U_{\theta}(x)}dx\label{eq:z}\end{equation}
+
+    <p>Such a distribution is called an "energy distribution," or a "Boltzmann distribution" in physics.</p>
+
+    <p>To find the parameters $\theta$, we first define the log-likelihood function:</p>
+    
+    \begin{equation}\mathbb{E}_{x\sim p(x)} \big[\log q_{\theta}(x)\big]\end{equation}
+
+    <p>We want to maximize this, which is equivalent to minimizing:</p>
+
+    \begin{equation}L_{\theta}=\mathbb{E}_{x\sim p(x)} \big[-\log q_{\theta}(x)\big]\end{equation}
+
+    <p>To do this, we use gradient descent on $L_{\theta}$. We have (refer to the second post for the derivation):</p>
+
+    \begin{equation}\nabla_{\theta}\log q_{\theta}(x)=-\nabla_{\theta} U_{\theta}(x)+\mathbb{E}_{x\sim q_{\theta}(x)}\big[\nabla_{\theta} U_{\theta}(x)\big]\end{equation}
+
+    <p>So,</p>
+
+    \begin{equation}\nabla_{\theta} L_{\theta} = \mathbb{E}_{x\sim p(x)}\big[\nabla_{\theta} U_{\theta}(x)\big] - \mathbb{E}_{x\sim q_{\theta}(x)}\big[\nabla_{\theta} U_{\theta}(x)\big]\label{eq:q-grad}\end{equation}
+
+    <p>This means the gradient descent update formula is:</p>
+
+    \begin{equation}\theta \leftarrow \theta - \varepsilon \Big(\mathbb{E}_{x\sim p(x)}\big[\nabla_{\theta} U_{\theta}(x)\big] - \mathbb{E}_{x\sim q_{\theta}(x)}\big[\nabla_{\theta} U_{\theta}(x)\big]\Big)\end{equation}
+
+    <h2 id="langevin-equation">Langevin Equation</h2>
+
+    <p>In Equation $\eqref{eq:q-grad}$, $\mathbb{E}_{x\sim p(x)}\big[\nabla_{\theta} U_{\theta}(x)\big]$ is easy to estimate by sampling a batch of real data. However, $\mathbb{E}_{x\sim q_{\theta}(x)}\big[\nabla_{\theta} U_{\theta}(x)\big]$ is difficult because we don't know how to sample from $q_{\theta}(x)$.</p>
+
+    <p>The strategy in <a href="translation_6331.html">the second post</a> was to define another easily-sampled distribution $q_{\varphi}(x)$, sample from it, and minimize the difference between $q_{\varphi}(x)$ and $q_{\theta}(x)$. This paper, however, takes a different approach: it samples directly from the Langevin equation corresponding to the energy model.</p>
+
+    <p>The logic is simple and was mentioned in the previous article. For the Langevin equation:</p>
+
+    \begin{equation}x_{t+1} = x_t - \frac{1}{2}\varepsilon \nabla_x U(x_t) + \sqrt{\varepsilon}\alpha,\quad \alpha \sim \mathcal{N}(\alpha;0,1)\label{eq:sde}\end{equation}
+
+    <p>As $\varepsilon \to 0$ and $t \to \infty$, the distribution of the sequence $\{x_t\}$ becomes $q_{\theta}(x)$. In other words, $q_{\theta}(x)$ is the stationary distribution of this Langevin equation. Put simply, once $U_{\theta}(x)$ is given (and thus $q_{\theta}(x)$ is determined), the recursive process in Eq. $\eqref{eq:sde}$ allows us to obtain samples from $q_{\theta}(x)$.</p>
+
+    <p>With this sampling process, everything is set. Now $\mathbb{E}_{x\sim q_{\theta}(x)}\big[\nabla_{\theta} U_{\theta}(x)\big]$ can be estimated, allowing the energy model to be trained. Once training is complete, the same Eq. $\eqref{eq:sde}$ generates new samples, thus completing the generative process.</p>
+
+    <h2 id="model-details">Model Details</h2>
+
+    <p>While the theory is sound, the practical implementation involves many details and significant "alchemy." I had considered this path earlier but thought there were too many edge-case problems to solve. I admire the authors for persevering and making it work.</p>
+
+    <p>First, the authors added <a href="translation_6051.html">Spectral Normalization</a> to the model $U_{\theta}(x)$. Since $U_{\theta}(x)$ essentially plays the role of the discriminator in a GAN, adding Spectral Normalization makes sense. Second, during training, the energy function used is not just $U_{\theta}(x)$, but $U_{\theta}(x) + \lambda U_{\theta}^2(x)$, where $\lambda$ is a small positive constant. The authors suggest this makes the loss smoother and the training more stable (at inference, only $U_{\theta}(x)$ is used).</p>
+
+    <p>Regarding sampling with Eq. $\eqref{eq:sde}$, it's an iterative process that requires an initial value. If one samples the initial vector from a random distribution (like a uniform distribution) every time, the authors noted it leads to "mode collapse," where generated images look very similar because the sampling isn't exploratory enough. To solve this, the authors maintain a <b>Buffer</b> that stores historical sampling results to serve as initial values for future sampling.</p>
+
+    <p>Broadly, the model update process is as follows:</p>
+
+    <blockquote>
+        <p>Assume the data distribution is $p(x)$. Set the iteration step size $\varepsilon$ (ref value $1/200$), the number of steps $K$ (ref value $20\sim 50$), and batch size $N$. Let the Buffer be $\mathcal{B}$, initialized as an empty set.</p>
+        <p>Loop until convergence:</p>
+        <p>Loop to obtain a batch of real and fake samples:</p>
+        <ol>
+            <li>Sample a real data point $x_r$ from $p(x)$ and add it to the current batch.</li>
+            <li>With a 95% probability, pick a sample from $\mathcal{B}$ as the initial value $x_{f,0}$; otherwise (5% probability), use a uniform distribution.</li>
+            <li>Starting from $x_{f,0}$, iterate Eq. $\eqref{eq:sde}$ for $K$ steps to obtain $x_{f,K}$.</li>
+            <li>Treat $x_{f,K}$ as the fake sample $x_f$, add it to the batch, and update $\mathcal{B}$ with it.</li>
+        </ol>
+        <p>With the real and fake samples, perform one optimizer step with the objective:</p>
+        <p>$\frac{1}{N}\sum\limits_{x_r, x_f} \Big\{U_{\theta}(x_r) - U_{\theta}(x_f) + \lambda \big[U_{\theta}^2(x_r) - U_{\theta}^2(x_f)\big]\Big\}$</p>
+    </blockquote>
+
+    <p>Post-training sampling also requires maintaining a Buffer. To ensure diversity, the authors trained the model several times with different weights and sampled from these models simultaneously, sharing and collectively maintaining a single Buffer. For other details, please refer to the original paper; since I don't intend to replicate it, I won't delve deeper here.</p>
+
+    <p>Author's Implementation: <a href="https://github.com/openai/ebm_code_release">https://github.com/openai/ebm_code_release</a></p>
+
+    <h2 id="summary">Personal Summary</h2>
+
+    <p>Overall, I believe this is a respectable and decent paper. The logic and theory are mature, as the relationship between energy models and Langevin equations has been established long ago. However, overcoming the minute technical hurdles and actually implementing this idea is no small feat, showcasing the authors' deep expertise (and "alchemy" skills) in the field of generative models. From the energy model perspective, it provides a viable scheme for training complex energy-based models.</p>
+
+    <p>As for results, one could say it rivals GANs, but one could also argue it falls short. The authors mostly experimented on CIFAR-10 and ImageNet—both notoriously difficult datasets. Looking at the results, the model can indeed go head-to-head with many GANs; it clearly outperforms Glow on CIFAR-10. On the flip side, it feels highly heuristic and not particularly elegant—for instance, the sampling via Langevin dynamics feels somewhat precarious, and the Buffer approach, while effective, feels very engineering-heavy.</p>
+
+    <figure>
+        <img src="https://kexue.fm/usr/uploads/2019/05/2397067884.png" alt="Unconditional generation results on CIFAR-10">
+        <figcaption>Unconditional generation results on CIFAR-10.</figcaption>
+    </figure>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6612.html" style="color: #005fcc;">https://kexue.fm/archives/6612</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,320 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/8119">[Searching for Text] · (III) Text Sampling Based on BERT</a></h1>
+    <p>By 苏剑林 | Jan 22, 2021</p>
+
+    <p>Starting from this article, we will apply the sampling algorithms introduced earlier to specific text generation examples. As the first example, we will introduce how to use BERT for random text sampling. The so-called random text sampling is the process of randomly generating natural language sentences from a model. The common view is that such random sampling is a unique function of unidirectional autoregressive language models like GPT-2 and GPT-3, while bidirectional Masked Language Models (MLM) like BERT cannot do it. Is that really the case? Of course not. Utilizing BERT's MLM model can also achieve text sampling; in fact, it is exactly the Gibbs sampling introduced in the previous article. This fact was first clearly pointed out in the paper <a href="https://arxiv.org/abs/1902.04094">"BERT has a Mouth, and It Must Speak: BERT as a Markov Random Field Language Model."</a> The title of the paper is quite interesting: "BERT has a mouth, so it must say something." Now let's see what BERT can actually say~</p>
+
+    <h2>Sampling Process</h2>
+    <p>First, let's review the Gibbs sampling process introduced in the previous article:</p>
+
+    <blockquote>
+        <strong>Gibbs Sampling</strong><br>
+        The initial state is $\boldsymbol{x}_0=(x_{0,1},x_{0,2},\cdots,x_{0,l})$, and the state at time $t$ is $\boldsymbol{x}_t=(x_{t,1},x_{t,2},\cdots,x_{t,l})$.<br>
+        Sample $\boldsymbol{x}_{t+1}$ through the following flow:<br>
+        1. Uniformly sample an index $i$ from $1,2,\cdots,l$;<br>
+        2. Calculate $$p(y|\boldsymbol{x}_{t,-i})=\frac{p(x_{t,1},\dots,x_{t,i-1},y,x_{t,i+1},\cdots,x_{t,l})}{\sum\limits_y p(x_{t,1},\dots,x_{t,i-1},y,x_{t,i+1},\cdots,x_{t,l})}$$<br>
+        3. Sample $y\sim p(y|\boldsymbol{x}_{t,-i})$;<br>
+        4. $\boldsymbol{x}_{t+1} = {\boldsymbol{x}_t}_{[x_{t,i}=y]}$ (i.e., replace the $i$-th position of $\boldsymbol{x}_t$ with $y$ to serve as $\boldsymbol{x}_{t+1}$).
+    </blockquote>
+
+    <p>The most critical step is the calculation of $p(y|\boldsymbol{x}_{-i})$. Its specific meaning is "predicting the probability of the $i$-th element by removing the $i$-th element and using all remaining $l-1$ elements." Readers familiar with BERT should realize: isn't this exactly what BERT's MLM model does? Therefore, combining the MLM model with Gibbs sampling can indeed achieve random text sampling.</p>
+
+    <p>Thus, implementing the above Gibbs sampling process for MLM-based text sampling yields the following flow:</p>
+
+    <blockquote>
+        <strong>MLM Model Random Sampling</strong><br>
+        The initial sentence is $\boldsymbol{x}_0=(x_{0,1},x_{0,2},\cdots,x_{0,l})$, and the sentence at time $t$ is $\boldsymbol{x}_t=(x_{t,1},x_{t,2},\cdots,x_{t,l})$.<br>
+        Sample a new sentence $\boldsymbol{x}_{t+1}$ through the following flow:<br>
+        1. Uniformly sample an index $i$ from $1,2,\cdots,l$, and replace the token at the $i$-th position with [MASK] to get the sequence $\boldsymbol{x}_{t,-i}=(x_{t,1},\dots,x_{t,i-1},\text{[MASK]},x_{t,i+1},\cdots,x_{t,l})$;<br>
+        2. Feed $\boldsymbol{x}_{t,-i}$ into the MLM model and calculate the probability distribution at the $i$-th position, denoted as $p_{t+1}$;<br>
+        3. Sample a token from $p_{t+1}$, denoted as $y$;<br>
+        4. Replace the $i$-th token of $\boldsymbol{x}_t$ with $y$ to serve as $\boldsymbol{x}_{t+1}$.
+    </blockquote>
+
+    <p>Readers might notice that this sampling process can only sample sentences of a fixed length and won't change the sentence length. This is true because Gibbs sampling can only sample from a certain distribution, and sentences of different lengths actually belong to different distributions. Theoretically, there is no intersection between them. It’s just that when we build language models usually, we use autoregressive models to uniformly model the distribution of sentences of different lengths, to the point where we don't perceive the fact that "different sentences actually belong to different probability distributions."</p>
+
+    <p>Of course, it is not impossible to solve this. The original paper <i>"BERT has a Mouth, and It Must Speak: BERT as a Markov Random Field Language Model"</i> points out that the initial sentence can be set as a sequence consisting entirely of [MASK] tokens. In this way, we can randomly sample a length $l$ beforehand, and then use $l$ [MASK] tokens as the initial sentence to start the Gibbs sampling process, thereby obtaining sentences of different lengths.</p>
+
+    <h2>Reference Code</h2>
+    <p>With an existing MLM model, implementing the aforementioned Gibbs sampling is a very simple task. Below is the reference code implemented based on bert4keras:</p>
+
+    <p>Here are some examples:</p>
+
+    <blockquote>
+        Initial Sentence:<br>
+        科学技术是第一生产力。 (Science and technology are the primary productive forces.)<br>
+        Sampling Results:<br>
+        荣耀笔记本开箱怎么样？ (How is the Honor laptop unboxing?)<br>
+        微信记录没用被怎么办？ (What to do if WeChat records are useless/deleted?)<br>
+        无法安装浏览器怎么办？ (What to do if the browser cannot be installed?)<br>
+        epf转换器a7l怎么用？ (How to use epf converter a7l?)<br>
+        没有安装浏览器怎么办？ (What to do if no browser is installed?)<br>
+        荣耀笔记本充电怎么用？ (How to use Honor laptop charging?)<br>
+        无法打开asp. net怎么办？ (What to do if asp.net cannot be opened?)<br>
+        没有安装浏览器怎么办？ (What to do if no browser is installed?)<br>
+        无法重启浏览器怎么办？ (What to do if the browser cannot be restarted?)<br>
+        ro汉巴换mac tv版怎么用？ (How to use ro Hanba exchange mac tv version?)
+    </blockquote>
+
+    <blockquote>
+        Initial Sentence:<br>
+        北京新增3例本地确诊病例和1例无症状感染者 (Beijing adds 3 new local confirmed cases and 1 asymptomatic infected person)<br>
+        Sampling Results:<br>
+        澳门录得233宗h1n1感染案例和13宗放射性感染。 (Macau recorded 233 H1N1 infection cases and 13 radioactive infections.)<br>
+        庆祝仪式是学院绘画、钢铁工参与创作的盛会。 (The celebration ceremony is a grand event where academy painters and steelworkers participate in creation.)<br>
+        庆祝仪式后吉卜力平台其他游戏也参加了庆祝。 (After the celebration, other games on the Ghibli platform also joined the celebration.)<br>
+        临床试验发现中的g染色体多来自胃肠道感染。 (G-chromosomes in clinical trials mostly come from gastrointestinal infections.)<br>
+        临床试验发现，人们通常真正享受阴蒂的快感。 (Clinical trials found that people usually truly enjoy the pleasure of the clitoris.)<br>
+        庆祝模式在吉卜力平台其他游戏中更加与庆祝。 (The celebration mode is more [aligned] with celebration in other Ghibli platform games.)<br>
+        庆祝模式在吉卜力，或其他游戏上更新和庆祝。 (Celebration mode updated and celebrated on Ghibli or other games.)<br>
+        澳门录得20宗h1n1感染病例，2宗放射性感染。 (Macau recorded 20 H1N1 infection cases and 2 radioactive infections.)<br>
+        临床试验发现女性的染色体常来自胃肠道感染。 (Clinical trials found that female chromosomes often come from gastrointestinal infections.)<br>
+        临床试验发现90% 感染病例为m型胃肠道感染。 (Clinical trials found that 90% of infection cases are type-M gastrointestinal infections.)
+    </blockquote>
+
+    <blockquote>
+        Initial Sentence:<br>
+        9 consecutive [MASK] tokens<br>
+        Sampling Results:<br>
+        你每天学你妈妈啊！ (You copy your mother every day!)<br>
+        那晚，眼前白茫茫。 (That night, everything was white before my eyes.)<br>
+        層層青翠綠意盎然。 (Layers of verdant green, full of life.)<br>
+        幼儿园想做生意了。 (The kindergarten wants to do business.)<br>
+        究竟如何才能入官？ (How on earth can one enter officialdom?)<br>
+        老师、同学，您好！ (Hello, teacher and classmates!)<br>
+        云山重重，两茫茫。 (The cloud-covered mountains are heavy, both vast and hazy.)<br>
+        梅雨，窗外霧茫茫。 (Plum rains, the fog is thick outside the window.)<br>
+        那时，眼前白茫茫。 (At that time, everything was white before my eyes.)<br>
+        還是很棒的切蛋糕！ (Still a great cake cutting!)
+    </blockquote>
+
+    <p>In the experiments, I used Google's open-source Chinese BERT base. As you can see, the sampled sentences are quite diverse and have a certain degree of readability, which is decent for a base-sized model.</p>
+
+    <p>Using consecutive [MASK] tokens as initial values, repeated experiments might yield very different results:</p>
+
+    <blockquote>
+        Initial Sentence:<br>
+        17 consecutive [MASK] tokens<br>
+        Sampling Results:<br>
+        其他面瘫吃什么？其他面瘫吃什么好？ (What else to eat for facial paralysis? What is good to eat for other facial paralysis?)<br>
+        小儿面瘫怎么样治疗？面瘫吃什么药？ (How to treat infantile facial paralysis? What medicine to take for facial paralysis?)<br>
+        幼儿面瘫怎么样治疗？面瘫吃什么好？ (How to treat toddler facial paralysis? What is good to eat for facial paralysis?)<br>
+        儿童头痛是什么原因荨麻疹是什么病？ (What causes headaches in children? What kind of disease is urticaria?)<br>
+        其他面瘫吃什么・ 其他面瘫吃什么好？ (What else to eat for facial paralysis · What is good for other facial paralysis?)<br>
+        竟然洁具要怎么装进去水龙头怎么接？ (How to surprisingly install sanitary ware? How to connect the faucet?)<br>
+        其他面瘫吃什么好其他面瘫吃什么好？ (What is good for other facial paralysis? What is good for other facial paralysis?)<br>
+        孩子头疼是什么原因荨麻疹是什么病？ (What causes a child's headache? What kind of disease is urticaria?)<br>
+        竟然厨房柜子挑不进去水龙头怎么插？ (How is it that the kitchen cabinet can't fit in? How to plug in the faucet?)<br>
+        不然厨房壁橱找不到热水龙头怎么办？ (Otherwise, what if I can't find the hot water faucet in the kitchen cupboard?)
+    </blockquote>
+
+    <blockquote>
+        Initial Sentence:<br>
+        17 consecutive [MASK] tokens<br>
+        Sampling Results:<br>
+        フロクのツイートは下記リンクからこ覧下さい。<br>
+        天方町に運行したいシステムをこ利用くたさい。<br>
+        エリアあります2つクロカー専門店からこ案内まて！<br>
+        当サイトては割引に合うシステムを採用しています！<br>
+        同時作品ては表面のシステムを使用する。<br>
+        メーカーの品は真面まてシステムを使用しています。<br>
+        掲示板こ利用いたたシステムこ利用くたさい。<br>
+        住中方は、生产のシステムを使用しています。<br>
+        エアウェアの住所レヘルをこ一覧下さい。<br>
+        フロクのサホートは下記リンクてこ覧下さい。
+    </blockquote>
+
+    <p>Amazingly, even Japanese was sampled, and after checking with Baidu Translate, these Japanese sentences are quite readable. On one hand, this reflects the diversity of the random sampling results; on the other hand, it also shows that Google's Chinese BERT did not undergo thorough denoising, as the training data must have contained a significant amount of non-Chinese/English text.</p>
+
+    <h2>Insights and Reflections</h2>
+    <p>A while ago, Google, Stanford, OpenAI, and others co-published an article <a href="https://arxiv.org/abs/2012.07805">"Extracting Training Data from Large Language Models"</a>, which pointed out that language models like GPT-2 are fully capable of <strong>reproducing (exposing) training data</strong>. This is not hard to understand, as the essence of a language model is memorizing sentences. MLM-based Gibbs sampling shows that this issue exists not only in explicit language models like GPT-2 but also in bidirectional models like MLM. We can see hints of this from the sampling examples above; for instance, the appearance of Japanese indicates that the original corpus was not perfectly denoised. Furthermore, starting from "Beijing added 3 new local confirmed cases...", we sampled results related to H1N1, which reflects the temporal nature of the training corpus. These results imply that if you don't want your open-source model to expose privacy, you must do a good job of cleaning the pre-training data.</p>
+
+    <p>In addition, there is another "tidbit" regarding the paper <i>"BERT has a Mouth, and It Must Speak: BERT as a Markov Random Field Language Model"</i>. The original paper claimed that the MLM model is a Markov Random Field, but in fact, this is incorrect. Later, the authors clarified this on their homepage; interested readers can look at <a href="https://people.cs.umass.edu/~miyyer/pubs/2019_mrf_not.pdf">"BERT has a Mouth and must Speak, but it is not an MRF."</a> Generally speaking, it is perfectly fine to use MLM for random sampling, but it does not map directly onto a Markov Random Field.</p>
+
+    <h2>Summary</h2>
+    <p>This article introduced random text sampling based on BERT's MLM, which is essentially a natural application of Gibbs sampling. Overall, this article is just a fairly simple example. For readers who already understand Gibbs sampling, there is almost no technical difficulty here; for readers who are not yet familiar with Gibbs sampling, this specific example serves as a good way to further understand the Gibbs sampling process.</p>
+
+    <hr>
+    <p>To repost, please include the original address of this article: <a href="translation_8119.html">https://kexue.fm/archives/8119</a></p>
+    <p>For more detailed reposting matters, please refer to: <a href="https://kexue.fm/faq">"Scientific Space FAQ"</a></p>
+
+    <p>If you have any doubts or suggestions, please continue the discussion in the comments section below. If you find this article helpful, you are welcome to Share / Donate. Donations are not for profit, but to know how much genuine attention Scientific Space has received from its readers. Of course, if you ignore it, it will not affect your reading. Thanks again for your welcome and appreciation!</p>
+
+    <p>If you need to cite this article, please refer to:</p>
+    <p>Su Jianlin. (Jan. 22, 2021). "[Searching for Text] · (III) Text Sampling Based on BERT" [Blog post]. Retrieved from https://kexue.fm/archives/8119</p>
+
+<pre>
+@online{kexuefm-8119,
+    title={[Searching for Text] · (III) Text Sampling Based on BERT},
+    author={Su Jianlin},
+    year={2021},
+    month={Jan},
+    url={\url{https://kexue.fm/archives/8119}},
+}
+</pre>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8119.html" style="color: #005fcc;">https://kexue.fm/archives/8119</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

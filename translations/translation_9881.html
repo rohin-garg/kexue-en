@@ -1,0 +1,297 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']},
+    tags: 'ams'
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/9881">Generative Diffusion Model Talk (21): Accelerated ODE Sampling via the Mean Value Theorem</a></h1>
+
+    <p>By 苏剑林 | December 07, 2023</p>
+
+    <p>In the history of generative diffusion models, <a href="translation_9181.html">DDIM</a> and Song Yang's concurrent work on <a href="translation_9209.html">Diffusion SDEs</a> are both considered milestones. This is because they established a close connection between diffusion models and the mathematical fields of Stochastic Differential Equations (SDE) and Ordinary Differential Equations (ODE). This allows us to utilize various existing mathematical tools from SDEs and ODEs to analyze, solve, and extend diffusion models. For instance, a vast amount of subsequent work on accelerated sampling is based on this foundation, effectively opening a completely new perspective on generative diffusion models.</p>
+
+    <p>In this article, we focus on ODEs. In our previous blogs—Part <a href="translation_9228.html">(6)</a>, <a href="translation_9280.html">(12)</a>, <a href="translation_9370.html">(14)</a>, <a href="translation_9379.html">(15)</a>, and <a href="translation_9497.html">(17)</a>—we already derived the relationship between ODEs and diffusion models. This article provides a brief introduction to sampling acceleration for diffusion ODEs and highlights a clever new acceleration scheme called "AMED," which utilizes the spirit of the "Mean Value Theorem."</p>
+
+    <h2>Euler's Method</h2>
+
+    <p>As mentioned, since we have already derived the connection between diffusion models and ODEs in several articles, we will not repeat the derivation here. Instead, we directly define the sampling of a diffusion ODE as solving the following ODE:</p>
+
+    \begin{equation}\frac{d\boldsymbol{x}_t}{dt} = \boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)\label{eq:dm-ode}\end{equation}
+
+    <p>where $t \in [0, T]$, the initial condition is $\boldsymbol{x}_T$, and the result to be returned is $\boldsymbol{x}_0$. In principle, we do not care about the intermediate values $\boldsymbol{x}_t$ for $t \in (0, T)$; we only need the final $\boldsymbol{x}_0$. For numerical solving, we need to select nodes $0 = t_0 < t_1 < t_2 < \cdots < t_N = T$. A common choice is:</p>
+
+    \begin{equation}t_n=\left(t_1^{1 / \rho}+\frac{n-1}{N-1}\left(t_N^{1 / \rho}-t_1^{1 / \rho}\right)\right)^\rho\end{equation}
+
+    <p>where $\rho > 0$. This form comes from <a href="https://papers.cool/arxiv/2206.00364">"Elucidating the Design Space of Diffusion-Based Generative Models"</a> (EDM). AMED also adopts this scheme. Personally, I believe the choice of nodes is not an essential element; therefore, this article will not delve deeply into it.</p>
+
+    <p>The simplest solver is "Euler's method": using the finite difference approximation:</p>
+
+    \begin{equation}\left.\frac{d\boldsymbol{x}_t}{dt}\right|_{t=t_{n+1}}\approx \frac{\boldsymbol{x}_{t_{n+1}} - \boldsymbol{x}_{t_n}}{t_{n+1} - t_n}\end{equation}
+
+    <p>We can obtain:</p>
+
+    \begin{equation}\boldsymbol{x}_{t_n}\approx \boldsymbol{x}_{t_{n+1}} - \boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_{n+1}}, t_{n+1})(t_{n+1} - t_n)\end{equation}
+
+    <p>This is often directly referred to as the DDIM method, as DDIM was the first to notice that its sampling process corresponds to the Euler method of an ODE, subsequently deriving the corresponding ODE.</p>
+
+    <h2>Higher-Order Methods</h2>
+
+    <p>From the perspective of numerical solving, Euler's method is a first-order approximation. It is simple and fast, but its downside is poor precision unless the step size is very small. This means that relying solely on Euler's method is unlikely to significantly reduce the number of sampling steps while maintaining sampling quality. Therefore, subsequent sampling acceleration works have applied higher-order methods.</p>
+
+    <p>For example, intuitively, the difference $\frac{\boldsymbol{x}_{t_{n+1}} - \boldsymbol{x}_{t_n}}{t_{n+1} - t_n}$ should be closer to the derivative at the midpoint rather than at the boundary. Therefore, replacing the right side with the average of $t_n$ and $t_{n+1}$ should yield higher precision:</p>
+
+    \begin{equation}\frac{\boldsymbol{x}_{t_{n+1}} - \boldsymbol{x}_{t_n}}{t_{n+1} - t_n}\approx \frac{1}{2}\left[\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_n}, t_n) + \boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_{n+1}}, t_{n+1})\right]\label{eq:heun-0}\end{equation}
+
+    <p>From this, we get:</p>
+
+    \begin{equation}\boldsymbol{x}_{t_n}\approx \boldsymbol{x}_{t_{n+1}} - \frac{1}{2}\left[\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_n}, t_n) + \boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_{n+1}}, t_{n+1})\right](t_{n+1} - t_n) \end{equation}
+
+    <p>However, $\boldsymbol{x}_{t_n}$ appears on the right side, but $\boldsymbol{x}_{t_n}$ is exactly what we are trying to calculate. Thus, this equation cannot be used directly for iteration. For this reason, we use Euler's method to "predict" $\boldsymbol{x}_{t_n}$, and then substitute it into the equation above:</p>
+
+    \begin{equation}\begin{aligned}
+    \tilde{\boldsymbol{x}}_{t_n}=&\, \boldsymbol{x}_{t_{n+1}} - \boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_{n+1}}, t_{n+1})(t_{n+1} - t_n) \\
+    \boldsymbol{x}_{t_n}\approx&\, \boldsymbol{x}_{t_{n+1}} - \frac{1}{2}\left[\boldsymbol{v}_{\boldsymbol{\theta}}(\tilde{\boldsymbol{x}}_{t_n}, t_n) + \boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_{n+1}}, t_{n+1})\right](t_{n+1} - t_n)
+    \end{aligned}\label{eq:heun}\end{equation}
+
+    <p>This is the "<a href="https://en.wikipedia.org/wiki/Heun%27s_method">Heun's method</a>" used by EDM, which is a second-order method. In this way, each iteration step requires two evaluations of $\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$, but the precision is significantly improved. Thus, the number of iterative steps can be reduced, and the total computational cost is lowered.</p>
+
+    <p>There are many variants of second-order methods. For example, we can directly replace the right side of Eq. $\eqref{eq:heun-0}$ with the function value at the midpoint $t=(t_n+t_{n+1})/2$, yielding:</p>
+
+    \begin{equation}\boldsymbol{x}_{t_n}\approx \boldsymbol{x}_{t_{n+1}} - \boldsymbol{v}_{\boldsymbol{\theta}}\left(\boldsymbol{x}_{(t_n+t_{n+1})/2}, \frac{t_n+t_{n+1}}{2}\right)(t_{n+1} - t_n) \end{equation}
+
+    <p>There are also different ways to find the midpoint. In addition to the arithmetic mean $(t_n+t_{n+1})/2$, one can also consider the geometric mean:</p>
+
+    \begin{equation}\boldsymbol{x}_{t_n}\approx \boldsymbol{x}_{t_{n+1}} - \boldsymbol{v}_{\boldsymbol{\theta}}\left(\boldsymbol{x}_{\sqrt{t_n t_{n+1}}}, \sqrt{t_n t_{n+1}}\right)(t_{n+1} - t_n) \label{eq:dpm-solver-2}\end{equation}
+
+    <p>In fact, Eq. $\eqref{eq:dpm-solver-2}$ is a special case of <a href="https://papers.cool/arxiv/2206.00927">DPM-Solver-2</a>.</p>
+
+    <p>Beyond second-order methods, there are many higher-order methods for solving ODEs, such as the "<a href="https://en.wikipedia.org/wiki/Runge%E2%80%93Kutta_methods">Runge-Kutta methods</a>" and the "<a href="https://en.wikipedia.org/wiki/Linear_multistep_method">Linear Multistep methods</a>." However, whether using second-order or higher-order methods, although they can accelerate diffusion ODE sampling to some extent, they are "general methods." Since they are not customized for the background and forms of diffusion models, it is difficult to drive the computational steps of the sampling process down to the extreme (single digits).</p>
+
+    <h2>Mean Value Theorem</h2>
+
+    <p>Now, the protagonist of this article, AMED, makes its appearance. Its paper, <a href="https://papers.cool/arxiv/2312.00094">"Fast ODE-based Sampling for Diffusion Models in Around 5 Steps,"</a> was just posted on Arxiv two days ago—it is fresh out of the oven. Instead of simply increasing theoretical precision like traditional ODE solvers, AMED cleverly analogies the "Mean Value Theorem" and adds a very small distillation cost to create a <b>customized</b> high-speed solver for diffusion ODEs.</p>
+
+    <p style="text-align: center;"><img src="https://files.kexue.fm/illustration/2023/amed_solver.png" alt="Schematic of several diffusion ODE-Solvers" width="600"></p>
+    <p style="text-align: center;"><em>Schematic of several diffusion ODE-Solvers</em></p>
+
+    <p>First, we integrate both sides of Eq. $\eqref{eq:dm-ode}$, allowing us to write an exact equality:</p>
+
+    \begin{equation} \boldsymbol{x}_{t_{n+1}} - \boldsymbol{x}_{t_n} = \int_{t_n}^{t_{n+1}}\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)dt\end{equation}
+
+    <p>If $\boldsymbol{v}$ were a one-dimensional scalar function, then by the "<a href="https://en.wikipedia.org/wiki/Mean_value_theorem#Mean_value_theorems_for_definite_integrals">Mean Value Theorem for Integrals</a>," we know there exists a point $s_n \in (t_n, t_{n+1})$ such that:</p>
+
+    \begin{equation}\frac{1}{t_{n+1} - t_n}\int_{t_n}^{t_{n+1}}\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)dt = \boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_{s_n}, s_n) \end{equation}
+
+    <p>Unfortunately, the mean value theorem does not generally hold for vector functions. However, provided that $t_{n+1}-t_n$ is not too large and under certain assumptions, we can still analogously write the approximation:</p>
+
+    \begin{equation}\frac{1}{t_{n+1} - t_n}\int_{t_n}^{t_{n+1}}\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)dt \approx \boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_{s_n}, s_n) \end{equation}
+
+    <p>Thus we obtain:</p>
+
+    \begin{equation} \boldsymbol{x}_{t_n}\approx \boldsymbol{x}_{t_{n+1}} - \boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_{s_n}, s_n)(t_{n+1}-t_n)\end{equation}
+
+    <p>Of course, this is currently just a formal solution; how to obtain $s_n$ and $\boldsymbol{x}_{s_n}$ remains unresolved. For $\boldsymbol{x}_{s_n}$, we still use Euler's method to predict it, i.e., $\tilde{\boldsymbol{x}}_{s_n}= \boldsymbol{x}_{t_{n+1}} - \boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_{n+1}}, t_{n+1})(t_{n+1} - s_n)$. For $s_n$, we use a small neural network to estimate it:</p>
+
+    \begin{equation}s_n = g_{\boldsymbol{\phi}}(\boldsymbol{h}_{t_{n+1}}, t_{n+1})\end{equation}
+
+    <p>where $\boldsymbol{\phi}$ are trainable parameters, and $\boldsymbol{h}_{t_{n+1}}$ is an intermediate feature of the U-Net model $\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_{n+1}}, t_{n+1})$. Finally, to solve for the parameters $\boldsymbol{\phi}$, we adopt a distillation approach: we pre-calculate more accurate trajectory point pairs $(\boldsymbol{x}_{t_n}, \boldsymbol{x}_{t_{n+1}})$ using a solver with more steps, and then minimize the estimation error. This is the AMED-Solver (<b>A</b>pproximate <b>ME</b>an-<b>D</b>irection Solver) in the paper. It possesses the form of a conventional ODE-Solver but requires extra distillation cost. However, this distillation cost is almost negligible compared to other distillation acceleration methods, so the author understands it as a "customized" solver.</p>
+
+    <p>The word "customized" is crucial. Research on sampling acceleration for diffusion ODEs has existed for a long time. With the combined contributions of many researchers, non-training solvers have likely gone very far, but they still fail to bring the number of sampling steps to the extreme. Unless we have further breakthroughs in the theoretical understanding of diffusion models in the future, I do not believe non-training solvers have significant room for improvement. Therefore, AMED's approach of carrying a small training cost for acceleration is both "unconventional" and "natural as things evolve."</p>
+
+    <h2>Experimental Results</h2>
+
+    <p>Before looking at the experimental results, let us first understand a concept called "NFE," short for "Number of Function Evaluations." Put simply, it is the number of times the model $\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ is executed, which is directly linked to the computational load. For example, a first-order method has 1 NFE per iteration step because it only needs to execute $\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ once. For a second-order method, it's 2 NFE per step. The computational cost of AMED-Solver's $g_{\boldsymbol{\phi}}$ is very small and negligible, so the NFE for each step of AMED-Solver is also counted as 2. To achieve a fair comparison, one must keep the total NFE constant throughout the sampling process to compare the effects of different solvers.</p>
+
+    <p>The basic experimental results are shown in Table 2 of the original paper:</p>
+
+    <p style="text-align: center;"><img src="https://files.kexue.fm/illustration/2023/amed_table2.png" alt="Experimental results of AMED (Table 2)" width="600"></p>
+    <p style="text-align: center;"><em>Experimental results of AMED (Table 2)</em></p>
+
+    <p>There are several points worth noting in this table. First, when NFE does not exceed 5, the second-order DPM-Solver and EDM are even worse than the first-order DDIM. This is because a solver's error is linked not only to the order but also to the step size $t_{n+1}-t_n$, roughly as $\mathcal{O}((t_{n+1}-t_n)^m)$, where $m$ is the "order." When total NFE is small, higher-order methods can only take larger step sizes, making the actual precision worse and the results poorer. Second, the AMED-Solver (also a second-order method) achieves comprehensive SOTA results at low NFEs. This fully demonstrates the importance of "customization." Third, "AMED-Plugin" here refers to the paper's proposal of using the AMED idea as a "plugin" for other ODE Solvers, which is a slightly more complex approach but yields even better results.</p>
+
+    <p>Some readers might wonder: since each iteration of a second-order method requires 2 NFE, how can odd NFEs appear in the table? In fact, this is because the authors used a technique called "AFS (Analytical First Step)" to reduce one NFE. This technique comes from <a href="https://papers.cool/arxiv/2210.05475">"Genie: Higher-order denoising diffusion solvers."</a> Specifically, in the context of diffusion models, it is found that $\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_N}, t_N)$ is very close to $\boldsymbol{x}_{t_N}$ (different diffusion models may behave differently, but the core idea is that the first step can be solved analytically). Thus, in the first step of sampling, $\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_N}, t_N)$ is replaced directly by $\boldsymbol{x}_{t_N}$, saving one NFE. Tables 8, 9, and 10 in the appendix of the paper evaluate the impact of AFS on results in more detail; interested readers can analyze them.</p>
+
+    <p>Finally, since AMED uses a distillation method to train $g_{\boldsymbol{\phi}}$, some readers may want to know the difference in effect between it and other distillation acceleration schemes. Unfortunately, the paper does not provide a related comparison. For this reason, I consulted the author via email. The author stated that the distillation cost of AMED is extremely low: CIFAR10 requires less than 20 minutes of training on a single A100, and 256-sized images require only a few hours on four A100s. In contrast, other distillation acceleration ideas require days or even dozens of days. Therefore, the author regards AMED as solver work rather than distillation work. However, the author also expressed that they would try to supplement a comparison with distillation work if given the opportunity later.</p>
+
+    <h2>Hypothesis Analysis</h2>
+
+    <p>Previously, when discussing the extension of the mean value theorem to vector functions, we mentioned "under certain assumptions." So, what are the assumptions here? Are they actually true?</p>
+
+    <p>It is not difficult to find counterexamples proving that even for two-dimensional functions, the integral mean value theorem does not hold universally. In other words, the integral mean value theorem only holds for one-dimensional functions. This means that if the integral mean value theorem holds for a high-dimensional function, the spatial trajectory described by that function must be a straight line. That is to say, all points $\boldsymbol{x}_{t_0}, \boldsymbol{x}_{t_1}, \cdots, \boldsymbol{x}_{t_N}$ in the sampling process form a straight line. This assumption is naturally very strong and virtually impossible to hold in reality. However, it also suggests that for the integral mean value theorem to hold as much as possible in high-dimensional space, the sampling trajectory should stay within a subspace of as low a dimension as possible.</p>
+
+    <p>To verify this, the paper's authors increased the number of sampling steps to obtain a relatively accurate sampling trajectory, and then performed Principal Component Analysis (PCA) on the trajectory. The results are shown below:</p>
+
+    <p style="text-align: center;"><img src="https://files.kexue.fm/illustration/2023/amed_pca.png" alt="Principal Component Analysis of diffusion ODE sampling trajectories" width="600"></p>
+    <p style="text-align: center;"><em>Principal Component Analysis of diffusion ODE sampling trajectories</em></p>
+
+    <p>The PCA results show that keeping only the top 1 principal component preserves most of the precision of the trajectory, and if the first two components are kept, subsequent errors are almost negligible. This tells us that the sampling trajectories are almost entirely concentrated on a two-dimensional sub-plane, and are even very close to a straight line on that sub-plane. Consequently, when $t_{n+1}-t_n$ is not particularly large, the integral mean value theorem in high-dimensional space for diffusion models holds approximately.</p>
+
+    <p>This result might be surprising, but in hindsight, it can be explained: in <a href="translation_9379.html">"Generative Diffusion Model Talk (15): General Steps to Construct ODEs (Part 2)"</a> and <a href="translation_9497.html">"(17): General Steps to Construct ODEs (Part 3)"</a>, we introduced the general steps of first specifying a "pseudo-trajectory" from $\boldsymbol{x}_T$ to $\boldsymbol{x}_0$, and then constructing the corresponding diffusion ODE. In practical applications, the "pseudo-trajectories" we construct are all linear interpolations between $\boldsymbol{x}_T$ and $\boldsymbol{x}_0$ (it may be non-linear with respect to $t$, but it is linear with respect to $\boldsymbol{x}_T$ and $\boldsymbol{x}_0$). Thus, the constructed "pseudo-trajectories" are all straight lines, which further encourages the real diffusion trajectory to be a straight line. This explains the PCA results.</p>
+
+    <h2>Conclusion</h2>
+
+    <p>This article briefly reviewed sampling acceleration methods for diffusion ODEs and highlighted a novel accelerated sampling scheme called "AMED," which was released just a couple of days ago. This Solver analogies the integral mean value theorem to construct iterative formats, improving the performance of the Solver at low NFEs with extremely low distillation costs.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9881.html" style="color: #005fcc;">https://kexue.fm/archives/9881</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

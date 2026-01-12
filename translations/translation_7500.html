@@ -1,0 +1,235 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/7500">How to Deal with the "Unending Generation" Problem in Seq2Seq?</a></h1>
+
+    <p>By 苏剑林 | June 16, 2020</p>
+
+    <p>In the decoding process of Seq2Seq, we generate tokens recursively one by one until the <code>&lt;eos&gt;</code> tag appears; this is the so-called "autoregressive" generation model. However, readers who have studied Seq2Seq may have noticed that this autoregressive decoding occasionally exhibits a phenomenon where it "simply cannot stop." This is mainly characterized by the repeated appearance of a certain fragment, such as "The weather today is great great great great great..." or "Don't you think what I said is right right right right right...", but it stubbornness refuses to produce the <code>&lt;eos&gt;</code> tag. The ICML 2020 paper <a href="https://arxiv.org/abs/2002.02492">"Consistency of a Recurrent Language Model With Respect to Incomplete Decoding"</a> systematically discusses this phenomenon and proposes some countermeasures. This article will briefly introduce the main content of that paper.</p>
+
+    <h2>Decoding Algorithms</h2>
+    <p>For autoregressive models, we build a conditional language model as follows:
+    \begin{equation}p(y_t|y_{\lt t}, x)\label{eq:p}\end{equation}
+    The decoding algorithm then outputs the corresponding $y=(y_1,y_2,\dots,y_T)$ for a given $x$ based on the known model. Decoding algorithms can be roughly divided into two categories: <strong>Deterministic Decoding</strong> and <strong>Stochastic Decoding</strong>. The original paper discusses the "unending generation" problem for both categories, so we need to understand these two types of decoding algorithms.</p>
+
+    <h3>Deterministic Decoding</h3>
+    <p>Deterministic decoding algorithms mean that once the input text is fixed, the decoded output text is also fixed. This category includes <strong>Greedy Search</strong> and <strong>Beam Search</strong>. In fact, Greedy Search is a special case of Beam Search, so we only need to discuss Beam Search.</p>
+    <p>In Beam Search, we need to fix a "beam size" $k$ and decode token by token from left to right, keeping only the $k$ sequences with the highest total scores at each step. For example, if $k=2$ and the token space is $V=\{a,b,c,d\}$, the decoding process would look like this:</p>
+    <ul>
+        <li><strong>First step:</strong> Calculate $p(y_1|y_0,x)$ ($y_0$ is the fixed starting tag <code>&lt;bos&gt;</code>), and keep the two largest, e.g., $\{a,b\}$, recording their scores (log-probabilities).</li>
+        <li><strong>Second step:</strong> Calculate $p(y_2|y_0,a,x)$ and $p(y_2|y_0,b,x)$. At this point, there are a total of $k\times |V|=8$ candidate sequences. Keep the two with the highest total scores (the current token score plus the scores of $a$ and $b$ themselves), e.g., $\{(a,c),(b,d)\}$, and record their respective total scores.</li>
+        <li><strong>Third step:</strong> Calculate $p(y_3|y_0,a,c,x)$ and $p(y_3|y_0,b,d,x)$. There are again $k\times |V|=8$ candidate sequences. Keep the two with the highest total scores (the current token score plus the scores of $(a,c)$ and $(b,d)$), e.g., $\{(a,c,d),(a,c,c)\}$, and record their total scores.</li>
+    </ul>
+    <p>...And so on. Each sequence stops only when <code>&lt;eos&gt;</code> appears. Finally, the best one is selected from the $k$ completed sequences. There are generally two choices: one is to output the one with the highest total score, and the other is to output the one with the highest average score (divided by the number of tokens). Sometimes length penalties are added according to actual needs.</p>
+
+    <h3>Stochastic Decoding</h3>
+    <p>Stochastic decoding algorithms, as the name suggests, mean that even if the input text is fixed, the decoded output text is not fixed. For example, random sampling from a trained language model is such an algorithm (refer to <a href="translation_7292.html">"Now you can play with Chinese GPT2 using Keras"</a>). For Seq2Seq, we often want deterministic results, so in most scenarios, we use Beam Search. However, the results of Beam Search can be overly homogeneous (i.e., "safe" responses like "Okay," "I don't know," "Thank you"), or sometimes we want to increase output diversity (such as the <a href="translation_7060.html">SimBERT</a> model we open-sourced for generating similar sentences). In these cases, stochastic decoding algorithms are needed, which include three cases: Native Random Decoding, Top-k Sampling, and Nucleus Sampling.</p>
+    <p><strong>Native Random Decoding</strong> is simple: at each step, a token is randomly sampled according to its probability. For example, the first step calculates $p(y_1|y_0,x)$ and samples a token, say $c$; then the second step calculates $p(y_2|y_0,c,x)$ and samples another token, say $a$; the third step calculates $p(y_3|y_0,c,a,x)$ and continues sampling; ...; this continues until <code>&lt;eos&gt;</code> is sampled.</p>
+    <p><strong>Top-k Sampling</strong> comes from the article <a href="https://arxiv.org/abs/1805.04833">"Hierarchical Neural Story Generation"</a>. It essentially adds a truncation to native random decoding: only the $k$ tokens with the highest probabilities are kept at each step, and then sampling is performed after re-normalization. This is done to strike a compromise between "high score" and "diversity." Obviously, when $k=1$, it is equivalent to Greedy Search.</p>
+    <p><strong>Nucleus Sampling</strong> comes from the article <a href="https://arxiv.org/abs/1904.09751">"The Curious Case of Neural Text Degeneration"</a>. Similar to top-k sampling, it also truncates the sampling space. The truncation method is: fix $p\in(0, 1)$, and keep only the top tokens whose cumulative probability just exceeds $p$. Therefore, it is also called top-p sampling.</p>
+    <p>In addition to top-k and top-p truncation, there are some adaptive truncation methods. For example, the paper <a href="https://arxiv.org/abs/1602.02068">"Sparse Sequence-to-Sequence Models"</a> replaces the softmax function of the final predicted distribution with a sparse version of softmax, which automatically sets the probability of most impossible tokens to 0 without needing to manually choose $k$ or $p$.</p>
+
+    <h2>Knowing When to Stop</h2>
+    <p>From the model design of Seq2Seq and the decoding algorithms introduced above, there is no theoretical guarantee that the decoding process will definitely stop. That is to say, nothing ensures that the <code>&lt;eos&gt;</code> tag will necessarily appear; this can only be learned by the model itself. When the model hasn't learned well enough, the "unending generation" phenomenon occurs. The original paper analyzes different decoding algorithms and proposes corresponding strategies to make the decoding process "know when to stop."</p>
+
+    <h3>Bounded Hidden Vectors</h3>
+    <p>The classic way to model the probability $\eqref{eq:p}$ is:
+    \begin{equation}p(y_t|y_{\lt t}, x)=softmax(Wh_t+b),\quad h_t=f(y_{\lt t}, x)\end{equation}
+    In other words, a hidden vector $h_t$ is calculated first, followed by a fully connected layer and softmax activation. In this form, the original paper states that <strong>if for any $t$, $\Vert h_t\Vert$ is bounded, then native random decoding can "stop appropriately."</strong></p>
+    <p>This sounds like a very strong and practical conclusion, doesn't it? Making $\Vert h_t\Vert$ bounded is a very simple thing—for example, by adding Layer Norm. Does this mean adding Layer Norm can solve all problems? Not quite. The above conclusion is theoretically correct. The reasoning process is: because $\Vert h_t\Vert$ is bounded, for any $t$ and any token, $p(y_t|y_{\lt t}, x)$ has a positive lower bound (because $Wh_t$ won't be infinitely large, $e^{Wh_t}$ won't be infinitely large, and after normalization, it won't be infinitely close to 0). This implies that there exists a positive number $\epsilon > 0$ such that $p(\text{&lt;eos&gt;}|y_{\lt t}, x)\geq \epsilon$ always holds. Since the probability is a positive constant, as long as you sample enough steps, you will eventually have a chance to sample <code>&lt;eos&gt;</code>, so it won't stay stuck forever.</p>
+    <p>Does this reasoning process sound a bit ridiculous? Yes, it can stop, but you might have to sample a huge number of steps. It feels like saying "as long as you buy enough lottery tickets, you will eventually win the jackpot"—it doesn't have much definite practical value. After sampling enough steps, tokens that were meant to loop or repeat might have already repeated many times; even if it stops, the resulting output might be meaningless, perhaps even worse than simply truncating by length.</p>
+
+    <h3>Actively Adding &lt;eos&gt;</h3>
+    <p>Note that the above conclusion only holds for native random decoding. It does not necessarily hold for top-k or Nucleus sampling because, after truncation, <code>&lt;eos&gt;</code> might not appear in the sampling space. Of course, we can manually add <code>&lt;eos&gt;</code> into the sampling space, leading to the following conclusion:</p>
+    <p><strong>If for any $t$, $\Vert h_t\Vert$ is bounded, and we also add <code>&lt;eos&gt;</code> to the sampling space, then top-k random decoding and Nucleus sampling can "stop appropriately."</strong></p>
+    <p>However, this is somewhat like stating the obvious...</p>
+
+    <h3>Self-Truncation Design</h3>
+    <p>Note that the two conclusions above can only be used for stochastic decoding. For deterministic decoding, since there is no randomness, we cannot guarantee hitting <code>&lt;eos&gt;</code>. To this end, the original paper proposes a self-truncation design: find a way to make $p(\text{&lt;eos&gt;}|y_{\lt t}, x)$ have a positive lower bound, and ensure this lower bound increases as $t$ increases, eventually tending toward 1.</p>
+    <p>This self-truncation design is not complex. It defines $p(\text{&lt;eos&gt;}|y_{\lt t}, x) = 1 - \alpha(h_t)$, where
+    \begin{equation}\begin{aligned} 
+    \alpha(h_0)=&\,\sigma\left(w_{\text{&lt;eos&gt;}}^{\top} h_0 + b_{\text{&lt;eos&gt;}}\right) 
+    \\ 
+    \alpha(h_t)=&\,\sigma\left(w_{\text{&lt;eos&gt;}}^{\top} h_t + b_{\text{&lt;eos&gt;}}\right)\left[1 - p(\text{&lt;eos&gt;}|y_{\lt {t-1}}, x)\right] 
+    \end{aligned}\end{equation}
+    Here $\sigma(\cdot)$ is responsible for mapping $\mathbb{R}$ to $[0, 1-\epsilon]$; for example, one can use $\sigma(\cdot)=(1-\epsilon)\text{sigmoid}(\cdot)$. After designing $p(\text{&lt;eos&gt;}|y_{\lt t}, x)$, the remaining token probabilities are calculated using the original softmax method and then multiplied by $\alpha(h_t)$.</p>
+    <p>Now we have
+    \begin{equation}\begin{aligned} 
+    p(\text{&lt;eos&gt;}|y_{\lt t}, x)=&\,1 - \sigma\left(w_{\text{&lt;eos&gt;}}^{\top} h_t + b_{\text{&lt;eos&gt;}}\right)\left[1 - p(\text{&lt;eos&gt;}|y_{\lt {t-1}}, x)\right]\\ 
+    =&\,1 - \prod_{i=0}^t\sigma\left(w_{\text{&lt;eos&gt;}}^{\top} h_i + b_{\text{&lt;eos&gt;}}\right)\\ 
+    \geq&\, 1 - (1 - \epsilon)^{t+1} 
+    \end{aligned}\end{equation}
+    Clearly, as long as $t > -\ln 2/\ln (1-\epsilon)$, $p(\text{&lt;eos&gt;}|y_{\lt t}, x) > 0.5$. This means that for greedy search, it must stop within $-\ln 2/\ln (1-\epsilon)$ steps. As $p(\text{&lt;eos&gt;}|y_{\lt t}, x)$ approaches 1, it is clear that Beam Search will also stop within finite steps.</p>
+
+    <h2>Personal Evaluation</h2>
+    <p>The main content of the original paper is roughly as described. On the whole, it does provide some new understanding of decoding algorithms and offers some effective strategies to alleviate the "unending generation" problem. However, as an ICML paper, I feel the perspective of the original paper is not very high and overall seems a bit superficial.</p>
+    <p>Most of the original paper is spent using mathematical language to rephrase existing content—such as what decoding algorithms are, what top-k random decoding is, what Beam Search is, what "unending generation" is, etc. The paper gives these mathematical definitions, which isn't to say it's meaningless, but it doesn't add much value to the actual problem being discussed. Removing that part leaves very little content. Secondly, the conclusions are too weak. The strategies for stochastic decoding have been critiqued above; the conclusions are correct but have basically no practical value. As for the self-truncation design for deterministic decoding, it is actually quite forced—it feels like a crude truncation and lacks elegance.</p>
+    <p>The most critical issue is that throughout the paper, regarding the "unending generation" problem, it answers "what it is" and "what to do," but it does not explore "why." It provides no useful information regarding the essence of why "unending generation" occurs, and thus fails to derive strategies that are closer to the essence of the problem. This is what I find quite difficult to accept.</p>
+
+    <h2>Summary</h2>
+    <p>This article introduced decoding algorithms for Seq2Seq, discussed the "unending generation" phenomenon that may occur during decoding, and introduced the strategies provided in an ICML 2020 paper to address it.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7500.html" style="color: #005fcc;">https://kexue.fm/archives/7500</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

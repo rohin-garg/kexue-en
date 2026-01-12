@@ -1,0 +1,327 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/10427">Low-Rank Approximation Road (III): CR</a></h1>
+
+<p>By 苏剑林 | October 11, 2024</p>
+
+<p>In <a href="translation_10407.html">"Low-Rank Approximation Road (II): SVD"</a>, we proved that SVD provides the optimal low-rank approximation for any arbitrary matrix. The optimal approximation there was unconstrained, meaning that the result provided by SVD only focuses on minimizing the error and does not care about the specific structure of the matrix. However, in many application scenarios, due to requirements like interpretability or non-linear processing, we often hope to obtain an approximate decomposition that possesses certain special structures.</p>
+
+<p>Therefore, starting from this article, we will explore low-rank approximations with specific structures. This article will focus on the CR approximation (Column-Row Approximation), which provides a simple scheme for accelerating matrix multiplication operations.</p>
+
+<h2>Problem Background</h2>
+
+<p>The general formulation of the optimal rank-$r$ approximation of a matrix is:</p>
+
+\begin{equation}\mathop{\text{argmin}}_{\text{rank}(\tilde{\boldsymbol{M}})\leq r}\Vert \tilde{\boldsymbol{M}} - \boldsymbol{M}\Vert_F^2\label{eq:loss-m2}\end{equation}
+
+<p>where $\boldsymbol{M}, \tilde{\boldsymbol{M}}\in\mathbb{R}^{n\times m}$ and $r < \min(n,m)$. In the previous two articles, we discussed two cases:</p>
+
+<blockquote>
+    <p>1. If there are no other constraints on $\tilde{\boldsymbol{M}}$, the optimal solution for $\tilde{\boldsymbol{M}}$ is $\boldsymbol{U}_{[:,:r]}\boldsymbol{\Sigma}_{[:r,:r]}\boldsymbol{V}_{[:,:r]}^{\top}$, where $\boldsymbol{M}=\boldsymbol{U}\boldsymbol{\Sigma} \boldsymbol{V}^{\top}$ is the singular value decomposition (SVD) of $\boldsymbol{M}$;</p>
+    <p>2. If it is specified that $\tilde{\boldsymbol{M}}=\boldsymbol{A}\boldsymbol{B}$ ($\boldsymbol{A}\in\mathbb{R}^{n\times r}, \boldsymbol{B}\in\mathbb{R}^{r\times m}$), and $\boldsymbol{A}$ (or $\boldsymbol{B}$) is already given, then the optimal solution for $\tilde{\boldsymbol{M}}$ is $\boldsymbol{A} \boldsymbol{A}^{\dagger} \boldsymbol{M}$ (or $\boldsymbol{M} \boldsymbol{B}^{\dagger} \boldsymbol{B}$), where ${}^\dagger$ represents the "<a href="translation_10366.html">pseudo-inverse</a>".</p>
+</blockquote>
+
+<p>Both of these results have wide applications, but they do not explicitly introduce a structural association between $\tilde{\boldsymbol{M}}$ and $\boldsymbol{M}$. This makes it difficult to intuitively see the connection between $\tilde{\boldsymbol{M}}$ and $\boldsymbol{M}$; in other words, the interpretability of $\tilde{\boldsymbol{M}}$ is not strong.</p>
+
+<p>Furthermore, if the objective involves a non-linear operation such as $\phi(\boldsymbol{X}\boldsymbol{W})$, it usually does not allow us to use an arbitrary real projection matrix to reduce dimensionality. Instead, it requires the use of a "Selective Matrix." For example, $\phi(\boldsymbol{X}\boldsymbol{W})\boldsymbol{S} = \phi(\boldsymbol{X}\boldsymbol{W}\boldsymbol{S})$ does not hold for an arbitrary matrix $\boldsymbol{S}$, but it holds identically for a selective matrix $\boldsymbol{S}$.</p>
+
+<p>Therefore, we next focus on low-rank approximations under the constraint of selective matrices. Specifically, we have $\boldsymbol{X}\in\mathbb{R}^{n\times l}, \boldsymbol{Y}\in\mathbb{R}^{l\times m}$, and we set $\boldsymbol{M}=\boldsymbol{X}\boldsymbol{Y}$. Our task is to select $r$ columns from $\boldsymbol{X}$ and the corresponding $r$ rows from $\boldsymbol{Y}$ to construct $\tilde{\boldsymbol{M}}$, i.e.,</p>
+
+\begin{equation}\mathop{\text{argmin}}_S\Vert \underbrace{\boldsymbol{X}_{[:,S]}}_{\boldsymbol{C}}\underbrace{\boldsymbol{Y}_{[S,:]}}_{\boldsymbol{R}} - \boldsymbol{X}\boldsymbol{Y}\Vert_F^2\quad\text{s.t.}\quad S\subset \{0,1,\cdots,l-1\}, |S|=r\end{equation}
+
+<p>Here, $S$ can be understood as a slice; following Python's slicing rules, we call $\boldsymbol{X}_{[:,S]}\boldsymbol{Y}_{[S,:]}$ the "CR approximation" of $\boldsymbol{X}\boldsymbol{Y}$. Note that this kind of slicing result can also be equivalently described using a selection matrix. Assuming the 1st, 2nd, ..., $r$-th columns of $\boldsymbol{X}_{[:,S]}$ are the $s_1, s_2, \cdots, s_r$-th columns of $\boldsymbol{X}$ respectively, we can define a selective matrix $\boldsymbol{S}\in\{0,1\}^{l\times r}$:</p>
+
+\begin{equation}S_{i,j}=\left\{\begin{aligned}&1, &i = s_j \\ &0, &i\neq s_j\end{aligned}\right.\end{equation}
+
+<p>That is, the $s_j$-th element of the $j$-th column of $\boldsymbol{S}$ is 1, and all others are 0. In this way, we have $\boldsymbol{X}_{[:,S]}=\boldsymbol{X}\boldsymbol{S}$ and $\boldsymbol{Y}_{[S,:]}=\boldsymbol{S}^{\top} \boldsymbol{Y}$.</p>
+
+<h2>Preliminary Approximation</h2>
+
+<p>If we represent $\boldsymbol{X}$ and $\boldsymbol{Y}$ respectively as</p>
+
+\begin{equation}\boldsymbol{X} = (\boldsymbol{x}_1,\boldsymbol{x}_2,\cdots,\boldsymbol{x}_l),\quad \boldsymbol{Y}=\begin{pmatrix}\boldsymbol{y}_1^{\top} \\ \boldsymbol{y}_2^{\top} \\ \vdots \\ \boldsymbol{y}_l^{\top}\end{pmatrix}\end{equation}
+
+<p>where $\boldsymbol{x}_i\in\mathbb{R}^{n\times 1}$ and $\boldsymbol{y}_i\in\mathbb{R}^{m\times 1}$ are all column vectors, then $\boldsymbol{X}\boldsymbol{Y}$ can be written as</p>
+
+\begin{equation}\boldsymbol{X}\boldsymbol{Y} = \sum_{i=1}^l \boldsymbol{x}_i\boldsymbol{y}_i^{\top}\end{equation}
+
+<p>Finding the optimal CR approximation of $\boldsymbol{X}\boldsymbol{Y}$ can then be equivalently written as</p>
+
+\begin{equation}\mathop{\text{argmin}}_{\lambda_1,\lambda_2,\cdots,\lambda_l\in\{0,1\}}\left\Vert\sum_{i=1}^l \lambda_i \boldsymbol{x}_i\boldsymbol{y}_i^{\top} - \sum_{i=1}^l\boldsymbol{x}_i\boldsymbol{y}_i^{\top}\right\Vert_F^2\quad\text{s.t.}\quad \sum_{i=1}^l \lambda_i = r\label{eq:xy-l-k}\end{equation}
+
+<p>We know that the Frobenius norm of a matrix is essentially calculated as the norm of the vector formed by flattening the matrix. Thus, this optimization problem is inherently equivalent to: given $l$ vectors $\boldsymbol{v}_1,\boldsymbol{v}_2,\cdots,\boldsymbol{v}_l\in\mathbb{R}^d$, solve</p>
+
+\begin{equation}\mathop{\text{argmin}}_{\lambda_1,\lambda_2,\cdots,\lambda_l\in\{0,1\}}\left\Vert\sum_{i=1}^l \lambda_i \boldsymbol{v}_i - \sum_{i=1}^l\boldsymbol{v}_i\right\Vert^2\quad\text{s.t.}\quad \sum_{i=1}^l \lambda_i = r\label{eq:v-l-k}\end{equation}
+
+<p>where $\boldsymbol{v}_i = \text{vec}(\boldsymbol{x}_i \boldsymbol{y}_i^{\top})$ and $d=nm$. Setting $\gamma_i = 1 - \lambda_i$, this can be further simplified to</p>
+
+\begin{equation}\mathop{\text{argmin}}_{\gamma_1,\gamma_2,\cdots,\gamma_l\in\{0,1\}}\left\Vert\sum_{i=1}^l \gamma_i \boldsymbol{v}_i\right\Vert^2\quad\text{s.t.}\quad \sum_{i=1}^l \gamma_i = l-r\label{eq:v-l-k-0}\end{equation}
+
+<p>If the author understands correctly, the exact solution to this optimization problem is NP-Hard, so in general, we can only seek approximate algorithms. A simple example that can be solved exactly is when $\boldsymbol{v}_1,\boldsymbol{v}_2,\cdots,\boldsymbol{v}_l$ are pairwise perpendicular. In this case:</p>
+
+\begin{equation}\left\Vert\sum_{i=1}^l \gamma_i \boldsymbol{v}_i\right\Vert^2 = \sum_{i=1}^l \gamma_i^2 \Vert\boldsymbol{v}_i\Vert^2\end{equation}
+
+<p>Thus, its minimum value is the sum of the $l-r$ smallest $\Vert\boldsymbol{v}_i\Vert^2$ values, i.e., by setting $\gamma_i$ to 1 for the $l-r$ vectors with the smallest norms, and $\gamma_i$ to 0 for the rest. When the condition of pairwise orthogonality does not strictly hold, we can still use the selection of the $l-r$ vectors with the smallest norms as an approximate solution. Returning to the original CR approximation problem, we have $\Vert\boldsymbol{x}_i\boldsymbol{y}_i^{\top}\Vert_F = \Vert\boldsymbol{x}_i\Vert \Vert \boldsymbol{y}_i\Vert$, so a baseline for the optimal CR approximation of $\boldsymbol{X}\boldsymbol{Y}$ is to retain the $r$ column/row vectors for which the product of the norm of the column vector from $\boldsymbol{X}$ and the corresponding row vector from $\boldsymbol{Y}$ is the largest.</p>
+
+<h2>Sampling Perspective</h2>
+
+<p>In some scenarios, we may relax Equation \eqref{eq:xy-l-k} to:</p>
+
+\begin{equation}\mathop{\text{argmin}}_{\lambda_1,\lambda_2,\cdots,\lambda_l\in\mathbb{R}}\left\Vert\sum_{i=1}^l \lambda_i \boldsymbol{x}_i\boldsymbol{y}_i^{\top} - \sum_{i=1}^l\boldsymbol{x}_i\boldsymbol{y}_i^{\top}\right\Vert_F^2\quad\text{s.t.}\quad \sum_{i=1}^l \#[\lambda_i\neq 0] = r\end{equation}
+
+<p>where $\#[\lambda_i\neq 0]$ outputs 1 if $\lambda_i\neq 0$ and 0 otherwise. This relaxed version essentially extends the form of the CR approximation from $\boldsymbol{C}\boldsymbol{R}$ to $\boldsymbol{C}\boldsymbol{\Lambda}\boldsymbol{R}$, where $\boldsymbol{\Lambda}\in\mathbb{R}^{r\times r}$ is a diagonal matrix, allowing us to adjust the diagonal matrix $\boldsymbol{\Lambda}\in\mathbb{R}^{r\times r}$ to achieve higher precision. Accordingly, Equation \eqref{eq:v-l-k} becomes:</p>
+
+\begin{equation}\mathop{\text{argmin}}_{\lambda_1,\lambda_2,\cdots,\lambda_l\in\mathbb{R}}\left\Vert\sum_{i=1}^l \lambda_i \boldsymbol{v}_i - \sum_{i=1}^l\boldsymbol{v}_i\right\Vert^2\quad\text{s.t.}\quad \sum_{i=1}^l \#[\lambda_i\neq 0] = r\end{equation}
+
+<p>After this relaxation, we can view the problem from a sampling perspective. First, we introduce an arbitrary $l$-dimensional distribution $\boldsymbol{p}=(p_1,p_2,\cdots,p_l)$, then we can write:</p>
+
+\begin{equation}\sum_{i=1}^l\boldsymbol{v}_i = \sum_{i=1}^l p_i\times\frac{\boldsymbol{v}_i}{p_i} = \mathbb{E}_{i\sim \boldsymbol{p}} \left[\frac{\boldsymbol{v}_i}{p_i}\right] \end{equation}
+
+<p>That is to say, the mathematical expectation of $\boldsymbol{v}_i/p_i$ is exactly the target we want to approximate. Therefore, we can construct an approximation by **independent and identically distributed (i.i.d.) sampling** from the distribution $\boldsymbol{p}$:</p>
+
+\begin{equation}\sum_{i=1}^l\boldsymbol{v}_i = \mathbb{E}_{i\sim \boldsymbol{p}} \left[\frac{\boldsymbol{v}_i}{p_i}\right] \approx \frac{1}{r}\sum_{j=1}^r \frac{\boldsymbol{v}_{s_j}}{p_{s_j}},\quad s_1,s_2,\cdots,s_r\sim \boldsymbol{p}\end{equation}
+
+<p>This means when $i$ is one of $s_1,s_2,\cdots,s_r$, then $\lambda_i = (r p_i)^{-1}$, otherwise $\lambda_i=0$. Some readers might wonder why we use i.i.d. sampling instead of sampling without replacement, which seems more suited to the approximation requirement. The reason is simply that i.i.d. sampling makes the subsequent analysis simpler.</p>
+
+<p>Up to this point, our theoretical result is independent of the choice of the distribution $\boldsymbol{p}$, meaning it holds for any $\boldsymbol{p}$. This provides us with the possibility of choosing the optimal $\boldsymbol{p}$. How should we measure the quality of $\boldsymbol{p}$? Clearly, we want the error of the sampling estimation to be as small as possible. Therefore, we can use the sampling estimation error:</p>
+
+\begin{equation}\mathbb{E}_{i\sim \boldsymbol{p}} \left[\left\Vert\frac{\boldsymbol{v}_i}{p_i} - \sum_{i=1}^l\boldsymbol{v}_i\right\Vert^2\right] = \left(\sum_{i=1}^l \frac{\Vert\boldsymbol{v}_i\Vert^2}{p_i}\right) - \left\Vert\sum_{i=1}^l\boldsymbol{v}_i\right\Vert^2 \end{equation}
+
+<p>to compare the merits of different $\boldsymbol{p}$. Next, using the arithmetic mean-geometric mean inequality, we have:</p>
+
+\begin{equation}\sum_{i=1}^l \frac{\Vert\boldsymbol{v}_i\Vert^2}{p_i} = \left(\sum_{i=1}^l \frac{\Vert\boldsymbol{v}_i\Vert^2}{p_i} + p_i Z^2\right) - Z^2\geq \left(\sum_{i=1}^l 2\Vert\boldsymbol{v}_i\Vert Z\right) - Z^2\end{equation}
+
+<p>Equality is achieved when $\Vert\boldsymbol{v}_i\Vert^2 / p_i = p_i Z^2$. From this, we obtain the optimal $\boldsymbol{p}$ as:</p>
+
+\begin{equation}p_i^* = \frac{\Vert\boldsymbol{v}_i\Vert}{Z},\quad Z = \sum\limits_{i=1}^l \Vert\boldsymbol{v}_i\Vert\end{equation}
+
+<p>The corresponding error is:</p>
+
+\begin{equation}\mathbb{E}_{i\sim \boldsymbol{p}} \left[\left\Vert\frac{\boldsymbol{v}_i}{p_i} - \sum_{i=1}^l\boldsymbol{v}_i\right\Vert^2\right] = \left(\sum_{i=1}^l \Vert\boldsymbol{v}_i\Vert\right)^2 - \left\Vert\sum_{i=1}^l\boldsymbol{v}_i\right\Vert^2 \end{equation}
+
+<p>The optimal $p_i$ is exactly proportional to $\Vert\boldsymbol{v}_i\Vert$, so the $r$ vectors $\boldsymbol{v}_i$ with the highest probabilities are also the $r$ vectors with the largest norms. This connects back to the approximation in the previous section. This result comes from the 2006 paper <a href="https://www.stat.berkeley.edu/~mmahoney/pubs/matrix1_SICOMP.pdf">"Fast Monte Carlo Algorithms for Matrices I: Approximating Matrix Multiplication"</a>. Its primary intent was to accelerate matrix multiplication, and it shows that as long as we sample from the columns/rows of $\boldsymbol{X}$ and $\boldsymbol{Y}$ according to $p_i\propto \Vert \boldsymbol{x}_i\boldsymbol{y}_i^{\top}\Vert_F = \Vert \boldsymbol{x}_i\Vert \Vert\boldsymbol{y}_i\Vert$, and scale them by $(r p_i)^{-1/2}$, we can obtain a CR approximation of $\boldsymbol{X}\boldsymbol{Y}$, thereby reducing the multiplication complexity from $\mathcal{O}(lmn)$ to $\mathcal{O}(rmn)$.</p>
+
+<h2>Extended Discussion</h2>
+
+<p>Whether sorting by norm or random sampling with $p_i\propto \Vert\boldsymbol{v}_i\Vert$, these methods allow us to construct a CR approximation within linear complexity (i.e., $\mathcal{O}(l)$), which is ideal for real-time computation. However, since the sorting or sampling only depends on $\Vert\boldsymbol{v}_i\Vert$, the precision can be considered mediocre. If we can accept a higher complexity, how can we improve the precision of the CR approximation?</p>
+
+<p>We can try changing the unit of sorting to $k$-tuples. For simplicity, assume $k \leq l-r$ is a factor of $l-r$. The number of combinations for choosing $k$ out of $l$ vectors $\boldsymbol{v}_1,\boldsymbol{v}_2,\cdots,\boldsymbol{v}_l$ is $C_l^k$. For each combination $\{s_1,s_2,\cdots,s_k\}$, we can calculate the norm of the vector sum $\Vert \boldsymbol{v}_{s_1} + \boldsymbol{v}_{s_2} + \cdots + \boldsymbol{v}_{s_k}\Vert$. With this data, we can greedily construct an approximate solution for \eqref{eq:v-l-k-0}:</p>
+
+<blockquote>
+    <p>Initialize $\Omega = \{1,2,\cdots,l\}, \Theta=\{\}$</p>
+    <p>For $t=1,2,\cdots,(l-r)/k$, perform:</p>
+    <p>$\Theta = \Theta\,\cup\,\mathop{\text{argmin}}\limits_{\{s_1,s_2,\cdots,s_k\}\subset \Omega}\Vert \boldsymbol{v}_{s_1} + \boldsymbol{v}_{s_2} + \cdots + \boldsymbol{v}_{s_k}\Vert$;</p>
+    <p>$\Omega = \Omega\,\backslash\,\Theta$;</p>
+    <p>Return $\Theta$.</p>
+</blockquote>
+
+<p>In short, it means repeatedly picking the $k$ vectors from the remaining ones that have the smallest sum norm, repeating this $(l-r)/k$ times to get $l-r$ vectors. This is a natural generalization of sorting by individual vector norms. Its complexity is $\mathcal{O}(C_l^k)$, which may be unbearable when $k > 1$ and $l$ is large, which also reflects the complexity of solving the original problem exactly.</p>
+
+<p>Another question worth considering is: if the CR approximation is allowed to be relaxed to $\boldsymbol{C}\boldsymbol{\Lambda}\boldsymbol{R}$, what is the optimal solution for $\boldsymbol{\Lambda}$? If there are no constraints on the structure of $\boldsymbol{\Lambda}$, the answer is given by the pseudo-inverse:</p>
+
+\begin{equation}\boldsymbol{\Lambda}^* = \mathop{\text{argmin}}_{\boldsymbol{\Lambda}}\Vert \boldsymbol{C}\boldsymbol{\Lambda}\boldsymbol{R} - \boldsymbol{X}\boldsymbol{Y}\Vert_F^2 = \boldsymbol{C}^{\dagger}\boldsymbol{X}\boldsymbol{Y}\boldsymbol{R}^{\dagger}\end{equation}
+
+<p>What if $\boldsymbol{\Lambda}$ must be a diagonal matrix? Then we can first restate the problem: given $\{\boldsymbol{u}_1,\boldsymbol{u}_2,\cdots,\boldsymbol{u}_r\}\subset\{\boldsymbol{v}_1,\boldsymbol{v}_2,\cdots,\boldsymbol{v}_l\}$, find</p>
+
+\begin{equation}\mathop{\text{argmin}}_{\lambda_1,\lambda_2,\cdots,\lambda_r}\left\Vert\sum_{i=1}^r \lambda_i \boldsymbol{u}_i - \sum_{i=1}^l\boldsymbol{v}_i\right\Vert^2\end{equation}
+
+<p>Let $\boldsymbol{U} = (\boldsymbol{u}_1,\boldsymbol{u}_2,\cdots,\boldsymbol{u}_r), \boldsymbol{V} = (\boldsymbol{v}_1,\boldsymbol{v}_2,\cdots,\boldsymbol{v}_l), \boldsymbol{\lambda}=(\lambda_1,\lambda_2,\cdots,\lambda_r)^{\top}$. Then the optimization objective can be written as:</p>
+
+\begin{equation}\mathop{\text{argmin}}_{\boldsymbol{\lambda}}\left\Vert\boldsymbol{U}\boldsymbol{\lambda} - \boldsymbol{V}\boldsymbol{1}_{l\times 1}\right\Vert^2\end{equation}
+
+<p>This can similarly be solved using the pseudo-inverse to write the optimal solution:</p>
+
+\begin{equation}\boldsymbol{\lambda}^* = \boldsymbol{U}^{\dagger}\boldsymbol{V}\boldsymbol{1}_{l\times 1} = (\boldsymbol{U}^{\top}\boldsymbol{U})^{-1}\boldsymbol{U}^{\top}\boldsymbol{V}\boldsymbol{1}_{l\times 1} \end{equation}
+
+<p>The last equality assumes that $\boldsymbol{U}^{\top}\boldsymbol{U}$ is invertible, which is usually satisfied. If not, $(\boldsymbol{U}^{\top}\boldsymbol{U})^{-1}$ can be changed to $(\boldsymbol{U}^{\top}\boldsymbol{U})^{\dagger}$.</p>
+
+<p>The current problem is that directly applying the above formula would result in too much computation for the original problem, because $\boldsymbol{v}_i = \text{vec}(\boldsymbol{x}_i \boldsymbol{y}_i^{\top})$, meaning $\boldsymbol{v}_i$ is an $mn$-dimensional vector. Thus, $\boldsymbol{V}$ is of size $mn \times l$, and $\boldsymbol{U}$ is of size $mn \times r$, which is difficult to handle when $m, n$ are large. Utilizing $\boldsymbol{v}_i = \text{vec}(\boldsymbol{x}_i \boldsymbol{y}_i^{\top})$ helps us further simplify the expression. Suppose $\boldsymbol{u}_i = \text{vec}(\boldsymbol{c}_i \boldsymbol{r}_i^{\top})$, then:</p>
+
+\begin{equation}\begin{aligned}(\boldsymbol{U}^{\top}\boldsymbol{V})_{i,j} =&\, \langle \boldsymbol{c}_i \boldsymbol{r}_i^{\top}, \boldsymbol{x}_j \boldsymbol{y}_j^{\top}\rangle_F = \text{Tr}(\boldsymbol{r}_i \boldsymbol{c}_i^{\top}\boldsymbol{x}_j \boldsymbol{y}_j^{\top}) = (\boldsymbol{c}_i^{\top}\boldsymbol{x}_j)(\boldsymbol{r}_i^{\top} \boldsymbol{y}_j) \\[5pt]
+=&\, [(\boldsymbol{C}^{\top}\boldsymbol{X})\otimes (\boldsymbol{R}\boldsymbol{Y}^{\top})]_{i,j}
+\end{aligned}\end{equation}
+
+<p>That is, $\boldsymbol{U}^{\top}\boldsymbol{V}=(\boldsymbol{C}^{\top}\boldsymbol{X})\otimes (\boldsymbol{R}\boldsymbol{Y}^{\top})$ and $\boldsymbol{U}^{\top}\boldsymbol{U}=(\boldsymbol{C}^{\top}\boldsymbol{C})\otimes (\boldsymbol{R}\boldsymbol{R}^{\top})$, where $\otimes$ is the <a href="https://en.wikipedia.org/wiki/Hadamard_product_(matrices)">Hadamard product</a> (element-wise product). With this identity transformation, the computational cost for $\boldsymbol{U}^{\top}\boldsymbol{V}$ and $\boldsymbol{U}^{\top}\boldsymbol{U}$ is significantly reduced.</p>
+
+<h2>Summary</h2>
+
+<p>This article introduced the CR approximation for matrix multiplication. This is a low-rank approximation with a specific column and row structure. Compared to the optimal low-rank approximation given by SVD, the CR approximation possesses more intuitive physical meaning and better interpretability.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10427.html" style="color: #005fcc;">https://kexue.fm/archives/10427</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

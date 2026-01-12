@@ -1,0 +1,311 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    tags: 'ams',
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    ignoreHtmlClass: 'tex2jax_ignore',
+    processHtmlClass: 'tex2jax_process'
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script type="text/javascript" id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+<h1><a href="https://kexue.fm/archives/9344">Some "Alchemy Strategies" Derived from the Amos Optimizer Ideas</a></h1>
+<p>By 苏剑林 | November 22, 2022</p>
+
+<p>If training a model is compared to "alchemy," then the "alchemical furnace" is clearly the optimizer. It is rumored that the AdamW optimizer is currently the fastest solution for training neural networks. I haven't compared this one by one, so I don't know the specific details, but it is true that most pre-training currently uses AdamW or its variant LAMB. However, just as having an alchemical furnace doesn't guarantee a good pill, even if we decide on the AdamW optimizer, there are still many questions without definitive answers, such as:</p>
+
+<blockquote>
+<p>1. How should the learning rate adapt to different initializations and parameterizations?</p>
+<p>2. How should the weight decay rate be tuned?</p>
+<p>3. What strategy should be used for learning rate scheduling?</p>
+<p>4. Can we reduce the memory usage of the optimizer?</p>
+</blockquote>
+
+<p>Although in practical applications we can often directly apply parameters and strategies tuned by predecessors, the lack of systematic parameter-tuning guidance always leaves us feeling uncertain when "alchemy" is involved. In this article, based on the ideas of the Amos optimizer recently proposed by Google, we provide some reference results.</p>
+
+<h2>Basic Review</h2>
+
+<p>The Amos optimizer comes from Google's recent paper <a href="https://papers.cool/arxiv/2210.11693">"Amos: An Adam-style Optimizer with Adaptive Weight Decay towards Model-Oriented Scale"</a>. it provides a relatively complete derivation for the above questions and confirms its effectiveness through experiments. However, the original paper's derivation is quite difficult to read—the notation and estimations are too loose, giving a "messy" feeling. Fortunately, the core idea of Amos is not too complex, and we can borrow from it.</p>
+
+<p>Before starting the derivation, we might as well review the existing solutions to the aforementioned problems.</p>
+
+<p>First, regarding the first question, some might not understand exactly what "initialization" and "parameterization" mean. These are two ways of setting model weights. A common case is an $n \times n$ matrix, typically initialized with "mean 0, variance $1/n$". For detailed introductions, you can refer to my previous articles <a href="translation_7180.html">"Understanding Model Parameter Initialization Strategies from a Geometric Perspective"</a> and <a href="translation_8620.html">"A Brief Discussion on Initialization, Parameterization, and Normalization of Transformer"</a>. From "variance $1/n$", we can see that different parameters have different scales (or orders of magnitude). If we use the same learning rate to update all parameters, the update magnitude for each parameter will vary. I feel the most elegant solution to this problem is the LAMB optimizer, where the norm of each update directly depends on the norm of the parameter itself, and the learning rate is used to describe the relative magnitude of the update.</p>
+
+<p>As for the weight decay rate, at least in the pre-training field, I have observed that most follow the original choice of 0.01; I haven't seen much work adjusting this parameter. Regarding learning rate strategies, everyone knows that the learning rate should be gradually reduced to zero, but there isn't much theoretical guidance on which specific descent strategy to choose—most results are just summarized from experiments. Finally, for the memory-saving issue, the classic work is the AdaFactor optimizer, which I introduced in <a href="translation_7302.html">"An Analysis of the AdaFactor Optimizer (with Open Source Implementation)"</a>. There are two main ideas for reducing optimizer memory usage: first, removing momentum, and second, applying low-rank decomposition to the second moment. Amos essentially follows these two ideas as well.</p>
+
+<h2>Problem Setting</h2>
+
+<p>This article mainly focuses on the first three questions mentioned at the beginning, hoping to derive some "plug-and-play" results. First, we write the optimizer's update rule concisely as:
+\begin{equation}\boldsymbol{\theta}_{t+1} = \boldsymbol{\theta}_t - \alpha_t \boldsymbol{u}_t\end{equation}
+In this context, $\boldsymbol{\theta}_t, \boldsymbol{\theta}_{t+1}$ represent the parameter values at times $t$ and $t+1$, $\boldsymbol{u}_t$ represents the update vector at time $t$ (dependent on the task and data), and the scalar $\alpha_t > 0$ (every element of the vector is greater than 0) represents the learning rate at time $t$.</p>
+
+<p>Since AdamW, mainstream optimizers tend to decouple the weight decay term from $\boldsymbol{u}_t$, i.e.,
+\begin{equation}\boldsymbol{\theta}_{t+1} = \boldsymbol{\theta}_t - (\alpha_t \boldsymbol{u}_t + \rho_t\boldsymbol{\theta}_t)\end{equation}
+where $\rho_t > 0$ is the weight decay rate. Our main task is to resolve how $\alpha_t$ and $\rho_t$ should be set.</p>
+
+<h2>Weight Decay</h2>
+
+<p>We know that weight decay or L2 regularization itself is unrelated to the training objective; it is merely an auxiliary term intended to improve the model's generalization ability. Since it is auxiliary, a basic requirement is that it should not "overshadow the main objective." To this end, let us add a constraint:
+\begin{equation}\mathcal{O}(\alpha_t^2) = \mathcal{O}(\rho_t)\end{equation}
+That is to say, throughout the update process, the update magnitude brought by weight decay should always be one order higher than the objective-related update magnitude. Since $\alpha_t$ and $\rho_t$ are basically less than 1, a higher order means it is smaller.</p>
+
+<p>Let the optimized parameter endpoint be $\boldsymbol{\theta}^*$. We denote $\boldsymbol{\varepsilon}_t = \boldsymbol{\theta}_t - \boldsymbol{\theta}^*$. According to the update rule, we get
+\begin{equation}\begin{aligned}
+\Vert\boldsymbol{\varepsilon}_{t+1}\Vert^2 =&\, \Vert\boldsymbol{\theta}_{t+1} - \boldsymbol{\theta}^*\Vert^2 \\
+=&\, \Vert\boldsymbol{\theta}_t - (\alpha_t \boldsymbol{u}_t + \rho_t\boldsymbol{\theta}_t) - \boldsymbol{\theta}^*\Vert^2 \\
+\approx&\, \Vert\boldsymbol{\varepsilon}_t\Vert^2 - 2 \alpha_t \boldsymbol{u}_t \cdot \boldsymbol{\varepsilon}_t + \left(\alpha_t^2 \Vert\boldsymbol{u}_t\Vert^2 - 2 \rho_t \boldsymbol{\theta}_t \cdot \boldsymbol{\varepsilon}_t\right)
+\end{aligned}\label{eq:base-approx}\end{equation}
+The final approximation only retains terms up to $\mathcal{O}(\alpha_t^2)$.</p>
+
+<p>Clearly, $\Vert\boldsymbol{\varepsilon}_t\Vert$ is the distance between the current result and the endpoint, which is naturally better when smaller. Therefore, we naturally hope that every update step reduces this distance, i.e., $\Vert\boldsymbol{\varepsilon}_{t+1}\Vert < \Vert\boldsymbol{\varepsilon}_t\Vert$. Looking at equation $\eqref{eq:base-approx}$, $- 2 \alpha_t \boldsymbol{u}_t \cdot \boldsymbol{\varepsilon}_t$ can be positive or negative; if it is negative, it helps achieve $\Vert\boldsymbol{\varepsilon}_{t+1}\Vert < \Vert\boldsymbol{\varepsilon}_t\Vert$. However, $\alpha_t^2 \Vert\boldsymbol{u}_t\Vert^2$ is necessarily positive, which is unfavorable for achieving $\Vert\boldsymbol{\varepsilon}_{t+1}\Vert < \Vert\boldsymbol{\varepsilon}_t\Vert$. But after introducing weight decay, an extra term $- 2 \rho_t \boldsymbol{\theta}_t \cdot \boldsymbol{\varepsilon}_t$ appears. If this term can cancel out the negative effect of $\alpha_t^2 \Vert\boldsymbol{u}_t\Vert^2$, then the introduction of weight decay not only enhances generalization but also benefits model convergence.</p>
+
+<h2>Feasibility Analysis</h2>
+
+<p>So, the next step is to examine the feasibility of:
+\begin{equation}\alpha_t^2 \Vert\boldsymbol{u}_t\Vert^2 = 2 \rho_t \boldsymbol{\theta}_t \cdot \boldsymbol{\varepsilon}_t\label{eq:base-cond}\end{equation}
+By feasibility, we mean whether $\boldsymbol{\theta}_t \cdot \boldsymbol{\varepsilon}_t$ can be greater than 0; only if it is greater than 0 can the left and right sides potentially be equal. Using the definition of $\boldsymbol{\varepsilon}_t$, we get $\boldsymbol{\theta}_t = \boldsymbol{\varepsilon}_t + \boldsymbol{\theta}^*$, thus
+\begin{equation}\boldsymbol{\theta}_t \cdot \boldsymbol{\varepsilon}_t = (\boldsymbol{\varepsilon}_t + \boldsymbol{\theta}^*) \cdot \boldsymbol{\varepsilon}_t = \Vert \boldsymbol{\varepsilon}_t\Vert^2 + \boldsymbol{\theta}^* \cdot \boldsymbol{\varepsilon}_t\end{equation}
+Note that $\boldsymbol{\theta}^*$ is our target, a fixed point, while $\boldsymbol{\varepsilon}_t$ is the difference vector between the current moment and the target. Generally, there is no necessary correlation between the two, so we can consider them as two random vectors in a high-dimensional space. According to <a href="translation_7076.html">"Angular Distribution of Two Random Vectors in n-Dimensional Space"</a>, we know that two random vectors in high-dimensional space are almost always perpendicular, hence $\boldsymbol{\theta}^* \cdot \boldsymbol{\varepsilon}_t \approx 0$, meaning $\boldsymbol{\theta}_t \cdot \boldsymbol{\varepsilon}_t \approx \Vert \boldsymbol{\varepsilon}_t\Vert^2$. Of course, if one isn't confident, we can introduce a parameter $q$:
+\begin{equation}\boldsymbol{\theta}_t \cdot \boldsymbol{\varepsilon}_t \approx q\Vert \boldsymbol{\varepsilon}_t\Vert^2\end{equation}
+At this point, equation $\eqref{eq:base-cond}$ becomes
+\begin{equation}\alpha_t^2 \Vert\boldsymbol{u}_t\Vert^2 \approx 2 \rho_t q\Vert \boldsymbol{\varepsilon}_t\Vert^2\label{eq:base-cond-approx}\end{equation}
+Both sides are greater than 0, so equation $\eqref{eq:base-cond}$ is potentially achievable.</p>
+
+<h2>Asymptotic Estimation</h2>
+
+<p>If equation $\eqref{eq:base-cond}$ holds, then equation $\eqref{eq:base-approx}$ simplifies to:
+\begin{equation}\Vert\boldsymbol{\varepsilon}_{t+1}\Vert^2 \approx \Vert\boldsymbol{\varepsilon}_t\Vert^2 - 2 \alpha_t \boldsymbol{u}_t \cdot \boldsymbol{\varepsilon}_t = \Vert\boldsymbol{\varepsilon}_t\Vert^2 - 2 \alpha_t \Vert\boldsymbol{u}_t\Vert \Vert\boldsymbol{\varepsilon}_t\Vert \cos(\boldsymbol{u}_t, \boldsymbol{\varepsilon}_t)\end{equation}
+We said that $\boldsymbol{u}_t$ represents the task-related update magnitude; on average, it must be beneficial to the task (otherwise the original optimizer would be flawed). Thus, on average, we should have $\cos(\boldsymbol{u}_t, \boldsymbol{\varepsilon}_t) > 0$. Here, we further assume there exists a $p > 0$ such that $\cos(\boldsymbol{u}_t, \boldsymbol{\varepsilon}_t) \sim p$. Thus we have:
+\begin{equation}\Vert\boldsymbol{\varepsilon}_{t+1}\Vert^2 \approx \Vert\boldsymbol{\varepsilon}_t\Vert^2 - 2 \alpha_t p\Vert\boldsymbol{u}_t\Vert \Vert\boldsymbol{\varepsilon}_t\Vert\end{equation}
+According to the approximation $\eqref{eq:base-cond-approx}$, we have $\alpha_t \Vert\boldsymbol{u}_t \Vert \Vert \boldsymbol{\varepsilon}_t\Vert \approx \sqrt{2 \rho_t q}\Vert \boldsymbol{\varepsilon}_t\Vert^2$. Substituting this into the above equation:
+\begin{equation}\Vert\boldsymbol{\varepsilon}_{t+1}\Vert^2 \approx \Vert\boldsymbol{\varepsilon}_t\Vert^2(1 - 2 p\sqrt{2 \rho_t q}) \approx \Vert\boldsymbol{\varepsilon}_t\Vert^2\exp(- 2 p\sqrt{2 \rho_t q})\end{equation}
+Recursively iterating step by step, we can obtain:
+\begin{equation}\Vert\boldsymbol{\varepsilon}_t\Vert^2 \approx\Vert\boldsymbol{\varepsilon}_0\Vert^2\exp\left(- 2 \sum_{i=1}^{t-1}p\sqrt{2 \rho_i q}\right)\label{eq:varepsilon-t}\end{equation}
+It can be seen that the exponent on the right side must be monotonically decreasing; it is a decay function. Now looking at the approximation $\eqref{eq:base-cond-approx}$, it has two parameters $\alpha_t$ and $\rho_t$ to tune, but only one (approximate) equation. To allow $\alpha_t$ and $\rho_t$ to decay at the same rate, we let $2\rho_t q \approx \lambda^2 \Vert\boldsymbol{\varepsilon}_t\Vert^2$. Solving this, we get:
+\begin{equation}\begin{aligned}\alpha_t \approx \frac{\lambda\Vert\boldsymbol{\varepsilon}_t\Vert^2}{\Vert\boldsymbol{u}_t\Vert} \approx&\, \frac{\lambda\Vert\boldsymbol{\varepsilon}_0\Vert^2}{\Vert\boldsymbol{u}_t\Vert} \exp\left(- 2 \sum_{i=1}^{t-1}p\sqrt{2 \rho_i q}\right) \\
+\rho_t \approx \frac{\lambda^2\Vert\boldsymbol{\varepsilon}_t\Vert^2}{2q} \approx&\, \frac{\lambda^2\Vert\boldsymbol{\varepsilon}_0\Vert^2}{2q} \exp\left(- 2 \sum_{i=1}^{t-1}p\sqrt{2 \rho_i q}\right)
+\end{aligned}\label{eq:alpha-rho}\end{equation}
+This is the variation law for $\alpha_t$ and $\rho_t$ derived in this article. Of course, while we have the variation law, there are still four parameters $\lambda, \Vert\boldsymbol{\varepsilon}_0\Vert, p, q$ to be determined. Among them, $q$ is relatively simple—setting $q=1$ isn't much of a problem—but even so, three parameters remain.</p>
+
+<h2>Scale Prediction</h2>
+
+<p>According to the definition, $\Vert\boldsymbol{\varepsilon}_0\Vert = \Vert\boldsymbol{\theta}_0 - \boldsymbol{\theta}^*\Vert$, which is the distance between the initial parameter and the target parameter, understood as the scale of parameter variation. There are several different scenarios for this.</p>
+
+<p>First, if the parameters are matrix multiplication kernels, such as kernel matrices for fully connected or convolutional layers, their initialization is generally a random initialization with "mean 0, variance $\sigma^2$" (where $\sigma$ depends on the shape). Thus, if $\boldsymbol{\theta} \in \mathbb{R}^k$, we can estimate $\Vert\boldsymbol{\theta}_0\Vert^2 \approx k\sigma^2$. Additionally, these types of parameters have a characteristic: under reasonable initialization, after training is complete, the mean and variance of the parameters will not change much—at least the magnitude remains consistent. Therefore, we can also assume $\Vert\boldsymbol{\theta}^*\Vert^2 \approx k\sigma^2$. Since the initialization is random, $\boldsymbol{\theta}_0 \cdot \boldsymbol{\theta}^* \approx 0$, thus
+\begin{equation}\Vert\boldsymbol{\varepsilon}_0\Vert^2 = \Vert\boldsymbol{\theta}_0 - \boldsymbol{\theta}^*\Vert^2 = \Vert\boldsymbol{\theta}_0\Vert^2 + \Vert\boldsymbol{\theta}^*\Vert^2 - 2\boldsymbol{\theta}_0 \cdot \boldsymbol{\theta}^* \approx 2k\sigma^2\end{equation}</p>
+
+<p>Second, if the parameter is an additive bias term, such as bias vectors for fully connected or convolutional layers, or the $\boldsymbol{\beta}$ vector in a Normalization layer, these parameters are generally "initialized to zero." So $\Vert\boldsymbol{\varepsilon}_0\Vert^2 = \Vert\boldsymbol{\theta}^*\Vert^2$. If we predict based on experience that the bias terms of the trained model are around $\pm \sigma$, we can also estimate $\Vert\boldsymbol{\theta}^*\Vert^2 \approx k\sigma^2$. In the original Amos paper, they took $\sigma=0.5$. Finally, for the $\boldsymbol{\gamma}$ vector in Normalization layers, it is generally "initialized to all 1s." After training completes, it is also around 1. Assuming an error of $\pm \sigma$, we can estimate $\Vert\boldsymbol{\theta}^*\Vert^2 \approx k\sigma^2$. Here, $k$ always refers to the vector dimension.</p>
+
+<p>As can be seen, the results for $\Vert\boldsymbol{\varepsilon}_0\Vert^2$ share a commonality: they can all be written as $k\sigma^2$, where $\sigma$ is our prior judgment of the parameter variation scale. For multiplicative matrices, $\sigma$ can directly be taking the standard deviation of the initialization. For additive biases or $\boldsymbol{\gamma}$ vectors, one can simply take $\sigma=0.5$ or handle other special parameters specifically.</p>
+
+<h2>Separating Scale</h2>
+
+<p>Now let's look at the complete update magnitude. According to equation $\eqref{eq:alpha-rho}$, we have
+\begin{equation}\alpha_t \boldsymbol{u}_t \approx \lambda\Vert\boldsymbol{\varepsilon}_0\Vert^2 \times \frac{\boldsymbol{u}_t}{\Vert\boldsymbol{u}_t\Vert} \times \exp\left(- 2 \sum_{i=1}^{t-1}p\sqrt{2 \rho_i q}\right)\end{equation}
+where $\frac{\boldsymbol{u}_t}{\Vert\boldsymbol{u}_t\Vert}$ is a unit vector controlling the update direction, and the $\exp$ part is a decay term that we can ignore for now. Thus, the norm of the update is controlled by $\lambda\Vert\boldsymbol{\varepsilon}_0\Vert^2$.</p>
+
+<p>Returning to the first question at the beginning of the article, "How should the learning rate adapt to different initializations and parameterizations?", the intuitive idea is obviously that parameters with a larger variation scale should have larger updates in each step, or as a simpler rule, the update should be directly proportional to the variation scale. Since we estimated the variation scale using $\Vert\boldsymbol{\varepsilon}_0\Vert$, we assume that $\lambda\Vert\boldsymbol{\varepsilon}_0\Vert^2 = \alpha_0 \Vert\boldsymbol{\varepsilon}_0\Vert$, where $\alpha_0$ is the global initial learning rate. Solving this gives $\lambda = \alpha_0 / \Vert\boldsymbol{\varepsilon}_0\Vert$. Substituting this into equation $\eqref{eq:alpha-rho}$ gives:
+\begin{equation}\alpha_t \approx \frac{\alpha_0\Vert\boldsymbol{\varepsilon}_0\Vert}{\Vert\boldsymbol{u}_t\Vert} \exp\left(- 2 \sum_{i=1}^{t-1}p\sqrt{2 \rho_i q}\right),\quad \rho_t \approx \frac{\alpha_0^2}{2q} \exp\left(- 2 \sum_{i=1}^{t-1}p\sqrt{2 \rho_i q}\right)\label{eq:alpha-rho-2}\end{equation}
+where $\alpha_0$ represents the relative update amplitude in each step (global learning rate). This step doesn't leave much room for derivation; typically, taking around $10^{-3}$ is sufficient, or $10^{-2}$ for simpler tasks. $\Vert\boldsymbol{\varepsilon}_0\Vert$ was estimated in the previous section as roughly $\sqrt{k}\sigma$, where $\sigma$ represents the average variation scale of the parameters. Since different parameters differ, we use this to explicitly separate the parameter scale, achieving an adaptation effect (where update magnitude is proportional to $\sigma$). Notably, if we replace $\Vert\boldsymbol{\varepsilon}_0\Vert$ in the above formula with $\Vert\boldsymbol{\theta}_t\Vert$, it becomes the LAMB optimizer. From this, we can also see that if the initialization of $\boldsymbol{\theta}$ does not have a zero mean (like the $\boldsymbol{\gamma}$ vector), replacing $\Vert\boldsymbol{\varepsilon}_0\Vert$ with $\Vert\boldsymbol{\theta}_t\Vert$ would be problematic; this is why the LAMB approach is to just not perform this transformation on those parameters (keeping the original update rule).</p>
+
+<h2>Analytical Approximation</h2>
+
+<p>Actually, the current results are already suitable for programming, though the parameter $p$ is hard to tune. To better understand how $p$ affects the decay function, we can derive an analytical approximation for $\rho_t$!</p>
+
+<p>Multiplying both sides of the $\rho_t$ equation in $\eqref{eq:alpha-rho-2}$ by $2q$ and taking the square root:
+Denoting the sum of the exponent $\sum_{i=1}^{t-1}p\sqrt{2 \rho_i q}$ as $S_t$, the above corresponds to the shift equation
+\begin{equation}\frac{S_t - S_{t-1}}{p} \approx \alpha_0 \exp\left(- S_{t-1}\right) \quad \Rightarrow \quad S_{t+1} - S_t \approx \alpha_0 p\exp\left(- S_t\right)\end{equation}
+In this case, the decay function is $\exp\left(-2S_t\right)$. To find the asymptotic approximation, we use derivatives to replace differences (refer to <a href="translation_3889.html">"Perturbation Methods for Difference Equations"</a>), obtaining:
+\begin{equation}\frac{dS_t}{dt} \approx \alpha_0 p \exp\left(- S_t\right)\end{equation}
+This is a simple differential equation. Solving it (combined with $S_0=0$) gives:
+\begin{equation}\exp\left(-2S_t\right) \approx \frac{1}{(\alpha_0 p t + 1)^2}\end{equation}
+This is the explicit solution for the decay function, indicating that the hyperparameters should decay according to the square inverse of the number of steps. Substituting back into equation $\eqref{eq:alpha-rho-2}$ gives the full result:
+\begin{equation}\alpha_t \approx \frac{\alpha_0\Vert\boldsymbol{\varepsilon}_0\Vert}{\Vert\boldsymbol{u}_t\Vert} \frac{1}{(\alpha_0 p t + 1)^2},\quad \rho_t \approx \frac{\alpha_0^2}{2q} \frac{1}{(\alpha_0 p t + 1)^2}\label{eq:alpha-rho-3}\end{equation}
+This explicit solution not only makes programming more convenient but also makes the meaning of $p$ clearer. For example, if we want the learning rate to drop to half of its original value after $T$ steps, then $(\alpha_0 p T + 1)^2 = 2$. Solving for $p$ gives:
+\begin{equation}\alpha_0 p = \frac{\sqrt{2}-1}{T}\end{equation}
+As for what $T$ should be, this depends on the task difficulty and data volume, leaving little room for derivation.</p>
+
+<h2>Dynamic Convergence</h2>
+
+<p>The assumption in the above discussion was that there exists a constant $p > 0$ such that $\cos(\boldsymbol{u}_t, \boldsymbol{\varepsilon}_t) \sim p$, which implies the model converges at a fixed rate. This rarely holds in practice; more commonly, the convergence speed slows down as training enters later stages. To address this, we can assume $p$ is a function of the step $t$, $p_t$. Thus, the previous derivation mostly remains valid, but the constant $p$ is replaced with $p_i$:
+\begin{equation}\sqrt{2\rho_t q} \approx \alpha_0 \exp\left(- \sum_{i=1}^{t-1}p_i\sqrt{2 \rho_i q}\right)\end{equation}
+Repeating the derivation from the previous section, we get:
+\begin{equation}\frac{S_t - S_{t-1}}{p_t} \approx \alpha_0 \exp\left(- S_{t-1}\right) \quad \Rightarrow \quad S_{t+1} - S_t \approx \alpha_0 p_t\exp\left(- S_t\right)\end{equation}
+The approximate differential equation is:
+\begin{equation}\frac{dS_t}{dt} \approx \alpha_0 p_t \exp\left(- S_t\right)\end{equation}
+The integral result is:
+\begin{equation}\exp\left(-S_t\right) \approx \frac{1}{\alpha_0 \int_0^t p_{\tau} d\tau + 1}\end{equation}
+But now we have an extra $p_t$ to determine. To reduce the cost of parameter tuning, let's assume the rate of decrease in convergence matches the rate of decrease of $\Vert\boldsymbol{\varepsilon}_t\Vert$. According to equation $\eqref{eq:varepsilon-t}$, the decay function for $\Vert\boldsymbol{\varepsilon}_t\Vert$ is $\exp\left(-S_t\right)$, so we set $p_t = p_0\exp\left(-S_t\right)$. Substituting this back gives:
+\begin{equation}\exp\left(-S_t\right) \approx \frac{1}{\alpha_0 p_0 \int_0^t \exp\left(-S_{\tau}\right) d\tau + 1}\end{equation}
+This is a simple differential equation, which is easily solved:
+\begin{equation}\exp\left(-2S_t\right) \approx \frac{1}{2\alpha_0 p_0 t + 1}\end{equation}
+Substituting back into equation $\eqref{eq:alpha-rho-2}$:
+\begin{equation}\alpha_t \approx \frac{\alpha_0\Vert\boldsymbol{\varepsilon}_0\Vert}{\Vert\boldsymbol{u}_t\Vert} \frac{1}{2\alpha_0 p_0 t + 1},\quad \rho_t \approx \frac{\alpha_0^2}{2q} \frac{1}{2\alpha_0 p_0 t + 1}\label{eq:alpha-rho-4}\end{equation}
+Looking at the decay strategy alone, this is exactly "Inverse Time Decay," one of the common strategies for learning rate decay. Theoretically, this result is more reasonable than the previous equation $\eqref{eq:alpha-rho-3}$ based on its assumptions.</p>
+
+<h2>Conclusion</h2>
+
+<p>Borrowing the core ideas of the Amos optimizer, this article has derived some results concerning learning rates and weight decay rates $\eqref{eq:alpha-rho-3}$ and $\eqref{eq:alpha-rho-4}$. These results can be applied plug-and-play to existing optimizers and can, to some extent, simplify the difficulty of parameter tuning.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9344.html" style="color: #005fcc;">https://kexue.fm/archives/9344</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,293 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      addMenu: []
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9497">Discussion on Generative Diffusion Models (17): General Steps for Constructing ODE (Part 3)</a></h1>
+
+<p>By 苏剑林 | February 23, 2023</p>
+
+<p>History is always strikingly similar. When I originally wrote <a href="translation_9370.html">"Discussion on Generative Diffusion Models (14): General Steps for Constructing ODE (Part 1)"</a> (which didn't have the "Part 1" suffix at the time), I thought I had clarified the general steps for constructing ODE-based diffusion. However, reader <a href="https://kexue.fm/archives/9370#comment-20572">@gaohuazuo</a> provided a new intuitive and effective scheme, which directly led to the subsequent <a href="translation_9379.html">"Discussion on Generative Diffusion Models (14): General Steps for Constructing ODE (Part 2)"</a> (initially suffixed as "Part 2"). Just as I thought the matter was settled, I discovered the ICLR 2023 paper <a href="https://papers.cool/arxiv/2209.03003">"Flow Straight and Fast: Learning to Generate and Transfer Data with Rectified Flow"</a>, which introduces a new scheme for constructing ODE-based diffusion models. Its simplicity and intuitiveness are almost unprecedented and simply breathtaking. Therefore, I have quietly changed the suffix of the previous article to "Part 2" and written this "Part 3" to share this new result.</p>
+
+<h2>Intuitive Result</h2>
+
+<p>We know that a diffusion model is an evolutionary process $\boldsymbol{x}_T \to \boldsymbol{x}_0$, and an ODE-based diffusion model specifies that the evolution proceeds according to the following ODE:</p>
+
+\begin{equation}\frac{d\boldsymbol{x}_t}{dt}=\boldsymbol{f}_t(\boldsymbol{x}_t)\label{eq:ode}\end{equation}
+
+<p>The core of constructing an ODE-based diffusion model is to design a function $\boldsymbol{f}_t(\boldsymbol{x}_t)$ such that its corresponding evolution trajectory forms a transformation between a given distribution $p_T(\boldsymbol{x}_T)$ and $p_0(\boldsymbol{x}_0)$. Simply put, we want to randomly sample an $\boldsymbol{x}_T$ from $p_T(\boldsymbol{x}_T)$ and ensure that the $\boldsymbol{x}_0$ obtained by evolving backward according to the above ODE follows $\sim p_0(\boldsymbol{x}_0)$.</p>
+
+<p>The logic of the original paper is very simple. Randomly select $\boldsymbol{x}_0 \sim p_0(\boldsymbol{x}_0)$ and $\boldsymbol{x}_T \sim p_T(\boldsymbol{x}_T)$, and assume they transform according to the trajectory:</p>
+
+\begin{equation}\boldsymbol{x}_t = \boldsymbol{\varphi}_t(\boldsymbol{x}_0, \boldsymbol{x}_T)\label{eq:track}\end{equation}
+
+<p>This trajectory is a known function that we design ourselves. Theoretically, any continuous function satisfies:</p>
+
+\begin{equation}\boldsymbol{x}_0 = \boldsymbol{\varphi}_0(\boldsymbol{x}_0, \boldsymbol{x}_T),\quad \boldsymbol{x}_T = \boldsymbol{\varphi}_T(\boldsymbol{x}_0, \boldsymbol{x}_T)\end{equation}
+
+<p>will work. We can then write down the differential equation it satisfies:</p>
+
+\begin{equation}\frac{d\boldsymbol{x}_t}{dt} = \frac{\partial \boldsymbol{\varphi}_t(\boldsymbol{x}_0, \boldsymbol{x}_T)}{\partial t}\label{eq:fake-ode}\end{equation}
+
+<p>However, this differential equation is not practical because our goal is to generate $\boldsymbol{x}_0$ given $\boldsymbol{x}_T$, but the right side of this equation is a function of $\boldsymbol{x}_0$ (if $\boldsymbol{x}_0$ were already known, we would be done). Only an ODE like Eq. $\eqref{eq:ode}$, where the right side contains only $\boldsymbol{x}_t$ (theoretically, it could include $\boldsymbol{x}_T$ from a causal perspective, but we generally do not consider that), can be used for practical evolution. Thus, a bold and intuitive idea is: <b>learn a function $\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ to approximate the right side of the above equation as closely as possible!</b> To this end, we optimize the following objective:</p>
+
+\begin{equation}\mathbb{E}_{\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0),\boldsymbol{x}_T\sim p_T(\boldsymbol{x}_T)}\left[\left\Vert \boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t) - \frac{\partial \boldsymbol{\varphi}_t(\boldsymbol{x}_0, \boldsymbol{x}_T)}{\partial t}\right\Vert^2\right] \label{eq:objective}
+\end{equation}
+
+<p>Since $\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ approximates $\frac{\partial \boldsymbol{\varphi}_t(\boldsymbol{x}_0, \boldsymbol{x}_T)}{\partial t}$, we assume that replacing the right side of Eq. $\eqref{eq:fake-ode}$ with $\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ is valid, which gives us the practical diffusion ODE:</p>
+
+\begin{equation}\frac{d\boldsymbol{x}_t}{dt} = \boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)\label{eq:s-ode}\end{equation}
+
+<h2>Simple Example</h2>
+
+<p>As a simple example, let $T=1$ and set the transformation trajectory to be a straight line:</p>
+
+\begin{equation}\boldsymbol{x}_t = \boldsymbol{\varphi}_t(\boldsymbol{x}_0,\boldsymbol{x}_1) = (\boldsymbol{x}_1 - \boldsymbol{x}_0)t + \boldsymbol{x}_0\end{equation}
+
+<p>Then,</p>
+
+\begin{equation}\frac{\partial \boldsymbol{\varphi}_t(\boldsymbol{x}_0, \boldsymbol{x}_T)}{\partial t} = \boldsymbol{x}_1 - \boldsymbol{x}_0\end{equation}
+
+<p>So the training objective $\eqref{eq:objective}$ becomes:</p>
+
+\begin{equation}\mathbb{E}_{\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0),\boldsymbol{x}_T\sim p_T(\boldsymbol{x}_T)}\left[\left\Vert \boldsymbol{v}_{\boldsymbol{\theta}}\big((\boldsymbol{x}_1 - \boldsymbol{x}_0)t + \boldsymbol{x}_0, t\big) - (\boldsymbol{x}_1 - \boldsymbol{x}_0)\right\Vert^2\right]\end{equation}
+
+<p>Or equivalently written as:</p>
+
+\begin{equation}\mathbb{E}_{\boldsymbol{x}_0,\boldsymbol{x}_t\sim p_0(\boldsymbol{x}_0)p_t(\boldsymbol{x}_t\|\boldsymbol{x}_0)}\left[\left\Vert \boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t) - \frac{\boldsymbol{x}_t - \boldsymbol{x}_0}{t}\right\Vert^2\right]\end{equation}
+
+<p>And that's it! The result is completely consistent with the "straight-line trajectory" example in <a href="https://kexue.fm/archives/9379#%E7%9B%B4%E7%BA%BF%E8%BD%A8%E8%BF%B9">"Discussion on Generative Diffusion Models (14): General Steps for Constructing ODE (Part 2)"</a>, and it is the primary model studied in the original paper, known as "Rectified Flow."</p>
+
+<p>As seen from this linear example, the steps to construct a diffusion ODE using this logic take only a few lines. Compared to previous processes, it is greatly simplified—so simple it almost creates an unbelievable sense of "overturning the typical impression of diffusion models."</p>
+
+<h2>Proof Process</h2>
+
+<p>However, so far, the conclusions in the "Intuitive Result" section are merely intuitive guesses, as we have not yet theoretically proven that the ODE $\eqref{eq:s-ode}$ obtained from the optimization objective $\eqref{eq:objective}$ indeed realizes the transformation between distributions $p_T(\boldsymbol{x}_T)$ and $p_0(\boldsymbol{x}_0)$.</p>
+
+<p>To prove this, my initial thought was to show that the optimal solution of objective $\eqref{eq:objective}$ satisfies the continuity equation:</p>
+
+\begin{equation}\frac{\partial p_t(\boldsymbol{x}_t)}{\partial t} = -\nabla_{\boldsymbol{x}_t}\cdot\big(p_t(\boldsymbol{x}_t)\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)\big)\end{equation}
+
+<p>If satisfied, then according to the relationship between the continuity equation and ODEs (refer to <a href="translation_9280.html">"Discussion on Generative Diffusion Models (12): 'Brute-force' Diffusion ODE"</a> and <a href="translation_9461.html">"Deriving Continuity Equations and Fokker-Planck Equations via Test Functions"</a>), Eq. $\eqref{eq:s-ode}$ is indeed a transformation between distributions $p_T(\boldsymbol{x}_T)$ and $p_0(\boldsymbol{x}_0)$.</p>
+
+<p>But upon closer inspection, this logic seems a bit circuitous. According to the article <a href="translation_9461.html">"Deriving Continuity Equations and Fokker-Planck Equations via Test Functions"</a>, the continuity equation itself is derived from the ODE via:</p>
+
+\begin{equation}\mathbb{E}_{\boldsymbol{x}_{t+\Delta t}}\left[\phi(\boldsymbol{x}_{t+\Delta t})\right] = \mathbb{E}_{\boldsymbol{x}_t}\left[\phi(\boldsymbol{x}_t + \boldsymbol{f}_t(\boldsymbol{x}_t)\Delta t)\right]\label{eq:base}\end{equation}
+
+<p>Therefore, Eq. $\eqref{eq:base}$ is more fundamental. We only need to prove that the optimal solution of $\eqref{eq:objective}$ satisfies it. That is, we want to find a function $\boldsymbol{f}_t(\boldsymbol{x}_t)$ purely of $\boldsymbol{x}_t$ that satisfies $\eqref{eq:base}$, and then find that it coincides exactly with the optimal solution of $\eqref{eq:objective}$.</p>
+
+<p>Thus, we write (for simplicity, $\boldsymbol{\varphi}_t(\boldsymbol{x}_0, \boldsymbol{x}_T)$ is abbreviated as $\boldsymbol{\varphi}_t$):</p>
+
+\begin{equation}\begin{aligned}
+\mathbb{E}_{\boldsymbol{x}_{t+\Delta t}}\left[\phi(\boldsymbol{x}_{t+\Delta t})\right] =&\, \mathbb{E}_{\boldsymbol{x}_0, \boldsymbol{x}_T}\left[\phi(\boldsymbol{\varphi}_{t+\Delta t})\right] \\
+=&\, \mathbb{E}_{\boldsymbol{x}_0, \boldsymbol{x}_T}\left[\phi(\boldsymbol{\varphi}_t) + \Delta t\,\frac{\partial \boldsymbol{\varphi}_t}{\partial t}\cdot\nabla_{\boldsymbol{\varphi}_t}\phi(\boldsymbol{\varphi}_t)\right] \\
+=&\, \mathbb{E}_{\boldsymbol{x}_0, \boldsymbol{x}_T}\left[\phi(\boldsymbol{x}_t)\right] + \Delta t\,\mathbb{E}_{\boldsymbol{x}_0, \boldsymbol{x}_T}\left[\frac{\partial \boldsymbol{\varphi}_t}{\partial t}\cdot\nabla_{\boldsymbol{x}_t}\phi(\boldsymbol{x}_t)\right] \\
+=&\, \mathbb{E}_{\boldsymbol{x}_t}\left[\phi(\boldsymbol{x}_t)\right] + \Delta t\,\mathbb{E}_{\boldsymbol{x}_0, \boldsymbol{x}_T}\left[\frac{\partial \boldsymbol{\varphi}_t}{\partial t}\cdot\nabla_{\boldsymbol{x}_t}\phi(\boldsymbol{x}_t)\right] \\
+\end{aligned}\end{equation}
+
+<p>Where the first equality is due to Eq. $\eqref{eq:track}$, the second is a first-order Taylor expansion, the third is again from Eq. $\eqref{eq:track}$, and the fourth is because $\boldsymbol{x}_t$ is a deterministic function of $\boldsymbol{x}_0, \boldsymbol{x}_T$, so the expectation over $\boldsymbol{x}_0, \boldsymbol{x}_T$ is the expectation over $\boldsymbol{x}_t$.</p>
+
+<p>We see that $\frac{\partial \boldsymbol{\varphi}_t}{\partial t}$ is a function of $\boldsymbol{x}_0, \boldsymbol{x}_T$. Next, we make an assumption: <b>Eq. $\eqref{eq:track}$ is invertible with respect to $\boldsymbol{x}_T$.</b> This assumption implies we can solve for $\boldsymbol{x}_T = \boldsymbol{\psi}_t(\boldsymbol{x}_0, \boldsymbol{x}_t)$ from Eq. $\eqref{eq:track}$. This result can be substituted back into $\frac{\partial \boldsymbol{\varphi}_t}{\partial t}$, making it a function of $\boldsymbol{x}_0, \boldsymbol{x}_t$. Thus we have:</p>
+
+\begin{equation}\begin{aligned}
+\mathbb{E}_{\boldsymbol{x}_{t+\Delta t}}\left[\phi(\boldsymbol{x}_{t+\Delta t})\right] =&\, \mathbb{E}_{\boldsymbol{x}_t}\left[\phi(\boldsymbol{x}_t)\right] + \Delta t\,\mathbb{E}_{\boldsymbol{x}_0, \boldsymbol{x}_T}\left[\frac{\partial \boldsymbol{\varphi}_t}{\partial t}\cdot\nabla_{\boldsymbol{x}_t}\phi(\boldsymbol{x}_t)\right] \\
+=&\, \mathbb{E}_{\boldsymbol{x}_t}\left[\phi(\boldsymbol{x}_t)\right] + \Delta t\,\mathbb{E}_{\boldsymbol{x}_0, \boldsymbol{x}_t}\left[\frac{\partial \boldsymbol{\varphi}_t}{\partial t}\cdot\nabla_{\boldsymbol{x}_t}\phi(\boldsymbol{x}_t)\right] \\
+=&\, \mathbb{E}_{\boldsymbol{x}_t}\left[\phi(\boldsymbol{x}_t)\right] + \Delta t\,\mathbb{E}_{\boldsymbol{x}_t}\left[\underbrace{\mathbb{E}_{\boldsymbol{x}_0\|\boldsymbol{x}_t}\left[\frac{\partial \boldsymbol{\varphi}_t}{\partial t}\right]}_{\text{Function of }\boldsymbol{x}_t}\cdot\nabla_{\boldsymbol{x}_t}\phi(\boldsymbol{x}_t)\right] \\
+=&\, \mathbb{E}_{\boldsymbol{x}_t}\left[\phi\left(\boldsymbol{x}_t + \Delta t\,\mathbb{E}_{\boldsymbol{x}_0\|\boldsymbol{x}_t}\left[\frac{\partial \boldsymbol{\varphi}_t}{\partial t}\right]\right)\right]
+\end{aligned}\end{equation}
+
+<p>Where the second equality is because $\frac{\partial \boldsymbol{\varphi}_t}{\partial t}$ has been changed to a function of $\boldsymbol{x}_0, \boldsymbol{x}_t$, so the random variables in the second expectation change to $\boldsymbol{x}_0, \boldsymbol{x}_t$. The third equality is equivalent to the decomposition $p(\boldsymbol{x}_0, \boldsymbol{x}_t) = p(\boldsymbol{x}_0|\boldsymbol{x}_t)p(\boldsymbol{x}_t)$; here $\boldsymbol{x}_0, \boldsymbol{x}_t$ are not independent, so we denote $\boldsymbol{x}_0|\boldsymbol{x}_t$ to indicate $\boldsymbol{x}_0$ depends on $\boldsymbol{x}_t$. Note that $\frac{\partial \boldsymbol{\varphi}_t}{\partial t}$ was originally a function of $\boldsymbol{x}_0, \boldsymbol{x}_t$, and after taking the expectation over $\boldsymbol{x}_0$, the remaining independent variable is just $\boldsymbol{x}_t$, which we will see is exactly the pure function of $\boldsymbol{x}_t$ we are looking for! The fourth equality leverages the Taylor expansion formula to recombine the two terms.</p>
+
+<p>Now, we have obtained:</p>
+
+\begin{equation}\mathbb{E}_{\boldsymbol{x}_{t+\Delta t}}\left[\phi(\boldsymbol{x}_{t+\Delta t})\right] = \mathbb{E}_{\boldsymbol{x}_t}\left[\phi\left(\boldsymbol{x}_t + \Delta t\,\mathbb{E}_{\boldsymbol{x}_0\|\boldsymbol{x}_t}\left[\frac{\partial \boldsymbol{\varphi}_t}{\partial t}\right]\right)\right]\end{equation}
+
+<p>This holds for any test function $\phi$, which implies:</p>
+
+\begin{equation}\boldsymbol{x}_{t+\Delta t} = \boldsymbol{x}_t + \Delta t\,\mathbb{E}_{\boldsymbol{x}_0\|\boldsymbol{x}_t}\left[\frac{\partial \boldsymbol{\varphi}_t}{\partial t}\right]\quad\Rightarrow\quad\frac{d\boldsymbol{x}_t}{dt} = \mathbb{E}_{\boldsymbol{x}_0\|\boldsymbol{x}_t}\left[\frac{\partial \boldsymbol{\varphi}_t}{\partial t}\right]\label{eq:real-ode}\end{equation}
+
+<p>is the ODE we were searching for. According to:</p>
+
+\begin{equation}\mathbb{E}_{\boldsymbol{x}}[\boldsymbol{x}] = \mathop{\text{argmin}}_{\boldsymbol{\mu}}\mathbb{E}_{\boldsymbol{x}}\left[\Vert \boldsymbol{x} - \boldsymbol{\mu}\Vert^2\right]\label{eq:mean-opt}\end{equation}
+
+<p>the right side of Eq. $\eqref{eq:real-ode}$ is exactly the optimal solution to the training objective $\eqref{eq:objective}$. This proves that optimizing training objective $\eqref{eq:objective}$ yields Eq. $\eqref{eq:s-ode}$, which indeed realizes the transformation between distributions $p_T(\boldsymbol{x}_T)$ and $p_0(\boldsymbol{x}_0)$.</p>
+
+<h2>Reflections</h2>
+
+<p>Regarding the idea for constructing diffusion ODEs in the "Intuitive Result" section, the authors of the original paper also wrote an article on Zhihu: <a href="https://zhuanlan.zhihu.com/p/603740431">"[ICLR 2023] A New Method for Diffusion Generative Models: Extreme Simplification, One-Step Generation"</a>. I recommend reading it. I first learned about this method through that article and was deeply shocked and impressed by it.</p>
+
+<p>If you have read <a href="translation_9379.html">"Discussion on Generative Diffusion Models (14): General Steps for Constructing ODE (Part 2)"</a>, you will even more appreciate the simple and direct nature of this logic, and better understand why I am so generous with my praise. To be honest, when I was writing "Part 2" (initially "Part 3"), I had considered the trajectories described by Eq. $\eqref{eq:track}$, but within the framework at the time, there was simply no way to advance the derivation, and I ended up failing. At the time, I completely couldn't imagine it could proceed in such a concise manner. Therefore, writing this Diffusion ODE series really gives one a sense of being "dwarfed by others." "Part 2" and "Part 3" are the best evidence of my own intelligence undergoing a "dimensionality reduction strike" over and over again.</p>
+
+<p>Readers might ask if there will be an even simpler Part 4, causing me to undergo yet another strike. It's possible, but the probability is truly small; it is hard to imagine a construction step simpler than this. The "Intuitive Result" section looks long, but the actual steps are only two: 1. Arbitrarily choose a gradual trajectory; 2. Use a function of $\boldsymbol{x}_t$ to approximate the derivative of that trajectory with respect to $t$. With just these two simple steps, how else could it be simplified? Even the derivation in the "Proof Process" section is quite simple; although it is written out at length, the essence is just taking a derivative and then changing the distribution for the expectation—it is much simpler than the processes in the first two articles. In short, any reader who has personally completed the derivations for the first two articles on ODE diffusion can deeply feel how truly simple this logic is—so simple that it feels like it cannot be simplified further.</p>
+
+<p>Furthermore, besides providing a simple logic for constructing diffusion ODEs, the original paper also discusses the connection between Rectified Flow and optimal transport, as well as how to use this connection to accelerate the sampling process, etc. However, that part is not the main focus of this article, so we will discuss it if another opportunity arises in the future.</p>
+
+<h2>Summary</h2>
+
+<p>This article introduced an extremely simple and intuitive logic for constructing ODE-based diffusion models proposed in the Rectified Flow paper and provided its own proof process.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9497.html" style="color: #005fcc;">https://kexue.fm/archives/9497</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

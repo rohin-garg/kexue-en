@@ -1,0 +1,355 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    ignoreHtmlClass: 'tex2jax_ignore',
+    processHtmlClass: 'tex2jax_process'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+<h1><a href="https://kexue.fm/archives/9467">Generative Diffusion Models (Part 16): W-Distance ≤ Score Matching</a></h1>
+
+<p>By 苏剑林 | February 14, 2023</p>
+
+<p>
+The Wasserstein distance (hereinafter referred to as the "W-distance") is a distance function based on the concept of optimal transport to measure the degree of difference between two probability distributions. I have previously introduced it in blog posts such as <a href="translation_6280.html">"From Wasserstein Distance and Duality Theory to WGAN"</a>. For many readers, the first time they heard of the W-distance was because of <a href="https://papers.cool/arxiv/1701.07875">WGAN</a>, which was released in 2017. It pioneered a new branch of understanding GANs from the perspective of optimal transport and elevated the status of optimal transport theory in machine learning. For a long time, <a href="https://papers.cool/arxiv/1406.2661">GANs</a> were the "main force" in the field of generative models until diffusion models emerged suddenly in the past two years. While the popularity of GANs has declined somewhat, they remain a powerful generative model in their own right.
+</p>
+
+<p>
+Formally, diffusion models and GANs differ significantly, so their research has remained relatively independent. However, a paper late last year, <a href="https://papers.cool/arxiv/2212.06359">"Score-based Generative Modeling Secretly Minimizes the Wasserstein Distance"</a>, broke this barrier: it proved that the score matching loss of diffusion models can be written as an upper bound of the W-distance. This means that to some extent, minimizing the loss function of a diffusion model is, in effect, minimizing the W-distance between two distributions, just like in WGAN.
+</p>
+
+<h2>Analysis of the Conclusion</h2>
+
+<p>
+Specifically, the result of the original paper is targeted at the SDE-form diffusion models introduced in <a href="translation_9209.html">"Generative Diffusion Models (Part 5): The General Framework of SDE"</a>. Its core conclusion is the inequality (where $I_t$ is a non-negative function of $t$; we will introduce its specific meaning in detail later):
+\begin{equation}\mathcal{W}_2[p_0,q_0]\leq \int_0^T g_t^2 I_t \left(\mathbb{E}_{\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t)}\left[\left\Vert\nabla_{\boldsymbol{x}_t}\log p(\boldsymbol{x}_t) - \boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\right\Vert^2\right]\right)^{1/2}dt + I_T \mathcal{W}_2[p_T,q_T]\label{eq:w-neq}\end{equation}
+How should we understand this inequality? First, a diffusion model can be understood as a movement process of an SDE from $t=T$ to $t=0$. On the far right, $p_T$ and $q_T$ are the random sampling distributions at time $T$. $p_T$ is usually a standard normal distribution, and in practical applications, we generally have $q_T = p_T$, so $\mathcal{W}_2[p_T,q_T]=0$. The original paper explicitly writes it out just to provide the most general theoretical result.
+</p>
+
+<p>
+Next, on the left, $p_0$ is the distribution of values at $t=0$ obtained by solving the reverse SDE starting from random points sampled from $p_T$:
+\begin{equation}d\boldsymbol{x}_t = \left[\boldsymbol{f}_t(\boldsymbol{x}_t) - g_t^2\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t) \right] dt + g_t d\boldsymbol{w}\label{eq:reverse-sde}\end{equation}
+This is actually the data distribution to be generated. Meanwhile, $q_0$ is the distribution of values at $t=0$ obtained by starting from random points sampled from $q_T$ and solving the SDE:
+\begin{equation}d\boldsymbol{x}_t = \left[\boldsymbol{f}_t(\boldsymbol{x}_t) - g_t^2\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t) \right] dt + g_t d\boldsymbol{w}\end{equation}
+where $\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)$ is the neural network approximation of $\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t)$. Thus, $q_0$ is actually the distribution of data generated by the diffusion model. Therefore, the meaning of $\mathcal{W}_2[p_0,q_0]$ is the W-distance between the data distribution and the generated distribution.
+</p>
+
+<p>
+Finally, for the remaining integral term, the key part is:
+\begin{equation}\mathbb{E}_{\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t)}\left[\left\Vert\nabla_{\boldsymbol{x}_t}\log p(\boldsymbol{x}_t) - \boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\right\Vert^2\right]\label{eq:sm}\end{equation}
+This is exactly the "score matching" loss of the diffusion model. So, when we use the score matching loss to train the diffusion model, we are also indirectly minimizing the W-distance between the data distribution and the generated distribution. Unlike WGAN, WGAN optimizes the $\mathcal{W}_1[p_0,q_0]$ distance, whereas here it is $\mathcal{W}_2[p_0,q_0]$.
+</p>
+
+<blockquote>
+<strong>Note:</strong> To be precise, Equation $\eqref{eq:sm}$ is not yet the loss function of the diffusion model. The loss function of the diffusion model should be "conditional score matching." Its relationship with score matching is:
+\begin{equation}\begin{aligned}
+&\,\mathbb{E}_{\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t)}\left[\left\Vert\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t) - \boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\right\Vert^2\right] \\
+=&\,\mathbb{E}_{\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t)}\left[\left\Vert\mathbb{E}_{\boldsymbol{x}_0\sim p_t(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\right] - \boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\right\Vert^2\right] \\
+\leq &\,\mathbb{E}_{\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t)}\mathbb{E}_{\boldsymbol{x}_0\sim p_t(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\left\Vert\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) - \boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\right\Vert^2\right] \\
+= &\,\mathbb{E}_{\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0),\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)}\left[\left\Vert\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) - \boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\right\Vert^2\right] \\
+\end{aligned}\end{equation}
+The final result is the "conditional score matching" loss function of the diffusion model. The first equality is due to the identity $\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t)=\mathbb{E}_{\boldsymbol{x}_0\sim p_t(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\right]$. The second inequality is due to the generalization of the mean square inequality or Jensen's inequality. The third equality comes from Bayes' rule. In other words, conditional score matching is an upper bound on score matching and therefore also an upper bound on the W-distance.
+</blockquote>
+
+<p>
+From Equation $\eqref{eq:w-neq}$, we can also qualitatively understand why the coefficient in front of the norm is dropped in the objective function of diffusion models. Since the W-distance is a good metric for probability distributions and the $g_t^2 I_t$ term on the right side of Equation $\eqref{eq:w-neq}$ is a monotonically increasing function of $t$, it means we should appropriately increase the score matching loss when $t$ is small. In <a href="translation_9209.html">"Generative Diffusion Models (Part 5): The General Framework of SDE"</a>, we derived the final form of score matching as:
+\begin{equation}\frac{1}{\bar{\beta}_t^2}\mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0),\boldsymbol{\epsilon}\sim\mathcal{N}(\boldsymbol{0},\boldsymbol{I})}\left[\left\Vert \boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\bar{\alpha}_t\boldsymbol{x}_0 + \bar{\beta}_t\boldsymbol{\varepsilon}, t) - \boldsymbol{\varepsilon}\right\Vert^2\right]\end{equation}
+Discarding the coefficient $\frac{1}{\bar{\beta}_t^2}$ is equivalent to multiplying by $\bar{\beta}_t^2$, and $\bar{\beta}_t^2$ is also a monotonically increasing function of $t$. That is to say, we can simply consider that discarding the coefficient makes the training objective closer to the W-distance between the two distributions.
+</p>
+
+<h2>Preparation</h2>
+
+<p>
+Although the original paper provides a proof process for inequality $\eqref{eq:w-neq}$, it involves a significant amount of knowledge related to optimal transport, such as continuity equations and gradient flows. In particular, it cites a theorem without proof that is located in the 8th chapter of a specialized monograph on gradient flows or the 5th chapter of another on optimal transport, making the reading difficulty quite high for me. After some attempts last week, I finally completed my own (partial) proof of inequality $\eqref{eq:w-neq}$. It only requires the definition of W-distance, basic differential equations, and the Cauchy-Schwarz inequality. Compared to the original paper's proof, the difficulty of understanding should be significantly lower. After several days of refining, here is the proof process.
+</p>
+
+<p>
+Before starting the proof, let's make some preparations by organizing some basic concepts and conclusions that will be used. First is the W-distance, which is defined as:
+\begin{equation}\mathcal{W}_{\rho}[p,q]=\left(\inf_{\gamma\in \Pi[p,q]} \iint \gamma(\boldsymbol{x},\boldsymbol{y}) \Vert\boldsymbol{x} - \boldsymbol{y}\Vert^{\rho} d\boldsymbol{x}d\boldsymbol{y}\right)^{1/\rho}\end{equation}
+where $\Pi[p,q]$ refers to all joint probability density functions with $p, q$ as marginal distributions; it describes specific transport plans. This article only considers $\rho=2$, as only this case is convenient for subsequent derivation. Note that the definition of W-distance includes an infimum operation $\inf$, which means that for any $\gamma\in \Pi[p,q]$ we can write, we have:
+\begin{equation}\mathcal{W}_2[p,q]\leq\left(\iint \gamma(\boldsymbol{x},\boldsymbol{y}) \Vert\boldsymbol{x} - \boldsymbol{y}\Vert^{2} d\boldsymbol{x}d\boldsymbol{y}\right)^{1/2}\label{eq:core-neq}\end{equation}
+This is the core idea of my proof. The relaxation in the proof process mainly utilizes the Cauchy-Schwarz inequality:
+\begin{equation}\begin{aligned}
+&\text{Vector version:}\quad\boldsymbol{x}\cdot\boldsymbol{y}\leq \Vert \boldsymbol{x}\Vert \Vert\boldsymbol{y}\Vert\\
+&\text{Expectation version:}\quad \mathbb{E}_{\boldsymbol{x}}\left[f(\boldsymbol{x})g(\boldsymbol{x})\right]\leq \left(\mathbb{E}_{\boldsymbol{x}}\left[f^2(\boldsymbol{x})\right]\right)^{1/2}\left(\mathbb{E}_{\boldsymbol{x}}\left[g^2(\boldsymbol{x})\right]\right)^{1/2}
+\end{aligned}\end{equation}
+In the proof, we assume that the function $\boldsymbol{g}_t(\boldsymbol{x})$ satisfies a "one-sided Lipschitz constraint," defined as:
+\begin{equation}(\boldsymbol{g}_t(\boldsymbol{x}) - \boldsymbol{g}_t(\boldsymbol{y}))\cdot(\boldsymbol{x} - \boldsymbol{y}) \leq L_t \Vert \boldsymbol{x} - \boldsymbol{y}\Vert^2\label{eq:assum}\end{equation}
+It can be proven that this is weaker than the common Lipschitz constraint (see <a href="translation_6051.html">"Lipschitz Constraint in Deep Learning: Generalization and Generative Models"</a>). That is, if a function $\boldsymbol{g}_t(\boldsymbol{x})$ satisfies a Lipschitz constraint, it must satisfy the one-sided Lipschitz constraint.
+</p>
+
+<h2>A Small Trial</h2>
+
+<p>
+Inequality $\eqref{eq:w-neq}$ is too general. Trying to analyze the most general result right away is not conducive to our thinking or understanding. Therefore, we first simplify the problem to see if we can prove a slightly weaker result. How to simplify? First, inequality $\eqref{eq:w-neq}$ considers the difference in the initial distribution (note: the diffusion model is an evolution from $t=T$ to $t=0$, so $t=T$ is the initial time and $t=0$ is the terminal time). Here, we first consider the same initial distribution. Additionally, the original reverse equation $\eqref{eq:reverse-sde}$ is an SDE; here we first consider a deterministic ODE.
+</p>
+
+<p>
+Specifically, we consider starting from the same distribution $q(\boldsymbol{z})$ and sampling $\boldsymbol{z}$ as the initial value at time $T$. Then we evolve along two different ODEs:
+\begin{equation}\frac{d\boldsymbol{x}_t}{dt} = \boldsymbol{f}_t(\boldsymbol{x}_t),\quad \frac{d\boldsymbol{y}_t}{dt} = \boldsymbol{g}_t(\boldsymbol{y}_t)\end{equation}
+Suppose the distribution of $\boldsymbol{x}_t$ at time $t$ is $p_t$ and the distribution of $\boldsymbol{y}_t$ is $q_t$. We attempt to estimate an upper bound for $\mathcal{W}_2[p_0,q_0]$.
+</p>
+
+<p>
+We know that both $\boldsymbol{x}_t$ and $\boldsymbol{y}_t$ are evolved from the same initial value $\boldsymbol{z}$ via their respective ODEs, so they are actually deterministic functions of $\boldsymbol{z}$. More accurate notation would be $\boldsymbol{x}_t(\boldsymbol{z})$ and $\boldsymbol{y}_t(\boldsymbol{z})$; we omitted the $\boldsymbol{z}$ for simplicity. This means that the correspondence $\boldsymbol{x}_t \leftrightarrow \boldsymbol{y}_t$ for the same $\boldsymbol{z}$ constitutes a correspondence relationship (transport plan) between samples of $p_t$ and $q_t$.
+</p>
+
+<p style="text-align: center;"><em>(Schematic diagram of an approximate optimal transport plan)</em></p>
+
+<p>
+Therefore, according to Equation $\eqref{eq:core-neq}$, we can write:
+\begin{equation}\mathcal{W}_2^2[p_t,q_t]\leq \mathbb{E}_{\boldsymbol{z}}\left[\Vert\boldsymbol{x}_t - \boldsymbol{y}_t\Vert^{2} \right]\triangleq \tilde{\mathcal{W}}_2^2[p_t,q_t]\label{eq:core-neq-2}\end{equation}
+Next, we perform relaxation on $\tilde{\mathcal{W}}_2^2[p_t,q_t]$. To relate it to $\boldsymbol{f}_t(\boldsymbol{x}_t)$ and $\boldsymbol{g}_t(\boldsymbol{y}_t)$, we take its derivative:
+\begin{equation}\begin{aligned}
+\pm\frac{d\left(\tilde{\mathcal{W}}_2^2[p_t,q_t]\right)}{dt}=&\, \pm2\mathbb{E}_{\boldsymbol{z}}\left[(\boldsymbol{x}_t - \boldsymbol{y}_t)\cdot \left(\frac{d\boldsymbol{x}_t}{dt} - \frac{d\boldsymbol{y}_t}{dt}\right)\right] \\[5pt]
+=&\, \pm 2\mathbb{E}_{\boldsymbol{z}}\left[(\boldsymbol{x}_t - \boldsymbol{y}_t)\cdot (\boldsymbol{f}_t(\boldsymbol{x}_t) - \boldsymbol{g}_t(\boldsymbol{y}_t))\right] \\[5pt]
+=&\, \pm 2\mathbb{E}_{\boldsymbol{z}}\left[(\boldsymbol{x}_t - \boldsymbol{y}_t)\cdot (\boldsymbol{f}_t(\boldsymbol{x}_t) - \boldsymbol{g}_t(\boldsymbol{x}_t))\right] \pm 2\mathbb{E}_{\boldsymbol{z}}\left[(\boldsymbol{x}_t - \boldsymbol{y}_t)\cdot (\boldsymbol{g}_t(\boldsymbol{x}_t) - \boldsymbol{g}_t(\boldsymbol{y}_t))\right] \\[5pt]
+\leq&\, 2\mathbb{E}_{\boldsymbol{z}}\left[\Vert\boldsymbol{x}_t - \boldsymbol{y}_t\Vert \Vert\boldsymbol{f}_t(\boldsymbol{x}_t) - \boldsymbol{g}_t(\boldsymbol{x}_t)\Vert\right] + 2\mathbb{E}_{\boldsymbol{z}}\left[L_t\Vert\boldsymbol{x}_t - \boldsymbol{y}_t\Vert^2\right] \\[5pt]
+\leq&\, 2\left(\mathbb{E}_{\boldsymbol{z}}\left[\Vert\boldsymbol{x}_t - \boldsymbol{y}_t\Vert^2\right]\right)^{1/2} \left(\mathbb{E}_{\boldsymbol{z}}\left[\Vert\boldsymbol{f}_t(\boldsymbol{x}_t) - \boldsymbol{g}_t(\boldsymbol{x}_t)\Vert^2\right]\right)^{1/2} + 2L_t\mathbb{E}_{\boldsymbol{z}}\left[\Vert\boldsymbol{x}_t - \boldsymbol{y}_t\Vert^2\right] \\[5pt]
+=&\, 2 \tilde{\mathcal{W}}_2[p_t,q_t] \left(\mathbb{E}_{\boldsymbol{z}}\left[\Vert\boldsymbol{f}_t(\boldsymbol{x}_t) - \boldsymbol{g}_t(\boldsymbol{x}_t)\Vert^2\right]\right)^{1/2} + 2L_t\tilde{\mathcal{W}}_2^2[p_t,q_t] \\[5pt]
+\end{aligned}\label{eq:der-neq-0}\end{equation}
+In the above, the first inequality uses the vector version of the Cauchy-Schwarz inequality and the one-sided Lipschitz constraint assumption $\eqref{eq:assum}$. The second inequality uses the expectation version of the Cauchy-Schwarz inequality. The symbol $\pm$ means the resulting inequality holds whether we take $+$ or $-$. The derivation below only uses the $-$ side. Combining this with $(w^2)' = 2ww'$, we get:
+\begin{equation}-\frac{d\tilde{\mathcal{W}}_2[p_t,q_t]}{dt} \leq \left(\mathbb{E}_{\boldsymbol{z}}\left[\Vert\boldsymbol{f}_t(\boldsymbol{x}_t) - \boldsymbol{g}_t(\boldsymbol{x}_t)\Vert^2\right]\right)^{1/2} + L_t\tilde{\mathcal{W}}_2[p_t,q_t] \label{eq:der-neq-1}\end{equation}
+Using the method of variation of constants, let $\tilde{\mathcal{W}}_2[p_t,q_t]=C_t \exp\left(\int_t^T L_s ds\right)$. Substituting this into the above equation yields:
+\begin{equation}-\frac{dC_t}{dt} \leq \exp\left(-\int_t^T L_s ds\right)\left(\mathbb{E}_{\boldsymbol{z}}\left[\Vert\boldsymbol{f}_t(\boldsymbol{x}_t) - \boldsymbol{g}_t(\boldsymbol{x}_t)\Vert^2\right]\right)^{1/2}\label{eq:der-neq-2}\end{equation}
+Integrating both sides over $[0,T]$ and combining with $C_T=0$ (since at the initial time $T$ the two distributions are the same, the distance is 0), we get:
+\begin{equation}C_0 \leq \int_0^T \exp\left(-\int_t^T L_s ds\right)\left(\mathbb{E}_{\boldsymbol{z}}\left[\Vert\boldsymbol{f}_t(\boldsymbol{x}_t) - \boldsymbol{g}_t(\boldsymbol{x}_t)\Vert^2\right]\right)^{1/2} dt\end{equation}
+Thus:
+\begin{equation}\tilde{\mathcal{W}}_2[p_0,q_0] \leq C_0 \exp\left(\int_0^T L_s ds\right) =\int_0^T I_t\left(\mathbb{E}_{\boldsymbol{z}}\left[\Vert\boldsymbol{f}_t(\boldsymbol{x}_t) - \boldsymbol{g}_t(\boldsymbol{x}_t)\Vert^2\right]\right)^{1/2} dt\end{equation}
+where $I_t = \exp\left(\int_0^t L_s ds\right)$. According to Equation $\eqref{eq:core-neq-2}$, this is also an upper bound for $\mathcal{W}_2[p_0,q_0]$. Finally, since the expression for calculating the expectation is only a function of $\boldsymbol{x}_t$, and $\boldsymbol{x}_t$ is a deterministic function of $\boldsymbol{z}$, the expectation with respect to $\boldsymbol{z}$ is equivalent to the expectation directly with respect to $\boldsymbol{x}_t$:
+\begin{equation}\mathcal{W}_2[p_0,q_0] \leq\int_0^T I_t\left(\mathbb{E}_{\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t)}\left[\Vert\boldsymbol{f}_t(\boldsymbol{x}_t) - \boldsymbol{g}_t(\boldsymbol{x}_t)\Vert^2\right]\right)^{1/2} dt\label{eq:w-neq-0}\end{equation}
+</p>
+
+<h2>Full Steam Ahead</h2>
+
+<p>
+Actually, the simplified inequality $\eqref{eq:w-neq-0}$ is essentially no different from the more general $\eqref{eq:w-neq}$. Its derivation already contains the general logic for obtaining the full result. Now let's complete the rest of the derivation.
+</p>
+
+<p>
+First, we generalize Equation $\eqref{eq:w-neq-0}$ to scenarios with different initial distributions. Suppose the two initial distributions are $p_T(\boldsymbol{z}_1)$ and $q_T(\boldsymbol{z}_2)$. We sample an initial value from $p_T(\boldsymbol{z}_1)$ to evolve $\boldsymbol{x}_t$, and an initial value from $q_T(\boldsymbol{z}_2)$ to evolve $\boldsymbol{y}_t$. Thus $\boldsymbol{x}_t, \boldsymbol{y}_t$ are functions of $\boldsymbol{z}_1, \boldsymbol{z}_2$ respectively, rather than functions of the same $\boldsymbol{z}$ as before. So we cannot directly construct a transport plan. Thus, we also need a correspondence (transport plan) between $\boldsymbol{z}_1$ and $\boldsymbol{z}_2$. We choose this to be an optimal transport plan $\gamma^*(\boldsymbol{z}_1,\boldsymbol{z}_2)$ between $p_T(\boldsymbol{z}_1)$ and $q_T(\boldsymbol{z}_2)$. Then we can write a result similar to Equation $\eqref{eq:core-neq-2}$:
+\begin{equation}\mathcal{W}_2^2[p_t,q_t]\leq \mathbb{E}_{\boldsymbol{z}_1,\boldsymbol{z}_2\sim \gamma^*(\boldsymbol{z}_1,\boldsymbol{z}_2)}\left[\Vert\boldsymbol{x}_t - \boldsymbol{y}_t\Vert^{2} \right]\triangleq \tilde{\mathcal{W}}_2^2[p_t,q_t]\label{eq:core-neq-3}\end{equation}
+Due to the consistency of the definitions, the relaxation process $\eqref{eq:der-neq-0}$ holds just the same, only replacing $\mathbb{E}_{\boldsymbol{z}}$ with $\mathbb{E}_{\boldsymbol{z}_1,\boldsymbol{z}_2}$. Thus Inequalities $\eqref{eq:der-neq-1}$ and $\eqref{eq:der-neq-2}$ also hold. The difference is that when integrating $\eqref{eq:der-neq-2}$ over $[0,T]$, we no longer have $C_T = 0$. Instead, by definition, $C_T=\tilde{\mathcal{W}}_2[p_T,q_T]=\mathcal{W}_2[p_T,q_T]$. Therefore, the final result is:
+\begin{equation}\mathcal{W}_2[p_0,q_0] \leq\int_0^T I_t\left(\mathbb{E}_{\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t)}\left[\Vert\boldsymbol{f}_t(\boldsymbol{x}_t) - \boldsymbol{g}_t(\boldsymbol{x}_t)\Vert^2\right]\right)^{1/2} dt + I_T \mathcal{W}_2[p_T,q_T]\label{eq:w-neq-1}\end{equation}
+</p>
+
+<p>
+Finally, we return to the diffusion model. In <a href="translation_9228.html">"Generative Diffusion Models (Part 6): The General Framework of ODE"</a>, we derived that the same forward diffusion process actually corresponds to a family of reverse processes:
+\begin{equation}d\boldsymbol{x} = \left(\boldsymbol{f}_t(\boldsymbol{x}) - \frac{1}{2}(g_t^2 + \sigma_t^2)\nabla_{\boldsymbol{x}}\log p_t(\boldsymbol{x})\right) dt + \sigma_t d\boldsymbol{w}\label{eq:sde-reverse-2}\end{equation}
+where $\sigma_t$ is a standard deviation function that can be chosen freely. When $\sigma_t=g_t$, it becomes Equation $\eqref{eq:reverse-sde}$. Since we analyzed the ODE above, we first consider the case where $\sigma_t=0$. In this case, the result $\eqref{eq:w-neq-1}$ is still applicable, but we replace $\boldsymbol{f}_t(\boldsymbol{x}_t)$ with $\boldsymbol{f}_t(\boldsymbol{x}_t) - \frac{1}{2}g_t^2\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t)$, and replace $\boldsymbol{g}_t(\boldsymbol{x}_t)$ with $\boldsymbol{f}_t(\boldsymbol{x}_t) - \frac{1}{2}g_t^2\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)$. Substituting these into Equation $\eqref{eq:w-neq-1}$ yields the conclusion $\eqref{eq:w-neq}$ at the beginning of the article. Of course, do not forget the one-sided Lipschitz constraint assumption $\eqref{eq:assum}$ we made for $\boldsymbol{g}_t(\boldsymbol{x}_t)$ during the derivation; now we can apply these assumptions separately to $\boldsymbol{f}_t(\boldsymbol{x}_t)$ and $\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)$. We won't expand on these details further.
+</p>
+
+<h2>Difficult Wrap-up</h2>
+
+<p>
+Following the process, next we should keep going to complete the proof for $\sigma_t \neq 0$. However, unfortunately, the approach in this article cannot fully prove the SDE case. Below is my analysis. In fact, for most readers, understanding the ODE example in the previous section is sufficient to grasp the essence of Equation $\eqref{eq:w-neq-1}$. The full details are not as critical.
+</p>
+
+<p>
+For simplicity, we analyze $\eqref{eq:reverse-sde}$ as an example; more general cases like $\eqref{eq:sde-reverse-2}$ can be analyzed similarly. What we need to estimate is the difference in trajectory distributions between the following two SDEs:
+\begin{equation}\left\{\begin{aligned}
+d\boldsymbol{x}_t =&\, \left[\boldsymbol{f}_t(\boldsymbol{x}_t) - g_t^2\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t) \right] dt + g_t d\boldsymbol{w}\\[5pt]
+d\boldsymbol{y}_t =&\, \left[\boldsymbol{f}_t(\boldsymbol{y}_t) - g_t^2\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{y}_t,t) \right] dt + g_t d\boldsymbol{w}
+\end{aligned}\right.\end{equation}
+That is, how much replacing the exact $\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t)$ with the approximate $\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{y}_t,t)$ affects the final distribution. My proof idea is also to transform it into an ODE and then reuse the previous proof. First, according to Equation $\eqref{eq:sde-reverse-2}$, we know that the ODE corresponding to the first SDE is:
+\begin{equation}
+d\boldsymbol{x}_t = \left[\boldsymbol{f}_t(\boldsymbol{x}_t) - g_t^2\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t) \right] dt + g_t d\boldsymbol{w}\\
+\Downarrow \\
+d\boldsymbol{x}_t = \left[\boldsymbol{f}_t(\boldsymbol{x}_t) - \frac{1}{2}g_t^2\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t) \right] dt
+\end{equation}
+As for the derivation of the ODE corresponding to the second SDE, there's a bit of a trick. We first need to transform it into the form of $-g_t^2\nabla_{\boldsymbol{y}_t}\log q_t(\boldsymbol{y}_t)$ and then use Equation $\eqref{eq:sde-reverse-2}$:
+\begin{equation}
+d\boldsymbol{y}_t = \left[\boldsymbol{f}_t(\boldsymbol{y}_t) - g_t^2\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{y}_t,t) \right] dt + g_t d\boldsymbol{w} \\
+\Downarrow \\
+d\boldsymbol{y}_t = \Big[\underbrace{\boldsymbol{f}_t(\boldsymbol{y}_t) - g_t^2\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{y}_t,t) + g_t^2\nabla_{\boldsymbol{y}_t}\log q_t(\boldsymbol{y}_t)}_{\text{Treat as a whole}} - g_t^2\nabla_{\boldsymbol{y}_t}\log q_t(\boldsymbol{y}_t) \Big] dt + g_t d\boldsymbol{w} \\
+\Downarrow \\
+d\boldsymbol{y}_t = \left[\boldsymbol{f}_t(\boldsymbol{y}_t) - g_t^2\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{y}_t,t) + g_t^2\nabla_{\boldsymbol{y}_t}\log q_t(\boldsymbol{y}_t) - \frac{1}{2}g_t^2\nabla_{\boldsymbol{y}_t}\log q_t(\boldsymbol{y}_t) \right] dt \\
+\Downarrow \\
+d\boldsymbol{y}_t = \left[\boldsymbol{f}_t(\boldsymbol{y}_t) - g_t^2\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{y}_t,t) + \frac{1}{2}g_t^2\nabla_{\boldsymbol{y}_t}\log q_t(\boldsymbol{y}_t)\right] dt
+\end{equation}
+Repeating the relaxation process $\eqref{eq:der-neq-0}$ (taking the negative sign for $\pm$), the main difference is the appearance of an extra term:
+\begin{equation}-\frac{1}{2}g_t^2\mathbb{E}_{\boldsymbol{z}}\left[(\boldsymbol{x}_t - \boldsymbol{y}_t)\cdot (\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t)-\nabla_{\boldsymbol{y}_t}\log q_t(\boldsymbol{y}_t))\right]\end{equation}
+If this term is less than or equal to 0, then the relaxation process $\eqref{eq:der-neq-0}$ still holds, and all subsequent results also hold. The final form of the conclusion would be consistent with Equation $\eqref{eq:w-neq-1}$.
+</p>
+
+<p>
+So now the remaining question is whether we can prove:
+\begin{equation}\mathbb{E}_{\boldsymbol{z}}\left[(\boldsymbol{x}_t - \boldsymbol{y}_t)\cdot (\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t)-\nabla_{\boldsymbol{y}_t}\log q_t(\boldsymbol{y}_t))\right]\geq 0\end{equation}
+Unfortunately, counterexamples can be constructed showing that it generally does not hold. A similar term appeared in the original paper's proof, but the distribution for the expectation was not $\boldsymbol{z}$, but rather the optimal transport distribution of $\boldsymbol{x}_t$ and $\boldsymbol{y}_t$. Under this premise, the original paper simply threw out conclusions from two documents as lemmas and completed the proof in just a few lines. One has to admit that the authors of the original paper are truly familiar with optimal transport content; they "handpick" various literature conclusions, which is tough for a novice reader like me. Desiring to understand it thoroughly but finding it hard to start, I can only stop here.
+</p>
+
+<p>
+Note in particular that we cannot simply assume a one-sided Lipschitz constraint on $\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t)$ or $\nabla_{\boldsymbol{y}_t}\log q_t(\boldsymbol{y}_t)$, because it is easy to find distributions whose log-gradients do not satisfy the one-sided Lipschitz constraint. Therefore, to prove this inequality, one can only follow the logic of the original paper through the properties of the distributions themselves, without adding extra forced assumptions.
+</p>
+
+<h2>Summary</h2>
+
+<p>
+This article introduced a new theoretical result showing that the score matching loss of diffusion models can be written as an upper bound of the W-distance, and provided a partial proof. This result means that to some extent, diffusion models and WGAN share the same optimization objective—diffusion models are secretly optimizing the W-distance!
+</p>
+
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9467.html" style="color: #005fcc;">https://kexue.fm/archives/9467</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

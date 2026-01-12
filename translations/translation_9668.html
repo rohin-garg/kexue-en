@@ -1,0 +1,274 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    processEnvironments: true,
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const script of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!script.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(script.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          script.parentNode.replaceChild(text, script);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9668">Generative Diffusion Model Ramblings (20): From ReFlow to WGAN-GP</a></h1>
+
+    <p>By 苏剑林 | June 28, 2023</p>
+
+
+<p>
+    In the previous article <a href="translation_9658.html">"Generative Diffusion Model Ramblings (19): GAN as Diffusion ODE"</a>, we introduced how to understand GAN as a diffusion ODE in another time dimension. In short, GAN essentially transforms the movement of samples in a diffusion model into the movement of generator parameters! However, the derivation process in that article relied on relatively complex and independent content like Wasserstein gradient flow, making it difficult to connect well with the previous articles in the diffusion series, resulting in a technical "gap." In my view, the ReFlow introduced in <a href="translation_9618.html">"Generative Diffusion Model Ramblings (17): General Steps for Constructing ODE (Part 2)"</a> is the most intuitive approach for understanding Diffusion ODEs. Since GAN can be understood from a Diffusion ODE perspective, there must exist a perspective to understand GAN via ReFlow. After some experimentation, I have successfully derived results similar to WGAN-GP from ReFlow.
+</p>
+
+<h3>Theory Review</h3>
+<p>
+    The reason I say "ReFlow is the most intuitive approach for understanding Diffusion ODEs" is that it is highly flexible and aligns closely with experimental code—it establishes a mapping from any noise distribution to a target data distribution through an ODE, and the training objective is very straightforward, corresponding directly to experimental code without "convolutions." Specifically, assume $\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0)$ is random noise sampled from a prior distribution, and $\boldsymbol{x}_1\sim p_1(\boldsymbol{x}_1)$ is a real sample sampled from the target distribution (Note: In previous articles, $\boldsymbol{x}_T$ was generally noise and $\boldsymbol{x}_0$ was the target sample; here they are reversed for convenience). ReFlow allows us to specify any trajectory from $\boldsymbol{x}_0$ to $\boldsymbol{x}_1$. For simplicity, ReFlow chooses a straight line:
+</p>
+
+\begin{equation}\boldsymbol{x}_t = (1-t)\boldsymbol{x}_0 + t \boldsymbol{x}_1\label{eq:line}\end{equation}
+
+<p>Now we find the ODE it satisfies:</p>
+
+\begin{equation}\frac{d\boldsymbol{x}_t}{dt} = \boldsymbol{x}_1 - \boldsymbol{x}_0\end{equation}
+
+<p>
+    This ODE is very simple, but it is not practical because we want to generate $\boldsymbol{x}_1$ from $\boldsymbol{x}_0$ via the ODE, yet the target we want to generate is placed inside the equation itself—a "reversal of cause and effect." To remedy this defect, ReFlow's idea is simple: learn a function of $\boldsymbol{x}_t$ to approximate $\boldsymbol{x}_1 - \boldsymbol{x}_0$, and then use it to replace $\boldsymbol{x}_1 - \boldsymbol{x}_0$:
+</p>
+
+\begin{equation}\boldsymbol{\varphi}^* = \mathop{\text{argmin}}_{\boldsymbol{\varphi}} \mathbb{E}_{\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0),\boldsymbol{x}_1\sim p_1(\boldsymbol{x}_1)}\left[\frac{1}{2}\Vert\boldsymbol{v}_{\boldsymbol{\varphi}}(\boldsymbol{x}_t, t) - (\boldsymbol{x}_1 - \boldsymbol{x}_0)\Vert^2\right]\label{eq:s-loss}\end{equation}
+
+<p>and</p>
+
+\begin{equation}\frac{d\boldsymbol{x}_t}{dt} = \boldsymbol{x}_1 - \boldsymbol{x}_0\quad\Rightarrow\quad\frac{d\boldsymbol{x}_t}{dt} = \boldsymbol{v}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t, t)\label{eq:ode-core}\end{equation}
+
+<p>We have previously proved that under the assumption that $\boldsymbol{v}_{\boldsymbol{\varphi}}(\boldsymbol{x}_t, t)$ has infinite fitting capability, the new ODE can indeed achieve sample transformation from the distribution $p_0(\boldsymbol{x}_0)$ to the distribution $p_1(\boldsymbol{x}_1)$.</p>
+
+<h3>Relative Motion</h3>
+<p>
+    One of the important characteristics of ReFlow is that it does not restrict the form of the prior distribution $p_0(\boldsymbol{x}_0)$. This means we can replace the prior distribution with any distribution we want, such as a distribution transformed by a generator $\boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z})$:
+</p>
+
+\begin{equation}\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0)\quad\Leftrightarrow\quad \boldsymbol{x}_0 = \boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z}),\,\boldsymbol{z}\sim \mathcal{N}(\boldsymbol{0},\boldsymbol{I})\end{equation}
+
+<p>
+    Substituting this into equation $\eqref{eq:s-loss}$ after training is complete, we can use equation $\eqref{eq:ode-core}$ to transform any $\boldsymbol{x}_0 = \boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z})$ into a real sample $\boldsymbol{x}_1$.
+</p>
+<p>
+    However, we are not satisfied with just this. As mentioned earlier, GAN transforms the movement of samples in a diffusion model into the movement of generator parameters. This can also be done within the ReFlow framework: assuming the generator's current parameters are $\boldsymbol{\theta}_{\tau}$, we expect the change $\boldsymbol{\theta}_{\tau}\to \boldsymbol{\theta}_{\tau+1}$ to simulate taking a small step forward according to equation $\eqref{eq:ode-core}$:
+</p>
+
+\begin{equation}\boldsymbol{\theta}_{\tau+1} = \mathop{\text{argmin}}_{\boldsymbol{\theta}}\mathbb{E}_{\boldsymbol{z}\sim \mathcal{N}(\boldsymbol{0},\boldsymbol{I})}\Big[\big\Vert \boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z}) - \boldsymbol{g}_{\boldsymbol{\theta}_{\tau}}(\boldsymbol{z}) - \epsilon\,\boldsymbol{v}_{\boldsymbol{\varphi}^*}(\boldsymbol{g}_{\boldsymbol{\theta}_{\tau}}(\boldsymbol{z}), 0)\big\Vert^2\Big]\label{eq:g-loss}\end{equation}
+
+<p>
+    Note that $t$ in equations $\eqref{eq:s-loss}$ and $\eqref{eq:ode-core}$ does not have the same meaning as $\tau$ in parameters $\boldsymbol{\theta}_{\tau}$; the former is the time parameter of the ODE, and the latter is the training progress, so different notation is used. Furthermore, $\boldsymbol{g}_{\boldsymbol{\theta}_{\tau}}(\boldsymbol{z})$ appears as $\boldsymbol{x}_0$ for the ODE, so when pushing forward by a small step, we get $\boldsymbol{x}_{\epsilon}$, and the time $t$ substituted into $\boldsymbol{v}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_t, t)$ should be $0$.
+</p>
+<p>
+    Now we have the new $\boldsymbol{g}_{\boldsymbol{\theta}_{\tau+1}}(\boldsymbol{z})$. Theoretically, the distribution it produces is closer to the true distribution (because it has moved one small step forward). We then treat it as the new $\boldsymbol{x}_0$, substitute it back into equation $\eqref{eq:s-loss}$ for training, and after training, substitute it into equation $\eqref{eq:g-loss}$ to optimize the generator, and so on. This is an alternating training process similar to GAN.
+</p>
+
+<h3>WGAN-GP</h3>
+<p>Can we quantitatively link this process to existing GANs? Yes! Specifically, to WGAN-GP with gradient penalty.</p>
+<p>First, let's look at the loss function $\eqref{eq:s-loss}$. Expanding the expectation part results in:</p>
+
+\begin{equation}\frac{1}{2}\Vert\boldsymbol{v}_{\boldsymbol{\varphi}}(\boldsymbol{x}_t, t)\Vert^2 - \langle\boldsymbol{v}_{\boldsymbol{\varphi}}(\boldsymbol{x}_t, t),\boldsymbol{x}_1 - \boldsymbol{x}_0\rangle + \frac{1}{2}\Vert\boldsymbol{x}_1 - \boldsymbol{x}_0\Vert^2\end{equation}
+
+<p>
+    The third term is independent of the parameters $\boldsymbol{\varphi}$, so removing it doesn't affect the result. Now we assume that $\boldsymbol{v}_{\boldsymbol{\varphi}}$ has strong enough fitting capability such that we do not need to explicitly input $t$. Then the above as a loss function is equivalent to:
+</p>
+
+\begin{equation}\frac{1}{2}\Vert\boldsymbol{v}_{\boldsymbol{\varphi}}(\boldsymbol{x}_t)\Vert^2 - \langle\boldsymbol{v}_{\boldsymbol{\varphi}}(\boldsymbol{x}_t),\boldsymbol{x}_1 - \boldsymbol{x}_0\rangle = \frac{1}{2}\Vert\boldsymbol{v}_{\boldsymbol{\varphi}}(\boldsymbol{x}_t)\Vert^2 - \left\langle\boldsymbol{v}_{\boldsymbol{\varphi}}(\boldsymbol{x}_t),\frac{d\boldsymbol{x}_t}{dt}\right\rangle\end{equation}
+
+<p>
+    $\boldsymbol{v}_{\boldsymbol{\varphi}}(\boldsymbol{x}_t)$ is a vector function with the same input and output dimensions. We further assume it is the gradient of some scalar function $D_{\boldsymbol{\varphi}}(\boldsymbol{x}_t)$, i.e., $\boldsymbol{v}_{\boldsymbol{\varphi}}(\boldsymbol{x}_t)=\nabla_{\boldsymbol{x}_t} D_{\boldsymbol{\varphi}}(\boldsymbol{x}_t)$. Then the above is:
+</p>
+
+\begin{equation}\frac{1}{2}\Vert\nabla_{\boldsymbol{x}_t} D_{\boldsymbol{\varphi}}(\boldsymbol{x}_t)\Vert^2 - \left\langle\nabla_{\boldsymbol{x}_t} D_{\boldsymbol{\varphi}}(\boldsymbol{x}_t),\frac{d\boldsymbol{x}_t}{dt}\right\rangle = \frac{1}{2}\Vert\nabla_{\boldsymbol{x}_t} D_{\boldsymbol{\varphi}}(\boldsymbol{x}_t)\Vert^2 - \frac{d D_{\boldsymbol{\varphi}}(\boldsymbol{x}_t)}{dt}\end{equation}
+
+<p>
+    Assuming that the change in $D_{\boldsymbol{\varphi}}(\boldsymbol{x}_t)$ is relatively smooth, then $\frac{d D_{\boldsymbol{\varphi}}(\boldsymbol{x}_t)}{dt}$ should be close to the finite difference at the points $t=0, t=1$, which is $D_{\boldsymbol{\varphi}}(\boldsymbol{x}_1)-D_{\boldsymbol{\varphi}}(\boldsymbol{x}_0)$. Thus, the loss function above is approximately:
+</p>
+
+\begin{equation}\frac{1}{2}\Vert\nabla_{\boldsymbol{x}_t} D_{\boldsymbol{\varphi}}(\boldsymbol{x}_t)\Vert^2 - D_{\boldsymbol{\varphi}}(\boldsymbol{x}_1) + D_{\boldsymbol{\varphi}}(\boldsymbol{x}_0)\end{equation}
+
+<p>
+    Readers familiar with GANs should find this very recognizable—it is exactly the discriminator loss function for WGAN with gradient penalty! Even the construction of $\boldsymbol{x}_t$ for the gradient penalty term via $\eqref{eq:line}$ is identical (linear interpolation between real and fake samples)! The only difference is that the gradient penalty in the original WGAN-GP is centered at 1, whereas here it is centered at zero. In fact, articles such as <a href="translation_6110.html">"WGAN-div: An Obscure Filler of the WGAN Pit"</a> and <a href="translation_6431.html">"Optimization Algorithms from a Dynamical Perspective (4): The Third Stage of GAN"</a> have shown that zero-centered gradient penalties often perform better.
+</p>
+<p>
+    Therefore, under specific parameterization and assumptions, the loss function $\eqref{eq:s-loss}$ is equivalent to the WGAN-GP discriminator loss. As for the generator loss, in the previous article <a href="translation_9658.html">"Generative Diffusion Model Ramblings (19): GAN as Diffusion ODE"</a>, we already proved that when $\boldsymbol{v}_{\boldsymbol{\varphi}}(\boldsymbol{x}_t)=\nabla_{\boldsymbol{x}_t} D_{\boldsymbol{\varphi}}(\boldsymbol{x}_t)$, the gradient of the single-step optimization of equation $\eqref{eq:g-loss}$ is equivalent to the gradient of:
+</p>
+
+\begin{equation}\boldsymbol{\theta}_{\tau+1} = \mathop{\text{argmin}}_{\boldsymbol{\theta}}\mathbb{E}_{\boldsymbol{z}\sim \mathcal{N}(\boldsymbol{0},\boldsymbol{I})}[-D(\boldsymbol{g}_{\boldsymbol{\theta}}(\boldsymbol{z}))]\end{equation}
+
+<p>which is precisely the WGAN-GP generator loss.</p>
+
+<h3>Summary</h3>
+<p>In this article, I have attempted to derive the connection between WGAN-GP and Diffusion ODEs starting from ReFlow. This perspective is relatively simpler and more intuitive, and it avoids relatively complex concepts such as Wasserstein gradient flow.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9668.html" style="color: #005fcc;">https://kexue.fm/archives/9668</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

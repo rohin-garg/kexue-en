@@ -1,0 +1,410 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']],
+      tags: 'ams',
+      packages: {'[+]': ['base', 'ams', 'noerrors', 'noundefined']}
+    },
+    loader: {load: ['[tex]/ams']}
+  };
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/6540">Sharing an Unsupervised Mining of Professional Domain Vocabulary</a></h1>
+
+<p>By 苏剑林 | April 10, 2019</p>
+
+<p>Last year, Data Fountain hosted a competition called "<a href="https://www.datafountain.cn/competitions/320/details">Power Professional Domain Vocabulary Mining</a>." The interesting thing about this competition was that it was "unsupervised," meaning it tested the ability to mine professional vocabulary from a large amount of corpus data without labels.</p>
+
+<p>This is clearly a valuable capability in the industrial world. Since I had previously done some research on unsupervised new word discovery and was intrigued by the novelty of an "unsupervised competition," I participated without hesitation. However, my final ranking wasn't particularly high.</p>
+
+<p>Regardless, I'd like to share my approach. This is a truly unsupervised method that might be of some reference value to some readers.</p>
+
+<h2>Baseline Comparison <a name="基准对比"></a></h2>
+
+<p>First, for the new word discovery part, I used my own library, <a href="translation_5597.html">nlp zero</a>. The basic idea is to perform new word discovery separately on the "corpus provided by the competition" and a "corpus of Baidu Baike data I crawled myself." By comparing the two, I could identify characteristic words specific to the "competition-provided corpus."</p>
+
+<p>The reference source code is as follows:</p>
+
+<pre><code>from nlp_zero import *
+import re
+import pandas as pd
+import pymongo
+import logging
+logging.basicConfig(level = logging.INFO, format = '%(asctime)s - %(name)s - %(message)s')
+
+class D: # Read the corpus provided by the competition
+    def __iter__(self):
+        with open('data.txt') as f:
+            for l in f:
+                l = l.strip().decode('utf-8')
+                l = re.sub(u'[^\u4e00-\u9fa5]+', ' ', l)
+                yield l
+
+class DO: # Read my own corpus (equivalent to a parallel general corpus)
+    def __iter__(self):
+        db = pymongo.MongoClient().baike.items
+        for i in db.find().limit(300000):
+            l = i['content']
+            l = re.sub(u'[^\u4e00-\u9fa5]+', ' ', l)
+            yield l
+
+# Perform new word discovery on the competition corpus
+f = Word_Finder(min_proba=1e-6, min_pmi=0.5)
+f.train(D()) # Calculate mutual information
+f.find(D()) # Build vocabulary
+
+# Export word list
+words = pd.Series(f.words).sort_values(ascending=False)
+
+# Perform new word discovery on my own general corpus
+fo = Word_Finder(min_proba=1e-6, min_pmi=0.5)
+fo.train(DO()) # Calculate mutual information
+fo.find(DO()) # Build vocabulary
+
+# Export word list
+other_words = pd.Series(fo.words).sort_values(ascending=False)
+other_words = other_words / other_words.sum() * words.sum() # Normalize total frequency for comparison
+
+"""
+Compare word frequencies between the two corpora to find characteristic words.
+The comparison metric is: (competition_corpus_freq + alpha) / (own_corpus_freq + beta);
+Calculation of alpha and beta is referenced from http://www.matrix67.com/blog/archives/5044
+"""
+
+WORDS = words.copy()
+OTHER_WORDS = other_words.copy()
+
+total_zeros = (WORDS + OTHER_WORDS).fillna(0) * 0
+words = WORDS + total_zeros
+other_words = OTHER_WORDS + total_zeros
+total = words + other_words
+
+alpha = words.sum() / total.sum()
+
+result = (words + total.mean() * alpha) / (total + total.mean())
+result = result.sort_values(ascending=False)
+idxs = [i for i in result.index if len(i) >= 2] # Exclude single-character words
+
+# Export to CSV format
+pd.Series(idxs[:20000]).to_csv('result_1.csv', encoding='utf-8', header=None, index=None)
+</code></pre>
+
+<h2>Semantic Filtering <a name="语义筛选"></a></h2>
+
+<p>Note that the word list exported according to the above method can at best be considered "corpus characteristic words," but it is not entirely "power professional domain vocabulary." To focus on power-related terms, we need to filter the word list semantically.</p>
+
+<p>My approach was: use the exported word list to segment the competition corpus, then train a Word2Vec model, and use the word vectors obtained from Word2Vec to cluster the words.</p>
+
+<p>First, training Word2Vec:</p>
+
+<pre><code># nlp zero provides a good wrapper that can directly export a tokenizer; 
+# the vocabulary is the one obtained from new word discovery.
+tokenizer = f.export_tokenizer()
+
+class DW:
+    def __iter__(self):
+        for l in D():
+            yield tokenizer.tokenize(l, combine_Aa123=False)
+
+from gensim.models import Word2Vec
+
+word_size = 100
+word2vec = Word2Vec(DW(), size=word_size, min_count=2, sg=1, negative=10)
+</code></pre>
+
+<p>Next is clustering, though this isn't clustering in the strictest sense. Instead, we select several seed words and then find a set of similar words based on them. The algorithm uses the transitivity of similarity (similar to a connectivity-based clustering algorithm): if A is similar to B, and B is similar to C, then A, B, and C are grouped into one cluster (even if A and C are not "similar" based on the raw metrics). Of course, continuing this transitivity might eventually traverse the entire word list, so we must gradually tighten the restrictions on similarity. For example, if A is a seed word, and B and C are not, we might define similarity as 0.6 for A and B, but require the similarity of B and C to be greater than 0.7 (one could consider an exponential decay for the similarity threshold). Otherwise, as the chain of transitivity grows, the subsequent words will drift further and further away from the semantics of the seed words.</p>
+
+<p>The clustering algorithm is as follows:</p>
+
+<pre><code>import numpy as np
+from multiprocessing.dummy import Queue
+
+def most_similar(word, center_vec=None, neg_vec=None):
+    """Find the most similar words based on a given word, center vector, and negative vector
+    """
+    vec = word2vec[word] + center_vec - neg_vec
+    return word2vec.similar_by_vector(vec, topn=200)
+
+def find_words(start_words, center_words=None, neg_words=None, min_sim=0.6, max_sim=1., alpha=0.25):
+    if center_words == None and neg_words == None:
+        min_sim = max(min_sim, 0.6)
+    center_vec, neg_vec = np.zeros([word_size]), np.zeros([word_size])
+    if center_words: # Center vector is the average of all center seed word vectors
+        _ = 0
+        for w in center_words:
+            if w in word2vec.wv.vocab:
+                center_vec += word2vec[w]
+                _ += 1
+        if _ > 0:
+            center_vec /= _
+    if neg_words: # Negative vector is the average of all negative seed word vectors (not used here)
+        _ = 0
+        for w in neg_words:
+            if w in word2vec.wv.vocab:
+                neg_vec += word2vec[w]
+                _ += 1
+        if _ > 0:
+            neg_vec /= _
+    queue_count = 1
+    task_count = 0
+    cluster = []
+    queue = Queue() # Establish queue
+    for w in start_words:
+        queue.put((0, w))
+        if w not in cluster:
+            cluster.append(w)
+    while not queue.empty():
+        idx, word = queue.get()
+        queue_count -= 1
+        task_count += 1
+        sims = most_similar(word, center_vec, neg_vec)
+        min_sim_ = min_sim + (max_sim-min_sim) * (1-np.exp(-alpha*idx))
+        if task_count % 10 == 0:
+            log = '%s in cluster, %s in queue, %s tasks done, %s min_sim'%(len(cluster), queue_count, task_count, min_sim_)
+            print log
+        for i,j in sims:
+            if j >= min_sim_:
+                if i not in cluster and is_good(i): # is_good is a manually written filtering rule
+                    queue.put((idx+1, i))
+                if i not in cluster and is_good(i):
+                    cluster.append(i)
+                    queue_count += 1
+    return cluster
+</code></pre>
+
+<h2>Rule Filtering <a name="规则过滤"></a></h2>
+
+<p>Generally speaking, unsupervised algorithms find it difficult to achieve perfection. In practice, a common method is to observe the results manually and then write rules to handle them. In this task, since the preceding steps were purely unsupervised, even with semantic clustering, some non-power professional words (like "Maxwell's Equations") or even "non-words" remained. Therefore, I wrote a series of rules for filtering (written a bit crudely...):</p>
+
+<pre><code>def is_good(w):
+    if re.findall(u'[\u4e00-\u9fa5]', w) \
+        and len(w) >= 2\
+        and not re.findall(u'[较很越增]|[多少大小长短高低好差]', w)\
+        and not u'的' in w\
+        and not u'了' in w\
+        and not u'这' in w\
+        and not u'那' in w\
+        and not u'到' in w\
+        and not w[-1] in u'为一人给内中后省市局院上所在有与及厂稿下厅部商者从奖出'\
+        and not w[0] in u'每各该个被其从与及当为'\
+        and not w[-2:] in [u'问题', u'市场', u'邮件', u'合约', u'假设', u'编号', u'预算', u'施加', u'战略', u'状况', u'工作', u'考核', u'评估', u'需求', u'沟通', u'阶段', u'账号', u'意识', u'价值', u'事故', u'竞争', u'交易', u'趋势', u'主任', u'价格', u'门户', u'治区', u'培养', u'职责', u'社会', u'主义', u'办法', u'干部', u'员会', u'商务', u'发展', u'原因', u'情况', u'国家', u'园区', u'伙伴', u'对手', u'目标', u'委员', u'人员', u'如下', u'况下', u'见图', u'全国', u'创新', u'共享', u'资讯', u'队伍', u'农村', u'贡献', u'争力', u'地区', u'客户', u'领域', u'查询', u'应用', u'可以', u'运营', u'成员', u'书记', u'附近', u'结果', u'经理', u'学位', u'经营', u'思想', u'监管', u'能力', u'责任', u'意见', u'精神', u'讲话', u'营销', u'业务', u'总裁', u'见表', u'电力', u'主编', u'作者', u'专辑', u'学报', u'创建', u'支持', u'资助', u'规划', u'计划', u'资金', u'代表', u'部门', u'版社', u'表明', u'证明', u'专家', u'教授', u'教师', u'基金', u'如图', u'位于', u'从事', u'公司', u'企业', u'专业', u'思路', u'集团', u'建设', u'管理', u'水平', u'领导', u'体系', u'政务', u'单位', u'部分', u'董事', u'院士', u'经济', u'意义', u'内部', u'项目', u'建设', u'服务', u'总部', u'管理', u'讨论', u'改进', u'文献']\
+        and not w[:2] in [u'考虑', u'图中', u'每个', u'出席', u'一个', u'随着', u'不会', u'本次', u'产生', u'查询', u'是否', u'作者']\
+        and not (u'博士' in w or u'硕士' in w or u'研究生' in w)\
+        and not (len(set(w)) == 1 and len(w) > 1)\
+        and not (w[0] in u'一二三四五六七八九十' and len(w) == 2)\
+        and re.findall(u'[^一七厂月二夕气产兰丫田洲户尹尸甲乙日卜几口工旧门目曰石闷匕勺]', w)\
+        and not u'进一步' in w:
+        return True
+    else:
+        return False
+</code></pre>
+
+<p>At this point, we can complete the execution of the algorithm:</p>
+
+<pre><code># Seed words, picked from the top of the word list obtained in the first step. 
+# They don't need to be perfectly accurate.
+start_words = [u'电网', u'电压', u'直流', u'电力系统', u'变压器', u'电流', u'负荷', u'发电机', u'变电站', u'机组', u'母线', u'电容', u'放电', u'等效', u'节点', u'电机', u'故障', u'输电线路', u'波形', u'电感', u'导线', u'继电', u'输电', u'参数', u'无功', u'线路', u'仿真', u'功率', u'短路', u'控制器', u'谐波', u'励磁', u'电阻', u'模型', u'开关', u'绕组', u'电力', u'电厂', u'算法', u'供电', u'阻抗', u'调度', u'发电', u'场强', u'电源', u'负载', u'扰动', u'储能', u'电弧', u'配电', u'系数', u'雷电', u'输出', u'并联', u'回路', u'滤波器', u'电缆', u'分布式', u'故障诊断', u'充电', u'绝缘', u'接地', u'感应', u'额定', u'高压', u'相位', u'可靠性', u'数学模型', u'接线', u'稳态', u'误差', u'电场强度', u'电容器', u'电场', u'线圈', u'非线性', u'接入', u'模态', u'神经网络', u'频率', u'风速', u'小波', u'补偿', u'电路', u'曲线', u'峰值', u'容量', u'有效性', u'采样', u'信号', u'电极', u'实测', u'变电', u'间隙', u'模块', u'试验', u'滤波', u'量测', u'元件', u'最优', u'损耗', u'特性', u'谐振', u'带电', u'瞬时', u'阻尼', u'转速', u'优化', u'低压', u'系统', u'停电', u'选取', u'传感器', u'耦合', u'振荡', u'线性', u'信息系统', u'矩阵', u'可控', u'脉冲', u'控制', u'套管', u'监控', u'汽轮机', u'击穿', u'延时', u'联络线', u'矢量', u'整流', u'传输', u'检修', u'模拟', u'高频', u'测量', u'样本', u'高级工程师', u'变换', u'试样', u'试验研究', u'平均值', u'向量', u'特征值', u'导体', u'电晕', u'磁通', u'千伏', u'切换', u'响应', u'效率']
+
+cluster_words = find_words(start_words, min_sim=0.6, alpha=0.35)
+
+result2 = result[cluster_words].sort_values(ascending=False)
+idxs = [i for i in result2.index if is_good(i)]
+
+pd.Series([i for i in idxs if len(i) > 2][:10000]).to_csv('result_1_2.csv', encoding='utf-8', header=None, index=None)
+</code></pre>
+
+<p>Final results (partial):</p>
+
+<blockquote>
+Transformer (变压器)<br>
+Generator (发电机)<br>
+Substation (变电站)<br>
+Overvoltage (过电压)<br>
+Reliability (可靠性)<br>
+Controller (控制器)<br>
+Circuit breaker (断路器)<br>
+Distributed (分布式)<br>
+Transmission line (输电线路)<br>
+Mathematical model (数学模型)<br>
+Filter (滤波器)<br>
+Capacitor (电容器)<br>
+Fault diagnosis (故障诊断)<br>
+Neural network (神经网络)<br>
+DC voltage (直流电压)<br>
+Plasma (等离子体)<br>
+Tie line (联络线)<br>
+Sensor (传感器)<br>
+Steam turbine (汽轮机)<br>
+Thyristor (晶闸管)<br>
+Electric motor (电动机)<br>
+Constraint conditions (约束条件)<br>
+Database (数据库)<br>
+Feasibility (可行性)<br>
+Duration (持续时间)<br>
+Rectifier (整流器)<br>
+Stability (稳定性)<br>
+Regulator (调节器)<br>
+Electromagnetic field (电磁场)
+</blockquote>
+
+<h2>Afterthoughts <a name="后记感想"></a></h2>
+
+<p>The score of this algorithm on the leaderboard was about 0.22, ranking around 100th when the board closed. The top score was already 0.49, so in terms of performance, it's not particularly something to brag about. However, I heard that many people used existing professional dictionaries for character labeling, so I didn't pursue it further. If that was the case, I feel it loses its meaning...</p>
+
+<p>In short, this article provides an implementation template for unsupervised professional word extraction. If readers find it useful, feel free to use it; if you find it worthless, please ignore it~</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6540.html" style="color: #005fcc;">https://kexue.fm/archives/6540</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

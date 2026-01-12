@@ -1,0 +1,290 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    processEscapes: true,
+    packages: {'[+]': ['base', 'ams', 'amsmath', 'amsbsy', 'amsfonts']}
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/10633">Generative Diffusion Models (Part 28): A Step-by-Step Understanding of Consistency Models</a></h1>
+
+<p>By 苏剑林 | December 18, 2024</p>
+
+<p>Following up from the previous post, in <a href="translation_10617.html">"Generative Diffusion Models (Part 27): Using Step Size as a Conditional Input"</a>, we introduced the Shortcut model for accelerated sampling. One of the models it was compared against is the "<a href="https://papers.cool/arxiv/2303.01469">Consistency Model</a>". In fact, as early as <a href="translation_9497.html">"Generative Diffusion Models (Part 17): General Steps for Constructing ODEs (Part 2)"</a> when introducing ReFlow, some readers mentioned Consistency Models. However, I always felt it was more of a practical trick with slightly thin theoretical foundations, so I wasn't very interested initially.</p>
+
+<p>However, since we have started focusing on the progress of accelerated sampling in diffusion models, Consistency Models are a body of work that cannot be ignored. Therefore, taking this opportunity, I would like to share my understanding of Consistency Models here.</p>
+
+<h2>A Familiar Recipe</h2>
+
+<p>Using a familiar recipe, our starting point remains <a href="translation_9497.html">ReFlow</a>, as it is perhaps the simplest way to understand ODE-based diffusion. Let $\boldsymbol{x}_0 \sim p_0(\boldsymbol{x}_0)$ be a real sample from the target distribution, $\boldsymbol{x}_1 \sim p_1(\boldsymbol{x}_1)$ be random noise from a prior distribution, and $\boldsymbol{x}_t = (1-t)\boldsymbol{x}_0 + t\boldsymbol{x}_1$ be the noisy sample. The training objective of ReFlow is:</p>
+
+\begin{equation}\boldsymbol{\theta}^* = \mathop{\text{argmin}}_{\boldsymbol{\theta}} \mathbb{E}_{t\sim U[0,1],\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0),\boldsymbol{x}_1\sim p_1(\boldsymbol{x}_1)}\left[w(t)\Vert\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t) - (\boldsymbol{x}_1 - \boldsymbol{x}_0)\Vert^2\right]\label{eq:loss}\end{equation}
+
+<p>where $w(t)$ is an adjustable weight. Once training is complete, sampling is achieved by solving $d\boldsymbol{x}_t/dt = \boldsymbol{v}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_t, t)$ to transform $\boldsymbol{x}_1$ into $\boldsymbol{x}_0$.</p>
+
+<p>It should be pointed out that the noise schedule for Consistency Models is $\boldsymbol{x}_t = \boldsymbol{x}_0 + t\boldsymbol{x}_1$ (where $\boldsymbol{x}_t$ is also close to pure noise when $t$ is large enough), which is slightly different from ReFlow. However, the main purpose of this article is to guide you step-by-step to the same training philosophy and objective as Consistency Models. I find the ReFlow framework easier to understand, so I will continue using the ReFlow formulation; as for specific training details, readers can adjust them as needed.</p>
+
+<p>Using $\boldsymbol{x}_t = (1-t)\boldsymbol{x}_0 + t\boldsymbol{x}_1$, we can eliminate $\boldsymbol{x}_1$ from the objective $\eqref{eq:loss}$:</p>
+
+\begin{equation}\boldsymbol{\theta}^* = \mathop{\text{argmin}}_{\boldsymbol{\theta}} \mathbb{E}_{t\sim U[0,1],\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0),\boldsymbol{x}_1\sim p_1(\boldsymbol{x}_1)}\big[\tilde{w}(t)\Vert \underbrace{\boldsymbol{x}_t - t\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)}_{\boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)} - \boldsymbol{x}_0\Vert^2\big]\label{eq:loss-2}\end{equation}
+
+<p>where $\tilde{w}(t) = w(t)/t^2$. Note that while $\boldsymbol{x}_0$ is the clean sample and $\boldsymbol{x}_t$ is the noisy sample, ReFlow's training objective is also effectively performing denoising. The model predicting the clean sample is $\boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t) = \boldsymbol{x}_t - t\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$. An important property of this function is that $\boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}_0, 0) = \boldsymbol{x}_0$ holds identically, which is one of the key constraints in Consistency Models.</p>
+
+<h2>Step-by-Step Understanding</h2>
+
+<p>Next, let's deconstruct the training process of ReFlow step-by-step to find a better training target. First, we discretize $[0,1]$ into $n$ equal parts, each of size $1/n$, denoted as $t_k = k/n$. Thus, $t$ is sampled uniformly from the finite set $\{0, t_1, t_2, \cdots, t_n\}$. Of course, we could also choose a non-uniform discretization; these are non-essential details.</p>
+
+<p>Since $t_0=0$ is trivial, we start from $t_1$. The training objective for the first step is:</p>
+
+\begin{equation}\boldsymbol{\theta}_1^* = \mathop{\text{argmin}}_{\boldsymbol{\theta}} \mathbb{E}_{\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0),\boldsymbol{x}_1\sim p_1(\boldsymbol{x}_1)}\big[\tilde{w}(t_1)\Vert \boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_1}, t_1) - \boldsymbol{x}_0\Vert^2\big]\end{equation}
+
+<p>Next, we consider the training objective for the second step. If we followed $\eqref{eq:loss-2}$, it would be the expectation of $\Vert \boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_2}, t_2) - \boldsymbol{x}_0\Vert^2$. However, we now evaluate a new target:</p>
+
+\begin{equation}\boldsymbol{\theta}_2^* = \mathop{\text{argmin}}_{\boldsymbol{\theta}} \mathbb{E}_{\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0),\boldsymbol{x}_1\sim p_1(\boldsymbol{x}_1)}\big[\tilde{w}(t_2)\Vert \boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_2}, t_2) - \boldsymbol{f}_{\boldsymbol{\theta}_1^*}(\boldsymbol{x}_{t_1}, t_1)\Vert^2\big]\end{equation}
+
+<p>In other words, the prediction target is changed to $\boldsymbol{f}_{\boldsymbol{\theta}_1^*}(\boldsymbol{x}_{t_1}, t_1)$ instead of $\boldsymbol{x}_0$. Why make this change? We can discuss this from two aspects: feasibility and necessity. Regarding feasibility, since $\boldsymbol{x}_{t_2}$ has more noise added than $\boldsymbol{x}_{t_1}$, its denoising is more difficult. In other words, the recovery performance of $\boldsymbol{f}_{\boldsymbol{\theta}_2^*}(\boldsymbol{x}_{t_2}, t_2)$ will not be as good as $\boldsymbol{f}_{\boldsymbol{\theta}_1^*}(\boldsymbol{x}_{t_1}, t_1)$. Therefore, replacing $\boldsymbol{x}_0$ with $\boldsymbol{f}_{\boldsymbol{\theta}_1^*}(\boldsymbol{x}_{t_1}, t_1)$ as the training target for the second step is entirely feasible.</p>
+
+<p>Even so, what is the necessity? The answer is to reduce "trajectory crossing." Since $\boldsymbol{x}_{t_k} = (1-t_k)\boldsymbol{x}_0 + t_k\boldsymbol{x}_1$, as $k$ increases, the dependence of $\boldsymbol{x}_{t_k}$ on $\boldsymbol{x}_0$ becomes weaker and weaker, to the point where two different $\boldsymbol{x}_0$ values might correspond to very similar $\boldsymbol{x}_{t_k}$ values. If we still use $\boldsymbol{x}_0$ as the prediction target at this point, the dilemma of "one input, multiple targets" arises, which is exactly what trajectory crossing is.</p>
+
+<p>To face this dilemma, ReFlow's strategy is post-hoc distillation: after pre-training, solving $d\boldsymbol{x}_t/dt = \boldsymbol{v}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_t, t)$ provides many $(\boldsymbol{x}_0, \boldsymbol{x}_1)$ pairs. Using these paired $\boldsymbol{x}_0$ and $\boldsymbol{x}_1$ to construct $\boldsymbol{x}_t$ avoids crossing. The idea behind Consistency Models is to change the prediction target to $\boldsymbol{f}_{\boldsymbol{\theta}_{k-1}^*}(\boldsymbol{x}_{t_{k-1}}, t_{k-1})$ because for the "same $\boldsymbol{x}_1$, different $\boldsymbol{x}_0$", the difference between $\boldsymbol{f}_{\boldsymbol{\theta}_{k-1}^*}(\boldsymbol{x}_{t_{k-1}}, t_{k-1})$ will be smaller than the difference between the corresponding $\boldsymbol{x}_0$ values, thereby reducing the risk of crossing.</p>
+
+<p>Simply put, it is easier for $\boldsymbol{f}_{\boldsymbol{\theta}_2^*}(\boldsymbol{x}_{t_2}, t_2)$ to predict $\boldsymbol{f}_{\boldsymbol{\theta}_1^*}(\boldsymbol{x}_{t_1}, t_1)$ than to predict $\boldsymbol{x}_0$, and it still achieves the intended effect. Similarily, we can write:</p>
+
+\begin{equation}
+\begin{gathered}
+\boldsymbol{\theta}_3^* = \mathop{\text{argmin}}_{\boldsymbol{\theta}} \mathbb{E}_{\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0),\boldsymbol{x}_1\sim p_1(\boldsymbol{x}_1)}\big[\tilde{w}(t_3)\Vert \boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_3}, t_3) - \boldsymbol{f}_{\boldsymbol{\theta}_2^*}(\boldsymbol{x}_{t_2}, t_2)\Vert^2\big] \\
+\boldsymbol{\theta}_4^* = \mathop{\text{argmin}}_{\boldsymbol{\theta}} \mathbb{E}_{\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0),\boldsymbol{x}_1\sim p_1(\boldsymbol{x}_1)}\big[\tilde{w}(t_4)\Vert \boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_4}, t_4) - \boldsymbol{f}_{\boldsymbol{\theta}_3^*}(\boldsymbol{x}_{t_3}, t_3)\Vert^2\big] \\
+\vdots \\[5pt]
+\boldsymbol{\theta}_n^* = \mathop{\text{argmin}}_{\boldsymbol{\theta}} \mathbb{E}_{\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0),\boldsymbol{x}_1\sim p_1(\boldsymbol{x}_1)}\big[\tilde{w}(t_n)\Vert \boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_n}, t_n) - \boldsymbol{f}_{\boldsymbol{\theta}_{n-1}^*}(\boldsymbol{x}_{t_{n-1}}, t_{n-1})\Vert^2\big]
+\end{gathered}
+\end{equation}
+
+<h2>Consistency Training</h2>
+
+<p>Now we have completed the deconstruction of the ReFlow model and obtained a new training objective that we believe is more reasonable. However, the cost is that we have $n$ sets of parameters $\boldsymbol{\theta}_1^*, \boldsymbol{\theta}_2^*, \cdots, \boldsymbol{\theta}_n^*$, which is obviously not what we want. We want only one model. Thus, we assume all $\boldsymbol{\theta}_i^*$ can share the same set of parameters, allowing us to write the training objective as:</p>
+
+\begin{equation}\boldsymbol{\theta}^* = \mathop{\text{argmin}}_{\boldsymbol{\theta}} \mathbb{E}_{k\sim[n],\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0),\boldsymbol{x}_1\sim p_1(\boldsymbol{x}_1)}\big[\tilde{w}(t_k)\Vert \boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_k}, t_k) - \boldsymbol{f}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_{t_{k-1}}, t_{k-1})\Vert^2\big]\label{eq:loss-3}\end{equation}
+
+<p>where $k\sim[n]$ means $k$ is sampled uniformly from $\{1, 2, \cdots, n\}$. The problem with the above equation is that $\boldsymbol{\theta}^*$ is the parameter we are solving for, yet it also appears in the objective function. This is clearly unscientific (if I knew $\boldsymbol{\theta}^*$, why would I train?). Therefore, we must modify the objective to make it more feasible.</p>
+
+<p>The meaning of $\boldsymbol{\theta}^*$ is the theoretical optimal solution. Considering that as training progresses, $\boldsymbol{\theta}$ will slowly approach $\boldsymbol{\theta}^*$, we can relax this condition in the objective function to a "leading solution"—that is, it only needs to be better than the current $\boldsymbol{\theta}$. How do we construct a "leading solution"? The approach in Consistency Models is to use <a href="https://kexue.fm/archives/6575#%E6%9D%83%E9%87%8D%E6%BB%91%E5%8A%A8%E5%B9%B3%E5%9D%87">EMA (Exponential Moving Average)</a> on the historical weights. This often yields a superior solution, a technique we frequently used in competitions in earlier years.</p>
+
+<p>Therefore, the final training objective of Consistency Models is:</p>
+
+\begin{equation}\boldsymbol{\theta}^* = \mathop{\text{argmin}}_{\boldsymbol{\theta}} \mathbb{E}_{k\sim[n],\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0),\boldsymbol{x}_1\sim p_1(\boldsymbol{x}_1)}\big[\tilde{w}(t_k)\Vert \boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_k}, t_k) - \boldsymbol{f}_{\bar{\boldsymbol{\theta}}}(\boldsymbol{x}_{t_{k-1}}, t_{k-1})\Vert^2\big]\label{eq:loss-4}\end{equation}
+
+<p>where $\bar{\boldsymbol{\theta}}$ is the EMA of $\boldsymbol{\theta}$. This is what the original paper calls "Consistency Training (CT)". In practice, we can also replace $\Vert\cdot - \cdot\Vert^2$ with a more general metric $d(\cdot, \cdot)$ to better fit the data characteristics.</p>
+
+<h2>Sampling Analysis</h2>
+
+<p>Since we started from ReFlow and performed "equivalent transformations" step-by-step, one basic sampling method after training is the same as ReFlow: solving the ODE</p>
+
+\begin{equation}d\boldsymbol{x}_t/dt = \boldsymbol{v}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_t, t) = \frac{\boldsymbol{x}_t - \boldsymbol{f}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_t, t)}{t}\label{eq:ode}\end{equation}
+
+<p>Of course, if all this effort only resulted in the same performance as ReFlow, it would be a complete waste of time. Fortunately, the models obtained through consistency training have an important advantage: they can use larger sampling step sizes—even a step size equal to 1. This enables single-step generation:</p>
+
+\begin{equation}\boldsymbol{x}_0 = \boldsymbol{x}_1 - \boldsymbol{v}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_1, 1)\times 1 = \boldsymbol{f}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_1, 1)\end{equation}
+
+<p>The reasoning is:</p>
+
+\begin{equation}\begin{aligned}
+\Vert\boldsymbol{f}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_1, 1) - \boldsymbol{x}_0\Vert =&\, \left\Vert\sum_{k=1}^n \Big[\boldsymbol{f}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_{t_k}, t_k) - \boldsymbol{f}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_{t_{k-1}}, t_{k-1})\Big]\right\Vert \\[5pt]
+\leq&\, \sum_{k=1}^n \Vert\boldsymbol{f}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_{t_k}, t_k) - \boldsymbol{f}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_{t_{k-1}}, t_{k-1})\Vert \\
+\end{aligned}\label{eq:f-x1-x0}\end{equation}
+
+<p>As can be seen, consistency training is equivalent to optimizing the upper bound of $\Vert\boldsymbol{f}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_1, 1) - \boldsymbol{x}_0\Vert$. When the loss is small enough, it implies that $\Vert\boldsymbol{f}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_1, 1) - \boldsymbol{x}_0\Vert$ is also small enough, thus allowing for single-step generation.</p>
+
+<p>But $\Vert\boldsymbol{f}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_1, 1) - \boldsymbol{x}_0\Vert$ was the original training objective of ReFlow—why is optimizing its upper bound better than optimizing it directly? This brings us back to the problem of "trajectory crossing." In direct training, $\boldsymbol{x}_0$ and $\boldsymbol{x}_1$ are sampled randomly without a one-to-one pairing relationship, so a single-step generation model cannot be trained directly. However, by training the upper bound, through the transitivity of multiple $\boldsymbol{f}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_{t_k}, t_k)$ and $\boldsymbol{f}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_{t_{k-1}}, t_{k-1})$, the pairing of $\boldsymbol{x}_0$ and $\boldsymbol{x}_1$ is implicitly realized.</p>
+
+<p>If single-step generation quality is unsatisfactory, we can increase the number of sampling steps to improve quality. There are two ways to do this: 1. Use a smaller step size to numerically solve $\eqref{eq:ode}$; 2. Transform it into a stochastic iteration similar to SDEs. The former is standard, so we focus on the latter.</p>
+
+<p>First, note that replacing $\boldsymbol{f}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_1, 1)$ in equation $\eqref{eq:f-x1-x0}$ with any $\boldsymbol{f}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_t, t)$ yields a similar inequality. This means any $\boldsymbol{f}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_t, t)$ predicts $\boldsymbol{x}_0$. Consequently, starting from $\boldsymbol{x}_1$, we can get a preliminary $\boldsymbol{x}_0$ through $\boldsymbol{f}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_1, 1)$. Since it might not be perfect, we use noise to "mask" this imperfection, obtaining $\boldsymbol{x}_{t_{n-1}}$, then substituting it into $\boldsymbol{f}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_{t_{n-1}}, t_{n-1})$ to get a slightly better result, and so on:</p>
+
+\begin{equation}\begin{aligned}
+&\boldsymbol{x}_1\sim\mathcal{N}(\boldsymbol{0},\boldsymbol{I}) \\
+&\boldsymbol{x}_0\leftarrow \boldsymbol{f}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_1, 1) \\
+&\text{for }k=n-1,n-2,\cdots,1: \\
+&\qquad \boldsymbol{z} \sim \mathcal{N}(\boldsymbol{0},\boldsymbol{I}) \\
+&\qquad \boldsymbol{x}_{t_k} \leftarrow (1 - t_k)\boldsymbol{x}_0 + t_k\boldsymbol{z} \\
+&\qquad \boldsymbol{x}_0\leftarrow \boldsymbol{f}_{\boldsymbol{\theta}^*}(\boldsymbol{x}_{t_k}, t_k)
+\end{aligned}\end{equation}
+
+<h2>Consistency Distillation</h2>
+
+<p>The training philosophy of Consistency Models can also be used for distilling existing diffusion models, resulting in what is called "Consistency Distillation (CD)". The method consists of changing the learning target of $\boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_k}, t_k)$ in $\eqref{eq:loss-4}$ from $\boldsymbol{f}_{\bar{\boldsymbol{\theta}}}(\boldsymbol{x}_{t_{k-1}}, t_{k-1})$ to $\boldsymbol{f}_{\bar{\boldsymbol{\theta}}}(\hat{\boldsymbol{x}}_{t_{k-1}}^{\boldsymbol{\varphi}^*}, t_{k-1})$:</p>
+
+\begin{equation}\boldsymbol{\theta}^* = \mathop{\text{argmin}}_{\boldsymbol{\theta}} \mathbb{E}_{k\sim[n],\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0),\boldsymbol{x}_1\sim p_1(\boldsymbol{x}_1)}\big[\tilde{w}(t_k)\Vert \boldsymbol{f}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t_k}, t_k) - \boldsymbol{f}_{\bar{\boldsymbol{\theta}}}(\hat{\boldsymbol{x}}_{t_{k-1}}^{\boldsymbol{\varphi}^*}, t_{k-1})\Vert^2\big]\label{eq:loss-5}\end{equation}
+
+<p>where $\hat{\boldsymbol{x}}_{t_{k-1}}^{\boldsymbol{\varphi}^*}$ is the predicted $\boldsymbol{x}_{t_{k-1}}$ from the teacher diffusion model starting from $\boldsymbol{x}_{t_k}$. For example, using the simplest Euler solver:</p>
+
+\begin{equation}\hat{\boldsymbol{x}}_{t_{k-1}}^{\boldsymbol{\varphi}^*} \approx \boldsymbol{x}_{t_k} - (t_k - t_{k-1})\boldsymbol{v}_{\boldsymbol{\varphi}^*}(\boldsymbol{x}_{t_k}, t_k)\end{equation}
+
+<p>The reasoning is simple: if we already have a pre-trained diffusion model, there is no need to find learning targets on the straight line $\boldsymbol{x}_t = (1-t)\boldsymbol{x}_0 + t\boldsymbol{x}_1$, as this is manually defined and carries the risk of crossing. Instead, we use the pre-trained diffusion model to predict the trajectory. The learning targets found this way might not be the "straightest," but they definitely won't cross.</p>
+
+<p>If cost is no object, we could also start from randomly sampled $\boldsymbol{x}_1$, obtain the $\boldsymbol{x}_0$ solved by the teacher diffusion model, and construct learning targets via these paired $(\boldsymbol{x}_0, \boldsymbol{x}_1)$. This is essentially the distillation idea of ReFlow. The downside is that the full sampling process of the teacher model must be run, which is time-consuming. In contrast, Consistency Distillation only requires running a single step of the teacher model, leading to much lower computational costs.</p>
+
+<p>However, Consistency Distillation still requires real samples during the distillation process, which is a drawback in some scenarios. If you want to perform distillation without running the full teacher model sampling and without providing real data, one option is <a href="translation_10085.html">SiD</a>, which we introduced previously, though the trade-off is more complex model derivation.</p>
+
+<h2>Conclusion</h2>
+
+<p>By step-by-step deconstruction and optimization of the ReFlow training process, this article provides an intuitive path to understand the transition from ReFlow to Consistency Models.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10633.html" style="color: #005fcc;">https://kexue.fm/archives/10633</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,333 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/11428">Generative Diffusion Models (31): Predicting Data Rather Than Noise</a></h1>
+
+<p>By 苏剑林 | November 24, 2025</p>
+
+<p>
+  To this day, <a href="https://papers.cool/arxiv/2112.10752">LDM (Latent Diffusion Models)</a> remains the mainstream paradigm for diffusion models. By utilizing an Encoder to highly compress the original image, LDM can significantly reduce training and inference computational costs while simultaneously lowering the training difficulty—a multi-win approach. However, high-ratio compression also implies information loss, and the "compress, generate, decompress" pipeline lacks some end-to-end aesthetic. Consequently, there has always been a group persistent in "returning to pixel space," hoping to let diffusion models complete generation directly on the original data.
+</p>
+
+<p>
+  The work introduced in this article, <a href="https://papers.cool/arxiv/2511.13720">"Back to Basics: Let Denoising Generative Models Denoise"</a>, follows this line of thought. Based on the fact that original data often resides on a low-dimensional sub-manifold, it proposes that models should predict the data rather than the noise. This results in "JiT (Just image Transformers)," which significantly simplifies the architecture of diffusion models in pixel space.
+</p>
+
+<h2>Signal-to-Noise Ratio</h2>
+
+<p>
+  Undoubtedly, the "main force" of today's diffusion models is still LDM. Even the <a href="https://papers.cool/arxiv/2510.11690">RAE</a>, which caused quite a stir recently, merely claimed that LDM's Encoder is "outdated" and suggested replacing it with a new, stronger Encoder, but it did not change the "compress first, generate second" mode.
+</p>
+
+<p>
+  The reason for this situation, besides LDM's ability to significantly reduce the computational cost of generating large images, is another key factor: for a long time, researchers found that direct pixel-space high-resolution diffusion generation seemed to have "inherent difficulties." Specifically, applying configurations effective at low resolutions (such as Noise Schedules) to the training of high-resolution diffusion models yielded significantly worse results, manifested as slow convergence and lower FID scores compared to low-resolution models.
+</p>
+
+<p>
+  Later, works like <a href="https://papers.cool/arxiv/2301.11093">Simple Diffusion</a> realized the key reason behind this: when the same Noise Schedule is applied to a higher-resolution image, the Signal-to-Noise Ratio (SNR) essentially increases. Specifically, if we apply the same noise intensity to a small image and a large image and then scale them to the same size, the large image will appear clearer. Therefore, when using the same Noise Schedule to train high-resolution diffusion models, the difficulty of denoising becomes lower, leading to issues such as training inefficiency and poor performance.
+</p>
+
+<p style="text-align:center;">
+  <img src="https://kexue.fm/usr/uploads/2024/11/2405786576.png" alt="SNR of same noise at different resolutions" /><br />
+  <em>SNR of the same noise at different resolutions</em>
+</p>
+
+<p>
+  Once this reason was identified, the solution was not hard to find: adjust the Noise Schedule of high-resolution diffusion models by increasing the corresponding noise intensity to align the SNR at each step. More detailed discussions can be found in the previous blog post <a href="translation_10047.html">"Generative Diffusion Models (22): SNR and Large Image Generation (Part 1)"</a>. Since then, diffusion models in pixel space have gradually caught up with LDM's performance and begun demonstrating their competitiveness.
+</p>
+
+<h2>Model Bottlenecks</h2>
+
+<p>
+  However, although pixel-space diffusion models have caught up with LDM in terms of metrics (such as FID or IS), another confusing question remains: to achieve metrics similar to low-resolution models, high-resolution models must pay more in computation, such as more training steps, larger models, larger Feature Maps, etc.
+</p>
+
+<p>
+  Some readers might find this reasonable: generating larger images requires higher costs, doesn't it? At first glance, this makes sense, but careful thought reveals it is not entirely scientific. Large-image generation may be inherently more difficult, but at least for metrics like FID/IS, it shouldn't be, because these metrics are calculated after the generation results are scaled to a specific size. This means if we have a batch of small images, obtaining a batch of large images with the same FID/IS is easy—we just need to UpSample each small image, which has almost zero extra cost.
+</p>
+
+<p>
+  Someone might point out that "large images obtained by UpSampling lack detail." True, that is the aforementioned "large-image generation being inherently more difficult" because it requires generating more detail. However, the UpSample operation is, at least, invariant for FID and IS. This implies that, theoretically, by investing the same amount of computational power, I should at least be able to obtain a large-image generation model with roughly the same FID/IS, though it might lack detail. But this is not the case; often we only get a model that is significantly worse across all aspects.
+</p>
+
+<p>
+  Let's make this problem more concrete. Suppose the Baseline is a $128 \times 128$ small image model that Patchifies input into $8 \times 8$ patches, linearly projects them to 768 dimensions, feeds them into a ViT with hidden\_size=768, and finally linearly projects them back to the image size. This configuration works well for $128 \times 128$ resolution. Next, to do $512 \times 512$ large-image generation, I only need to change the Patch Size to $32 \times 32$. In this way, except for slightly larger input/output projections, the overall computational load remains nearly unchanged.
+</p>
+
+<p>
+  Now the question is: using such a model with roughly the same computational cost for a $512 \times 512$ diffusion model, can we get the same FID/IS as the $128 \times 128$ resolution model?
+</p>
+
+<h2>Low-Dimensional Manifolds</h2>
+
+<p>
+  For diffusion models before JiT, the answer is most likely no, because such models exhibit a low-rank bottleneck at high resolutions.
+</p>
+
+<p>
+  Previously, there were two mainstream paradigms for diffusion models: one is predicting noise like <a href="translation_9119.html">DDPM</a>, and the other is predicting the difference between noise and the original image (velocity) like <a href="translation_9497.html">ReFlow</a>. In both, the regression target includes noise. Noise vectors are sampled independently and identically from a normal distribution; they "fill up" the entire space. In mathematical terms, their Support is the entire space. Thus, for a model to successfully predict arbitrary noise vectors, it must not have a low-rank bottleneck; otherwise, it cannot even implement an identity mapping, let alone denoising.
+</p>
+
+<p>
+  Returning to the previous example, after changing the Patch Size to $32 \times 32$, the input dimension is $32 \times 32 \times 3 = 3072$. Projecting this down to 768 dimensions is naturally irreversible. Therefore, if we still use it to predict noise or velocity, performance will be poor due to the low-rank bottleneck. The key issue here is that actual models do not truly possess universal fitting capabilities but rather have more or less some fitting bottlenecks.
+</p>
+
+<p>
+  Speaking of which, the core modification of JiT is already apparent:
+</p>
+
+<blockquote>
+  Compared to noise, the effective dimensionality of original data is often much lower—meaning original data resides on a lower-dimensional sub-manifold. This implies that predicting data is "easier" for the model than predicting noise. Therefore, the model should prioritize predicting original data, especially when network capacity is limited.
+</blockquote>
+
+<p>
+  Put simply, original data like images tend to have clear structures, making them simpler to predict. Thus, models should predict images to minimize the impact of low-rank bottlenecks, potentially even turning a disadvantage into an advantage.
+</p>
+
+<p>
+  Looked at separately, each of these points is not new: noise supporting the whole space and original data residing on low-dimensional manifolds are conclusions that are somewhat "common knowledge"; and using models to directly predict images instead of noise is not the first attempt. But the brilliance of the original paper lies in connecting these points simultaneously to form a rational explanation. It is both astounding and seemingly irrefutable, leaving one with the feeling that "it should have been this way all along."
+</p>
+
+<h2>Experimental Analysis</h2>
+
+<p>
+  Of course, while it sounds reasonable, so far it is merely a hypothesis. Next comes the verification through experiments. There are many experiments in JiT, but the author believes the following three are most noteworthy.
+</p>
+
+<p>
+  First, we now have three optional prediction targets: noise, velocity, and data. These can further be divided into the model's prediction target and the loss function's regression target, resulting in 9 combinations. Taking ReFlow as an example, let $\boldsymbol{x}_0$ be noise and $\boldsymbol{x}_1$ be data. Its training objective is:
+</p>
+
+\begin{equation}\mathbb{E}_{\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0),\boldsymbol{x}_1\sim p_1(\boldsymbol{x}_1)}\bigg[\bigg\Vert \boldsymbol{v}_{\boldsymbol{\theta}}\big(\underbrace{(\boldsymbol{x}_1 - \boldsymbol{x}_0)t + \boldsymbol{x}_0}_{\boldsymbol{x}_t}, t\big) - (\boldsymbol{x}_1 - \boldsymbol{x}_0)\bigg\Vert^2\bigg]\end{equation}
+
+<p>
+  where $\boldsymbol{v}=\boldsymbol{x}_1 - \boldsymbol{x}_0$ is the velocity. So this is a loss where the regression target is velocity ($\boldsymbol{v}\text{-loss}$). If we use a neural network to model $\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$, then the model's prediction target is also velocity ($\boldsymbol{v}\text{-pred}$). If we use $\boldsymbol{x}_1 - \boldsymbol{x}_0=\frac{\boldsymbol{x}_1 - \boldsymbol{x}_t}{1-t}$ to parameterize $\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ as $\frac{\text{NN}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t) - \boldsymbol{x}_t}{1-t}$, then the $\text{NN}$'s prediction target is the data $\boldsymbol{x}_1$ ($\boldsymbol{x}\text{-pred}$).
+</p>
+
+<p>
+  The effects of these 9 combinations on ViT models with and without low-rank bottlenecks are shown in the figure below (left):
+</p>
+
+<p style="text-align:center;">
+  <img src="https://kexue.fm/usr/uploads/2024/11/3858023192.png" alt="Differences in x/ε/v-pred/loss results with and without low-rank bottleneck" />
+  <img src="https://kexue.fm/usr/uploads/2024/11/1709212165.png" alt="Adding appropriate low-rank bottleneck actually favors FID" /><br />
+  <em>Left: Differences in $x$/$\epsilon$/$v$-pred/loss with and without low-rank bottleneck. Right: Adding appropriate low-rank bottleneck actually favors FID.</em>
+</p>
+
+<p>
+  As seen, without a low-rank bottleneck (b), the 9 combinations show little difference. However, if the model has a low-rank bottleneck (a), only when the prediction target is data ($\boldsymbol{x}\text{-pred}$) can training succeed. The influence of the regression target is secondary. This confirms the necessity of predicting data. Furthermore, the paper found that actively adding an appropriate low-rank bottleneck to the $\boldsymbol{x}\text{-pred}$ JiT actually benefits FID, as shown in the figure above (right).
+</p>
+
+<p>
+  Further, the table below verifies that by predicting data, it is indeed possible to obtain different resolution models with similar FID under similar computational and parameter scales:
+</p>
+
+<p style="text-align:center;">
+  <img src="https://kexue.fm/usr/uploads/2024/11/3953494793.png" alt="Similar FID across different resolutions with similar compute and parameters" /><br />
+  <em>Similar FID across different resolutions with similar compute and parameters</em>
+</p>
+
+<p>
+  Finally, I also conducted a comparison myself. On CelebA HQ, the comparison of using a large Patch Size ViT model for $\boldsymbol{x}\text{-pred}$ and $\boldsymbol{v}\text{-pred}$ is as follows (trained roughly, just for comparison):
+</p>
+
+<p style="text-align:center;">
+  <img src="https://kexue.fm/usr/uploads/2024/11/1694931346.png" alt="Generation effect of predicting original image" />
+  <img src="https://kexue.fm/usr/uploads/2024/11/1899238382.png" alt="Generation effect of predicting velocity" /><br />
+  <em>Left: Predicting original image. Right: Predicting velocity.</em>
+</p>
+
+<h2>Further Reflections</h2>
+
+<p>
+  For more experimental results, please refer to the original paper. In this section, let's discuss what changes JiT brings to diffusion models.
+</p>
+
+<p>
+  First, it has not set a new SOTA. From the experimental tables in the paper, for the ImageNet generation task, it doesn't bring a new SOTA, though the gap with the best results is small. Thus, its performance is considered SOTA-level, but it hasn't significantly surpassed others. On the other hand, changing a SOTA non-$\boldsymbol{x}\text{-pred}$ model to $\boldsymbol{x}\text{-pred}$ likely won't yield significantly better results.
+</p>
+
+<p>
+  However, it might reduce the cost of achieving SOTA. Letting the model predict data alleviates the impact of low-rank bottlenecks, allowing us to re-examine lightweight designs previously discarded due to poor performance, or to "upgrade" low-resolution SOTA models to high resolution with low additional training costs. From this perspective, the real problem JiT solves is transferability from low resolution to high resolution.
+</p>
+
+<p>
+  Additionally, JiT brings greater architectural unification between vision understanding and generation. In fact, JiT is essentially the ViT used for visual understanding, which is largely similar to the GPT architecture of text LLMs. Architecture unification is more conducive to designing multimodal models that integrate understanding and generation. In contrast, the standard architecture for diffusion models previously was <a href="https://papers.cool/arxiv/1505.04597">U-Net</a>, which includes multi-level up/downsampling and multiple cross-scale skip connections, making the structure relatively complex.
+</p>
+
+<p>
+  From this angle, JiT accurately identifies the most critical skip connection in U-Net. In the ReFlow example, if we understand it as modeling $\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$, then in JiT we have $\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)=\frac{\text{NN}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t) - \boldsymbol{x}_t}{1-t}$. The extra $-\boldsymbol{x}_t$ is precisely a direct shortcut from input to output. U-Net, rather than worrying about which connection is critical, simply adds such a skip connection to every up/downsampled Block.
+</p>
+
+<p>
+  Lastly, as a "side note": JiT reminded me of <a href="translation_10711.html">DDCM</a>, which requires pre-sampling a massive "$T \times \text{img\_size}$" matrix as a Codebook. I once tried to simulate it with linear combinations of a limited number of random vectors but failed. That experience made me deeply realize that i.i.d. noise fills the entire space and is incompressible. So, seeing JiT's viewpoint that "data resides on a low-dimensional manifold; predicting data is easier than predicting noise," I understood and accepted it almost instantly.
+</p>
+
+<h2>Summary</h2>
+
+<p>
+  This article briefly introduced JiT. Based on the fact that original data often resides on a low-dimensional sub-manifold, it proposes that models should prioritize predicting data instead of noise or velocity. This reduces the modeling difficulty of diffusion models and decreases the likelihood of negative outcomes like model collapse.
+</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_11428.html" style="color: #005fcc;">https://kexue.fm/archives/11428</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

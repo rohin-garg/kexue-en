@@ -1,0 +1,287 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']],
+      processEscapes: true,
+      tags: 'ams'
+    }
+  };
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+  <h1><a href="https://kexue.fm/archives/8823">Understanding Attention Scaling from the Perspective of Entropy Invariance</a></h1>
+  <p>By 苏剑林 | December 21, 2021</p>
+
+  <p>The most widely used attention mechanism in current Transformer architectures is the "Scaled Dot-Product Attention." The term "Scaled" refers to the fact that after the transpose multiplication of $Q$ and $K$, the result is divided by $\sqrt{d}$ before applying the Softmax (without loss of generality, we assume $Q,K,V\in\mathbb{R}^{n\times d}$):</p>
+
+  \begin{equation}Attention(Q,K,V) = softmax\left(\frac{QK^{\top}}{\sqrt{d}}\right)V\label{eq:std}\end{equation}
+
+  <p>In <a href="translation_8620.html">"Brief Discussion on Initialization, Parameterization, and Standardization of Transformer,"</a> we previously explained the reasoning behind dividing by $\sqrt{d}$. In this article, the author will understand this scaling operation from the perspective of "entropy invariance" and derive a new scaling factor. Experiments in MLM (Masked Language Model) show that the new scaling factor possesses better length extrapolation performance.</p>
+
+  <h3>Entropy Invariance</h3>
+  <p>We rewrite the general Scaled Dot-Product Attention as:</p>
+
+  \begin{equation}\boldsymbol{o}_i = \sum_{j=1}^n a_{i,j}\boldsymbol{v}_j,\quad a_{i,j}=\frac{e^{\lambda \boldsymbol{q}_i\cdot \boldsymbol{k}_j}}{\sum\limits_{j=1}^n e^{\lambda \boldsymbol{q}_i\cdot \boldsymbol{k}_j}}\end{equation}
+
+  <p>Where $\lambda$ is the scaling factor, which is independent of $\boldsymbol{q}_i$ and $\boldsymbol{k}_j$, but can in principle be related to parameters like sequence length $n$ and dimension $d$. Currently, the mainstream choice is $\lambda=1/\sqrt{d}$.</p>
+
+  <p>This article proposes a viewpoint: To make the model generalize better to unknown lengths, the design of the Attention mechanism should make $a_{i,j}$ satisfy <strong>entropy invariance</strong> as much as possible.</p>
+
+  <p>How should we understand this? First, generalizing to unknown lengths means that the model performs well even when the sequence length at inference time is inconsistent with that during training—for example, training with $n=64$ and extrapolating to $n=128, 256$ for testing. We know that models using relative position encodings like <a href="translation_8265.html">RoPE</a> have inherently good length extrapolation, but we can still enhance this capability through better design, and entropy invariance is one such design.</p>
+
+  <p>Specifically, $a_{i,j}$ can be viewed as a conditional distribution where $i$ is the condition and $j$ is the random variable. Its entropy is:</p>
+
+  \begin{equation}\mathcal{H}_i = -\sum_{j=1}^n a_{i,j}\log a_{i,j}\end{equation}
+
+  <p>Entropy invariance means that $\mathcal{H}_i$ should be insensitive to the sequence length $n$. More specifically, if we add a few more tokens on top of existing ones, the newly calculated $a_{i,j}$ values will naturally change, but we hope that $\mathcal{H}_i$ does not change significantly.</p>
+
+  <p>Why do we want entropy to remain invariant? We know that entropy is a measure of uncertainty (refer to <a href="translation_3534.html">"Can't Afford Entropy: From Entropy and the Principle of Maximum Entropy to Maximum Entropy Models (I)"</a>). From another perspective, we can view uncertainty as the "<strong>focus degree</strong>" of attention: if the entropy is 0, then the attention is focused on a single token; if the entropy is $\log n$, the attention is uniformly distributed across all tokens. By requiring entropy to be invariant, we hope that after introducing new tokens, the existing tokens can still focus on the original tokens in the same way, rather than having the new tokens "dilute" the original attention excessively, which would cause the summation result to change significantly.</p>
+
+  <h3>A New Factor</h3>
+  <p>Based on entropy invariance and several reasonable assumptions, we can derive a new scaling factor, resulting in a new version of Scaled Dot-Product Attention:</p>
+
+  \begin{equation}Attention(Q,K,V) = softmax\left(\frac{\kappa \log n}{d}QK^{\top}\right)V\label{eq:ei}\end{equation}
+
+  <p>Here $\kappa$ is a hyperparameter independent of $n$ and $d$. The detailed derivation will be introduced in the next section. For convenience, we will refer to the conventional Scaled Dot-Product Attention described in Eq $\eqref{eq:std}$ as "Attention-O" (Original), and the variant described in Eq $\eqref{eq:ei}$ and the following Eq $\eqref{eq:ei2}$ as "Attention-E" (Entropy Invariance).</p>
+
+  <p>Some readers might be dissatisfied with the introduction of a new parameter. In fact, this is easy to resolve. We know that the current mainstream pre-training length is 512, so we can assume that mainstream parameters are tuned specifically for $n=512$. Therefore, when $n=512$, the above formula should degenerate into standard Scaled Dot-Product Attention, i.e., $\frac{\kappa \log 512}{d}=\frac{1}{\sqrt{d}}$, which yields $\kappa = \frac{\sqrt{d}}{\log 512}$. Substituting this back and simplifying, we get:</p>
+
+  \begin{equation}Attention(Q,K,V) = softmax\left(\frac{\log_{512} n}{\sqrt{d}}QK^{\top}\right)V\label{eq:ei2}\end{equation}
+
+  <p>This removes the hyperparameter $\lambda$. The following experiments also use this version.</p>
+
+  <p>To verify whether this modification truly improves the extrapolation effect of the Transformer as expected, I trained two small versions of RoFormer using Attention-O and Attention-E respectively. The training task was MLM, the training sequence length was 64, and the MLM accuracy was compared across different validation set lengths. The results are as follows:</p>
+
+  <div style="text-align: center;">
+    <p><strong>Length Extrapolation Experiment for Attention</strong></p>
+    <table border="1" cellpadding="5" style="margin: auto; border-collapse: collapse;">
+      <thead>
+        <tr>
+          <th></th>
+          <th>$n=64$</th>
+          <th>$n=128$</th>
+          <th>$n=256$</th>
+          <th>$n=512$</th>
+          <th>$1024$</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Attention-O</td>
+          <td>43.27</td>
+          <td>36.53</td>
+          <td>23.02</td>
+          <td>15.12</td>
+          <td>11.54</td>
+        </tr>
+        <tr>
+          <td>Attention-E</td>
+          <td>43.11</td>
+          <td>41.17</td>
+          <td>34.04</td>
+          <td>20.15</td>
+          <td>13.58</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>From the experimental results, it can be seen that when the test length matches the training length ($n=64$), the performance of Attention-O and Attention-E is very similar. However, when extrapolating to larger test lengths, a clear gap emerges. For example, at $n=256$, Attention-E's accuracy is more than 10 percentage points higher than Attention-O's, which is a significant difference.</p>
+
+  <h3>Derivation Process</h3>
+  <p>In this section, we introduce the derivation of Eq $\eqref{eq:ei}$. In fact, the derivation process and assumptions are almost identical to those in <a href="translation_6855.html">"Principle of Minimum Entropy (VI): How to Choose the Dimension of Word Embeddings?"</a>.</p>
+
+  <p>First, substituting the expression for $a_{i,j}$ gives us:</p>
+
+  \begin{equation}\mathcal{H}_i = -\sum_{j=1}^n a_{i,j}\log a_{i,j}=\log \sum_{j=1}^n e^{\lambda \boldsymbol{q}_i\cdot \boldsymbol{k}_j} - \frac{\sum\limits_{j=1}^n e^{\lambda \boldsymbol{q}_i\cdot \boldsymbol{k}_j}(\lambda \boldsymbol{q}_i\cdot \boldsymbol{k}_j)}{\sum\limits_{j=1}^n e^{\lambda \boldsymbol{q}_i\cdot \boldsymbol{k}_j}}\end{equation}
+
+  <p>Note that we only need to make a semi-quantitative estimation to determine a suitable $\lambda$ to offset part of the length's influence; making entropy completely independent of length is impossible. Thus, we can make some assumptions, such as assuming $\boldsymbol{k}_j$ is a random variable, allowing us to write:</p>
+
+  \begin{equation}\sum_{j=1}^n e^{\lambda \boldsymbol{q}_i\cdot \boldsymbol{k}_j} = n\times \frac{1}{n}\sum_{j=1}^n e^{\lambda \boldsymbol{q}_i\cdot \boldsymbol{k}_j}\approx n\,\mathbb{E}_j[e^{\lambda \boldsymbol{q}_i\cdot \boldsymbol{k}_j}]\end{equation}
+
+  <p>Replacing all summations with similar approximations, we get:</p>
+
+  \begin{equation}\mathcal{H}_i \approx \log n + \log \mathbb{E}_j[e^{\lambda \boldsymbol{q}_i\cdot \boldsymbol{k}_j}] - \frac{\lambda\,\mathbb{E}_j[e^{\lambda \boldsymbol{q}_i\cdot \boldsymbol{k}_j}(\boldsymbol{q}_i\cdot \boldsymbol{k}_j)]}{\mathbb{E}_j[e^{\lambda \boldsymbol{q}_i\cdot \boldsymbol{k}_j}]} \end{equation}
+
+  <p>Notice that in general cases, $\boldsymbol{q}_i, \boldsymbol{k}_j$ are followed by a Dense layer after Layer Norm, and Dense layers act approximately as orthogonal transformations (refer to <a href="translation_8236.html">"Understanding Model Parameter Initialization Strategies from a Geometric Perspective"</a>). Therefore, we approximately assume that $\boldsymbol{q}_i, \boldsymbol{k}_j$ are vectors with norm $\sqrt{d}$, such that $\boldsymbol{q}_i \cdot \boldsymbol{k}_j = d \cos(\boldsymbol{q}_i, \boldsymbol{k}_j)$. Furthermore, assuming $\boldsymbol{k}_j$ is uniformly distributed on a sphere of radius $\sqrt{d}$, the expectation over $\boldsymbol{k}_j$ can be transformed into an expectation over the angle between $\boldsymbol{q}_i$ and $\boldsymbol{k}_j$:</p>
+
+  \begin{equation}\mathcal{H}_i \approx \log n + \log \mathbb{E}_{\theta}[e^{\lambda d \cos\theta}] - \frac{\lambda d\,\mathbb{E}_{\theta}[e^{\lambda d \cos\theta}\cos\theta]}{\mathbb{E}_{\theta}[e^{\lambda d \cos\theta}]} \end{equation}
+
+  <p>Where the distribution follows the <a href="translation_7325.html">angle distribution between two random vectors in n-dimensional space</a>. Next, following the "Approximate Estimation" in <a href="translation_6855.html">"Principle of Minimum Entropy (VI)"</a>, we can use Laplace's approximation to get:</p>
+
+  \begin{equation}\mathcal{H}_i \approx \log n - 0.24\lambda d + \mathcal{O}(1) \end{equation}
+
+  <p>Therefore, to offset the impact of sequence length $n$, we let $\log n - 0.24\lambda d = 0$, leading to $\lambda = \log n / (0.24 d)$. Since this is only an estimate, there is no need to keep the coefficient $0.24$; instead, it is better to introduce the hyperparameter $\kappa$ such that:</p>
+
+  \begin{equation}\lambda = \frac{\kappa\log n}{d}\end{equation}
+
+  <p>This corresponds to Eq $\eqref{eq:ei}$.</p>
+
+  <h3>Related Results</h3>
+  <p>While reading submissions for ACL 2022, I discovered a paper titled <a href="https://arxiv.org/abs/2112.04416">"Overcoming a Theoretical Limitation of Self-Attention"</a> which provided a similar result (Eq 1 in Section 4.3 of the paper):</p>
+
+  \begin{equation}Attention(Q,K,V) = softmax\left(\frac{\log n}{\sqrt{d}}QK^{\top}\right)V\end{equation}
+
+  <p>However, that paper did not provide deep theoretical analysis, but instead built two special cases to test Attention performance. They found that multiplying the scale factor by $\log n$ helps with length generalization, so they proposed it. </p>
+
+  <p>However, it is clear that if the default convention of using the natural logarithm for $\log$ is followed, the above formula becomes quite unreasonable. When $n$ is large, the scaling factor becomes too large, leading to severe gradient vanishing. It seems that paper only performed experiments on machine translation with sequences of length around $n=20$, so the gradient vanishing problem did not surface.</p>
+
+  <h3>Conclusion</h3>
+  <p>This article derives the scaling operation in Scaled Dot-Product Attention from the perspective of entropy invariance, arriving at a new scaling factor. Preliminary experimental results show that the new scaling factor does not change existing training performance and provides better results for length extrapolation.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8823.html" style="color: #005fcc;">https://kexue.fm/archives/8823</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

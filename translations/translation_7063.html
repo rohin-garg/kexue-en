@@ -1,0 +1,266 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/7063">JoSE: Word and Sentence Vectors on the Sphere</a></h1>
+    <p>By 苏剑林 | November 11, 2019</p>
+
+    <p>This article introduces a model for word and sentence vectors named JoSE (Joint Spherical Embedding), which was published at NeurIPS 2019 under the title <a href="https://papers.cool/arxiv/1911.01196">"Spherical Text Embedding"</a>. In terms of idea and methodology, the JoSE model is a successor to Doc2Vec. The evaluation results are quite impressive, although the writing can feel a bit overly complicated for its own sake. However, I decided to write this post because some of the analysis within it is interesting and may hold reference value for general optimization problems.</p>
+
+    <h2 id="optimization-objective">Optimization Objective</h2>
+    <p>In principle, this paper is largely consistent with <a href="https://papers.cool/arxiv/1405.4053">Doc2Vec</a>: to train sentence vectors, a sentence is represented by an ID and treated as a word that co-occurs with all the words within that sentence. Finally, a Skip-Gram model is trained, primarily using negative sampling. What distinguishes JoSE from Doc2Vec is that the lengths of all vectors are normalized (meaning only vectors on the unit sphere are considered), and the training objective uses a hinge loss instead of cross-entropy:</p>
+
+    \begin{equation}\max(0, m - \cos(\boldsymbol{u}, \boldsymbol{v}) - \cos(\boldsymbol{u}, \boldsymbol{d}) + \cos(\boldsymbol{u}', \boldsymbol{v}) + \cos(\boldsymbol{u}', \boldsymbol{d})\label{eq:loss}\end{equation}
+
+    <p>Where $\boldsymbol{u}$ is the "center word" vector, $\boldsymbol{v}$ is the "context word" vector—both coming from two separate word vector spaces—$\boldsymbol{d}$ is the vector of the current sentence, and $\boldsymbol{u}'$ is the "center word" vector obtained via negative sampling. The constant $m > 0$ is a margin. Readers who have worked with similarity models should find this optimization goal easy to understand: it aims for the "word-word-sentence" score $\cos(\boldsymbol{u}, \boldsymbol{v}) + \cos(\boldsymbol{u}, \boldsymbol{d})$ to be higher than the "negative word-word-sentence" score $\cos(\boldsymbol{u}', \boldsymbol{v}) + \cos(\boldsymbol{u}', \boldsymbol{d})$ by at least a margin $m$.</p>
+
+    <p>Assuming that $\boldsymbol{u}, \boldsymbol{v}, \boldsymbol{d}$ are all already normalized, the objective $\eqref{eq:loss}$ becomes (assuming each vector is a column vector):</p>
+
+    \begin{equation}\max(0, m - \boldsymbol{v}^{\top}\boldsymbol{u} - \boldsymbol{d}^{\top}\boldsymbol{u} + \boldsymbol{v}^{\top} \boldsymbol{u}' + \boldsymbol{d}^{\top} \boldsymbol{u}')\label{eq:loss2}\end{equation}
+
+    <h2 id="gradient-descent">Gradient Descent</h2>
+    <p>The objectives $\eqref{eq:loss}$ or $\eqref{eq:loss2}$ are not particularly novel. Similar to most word vector models, they use the inner product to measure word correlation; the only difference here is that the vectors are normalized, so the inner product is equivalent to the cosine. As for whether hinge loss is superior to cross-entropy, I suspect it doesn't make a huge difference.</p>
+
+    <p>In fact, what I find more interesting is the paper's geometric analysis of the gradient. I will restate the derivation process in my own words. Let $\boldsymbol{x}$ be any one of the vectors among $\boldsymbol{u}, \boldsymbol{v}, \boldsymbol{d}$. Suppose we fix all other vectors and optimize only $\boldsymbol{x}$. Let the total loss be $f(\boldsymbol{x})$. This optimization process can be described in two ways:</p>
+
+    \begin{equation}\mathop{\text{argmin}}_{\boldsymbol{x},\,\Vert\boldsymbol{x}\Vert=1} f(\boldsymbol{x})\quad\text{or}\quad \mathop{\text{argmin}}_{\boldsymbol{\theta}} f\left(\frac{\boldsymbol{\theta}}{\Vert \boldsymbol{\theta}\Vert}\right)\end{equation}
+
+    <p>In other words, we can understand this as a minimization problem for $f(\boldsymbol{x})$ subject to the constraint $\Vert \boldsymbol{x}\Vert=1$, or we can transform it into an unconstrained minimization of $f(\boldsymbol{\theta}/\Vert\boldsymbol{\theta}\Vert)$ by setting $\boldsymbol{x}=\boldsymbol{\theta}/\Vert\boldsymbol{\theta}\Vert$. Since we are less familiar with constrained optimization, we follow the latter interpretation.</p>
+
+    <p>Unlike complex models, word vectors are relatively simple, so it is best to manually derive the gradient form and optimize using a custom function rather than relying on auto-diff tools. For $f(\boldsymbol{\theta}/\Vert\boldsymbol{\theta}\Vert)$, it is not difficult to find:</p>
+
+    \begin{equation}\nabla_{\boldsymbol{\theta}}\,f\left(\frac{\boldsymbol{\theta}}{\Vert \boldsymbol{\theta}\Vert}\right) = \frac{1}{\Vert\boldsymbol{\theta}\Vert}\left(\boldsymbol{I} - \boldsymbol{x}\boldsymbol{x}^{\top}\right)\nabla_{\boldsymbol{x}}\,f\left(\boldsymbol{x}\right)\end{equation}
+
+    <p>where the substitution $\boldsymbol{x}=\boldsymbol{\theta}/\Vert\boldsymbol{\theta}\Vert$ has been partially applied. Based on this result, the iteration formula for gradient descent is:</p>
+
+    \begin{equation}\boldsymbol{\theta}_{t+1} = \boldsymbol{\theta}_{t} - \eta_t\left(\boldsymbol{I} - \boldsymbol{x}_t\boldsymbol{x}_t^{\top}\right)\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)\end{equation}
+
+    <p>where $\eta_t$ is the current learning rate, and the scalar factor $1/\Vert\boldsymbol{\theta}\Vert$ is absorbed into the learning rate. Then we can also write:</p>
+
+    \begin{equation}\begin{aligned}\boldsymbol{x}_{t+1} = \frac{\boldsymbol{\theta}_{t+1}}{\Vert \boldsymbol{\theta}_{t+1}\Vert} =& \frac{\boldsymbol{\theta}_{t} - \eta_t\left(\boldsymbol{I} - \boldsymbol{x}_t\boldsymbol{x}_t^{\top}\right)\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)}{\left\Vert \boldsymbol{\theta}_{t} - \eta_t\left(\boldsymbol{I} - \boldsymbol{x}_t\boldsymbol{x}_t^{\top}\right)\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)\right\Vert}\\
+    =& \frac{\boldsymbol{x}_{t} - \eta_t/\Vert\boldsymbol{\theta}\Vert\times\left(\boldsymbol{I} - \boldsymbol{x}_t\boldsymbol{x}_t^{\top}\right)\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)}{\left\Vert \boldsymbol{x}_{t} - \eta_t/\Vert\boldsymbol{\theta}\Vert\times\left(\boldsymbol{I} - \boldsymbol{x}_t\boldsymbol{x}_t^{\top}\right)\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)\right\Vert}
+    \end{aligned}\end{equation}
+
+    <p>Again, by absorbing $1/\Vert\boldsymbol{\theta}\Vert$ into the learning rate, we get an update formula involving only $\boldsymbol{x}_t$:</p>
+
+    \begin{equation}\boldsymbol{x}_{t+1} = \frac{\boldsymbol{x}_{t} - \eta_t\left(\boldsymbol{I} - \boldsymbol{x}_t\boldsymbol{x}_t^{\top}\right)\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)}{\left\Vert \boldsymbol{x}_{t} - \eta_t\left(\boldsymbol{I} - \boldsymbol{x}_t\boldsymbol{x}_t^{\top}\right)\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)\right\Vert}\end{equation}
+
+    <h2 id="update-quantity-correction">Update Quantity Correction</h2>
+    <p>Everything up to this point has been standard derivation. The following is the part I find particularly interesting. First, note that:</p>
+
+    \begin{equation}\begin{aligned}\boldsymbol{g}=&\left(\boldsymbol{I} - \boldsymbol{x}_t\boldsymbol{x}_t^{\top}\right)\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)\\
+    =&\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right) - \boldsymbol{x}_t\boldsymbol{x}_t^{\top}\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)\\
+    =&\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right) - \boldsymbol{x}_t\Vert \nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)\Vert \cos\left(\boldsymbol{x}_t,\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)\right)
+    \end{aligned}
+    \end{equation}
+
+    <p>It can be seen that $\boldsymbol{x}_t\boldsymbol{x}_t^{\top}\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)$ is actually the projection component of the vector $\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)$ onto the direction of $\boldsymbol{x}_t$. The resulting vector $\boldsymbol{g}$ is a vector perpendicular to $\boldsymbol{x}_t$, as shown in the following figure:</p>
+
+    <p><em>[Geometric illustration of the gradient]</em></p>
+
+    <p>In the figure, the red vector represents $\boldsymbol{x}_t$ and the blue vector represents $\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)$. If there were no constraint $\Vert \boldsymbol{x}\Vert=1$, the update amount would be determined directly by $\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)$. However, because of the constraint, the update is determined by $\boldsymbol{g}=\left(\boldsymbol{I} - \boldsymbol{x}_t\boldsymbol{x}_t^{\top}\right)\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)$. Nevertheless, two different gradients $\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)$ can lead to the same $\boldsymbol{g}$:</p>
+
+    <p><em>[Case 1: ∇xf(x) is close to the direction of x]</em></p>
+    <p><em>[Case 2: ∇xf(x) is almost opposite to the direction of x]</em></p>
+
+    <p>In the first case, the direction of $\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)$ is very close to $\boldsymbol{x}_t$, while in the second case, they are nearly opposite, yet their $\boldsymbol{g}$ is identical. As previously stated, without constraints, $\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)$ is the gradient, meaning $-\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)$ is the reasonable update direction. Now that there is a constraint, while $-\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)$ cannot point to the most reasonable gradient direction, intuitively it should still be related to the update quantity.</p>
+
+    <p>In the first case, $-\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)$ is far from the direction of $\boldsymbol{x}_t$, implying the update quantity should be larger. In the second case, $-\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)$ is more aligned with $\boldsymbol{x}_t$. Since we only care about the direction of $\boldsymbol{x}_{t+1}$ and not its magnitude, logically the update quantity should be smaller in this case.</p>
+
+    <p>Therefore, even though $\boldsymbol{g}$ is the same in both cases, we need a distinction. A natural idea is: since the <strong>consistency between the directions of $-\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)$ and $\boldsymbol{x}_t$ affects the magnitude of the update</strong>, we might use:</p>
+
+    \begin{equation}1-\cos(-\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right),\boldsymbol{x}_t)=1+\frac{\boldsymbol{x}_t^{\top}\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)}{\left\Vert \nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)\right\Vert}\end{equation}
+
+    <p>to adjust the update quantity. This adjustment factor satisfies the characteristic that "the more consistent the directions, the smaller the factor." This lead to the final update formula:</p>
+
+    \begin{equation}\boldsymbol{x}_{t+1} = \frac{\boldsymbol{x}_{t} - \eta_t\left(1+\frac{\boldsymbol{x}_t^{\top}\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)}{\left\Vert \nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)\right\Vert}\right)\left(\boldsymbol{I} - \boldsymbol{x}_t\boldsymbol{x}_t^{\top}\right)\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)}{\left\Vert \boldsymbol{x}_{t} - \eta_t\left(1+\frac{\boldsymbol{x}_t^{\top}\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)}{\left\Vert \nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)\right\Vert}\right)\left(\boldsymbol{I} - \boldsymbol{x}_t\boldsymbol{x}_t^{\top}\right)\nabla_{\boldsymbol{x}_t}\,f\left(\boldsymbol{x}_t\right)\right\Vert}\end{equation}
+
+    <h2 id="pretentiousness">Pretentiousness</h2>
+    <p>The interesting parts have been shared; now for the parts I found less so. Readers with a deeper understanding of NLP (those who have read the mathematical foundations of Word2Vec and derived gradients for standard models) might feel that the content of the first two sections is not particularly profound. The geometric interpretation and learning rate adjustment in the third section are somewhat novel but follow a logical trail. However, if you read the original paper, the experience might be quite different. The authors use language like "probability distributions" and "optimization on Riemannian manifolds" to describe these concepts in a way that, in my opinion, makes the relatively accessible content unnecessarily murky and pretentious.</p>
+
+    <p>First, what I find most confusing is that the authors start with an unreasonable assumption (continuizing word vectors) and spend considerable space arguing that $p(v|u)\sim e^{\cos(\boldsymbol{v},\boldsymbol{u})}$ and $p(u|d)\sim e^{\cos(\boldsymbol{u},\boldsymbol{d})}$ correspond to Von Mises–Fisher distributions. And then? That's it. Almost nothing in the subsequent sections has anything to do with these Von Mises–Fisher distributions, so I don't understand the purpose of including that segment.</p>
+
+    <p>Next, in the optimization section, the authors state that the minimization of $f(\boldsymbol{x})$ subject to $\Vert\boldsymbol{x}\Vert=1$ cannot be solved with standard gradient descent, necessitating "Riemannian gradient descent." Then the "grandstanding" begins: they talk about Riemannian manifolds, provide general exponential mappings, and then the Riemannian gradient. After a series of high-level operations, they ultimately settle on a solution everyone can understand: $\boldsymbol{x}=\boldsymbol{\theta}/\Vert\boldsymbol{\theta}\Vert$. At this point, I was quite amused. While the authors' logic and derivations are correct, if you're going to give the audience a simple $\boldsymbol{x}=\boldsymbol{\theta}/\Vert\boldsymbol{\theta}\Vert$ result at the end, why not discuss the optimization of $f(\boldsymbol{x}=\boldsymbol{\theta}/\Vert\boldsymbol{\theta}\Vert)$ from the start? Why navigate through Riemannian manifolds just to confuse the average reader?</p>
+
+    <p>Furthermore, even the geometric explanation of the update quantities and the resulting adjustment factors were described somewhat vaguely. In short, I believe the theoretical derivation parts of the paper are filled with unnecessary technical jargon that needlessly increases the difficulty for general readers.</p>
+
+    <p>Finally, I want to emphasize that I am never against "multiple solutions to one problem," nor am I against deepening or abstracting simple content. "Deepening" and "abstracting" can indeed lead to a more comprehensive understanding or reveal connections between different branches. However, this "deepening" and "abstracting" should be built upon a simple solution that most people can understand, rather than sacrificing the accessible solution for the sake of complexity.</p>
+
+    <h2 id="experimental-results">Experimental Results</h2>
+    <p>Complaint aside, JoSE performs very well in experiments. First, an efficient C implementation of JoSE is provided:</p>
+
+    <p><strong>Github</strong>: <a href="https://github.com/yumeng5/Spherical-Text-Embedding">https://github.com/yumeng5/Spherical-Text-Embedding</a></p>
+
+    <p>I tried it out, and training is indeed fast. The trained word/sentence vector results can be loaded using Gensim's <code>KeyedVectors</code>. I also looked at the source code; it is concise, clear, and easy to modify.</p>
+
+    <p>As for experimental results, JoSE is quite competitive in the word/sentence vector evaluations presented in the paper:</p>
+
+    <p><em>[Word similarity evaluation]</em></p>
+    <p><em>[Text clustering evaluation]</em></p>
+
+    <h2 id="article-summary">Article Summary</h2>
+    <p>This post shared the JoSE text vector model published at NeurIPS 2019, focusing on the parts I found inspiring and providing my own derivation process. JoSE can be considered a natural variant of Doc2Vec, featuring subtle adjustments and the authors' unique insights into optimization. Aside from parts that seem unnecessarily complicated, it remains a noteworthy piece of work.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7063.html" style="color: #005fcc;">https://kexue.fm/archives/7063</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

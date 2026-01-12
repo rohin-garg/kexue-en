@@ -1,0 +1,225 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/6794">Trading Time for Effect: Keras Gradient Accumulation Optimizer</a></h1>
+    
+    <p>By 苏剑林 | July 08, 2019</p>
+
+    <blockquote>
+        Now in Keras, you can also achieve the effect of a large batch size using a small batch size—as long as you are willing to spend $n$ times the time, you can achieve the effect of an $n$ times larger batch size without increasing VRAM.
+    </blockquote>
+
+    <p>Github Address: <a href="https://github.com/bojone/accum_optimizer_for_keras">https://github.com/bojone/accum_optimizer_for_keras</a></p>
+
+    <h2 id="扯淡">Digression</h2>
+    <p>A year or two ago, you didn't really have to worry about OOM (Out of Memory) issues when doing NLP tasks because, compared to models in the CV field, most NLP models were quite shallow and rarely ran out of video memory. Fortunately or unfortunately, Bert was released and then became famous. Bert and its successors (GPT-2, XLNET, etc.) are all based on sufficiently massive Transformer models, pre-trained on large enough corpora, and then completed for specific NLP tasks through fine-tuning.</p>
+    <p>Even if you really don't want to use Bert, the reality today is: the complex model you meticulously designed might not perform as well as simply <a href="translation_6736.html">fine-tuning Bert</a>. So no matter what, to keep up with the times, you need to learn Bert's fine-tuning. The problem is "you don't know until you try, and it's a shock when you do"—as long as the task is slightly complex or the sentence length is slightly longer, the VRAM isn't enough, and the batch size drops sharply—32? 16? 8? It's possible for it to keep falling.</p>
+    <p>This isn't hard to understand. Transformers are based on Attention, and theoretically, the space and time complexity of Attention is $\mathcal{O}(n^2)$. Although Attention can still perform fast enough due to its parallelism when computing power is strong, the VRAM consumption cannot be saved. $\mathcal{O}(n^2)$ means that when your sentence length doubles, the VRAM consumption basically requires 4 times the original, and this growth rate certainly makes it easy to OOM~</p>
+    <p>And the even more unfortunate news is that when everyone is fine-tuning pre-trained Bert, your <code>batch_size=8</code> might be several tenths of a percent or even several percentage points lower than someone else's <code>batch_size=80</code>. This is clearly difficult for readers who want to climb the leaderboards. Is there really no way other than adding more graphics cards?</p>
+
+    <h2 id="正事">The Real Business</h2>
+    <p>Yes! By using gradient caching and accumulation, you can trade time for space. The final training effect is equivalent to using a larger batch size. Therefore, as long as you can run <code>batch_size=1</code>, and you are willing to spend $n$ times the time, you can run $n$ times the batch size.</p>
+    <p>The idea of gradient accumulation was introduced in the previous article <a href="translation_5879.html">"Making Keras Cooooler!": Niche Custom Optimizers</a>, where it was called "soft batch." In this article, I will follow the mainstream terminology and call it "accumulate gradients." The so-called gradient accumulation is actually very simple: the gradient we use for gradient descent is actually the average value of gradients calculated from multiple samples. Taking <code>batch_size=128</code> as an example, you can calculate the gradients for 128 samples at once and then average them; I can also calculate the average gradient for 16 samples each time, cache it and accumulate it, and after doing this 8 times, divide the total gradient by 8 and then execute the parameter update. Of course, the parameters must not be updated until 8 accumulations have occurred using the 8-time average gradient; you cannot update every time you calculate 16, otherwise, it would just be <code>batch_size=16</code>.</p>
+    <p>As mentioned earlier, the coding method in that previous article was incorrect because it used:</p>
+<pre><code class="language-python">
+</code></pre>
+    <p>to control the update, but in fact, this writing method cannot control the update because <code>K.switch</code> only guarantees the selectivity of the result, not the selectivity of the execution. In fact, it is equivalent to:</p>
+<pre><code class="language-python">
+</code></pre>
+    <p>That is to say, regardless of the <code>cond</code>, both branches are executed. In fact, Keras or Tensorflow "almost" has no conditional writing that only executes one branch (I say "almost" because it can be done under some very stringent conditions), so this path is blocked.</p>
+    <p>If it cannot be written this way, then we can only work on the "update amount." As mentioned before, we calculate the gradient of 16 samples each time and update the parameters each time, but the update amount is 0 for 7 out of 8 times, and only 1 time is the real gradient descent update. Fortunately, this method can be seamlessly integrated into existing Keras optimizers, so we don't need to rewrite the optimizer! For detailed code, please see:</p>
+    <blockquote>
+        <a href="https://github.com/bojone/accum_optimizer_for_keras/blob/master/accum_optimizer.py">https://github.com/bojone/accum_optimizer_for_keras/blob/master/accum_optimizer.py</a>
+    </blockquote>
+    <p>The specific coding is nothing more than some programming tricks of "grafting." There isn't much high-tech content. I won't go into detail about the code itself; if you have questions, feel free to discuss them in the discussion section.</p>
+    <p><strong>(Note: This optimizer modification allows a small batch size to function as a large batch size, provided the model does not contain Batch Normalization, because Batch Normalization must use the mean and variance of the entire batch during gradient descent. So if your network uses Batch Normalization and you want to accurately achieve the effect of a large batch size, the only current method is to add VRAM/graphics cards.)</strong></p>
+
+    <h2 id="实验">Experiment</h2>
+    <p>The usage is very simple:</p>
+<pre><code class="language-python">from accum_optimizer import AccumOptimizer
+from keras.optimizers import Adam
+
+opt = AccumOptimizer(Adam(lr=1e-3), 10) # 10 accumulations
+model.compile(loss='mse', optimizer=opt)
+model.fit(x_train, y_train, batch_size=10) # Original batch size is 10
+</code></pre>
+    <p>In this way, it is equivalent to an Adam optimizer with <code>batch_size=100</code>. The cost is that the speed of each epoch will be slower (because the batch size is smaller), but the advantage is that you only need to use the VRAM amount of <code>batch_size=10</code>.</p>
+    <p>One question readers might want to ask is: how do you prove your code worked? That is, how do you prove your result is indeed <code>batch_size=100</code> instead of <code>batch_size=10</code>? For this, I did a somewhat extreme experiment, the code is here:</p>
+    <p><a href="https://github.com/bojone/accum_optimizer_for_keras/blob/master/mnist_mlp_example.py">https://github.com/bojone/accum_optimizer_for_keras/blob/master/mnist_mlp_example.py</a></p>
+    <p>The code is simple: use a multi-layer MLP for MNIST classification, use the Adam optimizer, and when calling <code>fit</code>, <code>batch_size=1</code>. There are two choices for the optimizer: the first is direct <code>Adam()</code>, and the second is <code>AccumOptimizer(Adam(), 100)</code>:</p>
+    <ul>
+        <li>If it's direct <code>Adam()</code>, the loss hovers around 0.4, and the loss gets larger later (even on the training set), and the val accuracy never exceeds 97%;</li>
+        <li>If it's <code>AccumOptimizer(Adam(), 100)</code>, then the training set loss gets lower and lower, eventually dropping to about 0.02, and the highest val accuracy is 98%+;</li>
+        <li>Finally, I compared the result of direct <code>Adam()</code> but with <code>batch_size=100</code> and found that it performed similarly to <code>AccumOptimizer(Adam(), 100)</code> with <code>batch_size=1</code>.</li>
+    </ul>
+    <p>This result is enough to show that the code is effective and has achieved the expected purpose. If this is not convincing enough, I can provide another training result for reference: in a certain Bert fine-tuning experiment, using direct <code>Adam()</code> plus <code>batch_size=12</code>, I reached 70.33% accuracy; using <code>AccumOptimizer(Adam(), 10)</code> plus <code>batch_size=12</code> (expected equivalent batch size is 120), I reached 71.00% accuracy, an increase of 0.7%. If you are climbing a leaderboard, then this 0.7% might be decisive.</p>
+
+    <h2 id="结论">Conclusion</h2>
+    <p>I have finally formally implemented gradient accumulation (soft batch). In the future when using Bert, we can also consider using large batch sizes~</p>
+
+    <p><i><b>Reprint address: </b> <a href="translation_6794.html">https://kexue.fm/archives/6794</a></i></p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6794.html" style="color: #005fcc;">https://kexue.fm/archives/6794</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

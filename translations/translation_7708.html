@@ -1,0 +1,258 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+ residential]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/7708">Revisiting Class Imbalance: Comparison and Connection between Weight Adjustment and Custom Loss Functions</a></h1>
+
+<p>By 苏剑林 | August 31, 2020</p>
+
+<p>The class imbalance problem, also known as the long-tail distribution problem, has been discussed several times on this blog in posts such as <a href="translation_4733.html">"From Hard Truncation and Softening of Loss to Focal Loss"</a>, <a href="translation_7359.html">"Generalizing 'Softmax + Cross Entropy' to Multi-label Classification"</a>, and <a href="translation_7615.html">"Mitigating Class Imbalance through Mutual Information Ideology"</a>. For alleviating class imbalance, the most basic method is adjusting sample weights, while more "high-end" approaches involve various modifications to the loss function (such as Focal Loss, Dice Loss, Logits Adjustment, etc.). This article aims to systematically understand the connections between them.</p>
+
+<p><em>Long-tail distribution: A few categories have a very large number of samples, while most categories have a very small number of samples.</em></p>
+
+<h2>From Smooth Accuracy to Cross-Entropy</h2>
+
+<p>The analysis here is primarily based on binary classification with sigmoid, but most conclusions can be generalized to multi-class classification with softmax. Let $x$ be the input, $y \in \{0,1\}$ be the target, and $p_{\theta}(x) \in [0, 1]$ be the model. Ideally, we should optimize the metric we use for evaluation. For classification problems, the most straightforward metric is accuracy, but accuracy does not provide useful gradients and thus cannot be used directly for training.</p>
+
+<p>To address this, we use a smoothed metric. From the previous article <a href="translation_6620.html">"Random Talk on Function Smoothing: Differentiable Approximations of Non-differentiable Functions"</a>, the smoothed approximation of accuracy is:</p>
+
+\begin{equation}\text{ACC}_{\text{smooth}}=\mathbb{E}_{(x,y)\sim\mathcal{D}}\big[y p_{\theta}(x) + (1 - y)(1 - p_{\theta}(x))\big]\end{equation}
+
+<p>where $\mathcal{D}$ is the training dataset. In principle, we should use $-\text{ACC}_{\text{smooth}}$ as the minimization objective. However, in practice, directly optimizing this objective does not yield good results; it is better to optimize the cross-entropy:</p>
+
+\begin{equation}\text{cross\_entropy}=\mathbb{E}_{(x,y)\sim\mathcal{D}}\big[-y \log p_{\theta}(x) - (1 - y)\log(1 - p_{\theta}(x))\big]\end{equation}
+
+<p>This is intriguing: if $\text{ACC}_{\text{smooth}}$ is closer to our evaluation metric, why does using cross-entropy yield better results for that metric?</p>
+
+<p>This can be explained through gradients. $p_{\theta}(x)$ is typically activated via sigmoid, i.e., $p_{\theta}(x)=\sigma(z_{\theta}(x))$, where $\sigma(t)=\frac{1}{1+e^{-t}}$. Its derivative is $\sigma'(t)=\sigma(t)(1 - \sigma(t))$, and $z_{\theta}(x)$ is what we usually call the "logits."</p>
+
+<p>If we assume $y$ is 1, then the corresponding $-\text{ACC}_{\text{smooth}}$ is $-p_{\theta}(x)=-\sigma(z_{\theta}(x))$, and its gradient is:</p>
+
+\begin{equation}-\nabla_{\theta} p_{\theta}(x) = - p_{\theta}(x) (1 - p_{\theta}(x))\nabla_{\theta}z_{\theta}(x)\end{equation}
+
+<p>Since $y$ is 1, the training goal is $p_{\theta}(x) \to 1$. Therefore, we expect that when $p_{\theta}(x)$ is close to 0 (a large error), it should produce a large gradient, and when $p_{\theta}(x)$ is close to 1 (a small error), it should produce a small gradient. However, the gradient $-\nabla_{\theta} p_{\theta}(x)$ above does not behave this way; its adjustment factor $p_{\theta}(x) (1 - p_{\theta}(x))$ reaches its maximum at 0.5, and is minimal at both 0 and 1. This means that if the error is extremely large, the gradient is actually small, leading to low optimization efficiency and poor overall performance. In contrast, for cross-entropy, we have:</p>
+
+\begin{equation}-\nabla_{\theta} \log p_{\theta}(x) = - (1 - p_{\theta}(x))\nabla_{\theta}z_{\theta}(x)\end{equation}
+
+<p>This perfectly removes the $p_{\theta}(x)$ factor that was detrimental to the gradient. Consequently, optimization is more efficient, resulting in better final performance. The same conclusion holds for $y=0$.</p>
+
+<h2>From Smooth F1 to Weighted Cross-Entropy</h2>
+
+<p>From this process, we can sense that various modifications to the loss function essentially adjust the gradients. By obtaining more reasonable gradients, we can achieve more effective optimization and yield better models. Furthermore, reflecting on the transformation process above: the gradient of the approximate objective was originally $-\nabla_{\theta}p_{\theta}(x)$, but $-\nabla_{\theta}\log p_{\theta}(x)$ worked better. If we skip the detailed analysis and treat $p \to \log p$ as an "axiom," what interesting results might follow?</p>
+
+<p>For example, when negative samples far outnumber positive samples, our evaluation metric is usually no longer accuracy (since outputting all 0s would result in very high accuracy). Instead, we care about the F1 score for the positive class. Directly optimizing F1 is difficult, so we need a smoothed version. The article <a href="translation_6620.html">"Random Talk on Function Smoothing"</a> also provides this result:</p>
+
+\begin{equation}\text{F1}_{\text{smooth}}=\frac{2 \mathbb{E}_{(x,y)\sim\mathcal{D}}\big[y p_{\theta}(x)\big]}{\mathbb{E}_{(x,y)\sim\mathcal{D}}\big[y + p_{\theta}(x)\big]}\end{equation}
+
+<p>So our original minimization goal is $-\text{F1}_{\text{smooth}}$. Following the $p \to \log p$ "axiom," we first calculate the gradient of $-\text{F1}_{\text{smooth}}$:</p>
+
+\begin{equation}\begin{aligned}&-\nabla_{\theta}\frac{2 \mathbb{E}_{(x,y)\sim\mathcal{D}}\big[y p_{\theta}(x)\big]}{\mathbb{E}_{(x,y)\sim\mathcal{D}}\big[y + p_{\theta}(x)\big]}\\
+=&-2\frac{\mathbb{E}_{(x,y)\sim\mathcal{D}}\big[y \nabla_{\theta}p_{\theta}(x)\big]}{\mathbb{E}_{(x,y)\sim\mathcal{D}}\big[y + p_{\theta}(x)\big]} + 2\frac{\mathbb{E}_{(x,y)\sim\mathcal{D}}\big[y p_{\theta}(x)\big]\mathbb{E}_{(x,y)\sim\mathcal{D}}\big[\nabla_{\theta}p_{\theta}(x)\big]}{\left(\mathbb{E}_{(x,y)\sim\mathcal{D}}\big[y + p_{\theta}(x)\big]\right)^2}\\
+=&-\frac{2\mathbb{E}_{(x,y)\sim\mathcal{D}}\big[\big(y-\text{F1}_{\text{smooth}}/2\big)\nabla_{\theta}p_{\theta}(x)\big]}{\mathbb{E}_{(x,y)\sim\mathcal{D}}\big[y + p_{\theta}(x)\big]}
+\end{aligned}\end{equation}
+
+<p>where $\frac{2}{\mathbb{E}_{(x,y)\sim\mathcal{D}}[y + p_{\theta}(x)]}$ is a global scaling factor. We are primarily interested in the per-sample gradient, which is:</p>
+
+\begin{equation}-\mathbb{E}_{(x,y)\sim\mathcal{D}}\big[\big(y-\text{F1}_{\text{smooth}}/2\big)\nabla_{\theta}p_{\theta}(x)\big]\end{equation}
+
+<p>Applying the $p \to \log p$ "axiom" (and $-p \to \log(1-p)$ for negative samples), we obtain the final gradient as:</p>
+
+\begin{equation}-\mathbb{E}_{(x,y)\sim\mathcal{D}}\big[y\cdot\big(1-\text{F1}_{\text{smooth}}/2\big)\cdot\nabla_{\theta}\log p_{\theta}(x) + (1 - y)\cdot\text{F1}_{\text{smooth}}/2\cdot\nabla_{\theta}\log (1-p_{\theta}(x))\big]\end{equation}
+
+<p>This is equivalent to the gradient of the following optimization objective (where $\text{F1}_{\text{smooth}}$ is treated as a constant with no gradient):</p>
+
+\begin{equation}-\mathbb{E}_{(x,y)\sim\mathcal{D}}\big[y\cdot\big(1-\text{F1}_{\text{smooth}}/2\big)\cdot\log p_{\theta}(x) + (1 - y)\cdot\text{F1}_{\text{smooth}}/2\cdot\log (1-p_{\theta}(x))\big]\end{equation}
+
+<p>This is simply cross-entropy where positive samples are weighted by $1-\text{F1}_{\text{smooth}}/2$ and negative samples are weighted by $\text{F1}_{\text{smooth}}/2$.</p>
+
+<h2>From Margin Expansion to Logits Adjustment</h2>
+
+<p>Ultimately, regardless of the evaluation metric, we hope to predict every sample correctly. The issue is that categories with fewer samples do not generalize as well because they are not learned sufficiently.</p>
+
+<p>Let's think about this from a geometric perspective. Ideally, in the embedding space, each class occupies its own "territory," and these territories should not overlap. Categories with fewer samples generalize poorly because their territories are small and often "suppressed" by categories with more samples. Their "survival" is at risk, let alone accounting for new samples not seen in the training set.</p>
+
+<p>How do we solve this? It's quite intuitive: if samples from minority classes are "heavyweights" (capable of taking on ten opponents at once), they can hold their ground in "territorial disputes" despite their small numbers. Let's consider an $n$-class classification problem. For a sample with encoding vector $f_{\theta}(x)$ and class vector $u_y$, the similarity is typically measured by the inner product $\langle f_{\theta}(x), u_y\rangle$. Suppose each sample can occupy a territory with radius $r_y$; this means that for any $z$ satisfying $\| z - f_{\theta}(x)\| \leq r_y$, $z$ should be treated as an encoding vector for that sample, implying $z$'s similarity to $u_y$ should be greater than its similarity to other classes.</p>
+
+<p>Now consider:</p>
+
+\begin{equation}\langle z, u_y\rangle = \langle f_{\theta}(x), u_y\rangle + \langle z - f_{\theta}(x), u_y\rangle\end{equation}
+
+<p>Since $\| z - f_{\theta}(x)\| \leq r_y$, it follows that:</p>
+
+\begin{equation}\langle f_{\theta}(x), u_y\rangle - r_y\| u_y\|\leq\langle z, u_y\rangle \leq \langle f_{\theta}(x), u_y\rangle + r_y\| u_y\|\end{equation}
+
+<p>To ensure that "the similarity of any $z$ to $u_y$ is always greater than its similarity to other classes," we only need the "minimum similarity to $u_y$ to be greater than the maximum similarity to other classes." Thus, our optimization objective becomes:</p>
+
+\begin{equation}-\log\frac{e^{\langle f_{\theta}(x), u_y\rangle - r_y\| u_y\|}}{e^{\langle f_{\theta}(x), u_y\rangle - r_y\| u_y\|}+\sum\limits_{i\neq y} e^{\langle f_{\theta}(x), u_i\rangle + r_y\| u_i\|}}\end{equation}
+
+<p>This essentially matches softmax variants with margins, such as AM-Softmax or Circle Loss. The specific form is less important than setting a larger margin for classes with fewer samples (making samples from minority classes more "capable"). How should we design the margin for each class? The previous article <a href="translation_7615.html">"Mitigating Class Imbalance through Mutual Information Ideology"</a> provided a solution: $m_y=-\tau\log p(y)$, where $p(y)$ is the prior distribution. This gives:</p>
+
+\begin{equation}-\log\frac{e^{\langle f_{\theta}(x), u_y\rangle + \tau \log p(y)}}{\sum\limits_{i} e^{\langle f_{\theta}(x), u_i\rangle + \tau \log p(i)}}\end{equation}
+
+<p>Thus, we connect to the Logit Adjustment Loss, or rather provide a geometric intuition for it. Essentially, Logit Adjustment is also adjusting weights, but while standard weight adjustment happens <i>after</i> the $\log$ in the loss function, Logit Adjustment happens <i>before</i> the $\log$.</p>
+
+<h2>Conclusion</h2>
+
+<p>This article has shared some thoughts on the class imbalance phenomenon and its countermeasures, primarily aiming to reveal the logic behind modifying loss functions through relatively intuitive guidance. From this, we can see that these solutions essentially boil down to adjusting sample weights or class weights. The line of reasoning in this article is somewhat loose, reflecting my own brainstorming process. Please forgive and point out any errors.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7708.html" style="color: #005fcc;">https://kexue.fm/archives/7708</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

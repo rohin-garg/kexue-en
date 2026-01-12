@@ -1,0 +1,432 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/8397">The Road to Transformer Upgrade: 4. Rotary Position Embedding for 2D Positions</a></h1>
+
+    <p>By 苏剑林 | May 10, 2021</p>
+
+
+<p>In the previous article <a href="translation_8265.html">"The Road to Transformer Upgrade: 2. Rotary Position Embedding (RoPE) Drawing from Various Strengths,"</a> we proposed the Rotary Position Embedding (RoPE) and the corresponding Transformer model, RoFormer. Since the author's primary research area is NLP, this seemed like the end of the story. However, recently, Transformer models have also exploded in the field of Computer Vision (CV), with various Vision Transformers (ViT) emerging one after another. This led to a natural question: What should 2D RoPE look like?</p>
+
+<p>At first glance, it might seem like a simple generalization of the 1D case, but the derivation and understanding involved are far more complex than imagined. This article provides an analysis of it to deepen our understanding of RoPE.</p>
+
+<h2 id="2D-RoPE">2D RoPE</h2>
+
+<p>What is a 2D position? What does the corresponding 2D RoPE look like? Where is the difficulty? In this section, we will briefly introduce 2D positions, then directly provide the results and derivation logic for 2D RoPE, followed by a detailed derivation in subsequent sections.</p>
+
+<h3 id="2D-Position">2D Position</h3>
+
+<p>In NLP, the position information of language is one-dimensional. In other words, we need to tell the model that a word is the $n$-th word in a sentence. However, in CV, the position information of an image is two-dimensional; we need to tell the model which row and column a feature is in. Here, 2D refers to the fact that two numbers are needed to fully describe the position information, not the dimensionality of the position vector.</p>
+
+<p>Some readers might think: Can't we just flatten it and treat it as 1D? That doesn't work well. For example, in an $h \times h$ feature map, a position $(x, y)$ becomes $xh + y$ after flattening. The positions $(x+1, y)$ and $(x, y+1)$ become $xh + y + h$ and $xh + y + 1$ respectively. Their differences from $xh + y$ are $h$ and $1$. However, intuitively, the distances between $(x+1, y)$ and $(x, y+1)$ relative to $(x, y)$ should be the same, but flattening results in inconsistent distances of $h$ and $1$, which is unreasonable.</p>
+
+<p>Therefore, we need to design position encoding specifically for the 2D case, rather than simply flattening it to 1D.</p>
+
+<h3 id="Standard-Answer">Standard Answer</h3>
+
+<p>After the derivation presented later, one solution for 2D RoPE is found to be:</p>
+
+\begin{equation}\boldsymbol{\mathcal{R}}_{x,y}=\left(
+\begin{array}{cc:cc}
+\cos x\theta & -\sin x\theta & 0 & 0 \\
+\sin x\theta & \cos x\theta & 0 & 0 \\
+\hdashline
+0 & 0 & \cos y\theta & -\sin y\theta \\
+0 & 0 & \sin y\theta & \cos y\theta \\
+\end{array}\right)\label{eq:rope-2d}\end{equation}
+
+<p>This solution is easy to understand. It is a block matrix composed of two 1D RoPEs. In implementation, it involves splitting the input vector into two halves, applying 1D RoPE with $x$ to one half, and 1D RoPE with $y$ to the other half. From this form, it is naturally easy to generalize to 3D, 4D, and higher-dimensional positions.</p>
+
+<p>Matrix $\eqref{eq:rope-2d}$ is an orthogonal matrix that satisfies two key properties:</p>
+
+<blockquote>
+  <p>1. <strong>Relativity</strong>: That is, $\boldsymbol{\mathcal{R}}_{x_1,y_1}^{\top}\boldsymbol{\mathcal{R}}_{x_2,y_2}=\boldsymbol{\mathcal{R}}_{x_2-x_1,y_2-y_1}$. It is precisely because of this property that RoPE possesses the ability to implement relative positions through absolute positions;</p>
+  <p>2. <strong>Invertibility</strong>: Given $\boldsymbol{\mathcal{R}}_{x,y}$, one can reverse-solve for $x, y$, meaning the encoding of position information is lossless.</p>
+</blockquote>
+
+<p>In a sense, Equation $\eqref{eq:rope-2d}$ is the simplest solution that satisfies the above two properties. That is to say, while slightly different solutions satisfying these properties exist, they are relatively more complex in form and implementation.</p>
+
+<h3 id="Derivation-Idea">Derivation Idea</h3>
+
+<p>In hindsight, RoPE essentially found a matrix $\boldsymbol{\mathcal{R}}_n=\begin{pmatrix}\cos n\theta & -\sin n\theta \\ \sin n\theta & \cos n\theta\end{pmatrix}$ such that it satisfies the "relativity" condition:</p>
+
+\begin{equation}\boldsymbol{\mathcal{R}}_m^{\top}\boldsymbol{\mathcal{R}}_n=\boldsymbol{\mathcal{R}}_{n-m}\label{eq:re}\end{equation}
+
+<p>Therefore, it is natural to think that the basic requirement for 2D RoPE is also to satisfy relativity—that is, to find a matrix $\boldsymbol{\mathcal{R}}_{x,y}$ such that it satisfies the 2D relativity condition $\boldsymbol{\mathcal{R}}_{x_1,y_1}^{\top}\boldsymbol{\mathcal{R}}_{x_2,y_2}=\boldsymbol{\mathcal{R}}_{x_2-x_1,y_2-y_1}$. However, if this were the only requirement, many feasible solutions would exist, such as simply letting:</p>
+
+\begin{equation}\boldsymbol{\mathcal{R}}_{x,y} = \begin{pmatrix}\cos (x+y)\theta & -\sin (x+y)\theta \\ \sin (x+y)\theta & \cos (x+y)\theta\end{pmatrix}\end{equation}
+
+<p>But the problem with this solution is that we cannot uniquely backtrack to $(x, y)$ from $x+y$, meaning this choice is lossy for position information. Therefore, we need the extra "invertibility" requirement to ensure that original position signals can be losslessly reconstructed from the position matrix.</p>
+
+<p>Toward this end, we have two relatively natural path choices: 1. Quaternions; 2. Matrix exponential. In the following sections, we will introduce them one by one.</p>
+
+<h2 id="Quaternions">Quaternions</h2>
+
+<p>In the derivation of 1D RoPE, we primarily used complex numbers as a tool. <a href="https://en.wikipedia.org/wiki/Quaternion">Quaternions</a> are generalizations of complex numbers and retain many of their properties, so using them to derive 2D RoPE seems like a natural idea. Unfortunately, this turns out to be a dead-end path, but the author still records the thinking process here for reference.</p>
+
+<h3 id="Complex-Numbers-and-Matrices">Complex Numbers and Matrices</h3>
+
+<p>We learned in high school that a complex number $a+b\boldsymbol{i}$ corresponds one-to-one with a 2D vector $(a, b)$ (to align with the quaternions later, the imaginary unit $\boldsymbol{i}$ is bolded here), but this correspondence only preserves addition and subtraction (since vectors lack a universal multiplication operation). A more elegant correspondence maps complex numbers to matrices:</p>
+
+\begin{equation}a+b\boldsymbol{i} \quad \leftrightarrow \quad \begin{pmatrix} a & -b \\ b & a \end{pmatrix}\end{equation}
+
+<p>Under this mapping, addition, subtraction, multiplication, and division of complex numbers correspond one-to-one with those of matrices. For example:</p>
+
+\begin{equation}\begin{array}{ccc}
+(a+b\boldsymbol{i})(c+d\boldsymbol{i}) &=& (ac - bd) + (ad + bc)\boldsymbol{i} \\[5pt]
+\begin{pmatrix} a & -b \\ b & a \end{pmatrix}\begin{pmatrix} c & -d \\ d & c \end{pmatrix} &=& \begin{pmatrix} ac - bd & -(ad + bc) \\ ad + bc & ac - bd \end{pmatrix}
+\end{array}\end{equation}
+
+<p>Thus, the matrix mapping is a complete isomorphism of the field of complex numbers, whereas the vector mapping is just a physical/geometric intuition. The matrix mapping of complex numbers is also an important foundation for RoPE. In <a href="translation_8265.html">"The Road to Transformer Upgrade: 2. Rotary Position Embedding (RoPE) Drawing from Various Strengths,"</a> we derived that the complex representation of RoPE is $\boldsymbol{q}e^{n\boldsymbol{i}\theta}=(\cos n\theta + \boldsymbol{i}\sin n\theta)\boldsymbol{q}$. According to the matrix mapping of complex numbers, $\cos n\theta + \boldsymbol{i}\sin n\theta$ corresponds to the matrix:</p>
+
+\begin{equation}\boldsymbol{\mathcal{R}}_n=\begin{pmatrix}\cos n\theta & -\sin n\theta \\ \sin n\theta & \cos n\theta\end{pmatrix}\end{equation}
+
+<p>which gives the matrix form of 1D RoPE.</p>
+
+<h3 id="Introduction-to-Quaternions">Introduction to Quaternions</h3>
+
+<p>As mentioned before, quaternions are a generalization of complex numbers. In fact, they are the "ancestors" of matrices; historically, quaternions came before general matrix operations and inspired many matrix operations. The author has previously written articles like <a href="translation_898.html">"Quaternions: Deeply Rooted in Vectors"</a> and <a href="translation_2291.html">"Geometric Numbers and Numeric Geometry: A Shallow Exploration of Hypercomplex Numbers"</a> to introduce quaternions. Readers are welcome to refer to them.</p>
+
+<p>If a complex number is a 2D vector, then a quaternion is a 4D vector, represented as $a+b\boldsymbol{i}+c\boldsymbol{j}+d\boldsymbol{k}$, where $\boldsymbol{i}^2=\boldsymbol{j}^2=\boldsymbol{k}^2=-1$, yet they are distinct from each other. The operational rules between the bases are:</p>
+
+\begin{array}{c|cccc}
+\times & 1 & \boldsymbol{i} & \boldsymbol{j} & \boldsymbol{k} \\
+\hline
+1 & 1 & \boldsymbol{i} & \boldsymbol{j} & \boldsymbol{k} \\
+\boldsymbol{i} & \boldsymbol{i} & -1 & \boldsymbol{k} & -\boldsymbol{j} \\
+\boldsymbol{j} & \boldsymbol{j} & -\boldsymbol{k} & -1 & \boldsymbol{i} \\
+\boldsymbol{k} & \boldsymbol{k} & \boldsymbol{j} & -\boldsymbol{i} & -1 \\
+\end{array}
+
+<p>At the time of their discovery, the biggest shock they gave people was non-commutativity, e.g., $\boldsymbol{i}\boldsymbol{j}=-\boldsymbol{j}\boldsymbol{i}\neq \boldsymbol{j}\boldsymbol{i}$. However, beyond that, they are highly similar to complex number operations.</p>
+
+<p>For example, there is an analogue to Euler's formula for quaternions:</p>
+
+\begin{equation}e^{a+b\boldsymbol{i}+c\boldsymbol{j}+d\boldsymbol{k}} = e^a\left(\cos r + \frac{b\boldsymbol{i}+c\boldsymbol{j}+d\boldsymbol{k}}{r}\sin r\right)\label{eq:euler}\end{equation}
+
+<p>where $r = \Vert b\boldsymbol{i}+c\boldsymbol{j}+d\boldsymbol{k}\Vert = \sqrt{b^2+c^2+d^2}$. Furthermore, there is a similar matrix mapping:</p>
+
+\begin{equation}
+a+b\boldsymbol{i}+c\boldsymbol{j}+d\boldsymbol{k} \quad \leftrightarrow \quad \begin{pmatrix}
+a & -b & -c & -d \\
+b & a & -d & c \\
+c & d & a & -b \\
+d & -c & b & a
+\end{pmatrix}\label{eq:mapping}\end{equation}
+
+<h3 id="Violating-Relativity">Violating Relativity</h3>
+
+<p>The origins of these formulas are a long story, which I won't detail here; interested readers can search for literature. With Euler's formula and the exponential mapping, one might think: 1D RoPE is simply the matrix mapping corresponding to $e^{n\boldsymbol{i}\theta}$, so wouldn't mapping $e^{x\boldsymbol{i}\theta + y\boldsymbol{j}\theta}$ to matrix form work for 2D RoPE?</p>
+
+<p>I thought so at first too, but unfortunately, it is wrong. Why? In the derivation of 1D RoPE, we used the complex representation of the dot product:</p>
+
+\begin{equation}\langle\boldsymbol{q},\boldsymbol{k}\rangle=\text{Re}[\boldsymbol{q}\boldsymbol{k}^*]\end{equation}
+
+<p>This identity holds in quaternions as well, so it can be borrowed. Then we utilized complex exponentials:</p>
+
+\begin{equation}\langle\boldsymbol{q}e^{m\boldsymbol{i}\theta},\boldsymbol{k}e^{n\boldsymbol{i}\theta}\rangle=\text{Re}\left[\left(\boldsymbol{q}e^{m\boldsymbol{i}\theta}\right)\left(\boldsymbol{k}e^{n\boldsymbol{i}\theta}\right)^*\right]=\text{Re}\left[\boldsymbol{q}e^{m\boldsymbol{i}\theta}e^{-n\boldsymbol{i}\theta}\boldsymbol{k}^*\right]=\text{Re}\left[\boldsymbol{q}e^{(m-n)\boldsymbol{i}\theta}\boldsymbol{k}^*\right]\end{equation}
+
+<p>The first two equal signs can be carried over to quaternions, but the key is that the third equal sign does not generally hold for quaternions! In general, for two quaternions $\boldsymbol{p}, \boldsymbol{q}$, the equation $e^{\boldsymbol{p}+\boldsymbol{q}}=e^{\boldsymbol{p}}e^{\boldsymbol{q}}$ does not hold! More broadly, for two objects whose multiplication is not commutative, one generally has $e^{\boldsymbol{p}+\boldsymbol{q}} \neq e^{\boldsymbol{p}}e^{\boldsymbol{q}}$.</p>
+
+<p>So, in the end, because exponential multiplication cannot be converted to addition, relativity cannot be guaranteed. Thus, the path of derivation via quaternions failed...</p>
+
+<h2 id="Matrix-Exponential">Matrix Exponential</h2>
+
+<p>The matrix mapping of quaternions shows that quaternions actually represent a specific class of $4 \times 4$ matrices. Since the quaternion derivation failed, perhaps using general matrix analysis can succeed. In fact, this is indeed the case. In this section, we will provide a derivation result using matrix exponentials.</p>
+
+<h3 id="Matrix-Exponential-Def">Matrix Exponential</h3>
+
+<p>The <a href="https://en.wikipedia.org/wiki/Matrix_exponential">matrix exponential</a> here is not the element-wise exponential function used as an activation function in neural networks, but rather the operation defined by a power series:</p>
+
+\begin{equation}\exp \boldsymbol{B} = \sum_{k=0}^{\infty}\frac{\boldsymbol{B}^k}{k!}\end{equation}
+
+<p>where $\boldsymbol{B}^k$ refers to the repeated multiplication of $k$ copies of $\boldsymbol{B}$ following matrix multiplication rules. Regarding the matrix exponential, the author has previously written <a href="translation_6377.html">"Appreciation of the Identity det(exp(A)) = exp(Tr(A))"</a>, which is also available for reference.</p>
+
+<p>Matrix exponential is a very important matrix operation. It can directly express the solution of a system of constant-coefficient differential equations $\frac{d}{dt}\boldsymbol{x}_t=\boldsymbol{A}\boldsymbol{x}_t$:</p>
+
+\begin{equation}\boldsymbol{x}_t = \big(\exp t\boldsymbol{A}\big)\boldsymbol{x}_0\end{equation}
+
+<p>Of course, this is not closely related to the theme of this article. For the derivation of RoPE, we mainly utilize the following property of matrix exponentials:</p>
+
+\begin{equation}\boldsymbol{A}\boldsymbol{B} = \boldsymbol{B}\boldsymbol{A} \quad\Rightarrow\quad \big(\exp \boldsymbol{A}\big)\big(\exp \boldsymbol{B}\big) = \exp \big(\boldsymbol{A} + \boldsymbol{B}\big)\label{eq:expm-ex}\end{equation}
+
+<p>In other words, if the multiplication of $\boldsymbol{A}$ and $\boldsymbol{B}$ is commutative, the matrix exponential can convert multiplication to addition just like the exponential of a number. However, note that this is a sufficient but not necessary condition.</p>
+
+<p>As for how to calculate the matrix exponential, it cannot be detailed here, but many software libraries already include matrix exponential functions, such as the `expm` function in scipy and tensorflow, and the `MatrixExp` function in Mathematica for symbolic computation.</p>
+
+<h3 id="1D-General-Solution">1D General Solution</h3>
+
+<p>Why can we relate RoPE to the matrix exponential? Because 1D RoPE has a relatively simple exponential expression:</p>
+
+\begin{equation}\boldsymbol{\mathcal{R}}_n=\begin{pmatrix}\cos n\theta & -\sin n\theta \\ \sin n\theta & \cos n\theta\end{pmatrix}=\exp\left\{n\theta\begin{pmatrix}0 & -1 \\ 1 & 0\end{pmatrix}\right\}\label{eq:rope-exp}\end{equation}
+
+<p>So, the author began to consider matrices of the following form as candidate solutions for RoPE:</p>
+
+\begin{equation}\boldsymbol{\mathcal{R}}_n=\exp n\boldsymbol{B}\end{equation}
+
+<p>where $\boldsymbol{B}$ is a matrix independent of $n$. A necessary condition for RoPE is to satisfy the "relativity" condition $\eqref{eq:re}$, so we analyze:</p>
+
+\begin{equation}\big(\exp m\boldsymbol{B}\big)^{\top}\big(\exp n\boldsymbol{B}\big) = \big(\exp m\boldsymbol{B}^{\top}\big)\big(\exp n\boldsymbol{B}\big)\end{equation}
+
+<p>Assuming first that $\boldsymbol{B}^{\top}$ and $\boldsymbol{B}$ are commutative, then according to Eq. $\eqref{eq:expm-ex}$, we have:</p>
+
+\begin{equation}\big(\exp m\boldsymbol{B}^{\top}\big)\big(\exp n\boldsymbol{B}\big) = \exp \big(m\boldsymbol{B}^{\top} + n\boldsymbol{B}\big)\end{equation}
+
+<p>To make $m\boldsymbol{B}^{\top} + n\boldsymbol{B}=(n-m)\boldsymbol{B}$, we simply need to satisfy:</p>
+
+\begin{equation}\boldsymbol{B}^{\top} = - \boldsymbol{B}\end{equation}
+
+<p>This is the constraint given by "relativity." We just assumed that $\boldsymbol{B}^{\top}$ and $\boldsymbol{B}$ are commutative; now we can verify that any $\boldsymbol{B}$ satisfying $\boldsymbol{B}^{\top} = -\boldsymbol{B}$ must be commutative with its transpose, so the results are self-consistent.</p>
+
+<p>This means that for any matrix $\boldsymbol{B}$ satisfying $\boldsymbol{B}^{\top} + \boldsymbol{B} = 0$ (a skew-symmetric matrix), $\exp n\boldsymbol{B}$ is a solution to Equation $\eqref{eq:re}$. Furthermore, it can be proven that it must be an orthogonal matrix. Of course, from $\exp n\boldsymbol{B} = (\exp \boldsymbol{B})^n$, we can more directly obtain that for any orthogonal matrix $\boldsymbol{O}$, $\boldsymbol{\mathcal{R}}_n = \boldsymbol{O}^n$ is a solution to Equation $\eqref{eq:re}$.</p>
+
+<p>For $2 \times 2$ matrices, the general solution to $\boldsymbol{B}^{\top} + \boldsymbol{B} = 0$ is $\boldsymbol{B} = \begin{pmatrix}0 & -\theta \\ \theta & 0\end{pmatrix}$, which leads to the solution in Eq. $\eqref{eq:rope-exp}$.</p>
+
+<h3 id="2D-Constraints">2D Constraints</h3>
+
+<p>Similarly, for 2D RoPE, we consider:</p>
+
+\begin{equation}\boldsymbol{\mathcal{R}}_{x,y}=\exp \big(x\boldsymbol{B}_1 + y\boldsymbol{B}_2\big)\end{equation}
+
+<p>as a candidate solution. Repeating the derivation for the "relativity" condition: first assume $x_1\boldsymbol{B}_1^{\top} + y_1\boldsymbol{B}_2^{\top}$ and $x_2\boldsymbol{B}_1 + y_2\boldsymbol{B}_2$ are commutative, then we obtain the following constraints:</p>
+
+\begin{equation}\boldsymbol{B}_1^{\top} + \boldsymbol{B}_1 = 0,\quad \boldsymbol{B}_2^{\top} + \boldsymbol{B}_2 = 0\end{equation}
+
+<p>However, the commutativity of $x_1\boldsymbol{B}_1^{\top} + y_1\boldsymbol{B}_2^{\top}$ and $x_2\boldsymbol{B}_1 + y_2\boldsymbol{B}_2$ means $(\boldsymbol{B}_1, \boldsymbol{B}_1^{\top})$, $(\boldsymbol{B}_2, \boldsymbol{B}_2^{\top})$, $(\boldsymbol{B}_1, \boldsymbol{B}_2^{\top})$, and $(\boldsymbol{B}_2, \boldsymbol{B}_1^{\top})$ must all be commutative. But the previous two constraints only ensure $(\boldsymbol{B}_1, \boldsymbol{B}_1^{\top})$ and $(\boldsymbol{B}_2, \boldsymbol{B}_2^{\top})$ are commutative; they don't guarantee the commutativity of the latter pairs. So we need to add them as constraints, resulting in:</p>
+
+\begin{equation}\left\{\begin{aligned}
+&\boldsymbol{B}_1^{\top} + \boldsymbol{B}_1 = 0\\
+&\boldsymbol{B}_2^{\top} + \boldsymbol{B}_2 = 0\\
+&\boldsymbol{B}_1 \boldsymbol{B}_2^{\top} = \boldsymbol{B}_2^{\top} \boldsymbol{B}_1
+\end{aligned}\right.\label{eq:2d-conds}\end{equation}
+
+<p>It is not difficult to prove that under the first two conditions, the added constraint is also equivalent to $\boldsymbol{B}_1 \boldsymbol{B}_2 = \boldsymbol{B}_2 \boldsymbol{B}_1$.</p>
+
+<h3 id="RoPE-Appears">RoPE Appears</h3>
+
+<p>Since a $2 \times 2$ matrix satisfying the first two conditions has only one independent parameter, it does not satisfy "invertibility." Thus, we must consider at least a $3 \times 3$ matrix, which has 3 independent parameters:</p>
+
+\begin{equation}\begin{pmatrix}0 & -a & -b \\ a & 0 & -c \\ b & c & 0\end{pmatrix}\end{equation}
+
+<p>To ensure invertibility, we might set $\boldsymbol{B}_1$ and $\boldsymbol{B}_2$ to be "orthogonal." For example, let:</p>
+
+\begin{equation}\boldsymbol{B}_1=\begin{pmatrix}0 & -a & 0 \\ a & 0 & 0 \\ 0 & 0 & 0\end{pmatrix},\quad\boldsymbol{B}_2=\begin{pmatrix}0 & 0 & -b \\ 0 & 0 & -c \\ b & c & 0\end{pmatrix}\end{equation}
+
+<p>Without loss of generality, we can set $a=1$. Then, solving from condition $\eqref{eq:2d-conds}$, we get $b=0, c=0$, meaning $\boldsymbol{B}_2$ can only be the zero solution. This does not meet our requirements. The Mathematica code for solving this is:</p>
+
+<pre><code>B[a_, b_, c_] = {{0, -a, -b}, {a, 0, -c}, {b, c, 0}}; B1 = B[1, 0, 0]; B2 = B[0, b, c]; Solve[{Dot[B1, B2] == Dot[B2, B1]}, {b, c}]</code></pre>
+
+<p>Therefore, we must consider at least $4 \times 4$ matrices, which have 6 independent parameters. Without loss of generality, consider the orthogonal decomposition:</p>
+
+\begin{equation}\boldsymbol{B}_1=\begin{pmatrix}0 & -a & -b & 0 \\ a & 0 & -c & 0 \\ b & c & 0 & 0 \\ 0 & 0 & 0 & 0\end{pmatrix},\quad\boldsymbol{B}_2=\begin{pmatrix}0 & 0 & 0 & -d \\ 0 & 0 & 0 & -e \\ 0 & 0 & 0 & -f \\ d & e & f & 0\end{pmatrix}\end{equation}
+
+<p>The solution is found to be:</p>
+
+\begin{equation}d=cf,\quad e=-bf\end{equation}
+
+<p>Solving code:</p>
+
+<pre><code>B[a_, b_, c_, d_, e_, f_] = {{0, -a, -b, -d}, {a, 0, -c, -e}, {b, c, 0, -f}, {d, e, f, 0}}; B1 = B[1, b, c, 0, 0, 0]; B2 = B[0, 0, 0, d, e, f]; Solve[{Dot[B1, B2] == Dot[B2, B1]}, {b, c, d, e, f}]</code></pre>
+
+<p>We find that the result does not impose constraints on $f$. For the sake of simplicity, we can let $f=1$, and let the remaining $b, c, d, e$ all be 0. At this point:</p>
+
+\begin{equation}\boldsymbol{\mathcal{R}}_{x,y}=\exp \,\begin{pmatrix}0 & -x & 0 & 0 \\ x & 0 & 0 & 0 \\ 0 & 0 & 0 & -y \\ 0 & 0 & y & 0\end{pmatrix}\end{equation}
+
+<p>Adding the parameter $\theta$ and performing the expansion, we get:</p>
+
+\begin{equation}\boldsymbol{\mathcal{R}}_{x,y}=\exp \,\left\{\begin{pmatrix}0 & -x & 0 & 0 \\ x & 0 & 0 & 0 \\ 0 & 0 & 0 & -y \\ 0 & 0 & y & 0\end{pmatrix}\theta\right\}=\left(
+\begin{array}{cc:cc}
+\cos x\theta & -\sin x\theta & 0 & 0 \\
+\sin x\theta & \cos x\theta & 0 & 0 \\
+\hdashline
+0 & 0 & \cos y\theta & -\sin y\theta \\
+0 & 0 & \sin y\theta & \cos y\theta \\
+\end{array}\right)\end{equation}
+
+<h2 id="Extension-Stories">Extension Stories</h2>
+
+<p>At this point, the derivation of 2D RoPE is complete. What readers might wonder now is: how effective is it? Unfortunately, there are no very complete experimental results yet. After all, I haven't done much work related to ViT before, and this 2D RoPE derivation was only recently completed, so progress has been slow. I can only say that preliminary results show it to be quite effective. Members of the EleutherAI team have also experimented with this scheme, and the results are better than other existing position encodings.</p>
+
+<p>Speaking of the EleutherAI team, let me add a few more words. EleutherAI is the team that gained significant attention a while ago for claiming they wanted to "replicate GPT-3." After we proposed RoPE and RoFormer in the article <a href="translation_8265.html">"The Road to Transformer Upgrade: 2. Rotary Position Embedding (RoPE) Drawing from Various Strengths,"</a> we were fortunate to gain the attention of the EleutherAI team. They performed many additional experiments and confirmed that RoPE is more effective than many other position encodings (refer to their blog post <a href="https://blog.eleuther.ai/rotary-embeddings/">"Rotary Embeddings: A Relative Revolution"</a>). This prompted us to complete the English paper <a href="https://arxiv.org/abs/2104.09864">"RoFormer: Enhanced Transformer with Rotary Position Embedding"</a> and submit it to Arxiv. The initial questions regarding 2D RoPE also originated from the EleutherAI team.</p>
+
+<h2 id="Summary">Summary</h2>
+
+<p>This article introduced our 2D generalization of RoPE, primarily using "relativity" and "invertibility" as starting points to determine the final form of 2D RoPE. We attempted derivations through quaternions and matrix exponentials, ultimately providing a solution via the matrix exponential. Through the derivation process, we can even further deepen our understanding of RoPE.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8397.html" style="color: #005fcc;">https://kexue.fm/archives/8397</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,273 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['base', 'ams', 'noerrors', 'noundefined']}
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+<h1><a href="https://kexue.fm/archives/10862">The Road to Transformer Upgrades: 19. The Second Type of Rotary Positional Encoding</a></h1>
+
+<p>By 苏剑林 | April 18, 2025</p>
+
+<p>Readers who have been following the "Road to Transformer Upgrades" series up to this point are likely already familiar with <a href="translation_8265.html">Rotary Positional Encoding (RoPE)</a>. Simply put, RoPE is a rotary transformation applied to the Query ($\boldsymbol{Q}$) and Key ($\boldsymbol{K}$) of the Attention mechanism. Formally, it belongs to the category of absolute positional encodings, but when combined with the dot-product property of Attention, it automatically achieves a relative position effect.</p>
+
+<p>So, can RoPE be added to the Value ($\boldsymbol{V}$)? At first glance, it seems not, because rotating $\boldsymbol{V}$ doesn't result in relative positional encoding. However, things are not so absolute. This article discusses applying RoPE to $\boldsymbol{V}$, which we can call the "Second Type of Rotary Positional Encoding."</p>
+
+<h2>Basic Review</h2>
+
+<p>We decompose <a href="translation_4765.html">Dot-Product Attention</a> as follows:
+\begin{equation}\boldsymbol{o}_i = \sum_j a_{i,j}\boldsymbol{v}_j,\qquad a_{i,j} = \frac{e^{s_{i,j}}}{\sum\limits_j e^{s_{i,j}}},\qquad s_{i,j} = \boldsymbol{q}_i^{\top}\boldsymbol{k}_j\end{equation}
+For simplicity, the scaling factor for $s_{i,j}$ is omitted here. RoPE is applied to $\boldsymbol{q}_i$ and $\boldsymbol{k}_j$:
+\begin{equation}\boldsymbol{q}_i \to \boldsymbol{\mathcal{R}}_i\boldsymbol{q}_i,\qquad \boldsymbol{k}_j \to \boldsymbol{\mathcal{R}}_j\boldsymbol{k}_j\end{equation}
+This causes the Attention Logits, $s_{i,j}$, to become:
+\begin{equation}s_{i,j} = (\boldsymbol{\mathcal{R}}_i\boldsymbol{q}_i)^{\top} (\boldsymbol{\mathcal{R}}_j\boldsymbol{k}_j) = \boldsymbol{q}_i^{\top}\boldsymbol{\mathcal{R}}_i^{\top}\boldsymbol{\mathcal{R}}_j\boldsymbol{k}_j=\boldsymbol{q}_i^{\top}\boldsymbol{\mathcal{R}}_{j-i}\boldsymbol{k}_j\end{equation}
+That is, $s_{i,j}$ only depends on the relative position $j-i$, thereby achieving a relative position effect through an absolute position form. This transformation process utilizes the property of rotation matrices: $\boldsymbol{\mathcal{R}}_i^{\top}\boldsymbol{\mathcal{R}}_j=\boldsymbol{\mathcal{R}}_{j-i}$.</p>
+
+<p>In addition to rotation matrices, we proved in <a href="translation_8397.html">"The Road to Transformer Upgrades: 4. Rotary Positional Encoding for 2D Positions"</a> that the general solution is $\boldsymbol{\mathcal{R}}_i = \boldsymbol{O}^i$, where $\boldsymbol{O}$ is any orthogonal matrix and the superscript represents matrix exponentiation. However, in <a href="translation_9403.html">"The Road to Transformer Upgrades: 6. Completeness Analysis of Rotary Positional Encoding,"</a> we also proved that general orthogonal matrix solutions are essentially isomorphic to rotary matrix solutions.</p>
+
+<h2>New Usage</h2>
+
+<p>What happens if we apply RoPE to $\boldsymbol{v}_j$, i.e., $\boldsymbol{v}_j\to\boldsymbol{\mathcal{R}}_j\boldsymbol{v}_j$? Clearly, the result of the Attention is
+\begin{equation}\boldsymbol{o}_i = \sum_j a_{i,j} \boldsymbol{\mathcal{R}}_j\boldsymbol{v}_j\label{eq:v-rope-abs}\end{equation}
+This causes the Attention to explicitly depend on the absolute position $j$. If we only want a generic positional encoding, this might not be a problem; but if we want a relative positional encoding, it fails to meet our objective.</p>
+
+<p>However, there is a simple trick to solve this flaw! We can apply another inverse RoPE to $\boldsymbol{o}_i$:
+\begin{equation}\boldsymbol{o}_i = \boldsymbol{\mathcal{R}}_i^{\top}\left(\sum_j a_{i,j} \boldsymbol{\mathcal{R}}_j\boldsymbol{v}_j\right)=\sum_j a_{i,j} \boldsymbol{\mathcal{R}}_i^{\top}\boldsymbol{\mathcal{R}}_j\boldsymbol{v}_j=\sum_j a_{i,j} \boldsymbol{\mathcal{R}}_{j-i}\boldsymbol{v}_j\label{eq:vo-rope}\end{equation}
+In this way, it once again becomes a relative positional encoding! Formally, it still consists of two absolute positional encodings, echoing the logic of existing RoPE. Therefore, we call it the "Second Type of Rotary Positional Encoding," or more intuitively, "VO-RoPE," because it adds RoPE to both the Value and the Output. Correspondingly, standard RoPE can be called "QK-RoPE."</p>
+
+<h2>Simple Experiment</h2>
+
+<p>A quick set of experiments was conducted on a LLAMA-like model of approximately 1B parameters. Several configurations were compared:</p>
+
+<blockquote>
+1. NoPE: No positional encoding added at all;<br>
+2. QK-RoPE: Standard rotary positional encoding;<br>
+3. VO-RoPE: The second type of rotary positional encoding proposed in this article;<br>
+4. Q/K/V/O-RoPE: Adding rotary positional encoding individually to only one of Q, K, V, or O;<br>
+5. QKV-RoPE: Adding rotary positional encoding to Q, K, and V;<br>
+6. QKVO-RoPE: Adding rotary positional encoding to Q, K, V, and O.
+</blockquote>
+
+<p>Note that points 4 and 5 are considered absolute positional encodings. The general conclusion is:
+$$\text{QK-RoPE} \approx \text{QKVO-RoPE} > \text{K-RoPE} \approx \text{VO-RoPE} > \text{QKV-RoPE} > \text{NoPE} > \text{Q/V/O-RoPE}$$</p>
+
+<p>The specific differences in loss function are:
+\begin{array}{c|c}
+\hline
+& \text{Loss} \\
+\hline
+\text{QK-RoPE} & 2.712 \\
+\text{QKVO-RoPE} & 2.719 \\
+\text{K-RoPE} & 2.769 \\
+\text{VO-RoPE} & 2.770 \\
+\text{QKV-RoPE} & 2.783 \\
+\text{NoPE} & 2.795 \\
+\text{O-RoPE} & 2.841 \\
+\text{Q-RoPE} & 2.851 \\
+\text{V-RoPE} & 2.856 \\
+\hline
+\end{array}</p>
+
+<h2>Some Reflections</h2>
+
+<p>As seen from the results above, VO-RoPE is superior to NoPE but inferior to QK-RoPE, and stacking VO-RoPE with QK-RoPE yields no gain. In this light, does VO-RoPE seem unnecessary to propose?</p>
+
+<p>In the author's view, completing the usage of RoPE, answering the question "Can RoPE be added to Value?", and clarifying experimentally that it "doesn't provide significant gains" is itself very valuable. Furthermore, in the long run, it might not always lack benefits; it just might not show its effect under our current mainstream language model settings. When the author originally proposed RoPE, the motivation was simply that it was "interesting," with no expectation that it would become a competitive positional encoding (what happened later was fortunate).</p>
+
+<p>Currently, VO-RoPE has a potential application scenario related to MLA, introduced in <a href="translation_10091.html">"The Ultimate Tug-of-War Between Cache and Performance: From MHA, MQA, GQA to MLA."</a> We know that during inference, MLA is roughly equivalent to an MQA where K and V are shared:
+\begin{equation}\boldsymbol{o}_i = \sum_{j=1}^i a_{i,j}\boldsymbol{c}_j,\qquad a_{i,j} = \frac{e^{s_{i,j}}}{\sum_{j=1}^i e^{s_{i,j}}},\qquad s_{i,j} = \exp(\boldsymbol{q}_i^{\top}\boldsymbol{c}_j)\end{equation}
+This feature allows it to have a KV Cache of only a single $\boldsymbol{c}$. However, this important feature is incompatible with QK-RoPE because once RoPE is added to $\boldsymbol{c}_j$ inside the Attention matrix, two results occur:</p>
+
+<blockquote>
+1. If $\boldsymbol{c}_j$ on the Value side does not have RoPE added, then K and V are no longer fully shared, leading to either doubled KV Cache (caching both before and after RoPE) or real-time RoPE injection for K (introducing latency);<br>
+2. If $\boldsymbol{c}_j$ on the Value side does have RoPE added, the sharing of K and V is achieved, but it is no longer a relative positional encoding.
+</blockquote>
+
+<p>To solve this, MLA adopts a "mostly NoPE + a small part RoPE" concatenation approach. However, from the second type of rotary positional encoding discussed in this article, we know that one only needs to add O-RoPE to the Output once:
+\begin{equation}\boldsymbol{o}_i = \boldsymbol{\mathcal{R}}_i^{\top}\sum_{j=1}^i a_{i,j}(\boldsymbol{\mathcal{R}}_j\boldsymbol{c}_j),\qquad a_{i,j} = \frac{e^{s_{i,j}}}{\sum_{j=1}^i e^{s_{i,j}}},\qquad s_{i,j} = (\boldsymbol{\mathcal{R}}_i\boldsymbol{q}_i)^{\top} (\boldsymbol{\mathcal{R}}_j\boldsymbol{c}_j)\end{equation}
+However, this line of reasoning is not yet fully realized and cannot be directly used in MLA's training form; it is written here for reference.</p>
+
+<h2>Related Work</h2>
+
+<p>In fact, VO-RoPE also ingeniously provides an intermediate form between Attention and complex linear RNNs (such as <a href="translation_9554.html">LRU</a> and <a href="https://papers.cool/arxiv/2307.08621">RetNet</a>). Starting from equation $\eqref{eq:vo-rope}$, consider a Causal scenario and take a special case where $a_{i,j}=\gamma^{i-j}$ with $0 < \gamma < 1$, then:
+\begin{equation}\boldsymbol{o}_i = \sum_{j=1}^i \gamma^{i-j} \boldsymbol{\mathcal{R}}_{j-i}\boldsymbol{v}_j\end{equation}
+We know that the rotation matrix $\boldsymbol{\mathcal{R}}_{j-i}$ written in complex form is simply a diagonal matrix of $e^{\mathbb{I}\theta (j - i)}$, where $\mathbb{I}$ is the imaginary unit (i.e., $\mathbb{I}^2=-1$; to distinguish it from the index $i$, it is written as $\mathbb{I}$). Thus, the above equation is equivalent to:
+\begin{equation}\boldsymbol{o}_i = \sum_{j=1}^i \gamma^{i-j} e^{\mathbb{I}\theta (j - i)} \boldsymbol{v}_j = \sum_{j=1}^i (\gamma e^{-\mathbb{I}\theta})^{i-j} \boldsymbol{v}_j\end{equation}
+This is actually the simplest linear RNN with complex decay. According to the derivation in <a href="translation_9554.html">"Google's New Work Attempts to 'Revive' RNNs: Can RNNs Shine Again?"</a>, such RNNs are theoretically more complete than pure real-decay RNNs.</p>
+
+<p>Therefore, supplementing RoPE with the VO-RoPE form is equivalent to a general generalization from real linear RNNs to complex linear RNNs. Theoretically, this makes its capabilities more complete, although such completeness might not necessarily help in language modeling tasks—just as the introduction of complex numbers in LRU did not show an advantage over the pure real-numbered RWKV. However, theoretical completeness may imply special value in certain scenarios—who knows?</p>
+
+<blockquote>
+<b>Epilogue</b>: After sharing this article on Twitter, some readers provided feedback that they had previously attempted VO-RoPE, including:<br><br>
+1. <a href="https://x.com/gharik/status/1913379569870213200">@gharik</a> stated that he had previously tried QKVO-RoPE and obtained some positive results, naming it "RoPER" at the time. More details can be found <a href="https://research.labml.ai/RoPER.html">here</a> and <a href="https://nn.labml.ai/transformers/rope/value_pe/index.html">here</a>;<br>
+2. <a href="https://x.com/vinam_arora/status/1913714691408343457">@vinam_arora</a> pointed out that he had tried VO-RoPE in a "brain decoding task" and the results were also positive. The paper is <a href="https://papers.cool/arxiv/2310.16046">"A Unified, Scalable Framework for Neural Population Decoding."</a>
+</blockquote>
+
+<h2>Summary</h2>
+
+<p>This article centered around the question "Can RoPE be added to V?" and discussed a second usage for RoPE.</p>
+
+<p><i><b>Reprint Address: </b> <a href="translation_10862.html">https://kexue.fm/archives/10862</a></i></p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10862.html" style="color: #005fcc;">https://kexue.fm/archives/10862</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

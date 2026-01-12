@@ -1,0 +1,282 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/7718">Let's Build a DialoGPT: A Generative Multi-turn Dialogue Model Based on Language Models</a></h1>
+    <p>By 苏剑林 | September 07, 2020</p>
+
+    <p>A while ago, while browsing Arxiv, I noticed that Tsinghua University open-sourced a large-scale cleaned Chinese conversation corpus called LCCC (<a href="https://papers.cool/arxiv/2008.03946">paper link</a>, <a href="https://github.com/thu-coai/CDial-GPT">project address</a>). Based on the open-sourced files, this might be the largest and highest-quality open-source chitchat corpus currently available, and it even includes some multi-turn conversations. Overall, it's quite playable. I was drawn to it and tried using it to train a chitchat dialogue model. The results look pretty good, so I’m sharing my experience here.</p>
+
+    <h2 id="Corpus Introduction">Corpus Introduction</h2>
+    <p>Here’s a brief introduction to the LCCC dataset (Large-scale Cleaned Chinese Conversation). For specific details, you can visit the GitHub page; the download links are also there. LCCC is divided into "base" and "large" versions. The "base" version mainly originates from Weibo conversations, while "large" integrates other open-source dialogue corpora on top of "base." According to the authors, LCCC underwent a rigorous cleaning process, so the overall quality appears to be very high.</p>
+
+    \[\begin{array}{c|c|c}
+    \hline
+    \text{LCCC-base} & \text{Single-turn Dialogue} & \text{Multi-turn Dialogue} \\
+    \hline
+    \text{Total Dialogue Rounds} & 3,354,382 & 3,466,607 \\
+    \hline
+    \text{Total Dialogue Utterances} & 6,708,554 & 13,365,268 \\
+    \hline
+    \end{array}\]
+    \[\begin{array}{c|c|c}
+    \hline
+    \text{LCCC-large} & \text{Single-turn Dialogue} & \text{Multi-turn Dialogue} \\
+    \hline
+    \text{Total Dialogue Rounds} & 7,273,804 & 4,733,955 \\
+    \hline
+    \text{Total Dialogue Utterances} & 14,547,608 & 18,341,167 \\
+    \hline
+    \end{array}\]
+
+    <p>To simplify the task, all samples were processed into two-person dialogues. Here are some sample examples:</p>
+    <blockquote>
+        A: When it's Chinese New Year, let's go back and buy some rabbit heads to have a good hotpot meal.<br>
+        B: I haven't seen any good rabbit heads in Taiyuan.<br>
+        A: I'll bring one back for you from Hongqiao; I saw an authentic one there the other day.<br>
+        B: Love you the most!<br>
+        A: That's for sure.<br>
+        <br>
+        A: Hmm, I'll wait a bit longer! You're in Shanghai now, right? The wind in Shanghai seems even stronger than in Nanjing. Try to stay indoors.<br>
+        B: Yeah, I'm at home, I'm fine. You definitely be careful!<br>
+        <br>
+        A: I also went for a walk around there last year and even bumped into my old PE teacher; we took a photo together.<br>
+        B: Haha, I went looking for my English teacher from 10th grade but couldn't find her; she happened to have something to do and wasn't at school~<br>
+        A: You're really trying to find memories.<br>
+        B: Haha, I haven't been back since graduation and wanted to take a look.
+    </blockquote>
+
+    <h2 id="Model Design">Model Design</h2>
+    <p>After knowing what the data looks like, we need to design the model. Obviously, we need to train a model to predict what response should follow given a context. Since the corpus contains multi-turn dialogues, we also require the model to support multi-turn dialogues. The simplest way to consider dialogue history is to concatenate all previous dialogues up to the current sentence into a single piece of text as the input for the model.</p>
+
+    <p>Given some input and predicting an output, we should naturally use a Seq2Seq model. Using Seq2Seq directly isn't a huge problem, but standard Seq2Seq is generally used for inputs and outputs with relatively fixed forms—for example, the input length should be concentrated within a certain range and shouldn't vary too much. However, when considering multi-turn dialogues, we theoretically don't know how many rounds of dialogue are preceding it, so in principle, the input text length is unlimited. Using Seq2Seq also presents low training efficiency: for each dialogue, we can only train one response at a time. If a multi-turn dialogue has $n$ responses, it must be split into $n$ samples for training.</p>
+
+    <p>Therefore, we need a model whose length can vary quite freely while simultaneously predicting an entire multi-turn dialogue. A suitable choice for this requirement is a Unidirectional Language Model (LM, GPT). The approach is as follows:</p>
+
+    <div style="text-align: center;">
+        <img src="https://kexue.fm/usr/uploads/2020/09/848291414.png" alt="Schematic of multi-turn dialogue using a unidirectional language model" style="max-width: 100%;">
+        <p><em>Schematic of multi-turn dialogue using a unidirectional language model</em></p>
+    </div>
+
+    <p>As shown in the figure, we choose the current mainstream Transformer model and follow the conventional BERT input format, concatenating each dialogue utterance with [SEP], and then training a left-to-right unidirectional language model. To distinguish different speaking roles, we use different Segment IDs for different speakers. Additionally, considering that both BERT and GPT use absolute position embeddings which have an upper limit on text length, while the number of dialogue rounds is theoretically infinite, we adopted the NEZHA structure with relative position embeddings and used NEZHA's pre-trained weights as the model's initialization weights.</p>
+
+    <p>To put it simply, we added a lower-triangular Attention Mask to NEZHA, turning it into a language model. For related information, please refer to <a href="translation_6933.html">"From Language Models to Seq2Seq: Transformer is All About the Mask"</a>.</p>
+
+    <h2 id="Training Details">Training Details</h2>
+    <p>First, here is my reference implementation and the pre-trained model:</p>
+    <blockquote>
+        <a href="https://github.com/bojone/nezha_gpt_dialog">https://github.com/bojone/nezha_gpt_dialog</a>
+    </blockquote>
+    <p>The code is implemented based on <code>bert4keras</code>, and the base structure is NEZHA Base. To make training more "civilian-friendly," I used only one card (a 22G RTX) combined with gradient accumulation. Readers with smaller VRAM can reduce the <code>batch_size</code>. The open-sourced model was trained using the Adam optimizer with a learning rate of $2 \times 10^{-5}$ and a weight decay rate of $0.01$. It was trained for 10 million steps (over 20 days). The single-step <code>batch_size</code> was 16, and the cumulative gradient steps were 16, so it is equivalent to training for 625,000 steps with a <code>batch_size</code> of 256. The final loss was approximately 2.83 (average cross-entropy per token).</p>
+
+    <p>Let's test our training results:</p>
+    <blockquote>
+        >>> print(chatbot.response([u'我最近天天吃火锅'])) (I've been eating hotpot every day lately)<br>
+        火锅好吃啊 (Hotpot is delicious)<br>
+        >>> print(chatbot.response([u'我最近天天吃火锅']))<br>
+        我也是 (Me too)<br>
+        >>> print(chatbot.response([u'我最近天天吃火锅']))<br>
+        哈哈哈哈哈哈我最近一周吃了两顿火锅 (Hahahaha I've had hotpot twice this week)<br>
+        >>> print(chatbot.response([u'我最近天天吃火锅']))<br>
+        我也是，每次都吃的撑 (Me too, I get stuffed every time)<br>
+        >>> print(chatbot.response([u'我最近天天吃火锅']))<br>
+        吃火锅不长胖 (Eating hotpot won't make you fat)<br>
+        >>> print(chatbot.response([u'我最近天天吃火锅']))<br>
+        火锅好啊 (Hotpot is good)<br>
+        >>> print(chatbot.response([u'我最近天天吃火锅']))<br>
+        你们那边有这种火锅？ (They have that kind of hotpot where you are?)<br>
+        >>> print(chatbot.response([u'我最近天天吃火锅']))<br>
+        火锅好吃吗？我也想吃 (Is the hotpot good? I want some too)<br>
+        >>> print(chatbot.response([u'我最近天天吃火锅']))<br>
+        吃吧，吃了就开心了 (Go eat it, you'll be happy once you eat it)<br>
+        >>> print(chatbot.response([u'我最近天天吃火锅']))<br>
+        我也想天天吃火锅！ (I want to eat hotpot every day too!)<br>
+        >>> print(chatbot.response([u'我最近天天吃火锅']))<br>
+        火锅吃不了多久的。(You can't eat hotpot for very long.)<br>
+        <br>
+        >>> print(chatbot.response([u'你那天气好吗'])) (How's the weather where you are?)<br>
+        还好，不热，有点冷 (It's okay, not hot, a little cold)<br>
+        >>> print(chatbot.response([u'你那天气好吗', u'还好，不热，有点冷', u'那你得穿多厚的衣服'])) (Then how thick are the clothes you have to wear?)<br>
+        我穿了两件 (I'm wearing two layers)
+    </blockquote>
+
+    <h2 id="Comparative Analysis">Comparative Analysis</h2>
+    <p>CDial-GPT also open-sourced their own pre-trained models, and I have converted them into a format that <code>bert4keras</code> can load (<a href="https://github.com/bojone/CDial-GPT-tf">CDial-GPT-tf</a>); readers can test and compare them. In terms of training, CDial-GPT uses a PyTorch implementation with a GPT Base structure. They used four 2080Ti cards, with a total batch size of 32 and 64 gradient accumulation steps. The paper states they trained for 30 epochs, totaling about 21 million steps (twice as many as mine), so it is roughly equivalent to training 330,000 steps with a batch size of 2048.</p>
+
+    <p>In terms of input design, CDial-GPT is also different, as shown below:</p>
+
+    <div style="text-align: center;">
+        <img src="https://kexue.fm/usr/uploads/2020/09/2027218376.png" alt="CDial-GPT model schematic" style="max-width: 100%;">
+        <p><em>CDial-GPT model schematic</em></p>
+    </div>
+
+    <p>As shown in the figure, the primary difference between CDial-GPT and our aforementioned design is the concatenation method between multi-turn dialogues. We previously used [SEP] to connect them directly, whereas they use role tags like [speaker1] and [speaker2] (abbreviated as S1, S2 in the figure) to connect them, and only used a [SEP] at the end to indicate the end of the response. Consequently, because the format of the prediction part is different from the history format, only one response can be trained at a time. Multi-turn dialogues must be split into multiple samples for training, which theoretically increases training complexity (it requires multiple steps to finish training a single multi-turn dialogue sample).</p>
+
+    <p>As for the actual effect, my personal testing feels like there is no significant difference between the two. Interested readers can compare and test for themselves.</p>
+
+    <h2 id="Summary">Summary</h2>
+    <p>This article mainly shared a practice in dialogue modeling. Based on the LCCC chitchat corpus open-sourced by CDial-GPT, we utilized a language model (GPT) to perform generative modeling on multi-turn dialogues, obtaining a relatively general chitchat dialogue model. Finally, the approach of this article was compared with the original models open-sourced by CDial-GPT.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7718.html" style="color: #005fcc;">https://kexue.fm/archives/7718</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

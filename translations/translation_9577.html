@@ -1,0 +1,250 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    tags: 'ams',
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    ignoreHtmlClass: 'tex2jax_ignore',
+    processHtmlClass: 'tex2jax_process'
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article class="tex2jax_process">
+    <h1><a href="https://kexue.fm/archives/9577">The Amazing Effect of the Bias Term: RoPE + Bias = Better Length Extrapolation</a></h1>
+    <p>By 苏剑林 | April 03, 2023</p>
+
+    <p>I never expected that the Bias term could be linked to the length extrapolation of Transformers!</p>
+
+    <p>Length extrapolation is an ideal property we hope Transformers possess. I have systematically introduced this issue in <a href="translation_9431.html">"Transformer Upgrade Road: 7. Length Extrapolation and Local Attention"</a> and <a href="translation_9444.html">"Transformer Upgrade Road: 8. Length Extrapolation and Positional Robustness"</a>. As for the Bias term (offset term), the current mainstream view is that when the model is large enough, the Bias term does not play a special role. Therefore, many models choose to remove the Bias term, with representative examples being Google's <a href="translation_7867.html">T5</a> and <a href="https://papers.cool/arxiv/2204.02311">PaLM</a>. Our subsequent <a href="translation_8998.html">RoFormerV2</a> and <a href="translation_9052.html">GAU-α</a> also followed this practice.</p>
+
+    <p>So, how are these two seemingly "completely unrelated" things connected? Can the Bias term really enhance the length extrapolation of Transformers? Let's dive in.</p>
+
+    <h2>Hidden Easter Egg</h2>
+    <p>First, why think about exploring the connection between the Bias term and length extrapolation? This is because while I was revisiting the GAU paper <a href="https://papers.cool/arxiv/2202.10447">"Transformer Quality in Linear Time"</a> a few days ago, I discovered a "hidden easter egg" that I hadn't noticed before—additive relative position encoding. The pseudo-code is:</p>
+
+    <p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2023/04/307010476.png" alt="Pseudo-code for GAU's additive relative position encoding" /></p>
+    <p style="text-align:center;"><em>Pseudo-code for GAU's additive relative position encoding</em></p>
+
+    <p>Here we mainly look at the part for $n \geq 512$. If written as a formula, it is roughly:
+    \begin{equation}\boldsymbol{q}_m^{\top}\boldsymbol{\mathcal{R}}_m^{\top}\boldsymbol{\mathcal{R}}_n\boldsymbol{k}_n \quad\to\quad \boldsymbol{q}_m^{\top}\boldsymbol{\mathcal{R}}_m^{\top}\boldsymbol{\mathcal{R}}_n\boldsymbol{k}_n+ \boldsymbol{a}^{\top}\boldsymbol{\mathcal{R}}_m^{\top}\boldsymbol{\mathcal{R}}_n\boldsymbol{b}\label{eq:rel-bias}\end{equation}
+    where $\boldsymbol{\mathcal{R}}_m, \boldsymbol{\mathcal{R}}_n$ are the rotation matrices of RoPE, and $\boldsymbol{a}, \boldsymbol{b}$ are two learnable parameters.</p>
+
+    <p>I had noticed this additive relative position encoding before, but my comment at the time was just "I don't understand why several types of position encoding are used simultaneously." Recently, I have been thinking about the length extrapolation problem, so I became sensitive to this form. It can be proved that when $\boldsymbol{a} = \boldsymbol{b} = [\sqrt{\lambda}, 0, \sqrt{\lambda}, 0, \dots, \sqrt{\lambda}, 0]^{\top}$, the result is exactly the <a href="translation_9431.html">Sandwich</a> method introduced in "Transformer Upgrade Road: 7," which can improve length extrapolation. Its principle is that $\boldsymbol{a}^{\top}\boldsymbol{\mathcal{R}}_m^{\top}\boldsymbol{\mathcal{R}}_n\boldsymbol{b}$ exhibits a decreasing trend with respect to $\|m-n\|$. When added to the attention matrix, it serves to localize attention. According to <a href="translation_9431.html">"Transformer Upgrade Road: 7"</a>, attention localization is key to the extrapolation of language models.</p>
+
+    <p>So I couldn't help but guess: could it be that this additive relative position encoding in the original paper was intended to enhance length extrapolation? The authors of GAU were so prescient that they proposed a similar idea to solve the length extrapolation problem long before Sandwich?</p>
+
+    <h2>Replacing with Bias</h2>
+    <p>However, for me, this type of scheme that adds an extra term to the attention matrix to enhance length extrapolation doesn't seem elegant enough. So, regardless of the original author's intention and actual effect, I am not inclined to do it this way. Is there something similar but nearly "unobtrusive"? I considered that if $\boldsymbol{a}$ and $\boldsymbol{b}$ were the Bias terms for $\boldsymbol{q}_m$ and $\boldsymbol{k}_n$ respectively, it might achieve a similar effect. That is, consider:
+    \begin{equation}(\boldsymbol{q}_m + \boldsymbol{a})^{\top}\boldsymbol{\mathcal{R}}_m^{\top}\boldsymbol{\mathcal{R}}_n(\boldsymbol{k}_n + \boldsymbol{b})\end{equation}
+    Obviously, simply adding a Bias term is almost "unobtrusive" in terms of both form and computation. If this could enhance length extrapolation, it would undoubtedly be a very beautiful solution. Is it feasible? Let's look at the expanded result:
+    \begin{equation}\boldsymbol{q}_m^{\top}\boldsymbol{\mathcal{R}}_m^{\top}\boldsymbol{\mathcal{R}}_n\boldsymbol{k}_n + \boldsymbol{a}^{\top}\boldsymbol{\mathcal{R}}_m^{\top}\boldsymbol{\mathcal{R}}_n\boldsymbol{k}_n + \boldsymbol{q}_m^{\top}\boldsymbol{\mathcal{R}}_m^{\top}\boldsymbol{\mathcal{R}}_n\boldsymbol{b} + \boldsymbol{a}^{\top}\boldsymbol{\mathcal{R}}_m^{\top}\boldsymbol{\mathcal{R}}_n\boldsymbol{b} \label{eq:bias}\end{equation}
+    The first and fourth terms correspond exactly to formula $\eqref{eq:rel-bias}$, which are what we want. So we want to see what role the second and third terms play. If they do not have any obvious effect, then the approach of directly adding Bias terms has at least "hope" of achieving extrapolation effects similar to formula $\eqref{eq:rel-bias}$ or Sandwich.</p>
+
+    <p>My reasoning is as follows: as Query and Key for Attention, $\boldsymbol{q}_m$ and $\boldsymbol{k}_n$ should be relatively "isotropic," meaning their directions are fairly uniform, close to uniform sampling on a sphere. $\boldsymbol{\mathcal{R}}_m^{\top}\boldsymbol{\mathcal{R}}_n = \boldsymbol{\mathcal{R}}_{n-m}$ is just an orthogonal transformation; it does not change the isotropic nature of $\boldsymbol{q}_m$ and $\boldsymbol{k}_n$. Thus, the terms $\boldsymbol{a}^{\top}\boldsymbol{\mathcal{R}}_m^{\top}\boldsymbol{\mathcal{R}}_n\boldsymbol{k}_n$ and $\boldsymbol{q}_m^{\top}\boldsymbol{\mathcal{R}}_m^{\top}\boldsymbol{\mathcal{R}}_n\boldsymbol{b}$ are equivalent to the inner product of a vector sampled from an isotropic distribution and a fixed vector. According to our discussion in <a href="translation_7076.html">"Distribution of the angle between two random vectors in n-dimensional space"</a>, the angle between two such vectors should be very close to 90 degrees. In other words, the expectation of this inner product should be 0. Therefore, the effects of the second and third terms should theoretically not be as strong as the remaining two terms.</p>
+
+    <p>Of course, this is just a guess. How it actually trains can only be determined through experiments. So, without further delay, I conducted the experiment.</p>
+
+    <h2>Experimental Results</h2>
+    <p>For this experiment, I chose a language modeling task. The model architecture is still the previous <a href="translation_9052.html">GAU-α</a>. The training length and batch_size are both 512, and the optimizer is <a href="translation_9512.html">Tiger</a>. The only difference between the two models is whether the Bias for Q and K is enabled (other Biases are still removed).</p>
+
+    <p>Comparison of extrapolation effects:
+    $$\begin{array}{c}
+    \text{LM Accuracy at different test lengths} \\
+    {\begin{array}{c|cccc}
+    \hline
+    & 512 & 1024 & 2048 & 4096 \\
+    \hline
+    \text{w/o Bias} & 52.37\% & 33.15\% & 22.85\% & 17.87\% \\
+    \text{w/ Bias} & 52.75\% & 50.99\% & 45.25\% & 39.55\% \\
+    \hline
+    \end{array}}
+    \end{array}$$
+    As can be seen, the Bias term does not really affect the training effect (at 512 length), but it significantly widens the gap in length extrapolation. The seemingly non-existent Bias term actually has such a magical effect! Of course, if the experiment were rerun several times, the extrapolation results might fluctuate significantly, as length extrapolation is a "complimentary" feature and not something we triggered intentionally.</p>
+
+    <p>To verify whether the remaining mechanism is as we guessed, I visualized the patterns of the four terms in formula $\eqref{eq:bias}$ for a certain layer of a single sample:</p>
+
+    <p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2023/04/1049580456.png" alt="Comparison of the four inner product terms after adding Bias" /></p>
+    <p style="text-align:center;"><em>Comparison of the four inner product terms after adding Bias</em></p>
+
+    <p>As can be seen, the 4th term indeed shows an attenuation trend, and its magnitude is dominant. Comparing the superposition of these four terms with the model without Bias:</p>
+
+    <p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2023/04/3990861623.png" alt="Comparison of Attention matrices with and without Bias" /></p>
+    <p style="text-align:center;"><em>Comparison of Attention matrices with and without Bias</em></p>
+
+    <p>In the model without Bias (blue), the Attention indeed shows an attenuation trend within the training length (512), but it increases after the length extends, showing no obvious locality. This is why its extrapolation is not good enough. Conversely, consistent with the previous guess, the attention matrix of the model with the Bias term (orange) shows a more pronounced attenuation trend. In other words, its localization effect is stronger, leading to better extrapolation performance. It should be noted that the model with Bias does not show this obvious attenuation trend in every layer's Attention. Generally speaking, the attenuation trend is more pronounced in the earlier layers and weaker in the later layers, indicating that layers closer to the input focus more on local information, which aligns with the conclusion of <a href="https://papers.cool/arxiv/2210.10340">"The Devil in Linear Transformer"</a>.</p>
+
+    <p><strong>[Note: Later, after repeated testing, it was found that the length extrapolation results in this article are somewhat unstable (potentially closely related to model architecture, hyperparameters, etc.). Please use with discretion.]</strong></p>
+
+    <h2>Further Thoughts</h2>
+    <p>Now the question arises: haven't previous works on length extrapolation already verified that RoPE's extrapolation is not very good? Did they all omit the Bias? To investigate this, I specifically checked: "As expected," the "pioneering work" ALIBI and the recent XPOS did not add the Bias term, while KERPLE and Sandwich did add the Bias term. When I was reading the papers before, I always felt that the extrapolation effect of RoPE in KERPLE and Sandwich seemed better than in ALIBI and XPOS. Now I can be certain this wasn't an illusion. Since both KERPLE and Sandwich added Bias, then according to the conclusion of this article, RoPE is capable of exhibiting better length extrapolation.</p>
+
+    <p>Some readers might recall: didn't we say previously that the Bias for the Key in Attention could be removed? Can it be removed here too? Regarding this question, one can refer to the question on Zhihu <a href="https://www.zhihu.com/question/506218961">"Why do some Vision Transformers not need bias in the Key?"</a>. In fact, the conclusion that "the Bias for the Key can be omitted" applies to Attention without RoPE. Due to the presence of Softmax, the added bias can be canceled out:
+    \begin{equation}\frac{e^{\boldsymbol{q}\cdot(\boldsymbol{k}_n + \boldsymbol{b})}}{\sum\limits_n e^{\boldsymbol{q}\cdot(\boldsymbol{k}_n + \boldsymbol{b})}} = \frac{e^{\boldsymbol{q}\cdot\boldsymbol{k}_n}e^{\boldsymbol{q}\cdot\boldsymbol{b}}}{\sum\limits_n e^{\boldsymbol{q}\cdot\boldsymbol{k}_n} e^{\boldsymbol{q}\cdot\boldsymbol{b}}}= \frac{e^{\boldsymbol{q}\cdot\boldsymbol{k}_n}}{\sum\limits_n e^{\boldsymbol{q}\cdot\boldsymbol{k}_n}}\end{equation}
+    However, this "cancellation" depends on $\boldsymbol{b}$ being independent of $n$. But from formula $\eqref{eq:bias}$, we see that after RoPE, $\boldsymbol{b}$ is effectively a function of $m$ and $n$, and it cannot actually be canceled out. Therefore, for models with RoPE, adding or removing the Bias term will result in different effects.</p>
+
+    <p>Another question is: why go through the trouble of exploring length extrapolation? Can't we just fine-tune the model with longer samples? In fact, even for readers with that thought, length extrapolation is beneficial. Putting aside computational power, better length extrapolation means that during fine-tuning, the gap from pre-training is smaller, making fine-tuning less likely to suffer from catastrophic forgetting. This is even more important for current LLMs. Of course, one can also think further: the most ideal result is that a model trained on short texts can switch to long-text scenarios without a loss in performance, or even with better performance.</p>
+
+    <h2>Summary</h2>
+    <p>In this article, I shared an "unexpected" and interesting conclusion: the Bias term can enhance the length extrapolation of RoPE-based models! A seemingly insignificant Bias term can actually be linked to the length extrapolation of Transformers, reminding us of the importance of details—sometimes minor nuances can play a critical role.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9577.html" style="color: #005fcc;">https://kexue.fm/archives/9577</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

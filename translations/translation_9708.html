@@ -1,0 +1,390 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9708">Transformer Upgrade Road: 12, ReRoPE for Infinite Extrapolation?</a></h1>
+
+<p>By 苏剑林 | August 07, 2023</p>
+
+<p>Since introducing the idea of mixed-base positional bases in <a href="translation_9706.html">"Transformer Upgrade Road: 11, Thinking the Base-β Positional System Through"</a> to further generalize NTK-aware Scaled RoPE, I felt that the effectiveness of similar approaches had reached its upper limit. To achieve more significant improvements, one must find another way. At this point, I recalled a concept I had previously conceived. It was shelved because its complexity was relatively high, but since I have hit a bottleneck, "the only way is the best way," so I decided to revisit it.</p>
+
+<p>Unexpectedly, although this method increases some inference complexity, its experimental results are surprisingly good—it even hints at having infinite length extrapolation capabilities! Therefore, I am eager to share this method in this article. Due to its formal similarity to the ReLU activation function, I have named this method "ReRoPE (Rectified Rotary Position Embeddings)."</p>
+
+<h2>Review</h2>
+
+<p>We know that <a href="translation_8265.html">RoPE</a> is formally an absolute position encoding, but in reality, it brings relative position information to the Attention mechanism, specifically the following <a href="https://en.wikipedia.org/wiki/Toeplitz_matrix">Toeplitz matrix</a>:</p>
+
+\begin{equation}\begin{pmatrix}0 & \\
+1 & 0 & \\
+2 & 1 & 0 &\\
+3 & 2 & 1 & 0 & \\
+\ddots & 3 & 2 & 1 & 0 & \\
+\ddots & \ddots & 3 & 2 & 1 & 0 & \\
+\ddots & \ddots & \ddots & \ddots & \ddots & \ddots & \ddots \\
+\tiny{L - 2} & \ddots & \ddots & \ddots & \ddots & \ddots & \ddots & \ddots \\
+\tiny{L - 1} & \tiny{L - 2} & \ddots & \ddots & \ddots & 3 & 2 & 1 & 0 & \\
+\end{pmatrix}\label{eq:rope}\end{equation}
+
+<p>Here $L$ is the length of the current sample. When $L$ significantly exceeds the training length, the extra positions have not been trained, so performance cannot be guaranteed. This is why direct length extrapolation usually performs poorly.</p>
+
+<p>Later, researchers proposed Position Interpolation (PI), which effectively changes the relative position matrix to:</p>
+
+\begin{equation}\begin{pmatrix}0 & \\
+\frac{1}{k} & 0 & \\
+\frac{2}{k} & \frac{1}{k} & 0 &\\
+\frac{3}{k} & \frac{2}{k} & \frac{1}{k} & 0 & \\
+\ddots & \frac{3}{k} & \frac{2}{k} & \frac{1}{k} & 0 & \\
+\ddots & \ddots & \frac{3}{k} & \frac{2}{k} & \frac{1}{k} & 0 & \\
+\ddots & \ddots & \ddots & \ddots & \ddots & \ddots & \ddots \\
+\tiny{\frac{L-2}{k}} & \ddots & \ddots & \ddots & \ddots & \ddots & \ddots & \ddots \\
+\tiny{\frac{L-1}{k}} & \tiny{\frac{L-1}{k}} & \ddots & \ddots & \ddots & \frac{3}{k} & \frac{2}{k} & \frac{1}{k} & 0 & \\
+\end{pmatrix}\end{equation}
+
+<p>In this way, by adjusting $k$, we can ensure that the maximum relative position does not exceed the training length, thus avoiding extrapolation. However, it makes the positional information more "crowded," so a certain number of fine-tuning steps are required for the model to work again. Since it avoids extrapolation, the number of fine-tuning steps required is much smaller than that for direct extrapolation (neural networks are often better at interpolation than extrapolation).</p>
+
+<p>As for the later proposed NTK-aware Scaled RoPE, it takes an unconventional approach by cleverly spreading the extrapolation pressure across each dimension. Consequently, it yields decent results without fine-tuning. However, it ultimately still relies on extrapolation, which is something neural networks are not good at. Thus, its effectiveness has an upper limit; in my experiments, its Long Context performance could not closely match the training performance.</p>
+
+<h2>Fusion</h2>
+
+<p>We can also examine these methods from the perspective of the locality of language models. Locality refers to the fact that when a language model predicts the next token, it clearly relies more on neighboring tokens. Direct extrapolation maintains locality (position encoding near 0 remains unchanged), but its poor performance is due to the introduction of position encodings exceeding the training length. Position interpolation avoids extrapolating position encodings but disrupts locality (position encodings near 0 are compressed to $1/k$), so it does not work well without fine-tuning. NTK-aware Scaled RoPE implicitly combines the advantages of both through "high-frequency extrapolation and low-frequency interpolation," ensuring locality without significant extrapolation of position encodings, which is why it performs well without fine-tuning.</p>
+
+<p>Is there a more direct way to combine extrapolation and interpolation? Yes, we can set a window size $w$. Within the window, we use a position interval of size $1$, and outside the window, we use a position interval of size $1/k$. The entire relative position matrix is as follows:</p>
+
+\begin{equation}\begin{pmatrix}
+\color{red}{0} & \\
+\color{red}{1} & \color{red}{0} & \\
+\color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{red}{\tiny{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{w} & \color{red}{\tiny{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\tiny{w + \frac{1}{k}}} & \color{green}{w} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\tiny{w + \frac{2}{k}}} & \color{green}{\tiny{w + \frac{1}{k}}} & \color{green}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\ddots} & \color{green}{\tiny{w + \frac{2}{k}}} & \color{green}{\ddots} & \color{green}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \\
+\color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\tiny{w + \frac{2}{k}}} & \color{green}{\tiny{w + \frac{1}{k}}} & \color{green}{w} & \color{red}{\tiny{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\tiny{w + \frac{L-1-w}{k}}} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\tiny{w + \frac{2}{k}}} & \color{green}{\tiny{w + \frac{1}{k}}} & \color{green}{w} & \color{red}{\tiny{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\end{pmatrix}\label{eq:leaky-rerope}\end{equation}
+
+<p>As long as $w$ is smaller than the training length, by controlling $k$, we can satisfy the premise of precisely maintaining locality while ensuring that all position encodings do not exceed the training length. This simply and directly combines direct extrapolation and position interpolation.</p>
+
+<p>In particular, matrix $\eqref{eq:leaky-rerope}$ has a special case: when $k \to \infty$, it simplifies to:</p>
+
+\begin{equation}\begin{pmatrix}
+\color{red}{0} & \\
+\color{red}{1} & \color{red}{0} & \\
+\color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{red}{\tiny{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{w} & \color{red}{\tiny{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{w} & \color{green}{w} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{w} & \color{green}{w} & \color{green}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\ddots} & \color{green}{w} & \color{green}{\ddots} & \color{green}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \\
+\color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{w} & \color{green}{w} & \color{green}{w} & \color{red}{\tiny{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{w} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{w} & \color{green}{w} & \color{green}{w} & \color{red}{\tiny{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\end{pmatrix}\label{eq:rerope}\end{equation}
+
+<p>In this case, no matter what the input length is, the range of its position encoding does not exceed $w$. Therefore, this is a potential solution that can support Context of any length!</p>
+
+<p>Formally, the relationship between matrices $\eqref{eq:rerope}$, $\eqref{eq:leaky-rerope}$ and the standard RoPE matrix $\eqref{eq:rope}$ is equivalent to the relationship between ReLU, Leaky ReLU and Linear functions. Therefore, I call $\eqref{eq:rerope}$ "ReRoPE (Rectified RoPE)" and $\eqref{eq:leaky-rerope}$ "Leaky ReRoPE."</p>
+
+<h2>Calculation</h2>
+
+<p>In fact, similar ideas are not difficult to conceive. Relative position encodings based on Attention Bias (such as <a href="https://kexue.fm/archives/8130#%E7%BB%8F%E5%85%B8%E5%BC%8F">classic relative position encoding</a> or <a href="https://kexue.fm/archives/8130#T5%E5%BC%8F">T5 position encoding</a>) often involve such block-wise operations. However, unlike these, implementing such block-wise operations in RoPE significantly increases the computational load, which is the main reason I previously shelved this idea.</p>
+
+<p>How do we understand the increased computation? We know that RoPE "achieves relative position through absolute position," but this can only result in linear relative positions. Since matrices $\eqref{eq:leaky-rerope}$ and $\eqref{eq:rerope}$ are nonlinear (or piecewise linear), to implement them, one must calculate the Attention matrix twice and then combine them. Specifically, first calculate the Attention matrix once using standard RoPE (before Softmax):</p>
+
+\begin{equation}a_{i,j}^{(1)} = \left(\boldsymbol{\mathcal{R}}^i\boldsymbol{q}_i\right)^{\top}\left(\boldsymbol{\mathcal{R}}^j\boldsymbol{k}_j\right) = \boldsymbol{q}_i^{\top}\boldsymbol{\mathcal{R}}^{j-i}\boldsymbol{k}_j\end{equation}
+
+<p>Here, the first equal sign represents the implementation method, and the second represents the equivalent result, where $\boldsymbol{\mathcal{R}}$ is the rotation matrix of RoPE; for simplicity, we omit the scale factor of Attention. Next, we need to calculate the Attention matrix with a RoPE interval of $1/k$ (Leaky ReRoPE):</p>
+
+\begin{equation}a_{i,j}^{(2)} = \left(\boldsymbol{\mathcal{R}}^{(i-w)/k+w}\boldsymbol{q}_i\right)^{\top}\left(\boldsymbol{\mathcal{R}}^{j/k}\boldsymbol{k}_j\right) = \boldsymbol{q}_i^{\top}\boldsymbol{\mathcal{R}}^{(j-i+w)/k-w}\boldsymbol{k}_j\end{equation}
+
+<p>If it is ReRoPE, it is simpler:</p>
+
+\begin{equation}a_{i,j}^{(2)} = \left(\boldsymbol{\mathcal{R}}^w\boldsymbol{q}_i\right)^{\top}\boldsymbol{k}_j = \boldsymbol{q}_i^{\top}\boldsymbol{\mathcal{R}}^w\boldsymbol{k}_j\end{equation}
+
+<p>Finally, we merge them based on the condition $i - j < w$:</p>
+
+\begin{equation}a_{i,j} = \left\{\begin{aligned}
+&a_{i,j}^{(1)}, \quad (i - j < w) \\[8pt] &a_{i,j}^{(2)}, \quad (i - j \geq w)
+\end{aligned}\right.\end{equation}
+
+<p>Whether it is ReRoPE or Leaky ReRoPE, calculating the Attention matrix twice is unavoidable (if there is a more efficient implementation, please let me know), which is one of the increased computational costs. Furthermore, the need for custom Attention matrix calculations means that existing flash attention implementations cannot be directly applied, thereby further increasing the computational cost relatively.</p>
+
+<p>On the other hand, also due to the nonlinear relative positions, in auto-regressive decoding, the Key sequence cache can only store pre-RoPE values, and then the corresponding RoPE is applied to the entire Key sequence at each decoding step. This change also increases the inference calculation. The only good news is that during token-by-token decoding, starting from the second step, the Query sequence length is 1. At this point, by customizing the RoPE for the Key sequence, the Attention matrix only needs to be calculated once:</p>
+
+\begin{equation}a_{i,j} = \left\{\begin{aligned}
+&\boldsymbol{q}_i^{\top}\left(\boldsymbol{\mathcal{R}}^{\max(j-i,-w)}\boldsymbol{k}_j\right), \quad(\text{ReRoPE})\\[8pt]
+&\boldsymbol{q}_i^{\top}\left(\boldsymbol{\mathcal{R}}^{\max(j-i,(j-i+w)/k-w)}\boldsymbol{k}_j\right), \quad(\text{Leaky ReRoPE})
+\end{aligned}\right.\end{equation}
+
+<h2>Experiments</h2>
+
+<p>Continuing the setup from <a href="translation_9706.html">"Transformer Upgrade Road: 11, Thinking the Base-β Positional System Through"</a>, we conducted experiments on ReRoPE. The results are shown in the table below:</p>
+
+\[\begin{array}{c|cc}
+\hline
+\text{Testing Length} & 512(\text{Training}) & 4096(\text{Repeated}) & 4096(\text{Non-repeated})\\
+\hline
+\text{Baseline} & 49.41\% & 24.17\% & 23.16\% \\
+\text{Baseline-}\log n & 49.40\% & 24.60\% & 24.02\% \\
+\hline
+\text{PI-RoPE} & 49.41\% & 15.04\% & 13.54\% \\
+\text{PI-RoPE-}\log n & 49.40\% & 14.99\% & 16.51\% \\
+\hline
+\text{NTK-RoPE-old} & 49.41\% & 51.28\% & 39.27\% \\
+\text{NTK-RoPE-}\log n\text{-old} & 49.40\% & 61.71\% & 43.75\% \\
+\hline
+\text{NTK-RoPE-fixed} & 49.41\% & 51.86\% & 39.61\% \\
+\text{NTK-RoPE-}\log n^{\color{red}{\dagger}}\text{-fixed} & 49.41\% & 55.94\% & 41.11\% \\
+\text{NTK-RoPE-}\log n\text{-fixed} & 49.40\% & 62.85\% & 44.14\% \\
+\text{NTK-RoPE-mixed} & 49.41\% & 53.09\% & 40.12\% \\
+\text{NTK-RoPE-}\log n^{\color{red}{\dagger}}\text{-mixed} & 49.41\% & 59.11\% & 42.38\% \\
+\text{NTK-RoPE-}\log n\text{-mixed} & 49.40\% & 68.91\% & 45.41\% \\
+\hline
+\text{ReRoPE-w256} & 49.41\% & 77.90\% & 48.48\% \\
+\text{ReRoPE-w256-}\log n^{\color{red}{\dagger}} & 49.41\% & 82.40\% & 48.85\% \\
+\text{ReRoPE-w256-}\log n & 49.40\% & \boldsymbol{85.12\%} & \boldsymbol{49.07\%} \\
+\hline
+\text{HFWA} & 48.70\% & 80.84\% & 48.15\% \\
+\hline
+\end{array}\]
+
+<p>As mentioned at the beginning of the article, the effect of extrapolation with ReRoPE without fine-tuning is surprisingly good. Not only does it significantly surpass the previous optimal NTK-RoPE-mixed, it even significantly exceeds <a href="translation_9603.html">HFWA</a> which was pre-trained from scratch! Here, $\text{w256}$ refers to $w=256$. $\log n^{\color{red}{\dagger}}$ means that the pre-training did not involve $\log n$ scaling (like Llama), but in the testing stage, each $\boldsymbol{q}_n$ is multiplied by $\max(1, \log_{\text{maxlen}} n)$. $\log n$ refers to the case where the $\log n$ scaling factor was already included during pre-training.</p>
+
+<p>Below are some ablation experiments, showing that ReRoPE is quite robust concerning $w$. The optimal value is roughly between $1/4$ and $1/2$ of the training length:</p>
+
+\[\begin{array}{c|cc}
+\hline
+\text{Testing Length} & 512(\text{Training}) & 4096(\text{Repeated}) & 4096(\text{Non-repeated})\\
+\hline
+\text{ReRoPE-w64} & 49.41\% & 69.39\% & 45.19\% \\
+\text{ReRoPE-w64-}\log n^{\color{red}{\dagger}} & 49.41\% & 78.58\% & 47.42\% \\
+\text{ReRoPE-w64-}\log n & 49.40\% & 84.38\% & 48.14\% \\
+\hline
+\text{ReRoPE-w128} & 49.41\% & 76.11\% & 47.82\% \\
+\text{ReRoPE-w128-}\log n^{\color{red}{\dagger}} & 49.41\% & 82.28\% & 48.78\% \\
+\text{ReRoPE-w128-}\log n & 49.40\% & \boldsymbol{85.47\%} & 48.87\% \\
+\hline
+\text{ReRoPE-w256} & 49.41\% & 77.90\% & 48.48\% \\
+\text{ReRoPE-w256-}\log n^{\color{red}{\dagger}} & 49.41\% & 82.40\% & 48.85\% \\
+\text{ReRoPE-w256-}\log n & 49.40\% & 85.12\% & \boldsymbol{49.07\%} \\
+\hline
+\text{ReRoPE-w384} & 49.41\% & 70.72\% & 48.15\% \\
+\text{ReRoPE-w384-}\log n^{\color{red}{\dagger}} & 49.41\% & 76.42\% & 48.31\% \\
+\text{ReRoPE-w384-}\log n & 49.40\% & 83.24\% & 48.62\% \\
+\hline
+\text{ReRoPE-w512} & 49.41\% & 7.09\% & 8.25\% \\
+\text{ReRoPE-w512-}\log n^{\color{red}{\dagger}} & 49.41\% & 7.08\% & 8.25\% \\
+\text{ReRoPE-w512-}\log n & 49.40\% & 15.84\% & 10.83\% \\
+\hline
+\end{array}\]
+
+<p>The table below compares ReRoPE and Leaky ReRoPE:</p>
+
+\[\begin{array}{c|cc}
+\hline
+\text{Testing Length} & 512(\text{Training}) & 4096(\text{Repeated}) & 4096(\text{Non-repeated})\\
+\hline
+\text{ReRoPE-w128-}\log n & 49.40\% & \boldsymbol{85.47\%} & 48.87\% \\
+\text{Leaky ReRoPE-w128-k64-}\log n & 49.40\% & 85.29\% & 48.96\% \\
+\text{Leaky ReRoPE-w128-k32--}\log n & 49.40\% & 85.31\% & 49.03\% \\
+\text{Leaky ReRoPE-w128-k16-}\log n & 49.40\% & 85.15\% & \boldsymbol{49.10\%} \\
+\text{Leaky ReRoPE-w128-k8-}\log n & 49.40\% & 80.00\% & 48.11\% \\
+\hline
+\text{ReRoPE-w256-}\log n & 49.40\% & 85.12\% & 49.07\% \\
+\text{Leaky ReRoPE-w256-k64-}\log n & 49.40\% & 84.60\% & 49.03\% \\
+\text{Leaky ReRoPE-w256-k32-}\log n & 49.40\% & 84.30\% & 48.97\% \\
+\text{Leaky ReRoPE-w256-k16-}\log n & 49.40\% & 83.59\% & 48.87\% \\
+\text{Leaky ReRoPE-w256-k8-}\log n & 49.40\% & 69.80\% & 45.72\% \\
+\hline
+\end{array}\]
+
+<p>As a generalization of ReRoPE, finely tuned Leaky ReRoPE has a chance to outperform ReRoPE, but the improvement is very slight. Furthermore, when $k$ takes a finite value, the maximum length it can handle is also finite. Since we cannot know the total length to be generated in advance, we can only preset a sufficiently large $k$. However, after setting it to a finite value, when the input is long enough, the effect will drop significantly because the position encoding exceeds the training length. In contrast, ReRoPE does not have this risk. In general, the value of finely tuning Leaky ReRoPE over ReRoPE seems small.</p>
+
+<p>The experimental results above were only tested on a GAU model with 100 million parameters. Below are the testing results based on llama2-13b (the metric is loss, lower is better), which represents the performance of real LLMs:</p>
+
+\[\begin{array}{c|cc}
+\hline
+\text{Testing Length} & 4096(\text{Training}) & 8192 & 16384\\
+\hline
+\text{RoPE} & 1.4967 & 8.8615 & \text{-} \\
+\text{NTK-RoPE} & 1.6081 & 1.5417 & 1.5163 \\
+\text{ReRoPE} & 1.4996 & 1.4267 & 1.4001 \\
+\hline
+\end{array}\]
+
+<p>It can be seen that ReRoPE truly achieves almost no loss in training performance (RoPE-4096 represents the training effect) and satisfies the ideal characteristic of "longer context, lower loss" (more context should be more helpful for prediction). Additionally, I have also tested chat performance with the Llama2-13b fine-tuned model open-sourced by OpenBuddy, and I personally feel it is quite good (tested up to contexts of 20k tokens).</p>
+
+<p>Finally, I am sharing the code for my implementation of ReRoPE and Leaky ReRoPE based on the transformers Llama model. Readers can also load the Llama series models for their own testing:</p>
+
+<blockquote><strong>Github: <a href="https://github.com/bojone/rerope">https://github.com/bojone/rerope</a></strong></blockquote>
+
+<h2>Summary</h2>
+
+<p>In this article, I proposed ReRoPE (Rectified RoPE), which is another post-processing solution for RoPE. Experimental results show that its extrapolation ability without fine-tuning not only significantly surpasses the previous NTK-aware Scaled RoPE but even exceeds the specially designed HFWA that requires training from scratch. Furthermore, unlike NTK-aware Scaled RoPE whose capability drops significantly after exceeding a certain length, ReRoPE seems to perform well at any length. In addition to the comparative experiments, the article provides a reference implementation based on transformers-llama for interested readers to test themselves.</p>
+
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9708.html" style="color: #005fcc;">https://kexue.fm/archives/9708</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

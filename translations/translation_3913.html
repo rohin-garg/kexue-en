@@ -1,0 +1,275 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['base', 'ams', 'noerrors', 'noundefined']}
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/3913">[Chinese Segmentation Series] 2. New Word Discovery Based on Segmentation</a></h1>
+
+<p>By 苏剑林 | August 18, 2016</p>
+
+<p>The <a href="translation_3908.html">previous article</a> discussed fast segmentation based on dictionaries and AC automata. Dictionary-based segmentation has a distinct advantage: it is easy to maintain and adapts well to specific fields. If migrating to a new domain, one only needs to add new words corresponding to that field to achieve better results. Of course, whether a high-quality, domain-adapted dictionary is easy to obtain depends on the specific situation. This article focuses on the discovery of new words.</p>
+
+<p>This topic was previously discussed in last year's article <a href="translation_3491.html">"Information Entropy Methods and Implementation of New Word Discovery"</a>. The algorithm was derived from matrix67's article <a href="http://www.matrix67.com/blog/archives/5044">"Sociolinguistics in the Internet Era: SNS-Based Text Data Mining"</a>. In that article, three main indicators were used—frequency, cohesion (which, after taking the logarithm, is what we call Pointwise Mutual Information), and freedom (boundary entropy)—to judge whether a snippet constitutes a word. If you have actually tried to implement this algorithm, you will find several difficulties. First, to find $n$-character words, you need to extract slices of $1 \sim n$ characters and perform calculations on each, which is time-consuming when $n$ is large. Second, and most painfully, calculating boundary entropy requires grouping and statistics for every snippet, which involves a massive workload. This article provides a solution that significantly reduces the computational cost of new word discovery.</p>
+
+<h3>Algorithm <a id="算法" href="#算法">#</a></h3>
+
+<p>Reviewing the process of new word discovery in matrix67's algorithm, we can recognize that what new word discovery does is judge whether a given snippet is truly a word based on the corpus. A so-called "word" is something that is relatively independent and indivisible. <strong>So, why not do the opposite? Why don't we try to find which snippets cannot form a word? According to the previous logic, we say a snippet might be a word when its cohesion is above a certain threshold (then we consider its boundary entropy). Doesn't this imply that if the cohesion of a snippet is below a certain threshold, it is impossible for it to be a word? Therefore, we can simply break it apart in the original corpus.</strong></p>
+
+<p>We can make an appropriate simplification. If $a, b$ are two adjacent characters in the corpus, we can count the number of times the pair $(a,b)$ appears as $\#(a,b)$, and then estimate its frequency $P(a,b)$. We then separately count the occurrences of $a$ and $b$ as $\#a, \#b$ and estimate their frequencies $P(a), P(b)$. If</p>
+$$\frac{P(a,b)}{P(a)P(b)} < \alpha \quad (\alpha \text{ is a given threshold greater than 1})$$
+<p>then we should split these two characters in the original corpus. This operation is essentially performing a preliminary segmentation on the original corpus based on this indicator! After completing this preliminary segmentation, we can count word frequencies and then filter them based on those frequencies.</p>
+
+<p><strong>Comparing this to the three indicators in matrix67's article, we are now only using two: frequency and cohesion. We have removed the most computationally expensive one—boundary entropy. Furthermore, when calculating cohesion, we only need to calculate it for two-character snippets, skipping cohesion calculations for longer snippets. However, because we are using a segmentation-based approach, we significantly reduce the workload, while theoretically being able to obtain words of any length!</strong></p>
+
+<h3>Implementation <a id="实现" href="#实现">#</a></h3>
+
+<p>It sounds perfect—less computation, more power. How is the actual performance? How much does it differ from the results of matrix67's algorithm? One has to try it to find out. I experimented with 300,000 WeChat public account articles (about 1GB), and the results were satisfactory, taking about 10 minutes. Below is the implementation code. It is very short, pure Python, requires no third-party libraries, and is very memory-friendly. Here, <code>texts</code> can be a list or an iterator (returning one article at a time). Combined with the <code>tqdm</code> library, progress can be easily displayed. Finally, during statistics, a $\gamma$ smoothing method is used to mitigate the occurrence of unreasonable words. Previously, for these statistical calculations, I would use Pandas without a second thought, but lately, I’ve tried some native Python libraries and found them quite useful too~</p>
+
+<pre><code>import pymongo
+
+db = pymongo.MongoClient().baike.items
+def texts():
+    for a in db.find(no_cursor_timeout=True).limit(1000000):
+        yield a['content']
+
+from collections import defaultdict # defaultdict is a wrapped dict allowing default values
+from tqdm import tqdm # tqdm is an easy-to-use library for progress bars
+from math import log
+import re
+
+class Find_Words:
+    def __init__(self, min_count=10, min_pmi=0):
+        self.min_count = min_count
+        self.min_pmi = min_pmi
+        self.chars, self.pairs = defaultdict(int), defaultdict(int) 
+        # If key doesn't exist, use int() which defaults to 0
+        self.total = 0.
+    def text_filter(self, texts): 
+        # Pre-split sentences to avoid too many meaningless (non-Chinese/English/digit) strings
+        for a in tqdm(texts):
+            for t in re.split(u'[^\u4e00-\u9fa50-9a-zA-Z]+', a): 
+                # This regex matches any non-Chinese, non-English, 
+                # non-digit character, splitting the sentence by them.
+                if t:
+                    yield t
+    def count(self, texts): # Counting function: single characters and adjacent character pairs
+        for text in self.text_filter(texts):
+            self.chars[text[0]] += 1
+            for i in range(len(text)-1):
+                self.chars[text[i+1]] += 1
+                self.pairs[text[i:i+2]] += 1
+            self.total += 1
+        self.chars = {i:j for i,j in self.chars.items() if j >= self.min_count} # Filter by min frequency
+        self.pairs = {i:j for i,j in self.pairs.items() if j >= self.min_count} # Filter by min frequency
+        self.strong_segments = set()
+        for i,j in self.pairs.items(): # Find "closely related" neighbors based on mutual information
+            _ = log(self.total*j/(self.chars[i[0]]*self.chars[i[1]]))
+            if _ >= self.min_pmi:
+                self.strong_segments.add(i)
+    def find_words(self, texts): # Discover words based on the results above
+        self.words = defaultdict(int)
+        for text in self.text_filter(texts):
+            s = text[0]
+            for i in range(len(text)-1):
+                if text[i:i+2] in self.strong_segments: # If "close", don't split
+                    s += text[i+1]
+                else:
+                    self.words[s] += 1 # Otherwise split, count the preceding snippet as a word
+                    s = text[i+1]
+            self.words[s] += 1 # Count the last "word" of the sentence
+        self.words = {i:j for i,j in self.words.items() if j >= self.min_count} # Final frequency filter
+
+fw = Find_Words(16, 1)
+fw.count(texts())
+fw.find_words(texts())
+
+import pandas as pd
+words = pd.Series(fw.words).sort_values(ascending=False)
+</code></pre>
+
+<p>Reference code for streaming SQL data in Python:</p>
+
+<pre><code>from sqlalchemy import *
+
+def sql_data_generator():
+    db = create_engine('mysql+pymysql://user:password@123.456.789.123/yourdatabase?charset=utf8')
+    result = db.execution_options(stream_results=True).execute(text('select content from articles'))
+    for t in result:
+        yield t[0]
+</code></pre>
+
+<h3>Analysis <a id="分析" href="#分析">#</a></h3>
+
+<p>Of course, this algorithm is not without its flaws; there are still issues worth discussing. Generally, to obtain finer-grained words (and avoid extracting too many invalid long words), we can choose a larger $\alpha$, such as $\alpha=10$. However, this introduces a problem: the cohesion between adjacent characters in a word is not necessarily very high. A typical example is "共和国" (Republic). Both "和" and "国" are very frequent characters. The cohesion between "和国" is not high (around 3 in WeChat text). If $\alpha$ is too large, it might lead to incorrectly splitting this word (in fact, the cohesion between "共和" and "国" is high). There are many such examples, like "林心如" (Ruby Lin), where the cohesion of "心如" is not very high (unless, of course, the corpus comes from the entertainment industry). Conversely, if $\alpha=1$ is set, a larger corpus is required to make the dictionary comprehensive. This is something that needs careful consideration when using this algorithm.</p>
+
+<h3>WeChat Dictionary <a id="微信词典" href="#微信词典">#</a></h3>
+
+<p>Finally, I am sharing a word list I extracted from approximately 300,000 recent WeChat public account articles (about 1GB, over 300 million characters), with the minimum cohesion set to 1 and the minimum frequency set to 100. From the table, you can see that words clearly related to WeChat have been extracted. Furthermore, since these are recent articles, hot topics—such as the Olympics and Wang Baoqiang—have also been captured.</p>
+
+<p><strong>WeChat Dictionary: <a href="https://kexue.fm/usr/uploads/2016/08/627400080.txt">dict.txt</a></strong></p>
+
+<h3>Reference Links <a id="参考链接" href="#参考链接">#</a></h3>
+
+<p>"Non-mainstream Natural Language Processing—Forgetting Algorithm Series (2): Large-scale Corpus Dictionary Generation": <a href="http://www.52nlp.cn/forgetnlp2">http://www.52nlp.cn/forgetnlp2</a></p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_3913.html" style="color: #005fcc;">https://kexue.fm/archives/3913</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

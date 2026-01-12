@@ -1,0 +1,297 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9783">Mind-Bending: Nonlinear RNNs Can Actually Be Computed in Parallel?</a></h1>
+
+<p>By 苏剑林 | September 26, 2023</p>
+
+<p>In recent years, linear RNNs have attracted significant attention from researchers (such as in my previous post <a href="translation_9554.html">"Google's New Work Attempts to 'Resurrect' RNN: Can RNNs Shine Again?"</a>) due to their ability to be trained in parallel and their constant inference cost. This gives RNNs "a foothold" even in the current trend where Transformers are blooming everywhere. However, at present, it seems this "foothold" belongs only to linear RNNs, as nonlinear RNNs cannot be trained efficiently in parallel, making them "unable to keep up" in the architecture wars.</p>
+
+<p>However, a paper titled <a href="https://papers.cool/arxiv/2309.12252">"Parallelizing Non-Linear Sequential Models over the Sequence Length"</a> takes a different view. It proposes an iterative algorithm that claims to achieve parallel training for nonlinear RNNs! Is it really that magical? Let's take a closer look.</p>
+
+<h2>Finding Fixed Points</h2>
+
+<p>The original paper presents its method in a very general way, focusing primarily on PDEs and ODEs. Here, we will start directly with RNNs. Consider a common simple nonlinear RNN:</p>
+
+\begin{equation}x_t = \tanh(Ax_{t-1} + u_t)\label{eq:rnn}\end{equation}
+
+<p>Due to the presence of $\tanh$, it can only be computed serially. Now, let's subtract $Ax_{t-1}$ from both sides:</p>
+
+\begin{equation}x_t - Ax_{t-1} = \tanh(Ax_{t-1} + u_t) - Ax_{t-1}\end{equation}
+
+<p>Of course, this does not change the essence of it being a nonlinear RNN. However, we can find that if the $x_{t-1}$ on the right side were replaced by a given vector like $u_t$, it would become a linear RNN. According to the results in <a href="translation_9554.html">"Google's New Work Attempts to 'Resurrect' RNN: Can RNNs Shine Again?"</a>, it could then be computed in parallel. At this point, quick-witted readers might have already guessed the next step—iterative solving!</p>
+
+<p>First, modify the above RNN to:</p>
+
+\begin{equation}x_t^{(n)} - Ax_{t-1}^{(n)} = \tanh(Ax_{t-1}^{(n-1)} + u_t) - Ax_{t-1}^{(n-1)}\label{eq:rnn-iter}\end{equation}
+
+<p>Starting from a given $x_t^{(0)}$, repeatedly iterate the above equation. Ideally, it will converge to a fixed point $x_t^*$, which is the original calculation result of the nonlinear RNN. Theoretically, the total amount of computation for iteration through formula $\eqref{eq:rnn-iter}$ is larger than directly calculating recursively through formula $\eqref{eq:rnn}$. However, since each step of the iteration is a parallelizable linear RNN, and if the convergence speed is relatively fast such that the number of iteration steps is not too many, the total time consumption is usually faster than direct nonlinear RNN recursion (especially when the sequence length is very large).</p>
+
+<h2>Simplified Form</h2>
+
+<p>In fact, the slowness of nonlinear RNNs is only secondary to their inability to be computed in parallel. The most crucial factor is that they contain a large number of non-element-wise operations, such as the matrix multiplication $Ax_{t-1}$ inside the $\tanh$ in formula $\eqref{eq:rnn}$. Linear RNNs are fast not only because they allow parallel training but, more importantly, because they can be diagonalized to transform matrix multiplication into element-wise multiplication—for element-wise multiplication, even serial calculation is not too slow.</p>
+
+<p>When we transform the nonlinear RNN into an iteration of linear RNNs through formula $\eqref{eq:rnn-iter}$, we also enjoy the "treatment" of being able to diagonalize the linear RNN, thereby increasing calculation speed. Specifically, diagonalize $A$ into $P\Lambda P^{-1}$ in the complex field, and formula $\eqref{eq:rnn-iter}$ becomes:</p>
+
+\begin{equation}x_t^{(n)} - P\Lambda P^{-1} x_{t-1}^{(n)} = \tanh(P\Lambda P^{-1} x_{t-1}^{(n-1)} + u_t) - P\Lambda P^{-1} x_{t-1}^{(n-1)}\end{equation}
+
+<p>Multiply both sides by $P^{-1}$ from the left:</p>
+
+\begin{equation}P^{-1} x_t^{(n)} - \Lambda P^{-1} x_{t-1}^{(n)} = P^{-1}\tanh(P\Lambda P^{-1} x_{t-1}^{(n-1)} + u_t) - \Lambda P^{-1} x_{t-1}^{(n-1)}\end{equation}
+
+<p>Let $y_t = P^{-1} x_t$, then the above equation can be simplified to:</p>
+
+\begin{equation}y_t^{(n)} - \Lambda y_{t-1}^{(n)} = P^{-1}\tanh(P\Lambda y_{t-1}^{(n-1)} + u_t) - \Lambda y_{t-1}^{(n-1)}\end{equation}
+
+<p>Since an RNN is generally followed by a projection layer, the $P$ in $x_t = P y_t$ can theoretically be merged into the external projection layer. That is to say, the above equation theoretically possesses the same expressive power as the original $\eqref{eq:rnn}$. However, because $\Lambda$ is a diagonal matrix, the recursive calculation load is significantly reduced. The above equation also features an inverse matrix $P^{-1}$, which is not only computationally heavy but also unfavorable for optimization. Therefore, we might as well replace $P^{-1}$ and $P\Lambda$ with two unrelated parameter matrices:</p>
+
+\begin{equation}y_t^{(n)} - \Lambda y_{t-1}^{(n)} = P\tanh(Q y_{t-1}^{(n-1)} + u_t) - \Lambda y_{t-1}^{(n-1)}\end{equation}
+
+<p>As long as the initialization satisfies $PQ=\Lambda$.</p>
+
+<h2>The Idea of Perturbation</h2>
+
+<p>Assuming $x_t^{(0)}=0$, formula $\eqref{eq:rnn-iter}$ actually decomposes the original nonlinear RNN into a series of linear RNNs:</p>
+
+\begin{equation}\begin{array}{c}
+x_t^{(1)} - Ax_{t-1}^{(1)} = \tanh(u_t)\\
+x_t^{(2)} - Ax_{t-1}^{(2)} = \tanh(Ax_{t-1}^{(1)} + u_t) - Ax_{t-1}^{(1)} \\
+\vdots \\
+x_t^{(n)} - Ax_{t-1}^{(n)} = \tanh(Ax_{t-1}^{(n-1)} + u_t) - Ax_{t-1}^{(n-1)} \\
+\vdots \\
+\end{array}\label{eq:rnns}\end{equation}
+
+<p>Assuming $x_{t-1}, u_t$ are small quantities, applying $\tanh x \approx x$ to the right side of formula $\eqref{eq:rnn}$ gives:</p>
+
+\begin{equation}x_t = \tanh(Ax_{t-1} + u_t) \approx Ax_{t-1} + u_t \approx Ax_{t-1} + \tanh(u_t)\label{eq:rnn-approx}\end{equation}
+
+<p>This is exactly the first equation in $\eqref{eq:rnns}$. Therefore, if the assumption holds, $x_t^{(1)}$ might already be sufficiently close to the ideal $x_t^*$, and each subsequent iteration quickly approaches it. From this, we can see that "subtracting $Ax_{t-1}$ from both sides" is the key. It makes the first step of iteration in $\eqref{eq:rnn-iter}$ close to the first-order linear approximation of the original nonlinear RNN, which increases the convergence speed. This is a classic operation in mathematical physics called "<a href="https://kexue.fm/tag/%E6%91%84%E5%8A%A8/">perturbation</a>".</p>
+
+<h2>Speeding Up Convergence</h2>
+
+<p>According to the principles of perturbation theory, the key to increasing convergence speed is to improve the accuracy of the approximate expansion. For example, a simpler improvement is to assume only $x_{t-1}$ is small. Then, according to the first-order Taylor expansion (with $u_t$ as a column vector and $\circ$ representing the Hadamard product):</p>
+
+\begin{equation}x_t = \tanh(Ax_{t-1} + u_t) \approx \tanh(u_t) + (\text{sech}^2 u_t\circ A)x_{t-1}\end{equation}
+
+<p>The resulting improvement to formula $\eqref{eq:rnn-iter}$ is:</p>
+
+\begin{equation}x_t^{(n)} - A_t x_{t-1}^{(n)} = \tanh(Ax_{t-1}^{(n-1)} + u_t) - A_t x_{t-1}^{(n-1)}\label{eq:iter-plus1}\end{equation}
+
+<p>where $A_t = \text{sech}^2 u_t\circ A$. A more refined improvement is to expand at each iteration step based on the results of the previous iteration:</p>
+
+\begin{equation}\begin{aligned}
+x_t =&\, \tanh(Ax_{t-1} + u_t) \\
+\approx&\, \tanh(Ax_{t-1}^{(n-1)} + u_t) + (\text{sech}^2 (Ax_{t-1}^{(n-1)} + u_t)\circ A)(x_{t-1} - x_{t-1}^{(n-1)})
+\end{aligned}\end{equation}
+
+<p>So formula $\eqref{eq:rnn-iter}$ becomes:</p>
+
+\begin{equation}x_t^{(n)} - A_t^{(n)} x_{t-1}^{(n)} = \tanh(Ax_{t-1}^{(n-1)} + u_t) - A_t^{(n)} x_{t-1}^{(n-1)}\label{eq:iter-plus2}\end{equation}
+
+<p>where $A_t^{(n)}=\text{sech}^2 (Ax_{t-1}^{(n-1)} + u_t)\circ A$. This final iterative format is essentially "<a href="https://en.wikipedia.org/wiki/Newton%27s_method">Newton's method</a>" for solving numerical equations, and it possesses quadratic convergence speed.</p>
+
+<h2>Why Converge?</h2>
+
+<p>Theoretically, the two improvements in $\eqref{eq:iter-plus1}$ and $\eqref{eq:iter-plus2}$ can indeed increase the convergence speed. However, they make the matrix $A$ in each step of the linear recursion dependent on $t$ or even $n$. This significantly increases the complexity of parallelization and prevents the use of the diagonalization trick from the "Simplified Form" section for acceleration. On the other hand, if we maintain an iterative format like $\eqref{eq:rnn-iter}$, although there are many efficiency benefits, convergence cannot be guaranteed very well.</p>
+
+<p>Is the contradiction between these two really irreconcilable? In fact, from my point of view, the most direct approach is to "stop worrying about it." After deriving $\eqref{eq:rnn-iter}$ with the help of nonlinear RNNs, just forget the original nonlinear RNN and treat formula $\eqref{eq:rnn-iter}$ as the basic model. That is to say, why worry whether formula $\eqref{eq:rnn-iter}$ will converge to the original nonlinear RNN? Wouldn't it be better to just treat it as a new starting point? Whatever result gradient descent learns is the result. If gradient descent doesn't learn a result that converges to the original nonlinear RNN, it simply means that not converging to the original RNN is more suitable.</p>
+
+<p>Once you cast off this layer of thinking, many problems become clear. First, even if formula $\eqref{eq:iter-plus2}$ has a very good convergence speed in theory, it is conditional, and in the context of deep learning, ensuring these conditions would be very luxurious. In other words, even the convergence of formula $\eqref{eq:iter-plus2}$ is not absolutely guaranteed, so why "be the pot calling the kettle black" by criticizing formula $\eqref{eq:rnn-iter}$? Secondly, after treating formula $\eqref{eq:rnn-iter}$ as a new starting point, we can simply understand it as a new way to use linear RNNs, or a way to solve the drawbacks of linear RNNs (such as linear RNNs not being Turing complete), which makes it more operational.</p>
+
+<p>Overall, ignoring the convergence seems more likely to break the mental stalemate and explore even more general results.</p>
+
+<h2>General Cases</h2>
+
+<p>The preceding "long discourse" centered only on the simple nonlinear RNN, formula $\eqref{eq:rnn}$. What about the more commonly used LSTM and GRU?</p>
+
+<p>Using GRU as an example, its original form is:</p>
+
+\begin{equation}\begin{aligned} z_{t} & = \sigma \left( W_{z} x_{t} + U_{z} h_{t - 1} + b_{z} \right) \\
+r_{t} & = \sigma \left( W_{r} x_{t} + U_{r} h_{t - 1} + b_{r} \right) \\
+\hat{h}_t & = \tanh \left( W_{h} x_{t} + U_{h} (r_t \circ h_{t - 1}) + b_{c} \right)\\
+h_{t} & = \left(1 - z_{t}\right) \circ h_{t - 1} + z_{t} \circ \hat{h}_t \end{aligned}\end{equation}
+
+<p>In the initial stage, all gates can be roughly considered as $\frac{1}{2}$. Then, imitating $\eqref{eq:rnn-approx}$, we have:</p>
+
+\begin{equation}\begin{aligned}
+h_{t} &\, = \left(1 - z_{t}\right) \circ h_{t - 1} + z_{t} \circ \hat{h}_t \\
+&\, \approx \frac{1}{2} h_{t - 1} + \frac{1}{2} \hat{h}_t \\
+&\, \approx \frac{1}{2} h_{t - 1} + \frac{1}{2} \left(\tanh ( W_{h} x_{t} + b_{c} ) + \frac{1}{2}U_{h} h_{t - 1}\right) \\
+&\, = \frac{1}{2} \left(I + \frac{1}{2}U_{h}\right)h_{t - 1} + \frac{1}{2} \tanh ( W_{h} x_{t} + b_{c} ) \\
+\end{aligned}\end{equation}
+
+<p>So we can choose $A=\frac{1}{2} \left(I + \frac{1}{2}U_{h}\right)$ and rewrite GRU as an iteration:</p>
+
+\begin{equation}\begin{aligned} z_{t}^{(n)} & = \sigma \left( W_{z} x_{t} + U_{z} h_{t - 1}^{(n-1)} + b_{z} \right) \\
+r_{t}^{(n)} & = \sigma \left( W_{r} x_{t} + U_{r} h_{t - 1}^{(n-1)} + b_{r} \right) \\
+\hat{h}_t^{(n)} & = \tanh \left( W_{h} x_{t} + U_{h} (r_t^{(n)} \circ h_{t - 1}^{(n-1)}) + b_{c} \right)\\
+h_{t}^{(n)} & = Ah_{t-1}^{(n)} - Ah_{t-1}^{(n - 1)} + \left(1 - z_{t}^{(n)}\right) \circ h_{t - 1}^{(n-1)} + z_{t}^{(n)} \circ \hat{h}_t^{(n)} \end{aligned}\end{equation}
+
+<p>In general, this conversion of a nonlinear RNN into a linear RNN iteration, from a practical perspective, uses the nonlinear RNN as a guide to derive a method for parameter sharing and combination of a multi-layer linear RNN. If it iterates $n$ times, it has the computational load of $n$ layers of linear RNNs. This naturally leads to a thought: Unless it can be proven that nonlinear RNNs like GRU and LSTM have an absolute advantage, wouldn't it be better to just stack several layers of "Linear RNN + MLP"?</p>
+
+<h2>Summary</h2>
+
+<p>This article briefly explores the parallel computation of nonlinear RNNs. Through the "perturbation" idea from mathematical physics, we can transform a nonlinear RNN into an iteration of linear RNNs, thereby utilizing the parallelizability of linear RNNs to achieve parallelization for nonlinear RNNs.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9783.html" style="color: #005fcc;">https://kexue.fm/archives/9783</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

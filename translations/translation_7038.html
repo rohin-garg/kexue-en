@@ -1,0 +1,285 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    enableMenu: false
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/7038">From Denoising Autoencoders to Generative Models</a></h1>
+
+<p>By 苏剑林 | October 31, 2019</p>
+
+<p>In my opinion, among the major conferences, ICLR papers are usually the most interesting. This is because their topics and styles are generally relaxed, lively, and imaginative, often giving one the feeling of a wide-open "brainstorm." Therefore, after the submitted paper list for ICLR 2020 came out, I took some time to browse through them and indeed found many interesting works.</p>
+
+<p>Among them, I discovered two papers that use the idea of denoising autoencoders to build generative models, namely <a href="https://openreview.net/forum?id=Skl1HCNKDr">"Learning Generative Models using Denoising Density Estimators"</a> and <a href="https://openreview.net/forum?id=HJeFmkBtvB">"Annealed Denoising Score Matching: Learning Energy-Based Models in High-Dimensional Spaces"</a>. Since I am already familiar with the conventional approaches to generative models, this "unique" perspective piqued my interest. Upon closer reading, I found that their starting points are the same, but their specific implementations differ, and their final resolutions converge again—a beautiful instance of "multiple solutions to one problem." Thus, I have grouped these two papers together for a comparative analysis.</p>
+
+<h2>Denoising Autoencoding</h2>
+
+<p>The fundamental starting point of both papers is the Denoising Autoencoder (DAE), or more precisely, they utilize the optimal solution of a denoising autoencoder:</p>
+
+<blockquote>
+    <p><strong>Basic Result:</strong> If $x, \varepsilon \in \mathbb{R}^d$, with $x \sim p(x)$ and $\varepsilon \sim u(\varepsilon)$, where $u(\varepsilon) = \mathcal{N}(0, \sigma^2 I_d)$, then</p>
+    \begin{equation}\begin{aligned}r(x)=&\, \mathop{\text{argmin}}_{r}\mathbb{E}_{x\sim p(x),\varepsilon\sim \mathcal{N}(0,\sigma^2 I_d)}\left[\Vert r(x + \varepsilon) - x\Vert^2\right] \\
+    =&\,x + \sigma^2 \nabla_x \,\log\hat{p}(x)\end{aligned}\label{eq:denoise}\end{equation}
+</blockquote>
+
+<p>Here $\hat{p}(x) = [p * u](x) = \int p(x-\varepsilon)u(\varepsilon) d\varepsilon = \int p(\varepsilon)u(x-\varepsilon) d\varepsilon$ refers to the convolution operation of the distributions $p(x)$ and $u(\varepsilon)$. Specifically, it represents the probability density of $x + \varepsilon$. In other words, if $p(x)$ represents the distribution of real images, then if we can sample from $\hat{p}(x)$, we obtain a batch of real images with added Gaussian noise.</p>
+
+<p>The result in \eqref{eq:denoise} means that the optimal denoising autoencoder for additive Gaussian noise can be calculated explicitly, and the result is related to the gradient of the distribution. This result is very interesting and profound, and it is worth reflecting on further. For instance, <strong>Equation \eqref{eq:denoise} tells us that $r(x) - x$ is actually an estimate of the gradient of the (noisy) real distribution</strong>. With the gradient of the real distribution, we can do many things, especially those related to generative models.</p>
+
+<blockquote>
+    <p><strong>Proof:</strong> In fact, the proof of \eqref{eq:denoise} is not difficult. Taking the variation of the objective gives:</p>
+    \begin{equation}\begin{aligned}&\delta \iint p(x)u(\varepsilon)\left\Vert r(x + \varepsilon) - x\right\Vert_2^2 dx d\varepsilon\\
+    =&\delta \iint p(x)u(y-x)\left\Vert r(y) - x\right\Vert_2^2 dx dy\\
+    =&2\iint p(x)u(y-x)\left\langle r(y) - x, \delta r(y)\right\rangle dx dy\\
+    \end{aligned}\end{equation}
+    <p>Setting the integral to zero gives $\int p(x)u(y-x)(r(y) - x)dx = 0$, thus:</p>
+    \begin{equation}r(y) = \frac{\int p(x)u(y-x)x dx}{\int p(x)u(y-x) dx}\end{equation}
+    <p>Substituting the expression $u(\varepsilon) = \frac{1}{(2\pi \sigma^2)^{d/2}}\exp\left(-\frac{\left\Vert\varepsilon\right\Vert_2^2}{2\sigma^2}\right)$, we obtain:</p>
+    \begin{equation}r(y) = y + \sigma^2\nabla_y \log\left[p*u\right](y)\end{equation}
+</blockquote>
+
+<h2>A Winding Path</h2>
+
+<p>We first introduce the logic of <a href="https://openreview.net/forum?id=Skl1HCNKDr">"Learning Generative Models using Denoising Density Estimators"</a>. Following the usual practice of GANs and VAEs, we want to train a mapping $x = G(z)$ such that $z$ sampled from a prior distribution $q(z)$ is mapped to a real sample. In probabilistic terms, we wish to reduce the distance between $p(x)$ and the following $q(x)$:</p>
+
+\begin{equation}q(x) = \int q(z)\delta(x - G_{\theta}(z))dz\end{equation}
+
+<p>To this end, a common optimization goal for GANs is to minimize $KL(q(x) \Vert p(x))$. This perspective can be referenced in <a href="translation_5716.html">"Unified Understanding of Generative Models via Variational Inference (VAE, GAN, AAE, ALI)"</a> and <a href="translation_6331.html">"GAN Models from an Energy Perspective (II): GAN = 'Analysis' + 'Sampling'"</a>. However, since we previously estimated the gradient of $\hat{p}(x)$, we can change our target to minimizing $KL\left(\hat{q}(x)\big\Vert \hat{p}(x)\right)$.</p>
+
+<p>For this purpose, we can perform the derivation:</p>
+
+\begin{equation}\begin{aligned}KL\left(\hat{q}(x)\big\Vert \hat{p}(x)\right)=&\int \hat{q}(x) \log \frac{\hat{q}(x)}{\hat{p}(x)}dx\\
+=&\int q(x)u(\varepsilon) \log \frac{\hat{q}(x+\varepsilon)}{\hat{p}(x+\varepsilon)}dx d\varepsilon\\
+=&\int q(z)\delta(x-G_{\theta}(z))u(\varepsilon) \log \frac{\hat{q}(x+\varepsilon)}{\hat{p}(x+\varepsilon)}dx d\varepsilon dz\\
+=&\int q(z)u(\varepsilon) \log \frac{\hat{q}(G_{\theta}(z)+\varepsilon)}{\hat{p}(G_{\theta}(z)+\varepsilon)}d\varepsilon dz\\
+=&\,\mathbb{E}_{z\sim q(z), \varepsilon\sim u(\varepsilon)}\big[\log \hat{q}(G_{\theta}(z)+\varepsilon) - \log \hat{p}(G_{\theta}(z)+\varepsilon)\big]\\
+\end{aligned}\label{eq:dae-1}\end{equation}
+
+<p>This objective requires us to obtain estimates for $\log\hat{p}(x)$ and $\log\hat{q}(x)$. We can construct two models $E_p(x)$ and $E_q(x)$ mapping from $\mathbb{R}^d \to \mathbb{R}$ using neural networks, and then minimize their respective objectives:</p>
+
+\begin{equation}\begin{aligned}\mathop{\text{argmin}}_{E_p}\mathbb{E}_{x\sim p(x),\varepsilon\sim \mathcal{N}(0,\sigma^2 I_d)}\left[\Vert \nabla_x E_p(x + \varepsilon) + \varepsilon\Vert^2\right]\\
+\mathop{\text{argmin}}_{E_q}\mathbb{E}_{x\sim q(x),\varepsilon\sim \mathcal{N}(0,\sigma^2 I_d)}\left[\Vert \nabla_x E_q(x + \varepsilon) + \varepsilon\Vert^2\right]
+\end{aligned}\label{eq:e-grad}\end{equation}
+
+<p>That is, using $\nabla_x E_p(x)+x$ and $\nabla_x E_q(x)+x$ as denoising autoencoders. According to the result \eqref{eq:denoise}, we have:</p>
+
+\begin{equation}\left\{\begin{aligned}\nabla_x E_p(x)+x=x+\sigma^2 \nabla_x \log \hat{p}(x)\\
+\nabla_x E_q(x)+x=x+\sigma^2 \nabla_x \log \hat{q}(x)\end{aligned}\right.
+\quad\Rightarrow\quad \left\{\begin{aligned}E_p(x) = \sigma^2 \log \hat{p}(x) + C_1\\
+E_q(x) = \sigma^2 \log \hat{q}(x) + C_2\end{aligned}\right.\end{equation}
+
+<p>This means that, up to a constant, $E_p(x)$ is proportional to $\log \hat{p}(x)$ and $E_q(x)$ is proportional to $\log \hat{q}(x)$. Since the constants do not affect the optimization, we can substitute $E_p(x)$ and $E_q(x)$ into \eqref{eq:dae-1}, yielding:</p>
+
+\begin{equation}KL\left(\hat{q}(x)\big\Vert \hat{p}(x)\right)\sim\,\mathbb{E}_{z\sim q(z), \varepsilon\sim u(\varepsilon)}\big[E_q(G_{\theta}(z)+\varepsilon) - E_p(G_{\theta}(z)+\varepsilon)\big]\label{eq:dae-2}\end{equation}
+
+<p>This provides a workflow for a generative model:</p>
+
+<blockquote>
+    <p>Select a prior distribution $q(z)$, initialize $G_{\theta}(z)$, and pre-compute $E_p(x)$. Execute the following three steps iteratively until convergence:</p>
+    <p>1. Select a batch of $z \sim q(z)$ and a batch of noise $\varepsilon \sim \mathcal{N}(0, \sigma^2 I_d)$; synthesize a batch of noisy fake samples $x = G_{\theta}(z) + \varepsilon$.</p>
+    <p>2. Use this batch of noisy fake samples to train $E_q(x)$.</p>
+    <p>3. Fix $E_p$ and $E_q$, and update $G_{\theta}$ for several steps using gradient descent based on \eqref{eq:dae-2}.</p>
+</blockquote>
+
+<p>The experiments in this paper are relatively simple, only covering MNIST and Fashion MNIST, but they prove its feasibility:</p>
+
+<p><a href="https://kexue.fm/usr/uploads/2019/10/3743468191.png"><img src="https://kexue.fm/usr/uploads/2019/10/3743468191.png" alt="fashion mnist generation performance" title="Click to view original image" /></a></p>
+<p>Generation performance on Fashion MNIST</p>
+
+<h2>Around the Bend</h2>
+
+<p>The other paper, <a href="https://openreview.net/forum?id=HJeFmkBtvB">"Annealed Denoising Score Matching: Learning Energy-Based Models in High-Dimensional Spaces,"</a> is even more direct. It is essentially a combination of the denoising autoencoder and the ideas in <a href="translation_6612.html">"GAN Models from an Energy Perspective (III): Generative Model = Energy Model"</a>.</p>
+
+<p>Since \eqref{eq:denoise} has already provided us with $\nabla_x \log \hat{p}(x) = (r(x) - x) / \sigma^2$ (of course, the actual method in the paper doesn't use a neural network to fit $r(x)$ directly but instead uses a neural network to fit a scalar function, much like \eqref{eq:e-grad}, but this doesn't affect the core idea), this effectively helps us sample from $\hat{p}(x)$. Of course, the sampled images will have noise, so we need to pass the sampling results through $r(x)$ to denoise them, i.e.,</p>
+
+<p>$$p(x) = \mathbb{E}_{x_{noise}\sim \hat{p}(x)} \big[\delta(x - r(x_{noise}))\big]$$</p>
+
+<p>So specifically, how do we sample from $\hat{p}(x)$? Langevin equations! Since we already know $\nabla_x \log \hat{p}(x)$, the following Langevin equation:</p>
+
+\begin{equation}x_{t+1} = x_t + \frac{1}{2}\varepsilon \nabla_x\log\hat{p}(x) + \sqrt{\varepsilon}\alpha,\quad \alpha \sim \mathcal{N}(\alpha;0,1)\label{eq:sde}\end{equation}
+
+<p>will have a distribution for the sequence $\{x_t\}$ that follows $\hat{p}(x)$ as $\varepsilon \to 0$ and $t \to \infty$. In other words, $\hat{p}(x)$ is the stationary distribution of this Langevin equation.</p>
+
+<p>Consequently, the process of sampling from $\hat{p}(x)$ was solved by <a href="https://openreview.net/forum?id=HJeFmkBtvB">"Annealed Denoising Score Matching: Learning Energy-Based Models in High-Dimensional Spaces"</a> in this straightforward (though in my view, perhaps less elegant) manner. Thus, after training the denoising autoencoder, a generative model is automatically obtained...</p>
+
+<p>The overall process is:</p>
+
+<blockquote>
+    <p>1. Train a denoising autoencoder $r(x)$ to obtain $\nabla_x \hat{p}(x)$.</p>
+    <p>2. Use the iterative process \eqref{eq:sde} for sampling; the sampling results are a batch of noisy real samples.</p>
+    <p>3. Pass the sampling results from Step 2 into $r(x)$ to denoise them, producing noise-free samples.</p>
+</blockquote>
+
+<p>Naturally, the paper contains many more details. The core trick of the paper is the use of an annealing technique to stabilize the training process and improve generation quality. However, I am not particularly interested in those details as I am mainly looking to learn new and interesting generative modeling ideas to broaden my horizons. Nevertheless, it must be said that despite being somewhat "brute-force," the generation results of this paper are quite competitive, showing very good performance on Fashion MNIST, CelebA, and CIFAR-10:</p>
+
+<p><a href="https://kexue.fm/usr/uploads/2019/10/3190672949.png"><img src="https://kexue.fm/usr/uploads/2019/10/3190672949.png" alt="generation performance on fashion mnist, CelebA, cifar10" title="Click to view original image" /></a></p>
+<p>Generation performance on Fashion MNIST, CelebA, and CIFAR-10</p>
+
+<h2>Conclusion</h2>
+
+<p>This article introduced two similar papers submitted to ICLR 2020 which utilize denoising autoencoders to create generative models. Since I had not encountered this line of thinking before, I read and compared them with great interest.</p>
+
+<p>Leaving aside the generation quality for a moment, I find them both quite enlightening and capable of sparking reflection (not just in CV, but also in NLP). For example, BERT's MLM pre-training method is essentially a denoising autoencoder as well. Is there a result similar to \eqref{eq:denoise} for it? Or conversely, can results similar to \eqref{eq:denoise} inspire us to construct new pre-training tasks, or perhaps clarify the underlying principles of the pre-train + fine-tune workflow?</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7038.html" style="color: #005fcc;">https://kexue.fm/archives/7038</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,340 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    processEnvironments: true,
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script type="text/javascript" id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+
+<h1><a href="https://kexue.fm/archives/9379">Diffusion Model Ramblings (Part 14): General Steps for Constructing ODEs (Part 2)</a></h1>
+
+    <p>By 苏剑林 | December 22, 2022</p>
+
+<p>Last week, I wrote <a href="translation_9370.html">"Generating Diffusion Models Chat (14): General Steps for Constructing ODEs (Part 1)"</a> (at that time, it didn't have the "Part 1" suffix). I thought I had glimpsed the general principles of constructing ODE diffusion models. However, shortly after, a prominent figure in the comments section, @gaohuazuo, provided a more efficient and intuitive scheme for constructing Green's functions, which made me feel humbled. Recalling that this expert previously provided a brilliant description of diffusion ODEs in <a href="translation_9260.html">"Generating Diffusion Models Chat (12): 'Hard-Core' Diffusion ODE"</a> (which indirectly inspired the results of my previous post), their insight is truly admirable. After much discussion and reflection, I realized that their approach is essentially the <strong>method of characteristics</strong> for first-order partial differential equations. By constructing a specific vector field to guarantee the initial value conditions and then solving the differential equation to satisfy the terminal value conditions, both conditions are met—truly ingenious! Finally, I have summarized my gains into this article as a follow-up to the previous one.</p>
+
+<h3>Recap</h3>
+
+<p>Let's briefly review the results of the previous article. Suppose a random variable $\boldsymbol{x}_0 \in \mathbb{R}^d$ continuously transforms into $\boldsymbol{x}_T$, and its variation follows the ODE:
+\begin{equation}\frac{d\boldsymbol{x}_t}{dt}=\boldsymbol{f}_t(\boldsymbol{x}_t)\label{eq-ode}\end{equation}
+Then the distribution $p_t(\boldsymbol{x}_t)$ at time $t$ obeys the "continuity equation":
+\begin{equation}\frac{\partial}{\partial t} p_t(\boldsymbol{x}_t) = - \nabla_{\boldsymbol{x}_t}\cdot\Big(\boldsymbol{f}_t(\boldsymbol{x}_t) p_t(\boldsymbol{x}_t)\Big)\label{eq:ode-f-eq-fp}\end{equation}
+Let $\boldsymbol{u}(t, \boldsymbol{x}_t)=(p_t( \boldsymbol{x}_t), \boldsymbol{f}_t(\boldsymbol{x}_t) p_t(\boldsymbol{x}_t))\in\mathbb{R}^{d+1}$. The continuity equation can be abbreviated as:
+\begin{equation}\left\{\begin{aligned} 
+&\nabla_{(t,\, \boldsymbol{x}_t)}\cdot\boldsymbol{u}(t, \boldsymbol{x}_t)=0 \\ 
+&\boldsymbol{u}_1(0, \boldsymbol{x}_0) = p_0(\boldsymbol{x}_0),\int \boldsymbol{u}_1(t, \boldsymbol{x}_t) d\boldsymbol{x}_t = 1 
+\end{aligned}\right.\label{eq:div-eq}\end{equation}
+To solve this equation, one can use the Green's function approach, which first solves:
+\begin{equation}\left\{\begin{aligned} 
+&\nabla_{(t,\, \boldsymbol{x}_t)}\cdot\boldsymbol{G}(t, 0; \boldsymbol{x}_t, \boldsymbol{x}_0)=0\\ 
+&\boldsymbol{G}_1(0, 0; \boldsymbol{x}_t, \boldsymbol{x}_0) = \delta(\boldsymbol{x}_t - \boldsymbol{x}_0),\int \boldsymbol{G}_1(t, 0; \boldsymbol{x}_t, \boldsymbol{x}_0) d\boldsymbol{x}_t = 1 
+\end{aligned}\right.\label{eq:div-green}\end{equation}
+Then:
+\begin{equation}\boldsymbol{u}(t, \boldsymbol{x}_t) = \int \boldsymbol{G}(t, 0; \boldsymbol{x}_t, \boldsymbol{x}_0)p_0(\boldsymbol{x}_0) d\boldsymbol{x}_0 = \mathbb{E}_{\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0)}[\boldsymbol{G}(t, 0; \boldsymbol{x}_t, \boldsymbol{x}_0)]\label{eq:div-green-int}\end{equation}
+is one of the solutions that satisfies the constraints.</p>
+
+<h3>Geometric Intuition</h3>
+
+<p>The core idea of the Green's function is quite simple: it suggests that we shouldn't worry about generating complex data distributions right away. Instead, let's assume the data to be generated is a single point $\boldsymbol{x}_0$, and solve for the generation of that single data point first. Some readers might think, isn't that trivial? Just $\boldsymbol{x}_T \times 0 + \boldsymbol{x}_0$ and it's done? Of course, it's not that simple; we need a continuous, gradual generation. As shown in the figure below, every point $\boldsymbol{x}_T$ at $t=T$ moves along a specific smooth trajectory to $\boldsymbol{x}_0$ at $t=0$:</p>
+
+<p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2022/12/3592864614.png" width="400" alt="Green's function schematic diagram"></p>
+<p style="text-align:center; font-size:0.9em;">Schematic diagram of the Green's function. In the figure, T=1. Each point at t=1 runs along a specific trajectory to a point at t=0. Except for the common point, there is no overlap between trajectories; these trajectories are the field lines of the Green's function.</p>
+
+<p>Our goal is merely to construct a generative model, so in principle, we do not care about the actual shape of the trajectories, as long as they pass through $\boldsymbol{x}_0$. Thus, we can artificially choose a family of trajectories that pass through $\boldsymbol{x}_0$, denoted as:
+\begin{equation}\boldsymbol{\varphi}_t(\boldsymbol{x}_t|\boldsymbol{x}_0) = \boldsymbol{x}_T\label{eq:track}\end{equation}
+Again, this represents a family of trajectories starting at $\boldsymbol{x}_0$ and ending at $\boldsymbol{x}_T$. The independent variable is $t$, the dependent variable is $\boldsymbol{x}_t$, the starting point $\boldsymbol{x}_0$ is fixed, and the ending point $\boldsymbol{x}_T$ can vary arbitrarily. The shape of the trajectory is irrelevant; we can choose straight lines, parabolas, etc. Now, we differentiate both sides of Eq. \eqref{eq:track}. Since $\boldsymbol{x}_T$ can vary freely, it acts like an integration constant of a differential equation, and its derivative is $\boldsymbol{0}$. Thus, we have:
+\begin{equation}\frac{\partial \boldsymbol{\varphi}_t(\boldsymbol{x}_t|\boldsymbol{x}_0)}{\partial \boldsymbol{x}_t}\frac{d\boldsymbol{x}_t}{dt} + \frac{\partial \boldsymbol{\varphi}_t(\boldsymbol{x}_t|\boldsymbol{x}_0)}{\partial t} = \boldsymbol{0} \\ 
+\Downarrow \\ 
+\frac{d\boldsymbol{x}_t}{dt} = - \left(\frac{\partial \boldsymbol{\varphi}_t(\boldsymbol{x}_t|\boldsymbol{x}_0)}{\partial \boldsymbol{x}_t}\right)^{-1} \frac{\partial \boldsymbol{\varphi}_t(\boldsymbol{x}_t|\boldsymbol{x}_0)}{\partial t}\end{equation}
+Comparing this with Eq. \eqref{eq-ode}, we obtain:
+\begin{equation}\boldsymbol{f}_t(\boldsymbol{x}_t|\boldsymbol{x}_0) = - \left(\frac{\partial \boldsymbol{\varphi}_t(\boldsymbol{x}_t|\boldsymbol{x}_0)}{\partial \boldsymbol{x}_t}\right)^{-1} \frac{\partial \boldsymbol{\varphi}_t(\boldsymbol{x}_t|\boldsymbol{x}_0)}{\partial t}\label{eq:f-xt-x0}\end{equation}
+Here, the original notation $\boldsymbol{f}_t(\boldsymbol{x}_t)$ is replaced by $\boldsymbol{f}_t(\boldsymbol{x}_t|\boldsymbol{x}_0)$ to mark that the trajectory has the common point $\boldsymbol{x}_0$. In other words, the ODE trajectory corresponding to the force field $\boldsymbol{f}_t(\boldsymbol{x}_t|\boldsymbol{x}_0)$ constructed in this way must pass through $\boldsymbol{x}_0$, which guarantees the initial value condition of the Green's function.</p>
+
+<h3>Method of Characteristics</h3>
+
+<p>Since the initial condition is guaranteed, we might as well demand a bit more: let's also ensure the terminal condition. The terminal condition implies that at $t=T$, the distribution of $\boldsymbol{x}_T$ is a simple distribution independent of $\boldsymbol{x}_0$. The main disadvantage of the framework in the previous article was its inability to directly guarantee the simplicity of the terminal distribution, which could only be studied through posterior analysis. The approach in this article directly designs a specific $\boldsymbol{f}_t(\boldsymbol{x}_t|\boldsymbol{x}_0)$ to guarantee the initial condition, leaving room to guarantee the terminal condition. Furthermore, once both initial and terminal conditions are satisfied, the integral condition is naturally satisfied under the premise of the continuity equation \eqref{eq:ode-f-eq-fp}.</p>
+
+<p>Mathematically speaking, we want to solve Eq. \eqref{eq:ode-f-eq-fp} given $\boldsymbol{f}_t(\boldsymbol{x}_t|\boldsymbol{x}_0)$ and $p_T(\boldsymbol{x}_T)$. This is a first-order partial differential equation, which can be solved via the "method of characteristics" (see my previous post <a href="translation_9146.html">"Method of Characteristics for First-Order PDEs"</a> for a theoretical introduction). First, we rewrite Eq. \eqref{eq:ode-f-eq-fp} equivalently as:
+\begin{equation}\frac{\partial}{\partial t} p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) + \nabla_{\boldsymbol{x}_t}p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) \cdot \boldsymbol{f}_t(\boldsymbol{x}_t|\boldsymbol{x}_0) = - p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) \nabla_{\boldsymbol{x}_t}\cdot \boldsymbol{f}_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\end{equation}
+Similar to before, since the solution is obtained for a given starting point $\boldsymbol{x}_0$, we replace $p_t(\boldsymbol{x}_t)$ with $p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)$.</p>
+
+<p>The idea of the method of characteristics is to consider the solution of the PDE along a specific trajectory, which transforms the partial differential equation into an ordinary differential equation, reducing the difficulty of the solution. Specifically, we assume $\boldsymbol{x}_t$ is a function of $t$ and solve it along the trajectory of Eq. \eqref{eq-ode}. Since Eq. \eqref{eq-ode} holds, replacing $\boldsymbol{f}_t(\boldsymbol{x}_t|\boldsymbol{x}_0)$ on the left side with $\frac{d\boldsymbol{x}_t}{dt}$ makes the left side exactly the total derivative of $p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)$. Thus:
+\begin{equation}\frac{d}{dt}p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) = - p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) \nabla_{\boldsymbol{x}_t}\cdot \boldsymbol{f}_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\end{equation}
+Note that here all $\boldsymbol{x}_t$ should be replaced by corresponding functions of $t$, which can theoretically be solved from the trajectory equation \eqref{eq:track}. After substitution, $p$ and $\boldsymbol{f}$ become pure functions of $t$. Thus, the above equation is a linear ODE regarding $p$, which can be solved as:
+\begin{equation}p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) = C \exp\left(\int_t^T \nabla_{\boldsymbol{x}_s}\cdot \boldsymbol{f}_s(\boldsymbol{x}_s|\boldsymbol{x}_0) ds\right)\end{equation}
+Substituting the terminal condition $p_T(\boldsymbol{x}_T)$, we get $C=p_T(\boldsymbol{x}_T)$, i.e.:
+\begin{equation}p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) = p_T(\boldsymbol{x}_T) \exp\left(\int_t^T \nabla_{\boldsymbol{x}_s}\cdot \boldsymbol{f}_s(\boldsymbol{x}_s|\boldsymbol{x}_0) ds\right)\label{eq:pt-xt-x0}\end{equation}
+By substituting $\boldsymbol{x}_T$ from the trajectory equation \eqref{eq:track}, we obtain a function containing only $t, \boldsymbol{x}_t, \boldsymbol{x}_0$, which is the final Green's function $\boldsymbol{G}_1(t, 0; \boldsymbol{x}_t, \boldsymbol{x}_0)$ we sought. Accordingly, $\boldsymbol{G}_{> 1}(t, 0; \boldsymbol{x}_t, \boldsymbol{x}_0)=p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) \boldsymbol{f}_t(\boldsymbol{x}_t|\boldsymbol{x}_0)$.</p>
+
+<h3>Training Objective</h3>
+
+<p>With the Green's function, we can obtain:
+\begin{equation}\begin{aligned} 
+\boldsymbol{u}_1(t, \boldsymbol{x}_t) =&\, \int p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) p_0(\boldsymbol{x}_0) d\boldsymbol{x}_0 = p_t(\boldsymbol{x}_t)\\ 
+\boldsymbol{u}_{> 1}(t, \boldsymbol{x}_t) =&\, \int \boldsymbol{f}_t(\boldsymbol{x}_t|\boldsymbol{x}_0) p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) p_0(\boldsymbol{x}_0) d\boldsymbol{x}_0 
+\end{aligned}\end{equation}
+Thus:
+\begin{equation}\begin{aligned} 
+\boldsymbol{f}_t(\boldsymbol{x}_t)=&\,\frac{\boldsymbol{u}_{> 1}(t, \boldsymbol{x}_t)}{\boldsymbol{u}_1(t, \boldsymbol{x}_t)} \\ 
+=&\,\int \boldsymbol{f}_t(\boldsymbol{x}_t|\boldsymbol{x}_0) \frac{p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) p_0(\boldsymbol{x}_0)}{p_t(\boldsymbol{x}_t)} d\boldsymbol{x}_0 \\ 
+=&\,\int \boldsymbol{f}_t(\boldsymbol{x}_t|\boldsymbol{x}_0) p_t(\boldsymbol{x}_0|\boldsymbol{x}_t) d\boldsymbol{x}_0 \\ 
+=&\,\mathbb{E}_{\boldsymbol{x}_0\sim p_t(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\boldsymbol{f}_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\right] 
+\end{aligned}\end{equation}
+Following the method for constructing score matching objectives in <a href="translation_9029.html">"Generating Diffusion Models Chat (5): General Framework of SDE"</a>, we can build the training objective:
+\begin{equation}\begin{aligned}&\mathbb{E}_{\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t)}\Big[\mathbb{E}_{\boldsymbol{x}_0\sim p_t(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\left\Vert \boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t) - \boldsymbol{f}_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\right\Vert^2\right]\Big] d\boldsymbol{x}_t \\ 
+=&\, \mathbb{E}_{\boldsymbol{x}_0,\boldsymbol{x}_t \sim p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)p_0(\boldsymbol{x}_0)}\left[\left\Vert \boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t) - \boldsymbol{f}_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\right\Vert^2\right] 
+\end{aligned}\label{eq:score-match}\end{equation}
+This is formally identical to the "Conditional Flow Matching" given in the paper <a href="https://arxiv.org/abs/2210.02747">"Flow Matching for Generative Modeling"</a>. We will see later that the results of that paper can be derived from the method in this article. After training, samples can be generated by solving the equation $\frac{d\boldsymbol{x}_t}{dt}=\boldsymbol{v}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$. This objective also shows that our requirement for $p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)$ is just that it should be easy to sample from.</p>
+
+<h3>Examples</h3>
+
+<p>Perhaps the abstract results above are still hard to grasp. Next, let's provide some specific examples to deepen our intuitive understanding. As for the method of characteristics itself, as I said in <a href="translation_9146.html">"Method of Characteristics for First-Order PDEs"</a>, at first, I also felt like the method was a "magic trick"—difficult to capture. Operating according to the steps doesn't seem difficult, but the key points are hard to grasp. Understanding it requires a process of repeated deliberation; I cannot assist further.</p>
+
+<h4>Straight Line Trajectory</h4>
+
+<p>As the simplest example, we assume $\boldsymbol{x}_T$ changes to $\boldsymbol{x}_0$ along a straight line. For simplicity, we can set $T=1$ without loss of generality. The equation for $\boldsymbol{x}_t$ can be written as:
+\begin{equation}\boldsymbol{x}_t = (\boldsymbol{x}_1 - \boldsymbol{x}_0)t + \boldsymbol{x}_0\quad\Rightarrow\quad \frac{\boldsymbol{x}_t - \boldsymbol{x}_0}{t} + \boldsymbol{x}_0 = \boldsymbol{x}_1\label{eq:simplest-x1}\end{equation}
+According to Eq. \eqref{eq:f-xt-x0}, we have:
+\begin{equation}\boldsymbol{f}_t(\boldsymbol{x}_t|\boldsymbol{x}_0) = \frac{\boldsymbol{x}_t - \boldsymbol{x}_0}{t}\end{equation}
+In this case, $\nabla_{\boldsymbol{x}_t}\cdot \boldsymbol{f}_t(\boldsymbol{x}_t|\boldsymbol{x}_0)=\frac{d}{t}$. According to Eq. \eqref{eq:pt-xt-x0}, we have:
+\begin{equation}p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) = \frac{p_1(\boldsymbol{x}_1)}{t^d}\end{equation}
+Substituting $\boldsymbol{x}_1$ from Eq. \eqref{eq:simplest-x1}, we get:
+\begin{equation}p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) = \frac{p_1\left(\frac{\boldsymbol{x}_t - \boldsymbol{x}_0}{t} + \boldsymbol{x}_0\right)}{t^d}\end{equation}
+In particular, if $p_1(\boldsymbol{x}_1)$ is a standard normal distribution, then the above implies $p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)=\mathcal{N}(\boldsymbol{x}_t;(1-t)\boldsymbol{x}_0,t^2\boldsymbol{I})$, which is exactly one of the common Gaussian diffusion models. The new result of this framework is that it allows us to choose a more general prior distribution $p_1(\boldsymbol{x}_1)$, such as a uniform distribution. Additionally, as already stated during the introduction of score matching \eqref{eq:score-match}, for $p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)$, we only need to know its sampling method, and the above equation tells us we only need the prior distribution to be easy to sample, because:
+\begin{equation}\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\quad\Leftrightarrow\quad \boldsymbol{x}_t=(1-t)\boldsymbol{x}_0 + t\boldsymbol{\varepsilon},\,\boldsymbol{\varepsilon}\sim p_1(\boldsymbol{\varepsilon})\end{equation}</p>
+
+<h4>Effect Demonstration</h4>
+
+<p>Note that we assumed the trajectory from $\boldsymbol{x}_0$ to $\boldsymbol{x}_1$ is a straight line; this is only for single-point generation (the Green's function solution). When the force field $\boldsymbol{f}_t(\boldsymbol{x}_t)$ corresponding to the general distribution is superimposed through the Green's function, its generation trajectories are no longer straight lines.</p>
+
+<p>The figure below demonstrates the trajectory plot of multi-point generation when the prior distribution is a uniform distribution:</p>
+<p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2022/12/3667500171.png" width="500"></p>
+
+<p>Reference plotting code:</p>
+<pre><code>import numpy as np
+from scipy.integrate import odeint
+import matplotlib
+import matplotlib.pyplot as plt
+matplotlib.rc('text', usetex=True)
+matplotlib.rcParams['text.latex.preamble']=[r"\usepackage{amsmath}"]
+
+prior = lambda x: 0.5 if 2 &gt;= x &gt;= 0 else 0
+p = lambda xt, x0, t: prior((xt - x0) / t + x0) / t
+f = lambda xt, x0, t: (xt - x0) / t
+
+def f_full(xt, t):
+    x0s = [0.5, 0.5, 1.2, 1.7] # 0.5 appears twice, representing double frequency
+    fs = np.array([f(xt, x0, t) for x0 in x0s]).reshape(-1)
+    ps = np.array([p(xt, x0, t) for x0 in x0s]).reshape(-1)
+    return (fs * ps).sum() / (ps.sum() + 1e-8)
+
+for x1 in np.arange(0.01, 1.99, 0.10999/2):
+    ts = np.arange(1, 0, -0.001)
+    xs = odeint(f_full, x1, ts).reshape(-1)[::-1]
+    ts = ts[::-1]
+    if abs(xs[0] - 0.5) &lt; 0.1:
+        _ = plt.plot(ts, xs, color='skyblue')
+    elif abs(xs[0] - 1.2) &lt; 0.1:
+        _ = plt.plot(ts, xs, color='orange')
+    else:
+        _ = plt.plot(ts, xs, color='limegreen')
+
+plt.xlabel('$t$')
+plt.ylabel(r'$\boldsymbol{x}$')
+plt.show()</code></pre>
+
+<h3>General Promotion</h3>
+
+<p>In fact, the results above can be generalized to:
+\begin{equation}\boldsymbol{x}_t = \boldsymbol{\mu}_t(\boldsymbol{x}_0) + \sigma_t \boldsymbol{x}_1\quad\Rightarrow\quad \frac{\boldsymbol{x}_t - \boldsymbol{\mu}_t(\boldsymbol{x}_0)}{\sigma_t }= \boldsymbol{x}_1\end{equation}
+Here $\boldsymbol{\mu}_t(\boldsymbol{x}_0)$ is any $\mathbb{R}^d\mapsto\mathbb{R}^d$ function satisfying $\boldsymbol{\mu}_0(\boldsymbol{x}_0)=\boldsymbol{x}_0, \boldsymbol{\mu}_1(\boldsymbol{x}_0)=\boldsymbol{0}$, and $\sigma_t$ is any monotonically increasing function satisfying $\sigma_0=0, \sigma_1=1$. According to Eq. \eqref{eq:f-xt-x0}, we have:
+\begin{equation}\boldsymbol{f}_t(\boldsymbol{x}_t|\boldsymbol{x}_0) = \dot{\boldsymbol{\mu}}_t(\boldsymbol{x}_0) + \frac{\dot{\sigma}_t}{\sigma_t}(\boldsymbol{x}_t - \boldsymbol{\mu}_t(\boldsymbol{x}_0))\end{equation}
+This is equivalent to Eq. (15) in <a href="https://arxiv.org/abs/2210.02747">"Flow Matching for Generative Modeling"</a>. In this case, $\nabla_{\boldsymbol{x}_t}\cdot \boldsymbol{f}_t(\boldsymbol{x}_t|\boldsymbol{x}_0)=\frac{d\dot{\sigma}_t}{\sigma_t}$. According to Eq. \eqref{eq:pt-xt-x0}, we have:
+\begin{equation}p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) = \frac{p_1(\boldsymbol{x}_1)}{\sigma_t^d}\end{equation}
+Substituting $\boldsymbol{x}_1$, the final result is:
+\begin{equation}p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) = \frac{p_1\left(\frac{\boldsymbol{x}_t - \boldsymbol{\mu}_t(\boldsymbol{x}_0)}{\sigma_t }\right)}{\sigma_t^d}\end{equation}
+This is the general result for linear ODE diffusion, which includes Gaussian diffusion and allows for non-Gaussian prior distributions.</p>
+
+<h4>Something even more complex?</h4>
+
+<p>The previous examples all construct the trajectory of $\boldsymbol{x}_t$ through simple linear interpolation (where weights are pure functions of $t$) between $\boldsymbol{x}_0$ (or its transformation) and $\boldsymbol{x}_1$. A natural question is: can we consider more complex trajectories? Theoretically, yes, but higher complexity implies more assumptions, and it is usually difficult to verify whether the target data supports these assumptions. Therefore, more complex trajectories are generally not considered. Furthermore, for more complex trajectories, the difficulty of analytical solutions is usually higher, making it hard to proceed both theoretically and experimentally.</p>
+
+<p>More importantly, the trajectories we assume now are only for generating a single point. As demonstrated earlier, even if we assume a straight line, generating multiple points leads to complex curves. Thus, if even the single-point generation trajectories are unnecessarily complex, one can imagine that the complexity of multi-point generation will be exceptionally high, potentially leading to extreme model instability.</p>
+
+<h3>Summary</h3>
+
+<p>Following up on the previous article, this post discussed the construction logic for ODE-based diffusion models again. This time, we started from geometric intuition, constructed a specific vector field to ensure the initial distribution condition, and then solved the differential equation to satisfy the terminal distribution condition, obtaining a Green's function that satisfies both. In particular, this method allows us to use any simple distribution as the prior, moving away from the historical dependence on the Gaussian distribution for constructing diffusion models.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9379.html" style="color: #005fcc;">https://kexue.fm/archives/9379</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

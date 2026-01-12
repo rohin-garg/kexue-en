@@ -1,0 +1,292 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    macros: {
+      sign: ["\\mathop{\\text{sign}}"],
+      msign: ["\\mathop{\\text{msign}}"]
+    },
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/11459">Weight Decay and Learning Rate from the Perspective of Moving Averages</a></h1>
+    <p>By 苏剑林 | December 05, 2025</p>
+
+    <p>Weight Decay (WD) and Learning Rate (LR) are essential components of LLM pre-training. Whether they are set appropriately is one of the key factors determining the ultimate success or failure of a model. Since <a href="https://papers.cool/arxiv/1711.05101">AdamW</a>, decoupling Weight Decay to replace traditional L2 regularization has basically become a consensus. However, beyond this, there has been no significant theoretical progress on how to rationally set Weight Decay and Learning Rate.</p>
+
+    <p>This article aims to provide a fresh perspective: viewing the training process as an exponential moving average (EMA) memory of the training data, and exploring how to set Weight Decay and Learning Rate to make this memory more "scientific."</p>
+
+    <h2 id="moving-average">Moving Average</h2>
+
+    <p>The general form of Weight Decay is:
+    \begin{equation}\boldsymbol{\theta}_t = \boldsymbol{\theta}_{t-1} - \eta_t (\boldsymbol{u}_t + \lambda_t \boldsymbol{\theta}_{t-1})\end{equation}
+    where $\boldsymbol{\theta}$ is the parameter, $\boldsymbol{u}$ is the update amount provided by the optimizer, and $\lambda_t, \eta_t$ are the Weight Decay and Learning Rate, respectively. The sequences $\{\lambda_t\}$ and $\{\eta_t\}$ are called the "WD Schedule" and "LR Schedule." Introducing the notation:
+    \begin{equation}\begin{aligned}
+    \boldsymbol{m}_t =&\, \beta_1 \boldsymbol{m}_{t-1} + \left(1 - \beta_1\right) \boldsymbol{g}_t, & \hat{\boldsymbol{m}}_t =&\, \boldsymbol{m}_t\left/\left(1 - \beta_1^t\right)\right. &\\[5pt]
+    \boldsymbol{v}_t =&\, \beta_2 \boldsymbol{v}_t-1 + \left(1 - \beta_2\right) \boldsymbol{g}_t^2,& \hat{\boldsymbol{v}}_t =&\, \boldsymbol{v}_t\left/\left(1 - \beta_2^t\right)\right. &
+    \end{aligned}\end{equation}
+    For SGDM, $\boldsymbol{u}_t = \boldsymbol{m}_t$; for RMSProp, $\boldsymbol{u}_t = \boldsymbol{g}_t/(\sqrt{\boldsymbol{v}_t} + \epsilon)$; for Adam, $\boldsymbol{u}_t = \hat{\boldsymbol{m}}_t / (\sqrt{\hat{\boldsymbol{v}}_t} + \epsilon)$; for SignSGDM, $\boldsymbol{u}_t = \sign(\boldsymbol{m}_t)$; and for Muon, $\boldsymbol{u}_t = \msign(\boldsymbol{m}_t)$. Except for SGDM, all of these examples are adaptive learning rate optimizers.</p>
+
+    <p>Our starting point is the Exponential Moving Average (EMA) perspective, writing the Weight Decay as:
+    \begin{equation}\boldsymbol{\theta}_t = (1 - \lambda_t \eta_t)\boldsymbol{\theta}_{t-1} - \eta_t \boldsymbol{u}_t = (1 - \lambda_t \eta_t)\boldsymbol{\theta}_{t-1} + \lambda_t \eta_t ( -\boldsymbol{u}_t / \lambda_t)\label{eq:wd-ema}\end{equation}
+    At this point, Weight Decay manifests as a weighted average of the model parameters and $-\boldsymbol{u}_t / \lambda_t$. The EMA perspective is not new; papers such as <a href="https://papers.cool/arxiv/2405.13698">"How to set AdamW's weight decay as you scale model and dataset size"</a> and <a href="https://papers.cool/arxiv/2505.13738">"Power Lines: Scaling Laws for Weight Decay and Batch Size in LLM Pre-training"</a> have discussed it. This article aims to perform more detailed calculations within this framework.</p>
+
+    <p>In the following sections, we will primarily use Adam as an example, and finally discuss the applicability to other optimizers. The calculation process overlaps significantly with <a href="translation_11307.html">"Asymptotic Estimation of Weight RMS in AdamW (Part 1)"</a> and <a href="translation_11404.html">"Asymptotic Estimation of Weight RMS in AdamW (Part 2)"</a>; readers may refer back to them.</p>
+
+    <h2 id="iterative-expansion">Iterative Expansion</h2>
+
+    <p>For simplicity, let's first consider constant $\lambda, \eta$. Let $\beta_3 = 1 - \lambda \eta$, then $\boldsymbol{\theta}_t = \beta_3 \boldsymbol{\theta}_{t-1} + (1 - \beta_3)(-\boldsymbol{u}_t / \lambda)$. This form is consistent with $\boldsymbol{m}_t, \boldsymbol{v}_t$. Expanding the iteration directly gives:
+    \begin{equation}\boldsymbol{\theta}_t = \beta_3^t \boldsymbol{\theta}_0 + (1 - \beta_3)\sum_{i=1}^t \beta_3^{t-i} (-\boldsymbol{u}_i / \lambda) \end{equation}
+    For Adam, $\boldsymbol{u}_t = \hat{\boldsymbol{m}}_t / (\sqrt{\hat{\boldsymbol{v}}_t} + \epsilon)$. Usually, at the end of training, $t$ is large enough such that $\beta_1^t, \beta_2^t$ are close to zero, so we don't need to distinguish between $\boldsymbol{m}_t$ and $\hat{\boldsymbol{m}}_t$ or $\boldsymbol{v}_t$ and $\hat{\boldsymbol{v}}_t$. Furthermore, simply setting $\epsilon = 0$, we simplify to $\boldsymbol{u}_t = \boldsymbol{m}_t / \sqrt{\boldsymbol{v}_t}$. Now we apply a classic mean-field approximation:
+    \begin{equation}\underbrace{\frac{1-\beta_3}{1-\beta_3^t}\sum_{i=1}^t \beta_3^{t-i} \boldsymbol{u}_i}_{\text{denoted as } \bar{\boldsymbol{u}}_t} = \frac{1-\beta_3}{1-\beta_3^t}\sum_{i=1}^t \beta_3^{t-i} \frac{\boldsymbol{m}_i}{\sqrt{\boldsymbol{v}_i}} \approx \frac{\bar{\boldsymbol{m}}_t \,\,\triangleq\,\, \frac{1-\beta_3}{1-\beta_3^t}\sum_{i=1}^t \beta_3^{t-i}\boldsymbol{m}_i}{\sqrt{\bar{\boldsymbol{v}}_t \,\,\triangleq\,\, \frac{1-\beta_3}{1-\beta_3^t}\sum_{i=1}^t \beta_3^{t-i}\boldsymbol{v}_i}}\label{eq:u-bar}\end{equation}
+    Expanding $\boldsymbol{m}_t$ and $\boldsymbol{v}_t$ gives $\boldsymbol{m}_t = (1 - \beta_1)\sum_{i=1}^t \beta_1^{t-i}\boldsymbol{g}_i$ and $\boldsymbol{v}_t = (1 - \beta_2)\sum_{i=1}^t \beta_2^{t-i}\boldsymbol{g}_i^2$. Substituting these:
+    \begin{gather}
+    \bar{\boldsymbol{m}}_t = \frac{(1-\beta_3)(1 - \beta_1)}{1-\beta_3^t}\sum_{i=1}^t \beta_3^{t-i} \sum_{j=1}^i \beta_1^{i-j}\boldsymbol{g}_j = \frac{(1-\beta_3)(1 - \beta_1)}{(1-\beta_3^t)(\beta_3 - \beta_1)}\sum_{j=1}^t (\beta_3^{t-j+1} - \beta_1^{t-j+1})\boldsymbol{g}_j\\[6pt]
+    \bar{\boldsymbol{v}}_t = \frac{(1-\beta_3)(1 - \beta_2)}{1-\beta_3^t}\sum_{i=1}^t \beta_3^{t-i} \sum_{j=1}^i \beta_2^{i-j}\boldsymbol{g}_j^2 = \frac{(1-\beta_3)(1 - \beta_2)}{(1-\beta_3^t)(\beta_3 - \beta_2)}\sum_{j=1}^t (\beta_3^{t-j+1} - \beta_2^{t-j+1})\boldsymbol{g}_j^2
+    \end{gather}
+    The swap of summation symbols is based on the identity $\sum_{i=1}^t \sum_{j=1}^i a_i b_j = \sum_{j=1}^t \sum_{i=j}^t a_i b_j$. In summary, we have:
+    \begin{equation}\boldsymbol{\theta}_t = \beta_3^t \boldsymbol{\theta}_0 + (1 - \beta_3^t)(-\bar{\boldsymbol{u}}_t / \lambda) \label{eq:theta-0-bar-u}\end{equation}
+    The weight $\boldsymbol{\theta}_t$ is our desired training result, expressed as a weighted average of $\boldsymbol{\theta}_0$ and $-\bar{\boldsymbol{u}}_t / \lambda$. $\boldsymbol{\theta}_0$ is the initial weight, while $\bar{\boldsymbol{u}}_t$ is data-dependent. Under mean-field approximation, it is approximately $\bar{\boldsymbol{m}}_t / \sqrt{\bar{\boldsymbol{v}}_t}$, and $\bar{\boldsymbol{m}}_t$ and $\bar{\boldsymbol{v}}_t$ can be expressed as a weighted sum of the gradient at each step. Taking $\bar{\boldsymbol{m}}_t$ as an example, the weight of the gradient at step $j$ is proportional to $\beta_3^{t-j+1} - \beta_1^{t-j+1}$.</p>
+
+    <h2 id="memory-cycle">Memory Cycle</h2>
+
+    <p>Our primary interest is pre-training, which is typically single-epoch; most data is seen only once. One key to good performance is not forgetting early data. Assuming the training data has been globally shuffled, it is reasonable to consider the data from each batch equally important.</p>
+
+    <p>Data is linearly superimposed into $\bar{\boldsymbol{m}}_t$ in the form of gradients. Assuming each step's gradient only contains information from the current batch, then for a batch not to be forgotten, the coefficient $\beta_3^{t-j+1} - \beta_1^{t-j+1}$ must not be too small. Examining the function $f(s) = \beta_3^s - \beta_1^s$, it is a function that increases and then decreases. But since $\beta_3$ is closer to 1 than $\beta_1$, the increasing phase is short, and it mostly follows an exponential decay for larger $s$.</p>
+
+    <p style="text-align:center;"><em>(Schematic of gradient weights)</em></p>
+
+    <p>In short, the trend is that coefficients decrease with distance. To prevent the model from forgetting any batch, the coefficients for the furthest reach cannot be too small. Suppose the coefficient must be no less than $c \in (0, 1)$ to be remembered. When $s$ is large enough, $\beta_1^s$ approaches 0 first, so $\beta_3^s - \beta_1^s \approx \beta_3^s$. Solving $\beta_3^s \geq c$ gives $s \leq \frac{\log c}{\log \beta_3} \approx \frac{-\log c}{\lambda \eta}$. This indicates that the model can remember at most $\mathcal{O}(1/\lambda \eta)$ steps of data; this is its "memory cycle."</p>
+
+    <p>So why not just set $\lambda = 0$ to make the memory cycle infinite and never worry about forgetting? Theoretically, this is possible, but it is not a good choice. Weight Decay also helps the model forget its initialization. As shown in Eq $\eqref{eq:theta-0-bar-u}$, the weight of the initialization $\boldsymbol{\theta}_0$ is $\beta_3^t$. If $\beta_3$ is too large or the number of steps $t$ is too small, the initialization still accounts for a high proportion, and the model may still be in an underfitted state.</p>
+
+    <p>Additionally, Weight Decay is beneficial for stabilizing the model's "internal health." As derived in <a href="translation_11307.html">"Asymptotic Estimation of Weight RMS in AdamW (Part 1)"</a>, the asymptotic Weight RMS of AdamW is $\sqrt{\eta/2\lambda}$. If $\lambda = 0$, the Weight RMS will expand at a rate of $\eta \sqrt{t}$. This means directly setting $\lambda = 0$ might lead to capacity anomalies like weight explosion.</p>
+
+    <p>Therefore, $\beta_3$ cannot be too small (to avoid forgetting early data), nor too large (to avoid underfitting or weight explosion). A suitable setting is to make $1/\lambda \eta$ proportional to the total training steps. In a multi-epoch scenario, one would consider making $1/\lambda \eta$ proportional to the number of steps in a single epoch.</p>
+
+    <h2 id="dynamic-version">Dynamic Version</h2>
+
+    <p>In actual training, we often use dynamic LR schedules, such as Cosine Decay, Linear Decay, or WSD (Warmup-Stable-Decay). The static results above do not fully match practice, so we need to generalize them to dynamic versions.</p>
+
+    <p>Starting from Eq $\eqref{eq:wd-ema}$, using the approximation $1 - \lambda_t \eta_t \approx e^{-\lambda_t \eta_t}$ and expanding iterations:
+    \begin{equation}\boldsymbol{\theta}_t = (1 - \lambda_t \eta_t)\boldsymbol{\theta}_{t-1} - \eta_t \boldsymbol{u}_t \approx e^{-\lambda_t \eta_t}\boldsymbol{\theta}_{t-1} - \eta_t \boldsymbol{u}_t = e^{-\kappa_t}\left(\boldsymbol{\theta}_0 - \sum_{i=1}^t e^{\kappa_i}\eta_i\boldsymbol{u}_i\right)\end{equation}
+    where $\kappa_t = \sum_{i=1}^t \eta_i \lambda_i$. Let $z_t = \sum_{i=1}^t e^{\kappa_i}\eta_i$, then we obtain the same mean-field approximation:
+    \begin{equation}\bar{\boldsymbol{u}}_t \triangleq \frac{1}{z_t}\sum_{i=1}^t e^{\kappa_i}\eta_i \boldsymbol{u}_i = \frac{1}{z_t}\sum_{i=1}^t e^{\kappa_i}\eta_i \frac{\boldsymbol{m}_i}{\sqrt{\boldsymbol{v}_i}} \approx \frac{\bar{\boldsymbol{m}}_t \,\,\triangleq\,\, \frac{1}{z_t}\sum_{i=1}^t e^{\kappa_i}\eta_i\boldsymbol{m}_i}{\sqrt{\bar{\boldsymbol{v}}_t \,\,\triangleq\,\, \frac{1}{z_t}\sum_{i=1}^t e^{\kappa_i}\eta_i\boldsymbol{v}_i}}\end{equation}
+    Substituting the expansion of $\boldsymbol{m}_t$ and $\boldsymbol{v}_t$:
+    \begin{gather}
+    \bar{\boldsymbol{m}}_t = \frac{1}{z_t}\sum_{i=1}^t e^{\kappa_i}\eta_i\boldsymbol{m}_i = \frac{1 - \beta_1}{z_t}\sum_{i=1}^t e^{\kappa_i}\eta_i\sum_{j=1}^i \beta_1^{i-j}\boldsymbol{g}_j = \sum_{j=1}^t\boldsymbol{g}_j\underbrace{\frac{1 - \beta_1}{z_t}\sum_{i=j}^t e^{\kappa_i}\beta_1^{i-j}\eta_i}_{\text{denoted as } \bar{\beta}_1(j,t)} \\
+    \bar{\boldsymbol{v}}_t = \frac{1}{z_t}\sum_{i=1}^t e^{\kappa_i}\eta_i\boldsymbol{v}_i = \frac{1 - \beta_2}{z_t}\sum_{i=1}^t e^{\kappa_i}\eta_i\sum_{j=1}^i \beta_2^{i-j}\boldsymbol{g}_j^2 = \sum_{j=1}^t\boldsymbol{g}_j^2\underbrace{\frac{1 - \beta_2}{z_t}\sum_{i=j}^t e^{\kappa_i}\beta_2^{i-j}\eta_i}_{\text{denoted as } \bar{\beta}_2(j,t)} \\
+    \end{gather}
+    As we can see, the dynamic version doesn't change much in form compared to the static case, except that the coefficients for the gradients have become slightly more complex functions $\bar{\beta}_1(j,t)$ and $\bar{\beta}_2(j,t)$. Specifically, as $\beta_1, \beta_2 \to 0$, they simplify to:
+    \begin{equation}\bar{\beta}_1(j,t) = \bar{\beta}_2(j,t) = \frac{e^{\kappa_j}\eta_j}{z_t}\label{eq:bb1-bb2-0}\end{equation}
+    </p>
+
+    <h2 id="optimal-schedule">Optimal Schedule</h2>
+
+    <p>We can now do many things, such as calculating $\bar{\beta}_1(j,t)$ and $\bar{\beta}_2(j,t)$ or estimating the memory cycle for specific WD and LR schedules. However, here we choose to do something more radical: directly derive an "optimal" WD and LR schedule.</p>
+
+    <p>Specifically, we previously assumed the data is globally shuffled, meaning every batch is equally important. However, the coefficient $\bar{\beta}_1(j,t) \propto \beta_3^{t-j+1} - \beta_1^{t-j+1}$ obtained in the static case is not constant; it varies with distance. Ideally, we expect it to be constant. Based on this expectation, we can solve for the corresponding $\lambda_j, \eta_j$.</p>
+
+    <p>For simplicity, start with the limit $\beta_1, \beta_2 \to 0$. We want to solve $e^{\kappa_j}\eta_j/z_t = c_t$, where $c_t$ is some function depending only on $t$. Note that the "constant" refers to $j$; $t$ is the end of training. To simplify, we replace summation with integration: $\kappa_s \approx \int_0^s \lambda_{\tau} \eta_{\tau} d\tau$. Then the equation becomes $\exp\left(\int_0^s \lambda_{\tau} \eta_{\tau} d\tau\right)\eta_s \approx c_t z_t$. Taking the logarithm and differentiating with respect to $s$:
+    \begin{equation}\lambda_s \eta_s + \frac{\dot{\eta}_s}{\eta_s} \approx 0 \label{eq:lr-wd-ode}\end{equation}
+    If we set $\lambda_s$ to a constant $\lambda$, we obtain:
+    \begin{equation}\eta_s \approx \frac{\eta_{\max}}{\lambda \eta_{\max} s + 1}\label{eq:opt-lrt-wd}\end{equation}
+    This is the optimal LR schedule under constant weight decay. It doesn't require pre-defining an end point $t$ or a minimum learning rate $\eta_{\min}$, meaning training can continue indefinitely (similar to the Stable phase of WSD), but it automatically balances the coefficients of each gradient step. However, it has a drawback: as $s \to \infty$, $\eta_s \to 0$. From <a href="translation_11404.html">"Asymptotic Estimation of Weight RMS in AdamW (Part 2)"</a>, we know the Weight RMS will tend toward $\lim_{s \to \infty} \frac{\eta_s}{2\lambda_s}$, so this could lead to weight collapse.</p>
+
+    <p>To solve this, we can let $\lambda_s = \alpha \eta_s$, where $\alpha = \lambda_{\max} / \eta_{\max}$ is a constant. Then we solve:
+    \begin{equation}\eta_s \approx \frac{\eta_{\max}}{\sqrt{2\lambda_{\max}\eta_{\max} s + 1}}, \qquad \lambda_s \approx \frac{\lambda_{\max}}{\sqrt{2\lambda_{\max}\eta_{\max} s + 1}} \label{eq:opt-lrt-wdt}\end{equation}
+    Correspondingly, $e^{\kappa_s} \approx \sqrt{2\lambda_{\max}\eta_{\max} s + 1}$, $e^{\kappa_s}\eta_s \approx \eta_{\max}$, $z_t \approx \eta_{\max} t$, and $\bar{\beta}_1(j,t) = \bar{\beta}_2(j,t) \approx 1/t$.</p>
+
+    <h2 id="general-results">General Results</h2>
+
+    <p>Our results so far, like Eq $\eqref{eq:opt-lrt-wd}$ and $\eqref{eq:opt-lrt-wdt}$, are based on $\beta_1, \beta_2 = 0$. When they are non-zero, do the conclusions change? More generally, how well do these results, based on the Adam optimizer, generalize to others?</p>
+
+    <p>First, regarding $\beta_1, \beta_2 \neq 0$: the answer is that when $t$ is large enough, the conclusions don't change much. Taking $\bar{\beta}_1(j,t)$ as an example, under the optimal schedule where $e^{\kappa_i}\eta_i$ is constant (relative to $t$), the definition gives:
+    \begin{equation}\bar{\beta}_1(j,t) = \frac{1 - \beta_1}{z_t}\sum_{i=j}^t e^{\kappa_i}\beta_1^{i-j}\eta_i \propto \sum_{i=j}^t \beta_1^{i-j} = \frac{1 - \beta_1^{t-j+1}}{1 - \beta_1}\end{equation}
+    When $t$ is large, $\beta_1^{t-j+1} \to 0$, so this is effectively a constant independent of $j$. As mentioned, for $\beta_1, \beta_2$, the condition " $t$ is large enough" is almost always met, so the result for $\beta_1, \beta_2 = 0$ can be held.</p>
+
+    <p>Regarding other optimizers: we've mentioned SGDM, RMSProp, Adam, SignSGDM, and Muon. They can be divided into two categories. SGDM is one category where $\bar{\boldsymbol{u}}_t$ is simply $\bar{\boldsymbol{m}}_t$, and you don't even need the mean-field approximation, so the results up to Eq $\eqref{eq:lr-wd-ode}$ apply. However, Eq $\eqref{eq:opt-lrt-wd}$ and $\eqref{eq:opt-lrt-wdt}$ are likely not the most suitable, because SGDM's asymptotic Weight RMS also depends on the gradient norm [see <a href="https://papers.cool/arxiv/2305.17212">reference</a>]; considering gradient norm makes it more complex.</p>
+
+    <p>The others—RMSProp, Adam, SignSGDM, Muon—belong to the second category of adaptive learning rate optimizers. Their update rules follow a homogeneous form of $\frac{\text{gradient}}{\sqrt{\text{gradient}^2}}$. In this case, if we believe in the mean-field approximation, we get the same $\bar{\boldsymbol{m}}_t$ and the same $\beta_1(j,t)$, so Eq $\eqref{eq:lr-wd-ode}$ applies. For these homogeneous optimizers, it can be proven that Weight RMS is also asymptotically proportional to $\sqrt{\eta/\lambda}$, so Eq $\eqref{eq:opt-lrt-wd}$ and $\eqref{eq:opt-lrt-wdt}$ can also be reused.</p>
+
+    <h2 id="hypothesis-discussion">Discussion of Hypotheses</h2>
+
+    <p>Our derivation is nearing its end. In this section, let's discuss the major assumptions used.</p>
+
+    <p>Looking back, there are two major assumptions. The first is the <strong>mean-field approximation</strong>, introduced in <a href="translation_11280.html">"Rethinking Learning Rate and Batch Size (Part 2): Mean Field."</a> Mean-field itself is not new—it's a classic approximation in physics—but using it to analyze optimizer dynamics is something I believe I was the first to introduce. So far, it has been used to estimate <a href="translation_11280.html">Batch Size</a>, <a href="translation_11267.html">Update RMS</a>, and <a href="translation_11307.html">Weight RMS</a>, and the results seem reasonable.</p>
+
+    <p>The validity of the mean-field approximation is hard to prove definitively; it's more of an act of faith. On one hand, based on previous estimations, we believe it will continue to be reasonable, at least for providing valid asymptotic estimates of scalar metrics. On the other hand, for adaptive learning rate optimizers, the non-linearity of their update rules makes analysis very difficult; besides mean-field approximation, we don't have many calculation tools left.</p>
+
+    <p>The most typical example is Muon. Because it involves non-element-wise operations, traditional per-component analysis methods (like for SignSGD) fail, yet the mean-field approximation still works (refer to <a href="translation_11285.html">"Rethinking Learning Rate and Batch Size (Part 3): Muon"</a>). Thus, the mean-field approximation provides a unified, effective, and simple analytical tool for a large class of adaptive learning rate optimizers. Currently, no other method seems to yield similar results, so we continue to trust it.</p>
+
+    <p>The second major assumption is that <strong>"each step's gradient only contains information from the current batch."</strong> Strictly speaking, this is incorrect because the gradient depends not only on the current batch but also on the parameters from the previous step, which naturally include historical information. However, we can attempt a remedy: theoretically, every batch should bring <em>new</em> information; otherwise, the batch would be redundant. So a better way to phrase it might be "each step's gradient contains roughly the same amount of incremental information."</p>
+
+    <p>This phrasing is still debatable: as the model learns more, the coverage increases, and later batches might contain less unique info. However, we can distinguish between "patterns" and "facts." Factual knowledge—like which mathematician discovered which theorem—can only be memorized. We could revise the claim: "each step's gradient contains roughly the same amount of factual knowledge." In practice, LR schedules that "treat every gradient step equally" seem to have tangible benefits, so we can always try to construct an explanation for it.</p>
+
+    <p>A recent paper, <a href="https://papers.cool/arxiv/2511.18903">"How Learning Rate Decay Wastes Your Best Data in Curriculum-Based LLM Pretraining"</a>, provides indirect evidence. It considers curriculum learning, where data quality increases over time, and finds that aggressive LR decay wipes out the advantages of curriculum learning. Our result is that each batch's weight is Eq $\eqref{eq:bb1-bb2-0}$, proportional to the Learning Rate. If LR decay is too aggressive, later high-quality data receives too little weight, resulting in poor performance. Being able to explain this phenomenon naturally supports the reasonableness of our assumption.</p>
+
+    <h2 id="article-summary">Article Summary</h2>
+
+    <p>This article interprets Weight Decay (WD) and Learning Rate (LR) from the perspective of a moving average and explores the optimal WD Schedule and LR Schedule within this framework.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_11459.html" style="color: #005fcc;">https://kexue.fm/archives/11459</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

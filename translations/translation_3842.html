@@ -1,0 +1,265 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/3842">Preliminary Exploration of OCR Technology: 7. Language Models</a></h1>
+
+    <p>By 苏剑林 | June 26, 2016</p>
+
+    <p>
+        <strong>Due to reasons such as image quality, even the best-performing recognition models can have the possibility of recognition errors. To reduce the recognition error rate, the recognition problem can be combined with statistical language models, and the optimal recognition result can be provided through dynamic programming methods. This is one of the important methods for improving OCR recognition performance.</strong>
+    </p>
+
+    <h3 id="转移概率">Transition Probability <a href="https://kexue.fm/archives/3842#%E8%BD%AC%E7%A7%BB%E6%A6%82%E7%8E%87">#</a></h3>
+
+    <p>In the process of analyzing our experimental results, we encountered the following case. Due to possible reasons such as image blurriness, the word "电视" (television) was recognized as "电柳" (electric willow). Using the image model alone cannot resolve this problem effectively because, from the image model's perspective, "电柳" appeared to be the optimal choice. However, a language model can solve this problem quite ingeniously. The reason is simple: based on a large amount of text data, we can calculate the probabilities of the word "电视" and the word "电柳." We find that the probability of "电视" is far greater than that of "电柳," so we would believe the word is "电视" rather than "电柳."</p>
+
+    <p>From a probabilistic perspective, for the recognition result $s_1$ of the first character region, our previously mentioned convolutional neural network provides two candidate characters: "电" and "宙" (selecting only the top two, as the probabilities of others are too small). The probabilities $W(s_1)$ for each candidate character are $0.99996$ and $0.00004$, respectively. For the recognition result $s_2$ of the second character region, the CNN provides "柳" (willow), "视" (vision), and "规" (rule) (selecting only the top three). The probabilities $W(s_2)$ for each candidate character are $0.87838$, $0.12148$, and $0.00012$, respectively. Therefore, there are effectively six combinations: "电柳", "电视", "电规", "宙柳", "宙视", "宙规".</p>
+
+    <p>Now consider their transition probabilities. The so-called transition probability is actually the conditional probability $P(s_2|s_1)$, which is the probability of $s_2$ appearing given that $s_1$ has occurred. By statistics from 100,000 WeChat texts, we found that the character "电" appeared $145,001$ times, while the sequences "电柳", "电视", and "电规" appeared $0$, $12,426$, and $7$ times, respectively. The character "宙" appeared $1,980$ times, while "宙柳", "宙视", and "宙规" appeared $0$, $0$, and $18$ times. Thus, we can calculate:</p>
+
+    \[
+    \begin{aligned}
+    P(\text{柳}|\text{电}) &= \frac{0}{145001} = 0 \\
+    P(\text{视}|\text{电}) &= \frac{12426}{145001} \approx 0.08570 \\
+    P(\text{规}|\text{电}) &= \frac{7}{145001} \approx 0.00005 \\
+    P(\text{柳}|\text{宙}) &= \frac{0}{1980} = 0 \\
+    P(\text{视}|\text{宙}) &= \frac{0}{1980} = 0 \\
+    P(\text{规}|\text{宙}) &= \frac{18}{1980} \approx 0.00909
+    \end{aligned}
+    \]
+
+    <p>The results are shown in the figure below:</p>
+
+    <p style="text-align:center;">
+        <a href="https://kexue.fm/usr/uploads/2016/06/2324804162.png">
+            <img src="https://kexue.fm/usr/uploads/2016/06/2324804162.png" alt="Figure 20 Considering Transition Probabilities" title="Click to view original image" />
+        </a>
+        <br />
+        Figure 20 Considering Transition Probabilities
+    </p>
+
+    <p>From a statistical perspective, the optimal combination of $s_1, s_2$ should maximize the following expression (14):</p>
+
+    \begin{equation}
+    f = W(s_1)P(s_2|s_1)W(s_2)
+    \label{eq:14}
+    \end{equation}
+
+    <p>Therefore, we can calculate that the best combination of $s_1, s_2$ is "电视" rather than "电柳". In this way, we have successfully obtained the correct result through statistical methods, thereby improving the accuracy rate.</p>
+
+    <h3 id="动态规划">Dynamic Programming <a href="https://kexue.fm/archives/3842#%E5%8A%A8%E6%80%81%E8%A7%84%E5%88%92">#</a></h3>
+
+    <p style="text-align:center;">
+        <a href="https://kexue.fm/usr/uploads/2016/06/1093661072.png">
+            <img src="https://kexue.fm/usr/uploads/2016/06/1093661072.png" alt="Figure 21 Programming problem for multi-character images" title="Click to view original image" />
+        </a>
+        <br />
+        Figure 21 Programming problem for multi-character images
+    </p>
+
+    <p>Similarly, as shown in Figure 21, if a single-line text image has $n$ characters $s_1, s_2, \dots, s_n$ to be determined, then we should maximize:</p>
+
+    \[ f = W(s_1)P(s_2|s_1)W(s_2)P(s_3|s_2)W(s_3)\dots W(s_{n-1})P(s_n|s_{n-1})W(s_n) \]
+
+    <p>This is the core idea of statistical language models. Many fields of natural language processing, such as Chinese word segmentation, speech recognition, and image recognition, use the same method [6]. There are two main problems to solve here: (1) Estimation of each $P(s_{i+1}|s_i)$; (2) How to solve for the maximum value of $f$ given each $P(s_{i+1}|s_i)$.</p>
+
+    <p><strong>Transition Probability Matrix</strong></p>
+
+    <p>For the first problem, it is only necessary to count the number of occurrences of $s_i$, denoted as $\#s_i$, and the number of times $s_i, s_{i+1}$ appear contiguously, denoted as $\#(s_i, s_{i+1})$, from a large corpus, and then let</p>
+
+    \[ P(s_{i+1}|s_i) = \frac{\#(s_i, s_{i+1})}{\#s_i} \]
+
+    <p>This is inherently not difficult. There are 3062 recognition targets in this paper, so theoretically, it should generate a $3062 \times 3062$ matrix, which is very large. Of course, this matrix is very sparse, and we only need to save the valuable elements.</p>
+
+    <p>Now, we must focus on the case where $\#(s_i, s_{i+1}) = 0$. In the previous section, we simply took $P(s_{i+1}|s_i) = 0$, but in Fact, this is unreasonable. Just because something does not appear doesn't mean it cannot appear; it just means the probability is very small. Therefore, even for $\#(s_i, s_{i+1}) = 0$, a small probability should be assigned instead of 0. This is known in statistics as the data smoothing problem.</p>
+
+    <p>A simple smoothing method is to add a small positive constant $\alpha$ (e.g., 1) to the frequencies of all terms (including terms with a frequency of 0), then recalculate the total and the frequency, so that every item receives a positive probability. This approach may lower the probability of high-frequency terms, but since the probabilities here only have relative significance, this impact is not obvious (a more reasonable approach is to add the constant only when the frequency is below a certain threshold $T$). Using this approach, from hundreds of thousands of WeChat articles, we calculated a transition probability matrix with 1.6 million adjacent Chinese character pairs.</p>
+
+    <p><strong>Viterbi Algorithm</strong></p>
+
+    <p>For the second problem, solving for the optimal combination $s_1, s_2, \dots, s_n$ belongs to the problem of finding the optimal path in dynamic programming, for which the most effective method is the Viterbi algorithm [6].</p>
+
+    <p>The Viterbi algorithm is a simple and efficient algorithm that can be implemented in Python with about a dozen lines of code. Its core idea is: if the final optimal path passes through a certain $s_{i-1}$, then the path from the starting node to $s_{i-1}$ must also be an optimal path—because each node $s_i$ only affects the preceding and following probabilities $P(s_i|s_{i-1})$ and $P(s_{i+1}|s_i)$.</p>
+
+    <p>Based on this idea, a recursive method can be used. When considering each $s_i$, one only needs to find the optimal path among all candidates passing through each $s_{i-1}$ and then combine it with the current $s_i$ for comparison. In this way, each step only requires no more than $l^2$ calculations to step-by-step find the optimal path. The efficiency of the Viterbi algorithm is $O(n \cdot l^2)$, where $l$ is the maximum number of candidates for node $s_i$. It is proportional to $n$, making it very efficient.</p>
+
+    <h3 id="提升效果">Enhancement Effect <a href="https://kexue.fm/archives/3842#%E6%8F%90%E5%8D%87%E6%95%88%E6%9E%BD">#</a></h3>
+
+    <p>Experiments show that combining statistical language models with dynamic programming can effectively resolve cases of misrecognition between visually similar characters. In our tests, it corrected several errors as follows:</p>
+
+    <p>
+        电柳 (Electric Willow) → 电视 (Television)<br />
+        研友 (Research Friend) → 研发 (R&amp;D)<br />
+        速于 (Fast in) → 速干 (Quick dry)<br />
+        围像 (Surrounding image) → 图像 (Image)<br />
+        ...
+    </p>
+
+    <p><strong>Dynamic programming via statistical language models can correct many recognition errors.</strong></p>
+
+    <p>Since the corpus used to generate the transition matrix is not large enough, there is still significant room for improvement in correction results. Nonetheless, due to the simplicity and efficiency of the Viterbi algorithm, this is a highly cost-effective step.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_3842.html" style="color: #005fcc;">https://kexue.fm/archives/3842</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

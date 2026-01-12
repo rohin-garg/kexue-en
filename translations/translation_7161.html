@@ -1,0 +1,227 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['base', 'ams', 'noerrors', 'noundefined']}
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/7161">Triple Extraction with bert4keras</a></h1>
+    <p>By 苏剑林 | January 03, 2020</p>
+
+    <p>While developing <a href="https://github.com/bojone/bert4keras">bert4keras</a>, I promised to gradually migrate the <a href="translation_6736.html">examples previously implemented with keras-bert</a> over. One of those examples was triple extraction. Currently, the <a href="https://github.com/bojone/bert4keras/tree/master/examples">examples in bert4keras</a> are becoming quite rich, but they were still missing tasks related to sequence labeling and information extraction. Since triple extraction fits this category perfectly, I have added it now.</p>
+
+    <figure>
+        <img src="https://kexue.fm/usr/uploads/2020/01/2443026366.png" alt="Schematic Diagram of BERT-based Triple Extraction Model Structure">
+        <figcaption>Schematic Diagram of BERT-based Triple Extraction Model Structure</figcaption>
+    </figure>
+
+    <h2 id="Model-Introduction">Model Introduction</h2>
+    <p>Regarding the data format and the basic logic of the model, these were detailed in the article <a href="translation_6671.html">"A Lightweight Information Extraction Model Based on DGCNN and Probabilistic Graphs"</a>, so I will not repeat them here. The dataset has been made public by Baidu and can be downloaded <a href="http://ai.baidu.com/broad/download?dataset=sked">here</a>.</p>
+
+    <p>Following the same strategy as before, the model is still based on the "semi-pointer, semi-annotation" method. The sequence is to first extract the subject ($s$), then pass $s$ into the model to extract the object ($o$) and predicate ($p$). The only difference is that the overall architecture of the model has been replaced with BERT:</p>
+
+    <ol>
+        <li>The original sequence is converted into IDs and passed into the BERT encoder to obtain encoded sequences;</li>
+        <li>The encoded sequence is connected to two binary classifiers to predict $s$;</li>
+        <li>Based on the passed $s$, the encoding vectors corresponding to the start and end of $s$ are extracted from the encoded sequence;</li>
+        <li>Using the encoding vector of $s$ as a condition, a Conditional Layer Norm is applied to the encoded sequence;</li>
+        <li>The sequence after Conditional Layer Norm is used to predict the $o$ and $p$ corresponding to that $s$.</li>
+    </ol>
+
+    <h2 id="Class-Imbalance">Class Imbalance</h2>
+    <p>It is easy to imagine that when using a "semi-pointer, semi-annotation" structure for entity extraction, one faces an issue of class imbalance. This is because target entity words are usually much rarer than non-target words, so label 1 will be much scarcer than label 0. Conventional methods for handling imbalance, such as Focal Loss or manual label weighting, can be used, but after applying these methods, thresholds become difficult to set. Here, I used a method I find quite appropriate: raising the probability values to the $n$-th power.</p>
+
+    <p>Specifically, if the original output is a probability value $p$, representing the probability of class 1 as $p$, I now change it to $p^n$. That is, I treat the probability of class 1 as $p^n$. Everything else remains unchanged, and the loss is still the standard binary cross-entropy loss. Since we already have $0 \leq p \leq 1$, $p^n$ will be overall closer to 0. Thus, the initial state conforms to the target distribution, accelerating convergence.</p>
+
+    <p>The difference between the two can also be seen from the perspective of the loss function. Assuming the label is $t \in \{0, 1\}$, the original loss is:</p>
+    \begin{equation}- t \log p - (1 - t) \log (1 - p)\end{equation}
+    <p>The loss after the $n$-th power modification becomes:</p>
+    \begin{equation}- t \log p^n - (1 - t) \log (1 - p^n)\end{equation}
+    <p>Notice that $- t \log p^n = -nt \log p$. Therefore, when the label is 1, it is equivalent to amplifying the weight of the loss. When the label is 0, $(1 - p^n)$ is closer to 1, making the corresponding loss $\log(1 - p^n)$ smaller (and the gradient smaller). Thus, this can be considered an adaptive logic for adjusting loss weights (gradient weights).</p>
+
+    <p>Compared to Focal Loss or manual weighting, the advantage of this method is that it makes the distribution closer to the target without changing the distribution of the original inner product (where $p$ is usually obtained via an inner product plus a sigmoid). Maintaining the inner product distribution is generally more optimization-friendly.</p>
+
+    <h2 id="Source-Code-and-Performance">Source Code and Performance</h2>
+    <p><strong>Github</strong>: <a href="https://github.com/bojone/bert4keras/blob/master/examples/task_relation_extraction.py">task_relation_extraction.py</a></p>
+
+    <p>Without any pre-processing or post-processing, the final F1 on the validation set is 0.822, which is generally better than the previous DGCNN models. Note that this is without any pre- or post-processing; if some were added, the F1 would likely reach 0.83.</p>
+
+    <p>At the same time, we find many errors and omissions in the labels of the training and validation sets. When we originally participated in the competition, the labeling quality of the online test set was higher (more standardized and complete) than that of the training and validation sets. Back then, the F1 on the submitted test set was generally 4%–5% higher than the offline validation set F1. In other words, with some rule-based corrections, if this result were submitted to the original leaderboard, a single model would likely have an F1 of around 0.87.</p>
+
+    <h2 id="Worth-Noting">Worth Noting</h2>
+    <p>As mentioned at the beginning, I previously wrote an <a href="https://github.com/bojone/bert_in_keras/blob/master/relation_extract.py">example</a> of using BERT for triple extraction using keras-bert. Here, I will discuss the differences between the current model and the previous one, as well as some points worth noting.</p>
+
+    <p>The first difference is that the previous one was a simple attempt, where the vector of $s$ was simply added to the encoding sequence to predict $o$ and $p$, rather than using <a href="translation_7124.html">Conditional Layer Norm</a> as in this article. The Conditional Layer Norm approach has better representational power, and the effect is slightly improved.</p>
+
+    <p>The second difference, and a point worth being aware of, is that the model in this article uses BERT's standard tokenizer, whereas the previous example used direct character splitting. Sequences produced by the standard tokenizer are not simply split by character, especially in cases involving English and numbers. The output tokenization results do not align perfectly with the characters of the original sequence. Therefore, one must be very careful when constructing training samples and outputting results.</p>
+
+    <p>Readers might ask: Why not go back to original character splitting? I believe that since BERT is used, one should follow BERT's tokenizer; even if they don't align, there are ways to handle it. The previous character splitting was due to my lack of familiarity with BERT at the time, leading to non-standard usage that should not be encouraged. Following BERT's tokenizer also has the potential to achieve better fine-tuning results than forced character splitting.</p>
+
+    <p>Furthermore, I discovered a somewhat surprising fact: the vocabulary (vocab.txt) provided with the Chinese BERT is incomplete. For example, the character "箓" in "符箓" (fulu/talisman) is not in BERT's vocab.txt. Therefore, when outputting final results, it is best not to use the tokenizer's own <code>decode</code> method, but rather map back to the original sequence and output slices from the original string.</p>
+
+    <p>Finally, the training of this version includes a weight moving average, which stabilizes model training and may even slightly improve performance. For an introduction to weight moving averages, please refer <a href="https://kexue.fm/archives/6583#权重滑动平均">here</a>.</p>
+
+    <h2 id="Conclusion">Summary</h2>
+    <p>This article has provided an example of using bert4keras to perform triple extraction and pointed out several things worth noting. Everyone is welcome to refer to and try it out.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7161.html" style="color: #005fcc;">https://kexue.fm/archives/7161</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

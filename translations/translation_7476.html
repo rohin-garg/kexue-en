@@ -1,0 +1,276 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/7476">Unsupervised Word Segmentation and Syntax Parsing! It turns out BERT can be used this way</a></h1>
+
+    <p>By 苏剑林 | June 10, 2020</p>
+
+
+<p>The standard usage of BERT is to load its pre-trained weights, attach a small number of new layers, and then fine-tune it on downstream tasks. In other words, its general usage is typically supervised training. Based on this workflow, we can perform Chinese word segmentation, NER, and even syntax parsing—tasks that most people have heard of, even if they haven't implemented them. However, it might be surprising and interesting to learn that one can perform word segmentation and even extract syntactic structures directly from pre-trained BERT without any fine-tuning.</p>
+
+<p>This article introduces the ACL 2020 paper <a href="https://arxiv.org/abs/2004.14799">"Perturbed Masking: Parameter-free Probing for Analyzing and Interpreting BERT"</a>. It provides a method for analyzing and interpreting BERT by directly utilizing the Masked Language Model (MLM). Using this idea, we can achieve unsupervised word segmentation and syntax parsing.</p>
+
+<h2>Correlation Matrix</h2>
+
+<p>This article is recommended to be read in conjunction with the following posts: <a href="translation_3913.html">"[Chinese Word Segmentation Series] 2. New Word Discovery Based on Segmentation"</a>, <a href="translation_4765.html">"Principle of Minimum Entropy (II): building a lexicon by 'making a prompt decision'"</a>, and <a href="translation_6721.html">"Principle of Minimum Entropy (III): 'Leaping the River'—Sentence Templates and Language Structure"</a>. These articles primarily introduce the key idea for unsupervised segmentation and syntax parsing: the <strong>Correlation Matrix</strong>.</p>
+
+<h3>token - token</h3>
+
+<p>Following the notation of the original paper, let the sentence to be analyzed be represented as a sequence of tokens $\boldsymbol{x}=[x_1,x_2,\dots,x_T]$. We need a $T\times T$ correlation matrix $\mathcal{F}$ representing the correlation between any two tokens in the sentence. In the previously recommended articles, we used mutual information to measure this correlation, but with the help of a pre-trained BERT model, we can propose a new form of correlation.</p>
+
+<p>We use $H(\boldsymbol{x})$ to denote the output sequence after the sequence $\boldsymbol{x}$ is encoded by BERT. $H(\boldsymbol{x})_i$ represents the encoding vector corresponding to the $i$-th token. Additionally, $\boldsymbol{x}\backslash \{x_i\}$ denotes the sequence where the $i$-th token is replaced by $\text{[MASK]}$, and $\boldsymbol{x}\backslash \{x_i, x_j\}$ denotes the sequence where both the $i$-th and $j$-th tokens are replaced by $\text{[MASK]}$. Let $f(x_i, x_j)$ represent the degree of dependence of the $i$-th token on the $j$-th token, or the "influence" of the $j$-th token on the $i$-th token. We define it as:</p>
+
+\begin{equation}f(x_i, x_j)=d\big(H(\boldsymbol{x}\backslash \{x_i\})_i, H(\boldsymbol{x}\backslash \{x_i, x_j\})_i\big)\end{equation}
+
+<p>where $d(\cdot,\cdot)$ is a vector distance. The original paper uses Euclidean distance, i.e., $d(\boldsymbol{u},\boldsymbol{v})=\Vert \boldsymbol{u} - \boldsymbol{v}\Vert_2$.</p>
+
+<p><em>(Diagram of "token-token" correlation calculation based on BERT; the original sentence is "Euler is a mathematician")</em></p>
+
+<p>The intuition for this definition is as follows: In the MLM model, both $H(\boldsymbol{x}\backslash \{x_i\})_i$ and $H(\boldsymbol{x}\backslash \{x_i, x_j\})_i$ are features used to predict $x_i$. According to the intuitive idea that "the more masks, the less accurate the prediction," we have reason to believe that $H(\boldsymbol{x}\backslash \{x_i\})_i$ can predict $x_i$ more accurately than $H(\boldsymbol{x}\backslash \{x_i, x_j\})_i$. Since $H(\boldsymbol{x}\backslash \{x_i, x_j\})_i$ differs from $H(\boldsymbol{x}\backslash \{x_i\})_i$ by the removal of information from $x_j$, the distance between the two can represent the "influence" of $x_j$ on $x_i$.</p>
+
+<p><strong>Note 1:</strong> The original paper also provides another definition for $f(x_i,x_j)$, but it is vaguely described, and I feel that method is less reasonable, so it will not be introduced here.</p>
+
+<p><strong>Note 2:</strong> Readers might think of directly using the Self-Attention matrix within BERT as the correlation. However, this is actually not ideal: first, BERT has many layers, each with its own attention matrices, and it is unclear which one to use; second, the paper <a href="translation_7342.html">"Google's New Work Synthesizer: We don't understand Self-Attention well enough yet"</a> tells us that attention matrices may not work as we imagine, and the values within them are not necessarily correlations.</p>
+
+<h3>span - span</h3>
+
+<p>Of course, we are not limited to using tokens as units. For example, in syntax parsing, we usually work with words. However, BERT's input is still tokens, so we need to group tokens into several spans $D=[e_1,e_2,\dots,e_N]$, where $e_i=[x_1^i,x_2^i,\dots,x_{M_i}^i]$. In this case, we need an $N\times N$ correlation matrix, defined similarly to the previous one:</p>
+
+\begin{equation}f(e_i, e_j)=d\big(H(D\backslash \{e_i\})_i, H(D\backslash \{e_i, e_j\})_i\big)\end{equation}
+
+<p>Here $H(D\backslash \{e_i\})_i$ refers to the average of the $M_i$ vectors corresponding to $e_i$ output by BERT.</p>
+
+<p><em>(Diagram of "span-span" correlation calculation based on BERT; original sentence "Euler is a mathematician")</em></p>
+
+<h2>Language Structure</h2>
+
+<p>With this correlation matrix, we can do many things, such as word segmentation and syntax parsing. On one hand, the MLM model of BERT provides a way to perform unsupervised word segmentation and syntax parsing; on the other hand, these reasonable unsupervised results conversely explain the rationality of BERT itself. This is why the authors titled the original paper "Analyzing and Interpreting BERT."</p>
+
+<h3>Chinese Word Segmentation</h3>
+
+<p>As a basic verification, we can try to use it for unsupervised Chinese word segmentation. This part of the content is from my own experiments and does not appear in the original paper, likely because the original paper's experiments were all on English data, while word segmentation is a task with more "Chinese characteristics."</p>
+
+<p>In fact, once you have the correlation matrix, word segmentation is a natural application. Similar to <a href="translation_3913.html">"[Chinese Word Segmentation Series] 2. New Word Discovery Based on Segmentation"</a> and <a href="translation_4765.html">"Principle of Minimum Entropy (II): building a lexicon by 'making a prompt decision'"</a>, we only need to consider the correlation between adjacent tokens. By setting a threshold, we can cut where the correlation between two tokens is less than the threshold and join them where it is greater than or equal to the threshold, thus forming a simple word segmentation tool. In the experiment, I used $\frac{f(x_i, x_{i+1}) + f(x_{i+1}, x_i)}{2}$ as the measure for the correlation between two adjacent tokens.</p>
+
+<p>Specific details can be found in the code <code>perturbed_masking/word_segment.py</code>. Below is a demonstration of the effect:</p>
+
+<p>
+<code>[u'习近平', u'总书记', u'6月', u'8日', u'赴', u'宁夏', u'考察', u'调研', u'。', u'当天', u'下午', u'，他先后', u'来到', u'吴忠', u'市', u'红寺堡镇', u'弘德', u'村', u'、黄河', u'吴忠', u'市城区段、', u'金星', u'镇金花园', u'社区', u'，', u'了解', u'当地', u'推进', u'脱贫', u'攻坚', u'、', u'加强', u'黄河流域', u'生态', u'保护', u'、', u'促进', u'民族团结', u'等', u'情况', u'。']</code><br>
+<code>[u'大肠杆菌', u'是', u'人和', u'许多', u'动物', u'肠道', u'中最', u'主要', u'且数量', u'最多', u'的', u'一种', u'细菌']</code><br>
+<code>[u'苏剑林', u'是', u'科学', u'空间', u'的博主']</code><br>
+<code>[u'九寨沟', u'国家级', u'自然', u'保护', u'区', u'位于', u'四川', u'省', u'阿坝藏族羌族', u'自治', u'州', u'南坪县境内', u'，', u'距离', u'成都市400多公里', u'，', u'是', u'一条', u'纵深', u'40余公里', u'的山沟谷', u'地']</code>
+</p>
+
+<p>As you can see, the results are quite impressive. Although there are still some errors, it is quite remarkable for an unsupervised segmentation algorithm. We can further control the segmentation granularity by modifying the threshold, or use it as a word discovery tool to further improve results (i.e., by statistically aggregating the segmentation results, filtering out low-frequency words, and using the remaining words as a lexicon to build a lexicon-based segmentation tool). It is worth noting that for the above experiments, I used the original BERT-base version released by Google, which did not incorporate word segmentation information (the later WWM version used word segmentation to construct MASKs, so it incorporated segmentation information). Thus, the results here truly qualify as purely unsupervised.</p>
+
+<h3>Syntax Parsing</h3>
+
+<p>Readers with relevant background should know that, similar to word segmentation, once you have the correlation matrix, syntax parsing is a natural next step. Of course, since the parsing here is unsupervised, it can only extract the hierarchical structure (syntax tree) of the sentence; it cannot assign human-defined syntactic labels as supervised syntax parsing does.</p>
+
+<p>Similar to the paper <a href="translation_6620.html">"ON-LSTM: Expressing Hierarchical Structure with Ordered Neurons"</a>, the basic idea of unsupervised syntax parsing is to recursively divide $\boldsymbol{x}=[x_1,x_2,\dots,x_T]$ into three parts: $((\boldsymbol{x}_{ < k}),(x_k, (\boldsymbol{x}_{ > k})))$ (if based on spans, replace $x_i$ with $e_i$; the steps are the same). This is a bit like clustering, where $\boldsymbol{x}_{ < k}$ is one class and $\boldsymbol{x}_{\geq k}$ is another. The clustering logic is standard: we hope correlation within the same class is as large as possible, while correlation between different classes is as small as possible. Thus, we can propose the following simple optimization objective:</p>
+
+\begin{equation}\mathop{\text{argmax}}_k \underbrace{\frac{\sum\limits_{i=1}^{k-1}\sum\limits_{j=1}^{k-1} f(x_i, x_j)}{(k-1)^2}}_{\text{Intra-class correlation}} + \underbrace{\frac{\sum\limits_{i=k}^{T}\sum\limits_{j=k}^{T} f(x_i, x_j)}{(T-k+1)^2}}_{\text{Intra-class correlation}} - \underbrace{\frac{\sum\limits_{i=1}^{k-1}\sum\limits_{j=k}^{T} f(x_i, x_j)}{(k-1)(T-k+1)}}_{\text{Inter-class correlation}} - \underbrace{\frac{\sum\limits_{i=k}^{T}\sum\limits_{j=1}^{k-1} f(x_i, x_j)}{(k-1)(T-k+1)}}_{\text{Inter-class correlation}}\end{equation}
+
+<p>We can simply define $f(x_i, x_i)$ as 0; such details are not critical, as unsupervised methods cannot be made perfectly precise anyway. While the formula above looks complex, it can actually be expressed clearly with a diagram:</p>
+
+<p><em>(Diagram of block clustering based on the correlation matrix)</em></p>
+
+<p>As shown in the visualization of the distance matrix, the goal of clustering is to ensure that "the mean values of the blue and green parts are as large as possible, while the mean values of the yellow and orange parts are as small as possible," which leads to the optimization objective mentioned above.</p>
+
+<p>How well does it work? Let's try several sentences (pre-segmented, building the matrix with word units):</p>
+
+<p><em>(Demonstration of unsupervised syntax parsing based on BERT)</em></p>
+
+<p>It seems that the hierarchical structure of the sentences is basically extracted. For the implementation, please refer to the code: <code>perturbed_masking/syntax_parsing.py</code>. Finally, the authors of the original paper have also open-sourced their <a href="https://github.com/pfliu-nlp/Perturbed-Masking">code</a> (a salute to open source), which readers can also refer to.</p>
+
+<h2>Article Summary</h2>
+
+<p>This article briefly introduced an ACL 2020 paper which proposed a method for calculating the correlation between sentence components using BERT's MLM model. Using the calculated correlations, we can perform unsupervised word segmentation and syntax parsing. Using bert4keras, I attempted to replicate this on Chinese data and verified the effectiveness of this approach.</p>
+
+<p>
+    Reprinted to please include this article address: <a href="translation_7476.html">https://kexue.fm/archives/7476</a><br>
+    For more detailed reprinting matters, please refer to: <a href="https://kexue.fm/faq.html">"Scientific Space FAQ"</a>
+</p>
+
+<p>
+    If you have any doubts or suggestions, please continue the discussion in the comments section below.<br>
+    If you think this article is good, you are welcome to Share / Reward this article. Rewarding is not about making a profit, but about knowing how much readers truly care about Scientific Space. Of course, if you ignore it, it won't affect your reading. Thanks again!
+</p>
+
+<p>
+    If you need to cite this article, please refer to:<br>
+    Su Jianlin. (Jun. 10, 2020). "Unsupervised Word Segmentation and Syntax Parsing! It turns out BERT can be used this way" [Blog post]. Retrieved from https://kexue.fm/archives/7476
+</p>
+
+<pre>
+@online{kexuefm-7476, 
+         title={Unsupervised Word Segmentation and Syntax Parsing! It turns out BERT can be used this way}, 
+         author={Su Jianlin}, 
+         year={2020}, 
+         month={Jun}, 
+         url={\url{https://kexue.fm/archives/7476}}, 
+}
+</pre>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7476.html" style="color: #005fcc;">https://kexue.fm/archives/7476</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

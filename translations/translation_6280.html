@@ -1,0 +1,588 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/6280">From Wasserstein Distance and Duality Theory to WGAN</a></h1>
+    
+    <p>By 苏剑林 | January 20, 2019</p>
+
+    <p>Which bulldozer is the strongest? For the lowest cost, look to Wasserstein.</p>
+
+    <p>In 2017, I wrote a blog post <a href="translation_4439.html">"The Art of Mutual Confrontation: Direct to WGAN-GP from Zero"</a>, which introduced WGAN from a relatively intuitive perspective. In that article, WGAN seemed more like a stroke of inspiration, and in truth, it didn't have a very deep connection to the actual Wasserstein distance definition in that explanation.</p>
+
+    <p>In this article, we will revisit WGAN from a more mathematical perspective. Of course, this post isn't purely about GANs; it primarily focuses on the understanding of the Wasserstein distance and its duality theory. This article is inspired by the famous blog post <a href="https://vincentherrmann.github.io/blog/wasserstein/">"Wasserstein GAN and the Kantorovich-Rubinstein Duality"</a>. The content is largely similar, but I have removed some redundant parts and supplemented areas that were insufficient or ambiguous. Regardless, I would first like to express my respect to the predecessors and their work.</p>
+
+    <p>(<strong>Note:</strong> To fully understand this article, you will likely need fundamental knowledge of multivariable calculus, probability theory, and linear algebra. Also, this article is indeed long with many mathematical formulas, but believe me, it is not complex or difficult to understand—don't be intimidated by the notation!)</p>
+
+    <h2 id="Wasserstein距离">Wasserstein Distance</h2>
+
+    <p>Naturally, the entire article must revolve around the Wasserstein distance (W-distance). Since the definition of the Wasserstein distance is based on the optimal transport cost, we first need to introduce the concept of optimal transport cost. Suppose we have two probability distributions $p(\boldsymbol{x})$ and $q(\boldsymbol{x})$; the optimal transport cost is defined as:</p>
+
+    \begin{equation}\mathcal{C}[p,q]=\inf_{\gamma\in \Pi[p,q]} \iint \gamma(\boldsymbol{x},\boldsymbol{y}) c(\boldsymbol{x},\boldsymbol{y}) d\boldsymbol{x}d\boldsymbol{y}\label{eq:ot}\end{equation}
+
+    In fact, this is the most central definition in optimal transport theory.
+
+    Believe me, Equation \eqref{eq:ot} is not as hard to understand as it looks. Let's look at it term by term.
+
+    <h3 id="成本函数">Cost Function</h3>
+
+    <p>First, look at $c(\boldsymbol{x},\boldsymbol{y})$. It is a cost function representing the cost of transporting from $\boldsymbol{x}$ to $\boldsymbol{y}$. A common choice is a power of the Euclidean distance:</p>
+
+    \begin{equation}c(\boldsymbol{x},\boldsymbol{y}) = \Vert\boldsymbol{x}-\boldsymbol{y}\Vert^{\rho}\end{equation}
+
+    At this point, we denote:
+
+    \begin{equation}\mathcal{W}_{\rho}[p,q]=\left(\mathcal{C}[p,q]\right)^{1/\rho}\end{equation}
+
+    $\mathcal{W}_{\rho}[p,q]$ is called the "Wasserstein distance" (more precisely, the "Wasserstein-$\rho$ distance"). As we can see, the meaning of the optimal transport cost $\mathcal{C}[p,q]$ is more general than the Wasserstein distance $\mathcal{W}_{\rho}[p,q]$, so the subsequent derivations will focus on $\mathcal{C}[p,q]$. When $\rho=1$, the optimal transport cost is equal to the corresponding Wasserstein distance.</p>
+
+    <p>Generally, the Euclidean distance $\Vert\boldsymbol{x}-\boldsymbol{y}\Vert$ can be replaced by a more general distance metric. However, the specific choice of distance is often not particularly critical because many norms are equivalent; the equivalence of norms suggests that the resulting W-distances defined are essentially similar.</p>
+
+    <h3 id="成本最小化">Cost Minimization</h3>
+
+    <p>Next, let's look at $\gamma$. The condition $\gamma\in \Pi[p,q]$ means:</p>
+
+    \begin{equation}\int \gamma(\boldsymbol{x},\boldsymbol{y}) d\boldsymbol{y}=p(\boldsymbol{x})\quad\text{and}\quad\int \gamma(\boldsymbol{x},\boldsymbol{y}) d\boldsymbol{x}=q(\boldsymbol{y})\end{equation}
+
+    This means that $\gamma$ is a joint distribution whose marginal distributions are the original $p$ and $q$.</p>
+
+    <p>In fact, $\gamma$ describes a transport plan. Without loss of generality, let $p$ be the source distribution and $q$ be the target distribution. $p(\boldsymbol{x})$ means that there is initially an amount of goods $p(\boldsymbol{x})$ at position $\boldsymbol{x}$, and $q(\boldsymbol{x})$ means that position $\boldsymbol{x}$ ultimately needs to store an amount of goods $q(\boldsymbol{x})$. If $p(\boldsymbol{x}) > q(\boldsymbol{x})$, then part of the goods at $\boldsymbol{x}$ must be moved elsewhere. Conversely, if $p(\boldsymbol{x}) < q(\boldsymbol{x})$, then goods must be moved from elsewhere to $\boldsymbol{x}$. And $\gamma(\boldsymbol{x}, \boldsymbol{y})$ means that an amount of goods $\gamma(\boldsymbol{x}, \boldsymbol{y})d\boldsymbol{x}$ is to be moved from $\boldsymbol{x}$ to $\boldsymbol{y}$.</p>
+
+    <p>Finally, $\inf$ represents the infimum, which simply means taking the minimum. In other words, we need to find the plan $\gamma$ from all possible transport plans that results in the minimum total transport cost $\iint \gamma(\boldsymbol{x},\boldsymbol{y}) c(\boldsymbol{x},\boldsymbol{y}) d\boldsymbol{x}d\boldsymbol{y}$. This minimum cost is the $\mathcal{C}[p,q]$ we want to calculate. If we replace "goods" with "dirt" or "earth" in the above analogy, the optimal transport cost is finding the most efficient way to "move the earth." Therefore, the Wasserstein distance is often referred to as the "Earth Mover's Distance."</p>
+
+    <p>Finally, here is an adapted image from the aforementioned blog post to demonstrate this "earth-moving" process:</p>
+
+    <p><img src="https://files.kexue.fm/illustration/2019/wasserstein_transport.png" alt="Earth Mover's Distance Illustration" /></p>
+    <p><i>Illustration of Earth Mover's Distance. Each portion of the dirt in p(x) on the left is divided into several parts and then transported to the same-colored position in q(x) on the right (or remains stationary).</i></p>
+
+    <h3 id="矩阵形式">Matrix Form</h3>
+
+    <p>After analyzing the terms, let's restate the problem more formally. We are actually seeking the minimum of:</p>
+
+    \begin{equation}\iint \gamma(\boldsymbol{x},\boldsymbol{y}) c(\boldsymbol{x},\boldsymbol{y}) d\boldsymbol{x}d\boldsymbol{y}\label{eq:ot-t}\end{equation}
+
+    where $c(\boldsymbol{x},\boldsymbol{y})$ is given, subject to the following constraints:</p>
+
+    \begin{equation}\int \gamma(\boldsymbol{x},\boldsymbol{y}) d\boldsymbol{y}=p(\boldsymbol{x}),\quad \int \gamma(\boldsymbol{x},\boldsymbol{y}) d\boldsymbol{x}=q(\boldsymbol{y}),\quad \gamma(\boldsymbol{x},\boldsymbol{y})\geq 0\label{eq:ot-c}\end{equation}
+
+    <p>Stare closely at Equation \eqref{eq:ot-t}. Considering that an integral is just the limit of a sum, we can discretize $\gamma(\boldsymbol{x},\boldsymbol{y})$ and $c(\boldsymbol{x},\boldsymbol{y})$ and view them as very long (column) vectors $\boldsymbol{\Gamma}$ and $\boldsymbol{C}$:</p>
+
+    \begin{equation}\boldsymbol{\Gamma}=\begin{pmatrix}
+    \gamma(\boldsymbol{x}_1, \boldsymbol{y}_1) \\
+    \gamma(\boldsymbol{x}_1, \boldsymbol{y}_2) \\
+    \vdots \\ \hline
+    \gamma(\boldsymbol{x}_2, \boldsymbol{y}_1) \\
+    \gamma(\boldsymbol{x}_2, \boldsymbol{y}_2) \\
+    \vdots \\ \hline
+    \vdots \\ \hline
+    \gamma(\boldsymbol{x}_n, \boldsymbol{y}_1) \\
+    \gamma(\boldsymbol{x}_n, \boldsymbol{y}_2) \\
+    \vdots \\ \hline
+    \vdots \\
+    \end{pmatrix},\quad \boldsymbol{C}=\begin{pmatrix}
+    c(\boldsymbol{x}_1, \boldsymbol{y}_1) \\
+    c(\boldsymbol{x}_1, \boldsymbol{y}_2) \\
+    \vdots \\ \hline
+    c(\boldsymbol{x}_2, \boldsymbol{y}_1) \\
+    c(\boldsymbol{x}_2, \boldsymbol{y}_2) \\
+    \vdots \\ \hline
+    \vdots \\ \hline
+    c(\boldsymbol{x}_n, \boldsymbol{y}_1) \\
+    c(\boldsymbol{x}_n, \boldsymbol{y}_2) \\
+    \vdots \\ \hline
+    \vdots \\
+    \end{pmatrix}\label{eq:lp-ot-t1}\end{equation}
+
+    <p>So Equation \eqref{eq:ot-t} is equivalent to multiplying the corresponding positions of $\boldsymbol{\Gamma}$ and $\boldsymbol{C}$ and summing them up. Isn't this just the <strong>inner product</strong> $\langle\boldsymbol{\Gamma},\boldsymbol{C}\rangle$?</p>
+
+    <p>If you haven't grasped this yet, please stare at Equation \eqref{eq:ot-t} for a while longer, imagining the process of discretizing $\boldsymbol{x}, \boldsymbol{y}$ into intervals, and then think about the definition of an integral. It shouldn't be hard to understand. If you have understood it, the rest is easy. We can treat the constraints in \eqref{eq:ot-c} the same way: treat $p(\boldsymbol{x})$ and $q(\boldsymbol{x})$ as long vectors and concatenate them. Treating the integral as a sum, the constraints in \eqref{eq:ot-c} can be written in matrix form $\boldsymbol{A}\boldsymbol{\Gamma} = \boldsymbol{b}$:</p>
+
+    \begin{equation}\underbrace{\left( \begin{array}{ccc|ccc|c|ccc|c}
+    1 & 1 & \dots & 0 & 0 & \dots & \dots & 0 & 0 & \dots & \dots \\
+    0 & 0 & \dots & 1 & 1 & \dots & \dots & 0 & 0 & \dots & \dots \\
+    \vdots & \vdots & \ddots & \vdots & \vdots & \ddots & \ddots & \vdots & \vdots & \ddots & \ddots \\
+    0 & 0 & \dots & 0 & 0 & \dots & \dots & 1 & 1 & \dots & \dots \\
+    \vdots & \vdots & \ddots & \vdots & \vdots & \ddots & \ddots & \vdots & \vdots & \ddots & \ddots \\ \hline
+    1 & 0 & \dots & 1 & 0 & \dots & \dots & 1 & 0 & \dots & \dots \\
+    0 & 1 & \dots & 0 & 1 & \dots & \dots & 0 & 1 & \dots & \dots \\
+    \vdots & \vdots & \ddots & \vdots & \vdots & \ddots & \ddots & \vdots & \vdots & \ddots & \ddots \\
+    0 & 0 & \dots & 0 & 0 & \dots & \dots & 0 & 0 & \dots & \dots \\
+    \vdots & \vdots & \ddots & \vdots & \vdots & \ddots & \ddots & \vdots & \vdots & \ddots & \ddots \\
+    \end{array} \right)}_{\Large\boldsymbol{A}}\,\, \underbrace{\begin{pmatrix}
+    \gamma(\boldsymbol{x}_1, \boldsymbol{y}_1) \\
+    \gamma(\boldsymbol{x}_1, \boldsymbol{y}_2) \\
+    \vdots \\ \hline
+    \gamma(\boldsymbol{x}_2, \boldsymbol{y}_1) \\
+    \gamma(\boldsymbol{x}_2, \boldsymbol{y}_2) \\
+    \vdots \\ \hline
+    \vdots \\ \hline
+    \gamma(\boldsymbol{x}_n, \boldsymbol{y}_1) \\
+    \gamma(\boldsymbol{x}_n, \boldsymbol{y}_2) \\
+    \vdots \\ \hline
+    \vdots \\
+    \end{pmatrix}}_{\Large\boldsymbol{\Gamma}} \,\,=\,\, \underbrace{\begin{pmatrix}
+    p(\boldsymbol{x}_1) \\
+    p(\boldsymbol{x}_2) \\
+    \vdots \\
+    p(\boldsymbol{x}_n) \\
+    \vdots \\ \hline
+    q(\boldsymbol{y}_1) \\
+    q(\boldsymbol{y}_2) \\
+    \vdots \\
+    q(\boldsymbol{y}_n) \\
+    \vdots \\
+    \end{pmatrix}}_{\Large\boldsymbol{b}}\label{eq:lp-ot-t2}\end{equation}
+
+    <p>Finally, we must not forget $\boldsymbol{\Gamma}\geq 0$, which means every component of $\boldsymbol{\Gamma}$ is greater than or equal to 0.</p>
+
+    <h3 id="线性规划问题">The Linear Programming Problem</h3>
+
+    <p>Now the problem can be described in one line:</p>
+
+    \begin{equation}\min_{\boldsymbol{\Gamma}}\big\{\langle\boldsymbol{\Gamma},\boldsymbol{C}\rangle\,\big|\,\boldsymbol{A}\boldsymbol{\Gamma}=\boldsymbol{b},\,\boldsymbol{\Gamma}\geq 0\big\}\label{eq:lp-ot}\end{equation}
+
+    <p>This is the problem of "minimizing a linear function under linear constraints," which is the linear programming problem we encountered back in high school! As you can see, although the original problem seemed complex with integrals and infimums, after transcription, it is essentially a linear programming problem (though "easy to understand" does not mean "easy to solve").</p>
+
+    <h2 id="线性规划与对偶">Linear Programming and Duality</h2>
+
+    <p>Let's rewrite the linear programming problem using more general notation. There are two common forms:</p>
+
+    \begin{equation}\min_{\boldsymbol{x}}\big\{\boldsymbol{c}^{\top}\boldsymbol{x}\,\big|\,\boldsymbol{A}\boldsymbol{x}=\boldsymbol{b},\,\boldsymbol{x}\geq 0\big\}\quad\text{or}\quad \min_{\boldsymbol{x}}\big\{\boldsymbol{c}^{\top}\boldsymbol{x}\,\big|\,\boldsymbol{A}\boldsymbol{x}\geq \boldsymbol{b},\,\boldsymbol{x}\geq 0\big\}\end{equation}
+
+    <p>These two forms are essentially equivalent, but discussing the first one is slightly simpler (really just a little bit, there's no fundamental difference). From Equation \eqref{eq:lp-ot}, we know we are currently interested in the first case.</p>
+
+    <p>Note: To avoid confusion, we must declare the size of each vector. We assume every vector is a column vector. After transposition $^\top$, it represents a row vector. $\boldsymbol{x},\boldsymbol{c}\in\mathbb{R}^n$ are both $n$-dimensional vectors, where $\boldsymbol{c}$ is the weights. $\boldsymbol{c}^{\top}\boldsymbol{x}$ is the weighted sum of the components of $\boldsymbol{x}$. $\boldsymbol{b}\in\mathbb{R}^m$ is an $m$-dimensional vector, so naturally $\boldsymbol{A}\in\mathbb{R}^{m\times n}$ is an $m\times n$ matrix. $\boldsymbol{A}\boldsymbol{x}=\boldsymbol{b}$ actually describes $m$ equality constraints.</p>
+
+    <h3 id="弱对偶形式">Weak Duality</h3>
+
+    <p>"Duality" is a very important concept in planning and optimization. Generally, "duality" refers to a transformation that converts the original problem into an equivalent but seemingly completely different new problem, i.e.:</p>
+
+    \begin{equation}\text{Primal Problem}\quad\xrightarrow{\text{Dual Transformation}}\quad \text{Dual Problem}\end{equation}
+
+    <p>Duality is called "duality" because applying the same transformation to the new problem usually restores it to the original problem:</p>
+
+    \begin{equation}\text{Dual Problem}\quad\xrightarrow{\text{Dual Transformation}}\quad \text{Primal Problem}\end{equation}
+
+    <p>Duality is like a mirror; the primal and dual problems are like "object" and "image." Solving one is equivalent to solving the other. Thus, we choose whichever one is simpler.</p>
+
+    <p>Readers might wonder: What is the difference between "duality" and equivalent descriptions in mathematics like "contrapositive propositions"? There is no fundamental difference; simply put, both are equivalent to the original proposition. However, "duality" looks very different from the original, while a "contrapositive" is merely a logical transformation. From the perspective of linear algebra, "duality" is equivalent to the relationship between the "original space" and the "complementary space" in vector spaces.</p>
+
+    <h4 id="最大 vs 最小">Maximize vs. Minimize</h4>
+
+    <p>First, we introduce "Weak Duality," which is actually quite simple to derive.</p>
+
+    <p>Our goal is $\min\limits_{\boldsymbol{x}}\big\{\boldsymbol{c}^{\top}\boldsymbol{x}\,\big|\,\boldsymbol{A}\boldsymbol{x}=\boldsymbol{b},\,\boldsymbol{x}\geq 0\big\}$. Suppose the minimum is attained at $\boldsymbol{x}^*$, so we have $\boldsymbol{A}\boldsymbol{x}^*=\boldsymbol{b}$. We can multiply both sides by a row vector $\boldsymbol{y}^{\top}\in\mathbb{R}^m$, turning the equation into a scalar: $\boldsymbol{y}^{\top}\boldsymbol{A}\boldsymbol{x}^*=\boldsymbol{y}^{\top}\boldsymbol{b}$.</p>
+
+    <p>If we assume $\boldsymbol{y}^{\top}\boldsymbol{A}\leq \boldsymbol{c}^{\top}$, then $\boldsymbol{y}^{\top}\boldsymbol{A}\boldsymbol{x}^*\leq \boldsymbol{c}^{\top}\boldsymbol{x}^*$ (since $\boldsymbol{x}^* \geq 0$). Thus, $\boldsymbol{y}^{\top}\boldsymbol{b}\leq \boldsymbol{c}^{\top} \boldsymbol{x}^*$. In other words, under the condition $\boldsymbol{y}^{\top}\boldsymbol{A}\leq \boldsymbol{c}^{\top}$, any $\boldsymbol{y}^{\top}\boldsymbol{b}$ is no greater than $\min\limits_{\boldsymbol{x}}\big\{\boldsymbol{c}^{\top}\boldsymbol{x}\,\big|\,\boldsymbol{A}\boldsymbol{x}=\boldsymbol{b},\,\boldsymbol{x}\geq 0\big\}$. "Any" means this holds even for the largest one, so we have:</p>
+
+    \begin{equation}\max_{\boldsymbol{y}}\big\{\boldsymbol{b}^{\top}\boldsymbol{y}\,\big|\,\boldsymbol{A}^{\top}\boldsymbol{y}\leq \boldsymbol{c}\big\}\leq \min_{\boldsymbol{x}}\big\{\boldsymbol{c}^{\top}\boldsymbol{x}\,\big|\,\boldsymbol{A}\boldsymbol{x}=\boldsymbol{b},\,\boldsymbol{x}\geq 0\big\}\label{eq:weak-dual}\end{equation}
+
+    <p>This is called the "weak duality form." Its meaning is: "the maximum of the left side" is still no larger than "the minimum of the right side."</p>
+
+    <h4 id="几点评注">A Few Remarks</h4>
+
+    <p>Regarding weak duality, perhaps the following points are worth explaining further:</p>
+
+    <blockquote>
+    <p>1. We have now transformed the original minimization problem into a maximization problem $\max\limits_{\boldsymbol{y}}\big\{\boldsymbol{b}^{\top}\boldsymbol{y}\,\big|\,\boldsymbol{A}^{\top}\boldsymbol{y}\leq \boldsymbol{c}\big\}$, which gives us a flavor of duality. Weak duality is "weak" because we have only shown that the dual problem provides a lower bound for the primal problem; we haven't proven they are equal yet.</p>
+    <p>2. Weak duality holds in many optimization problems (including non-linear optimization). If the two are indeed equal, it is called true duality, or strong duality.</p>
+    <p>3. Theoretically, we do need to prove that the left and right sides of Equation \eqref{eq:weak-dual} are equal to apply it further. But from a practical application standpoint, the lower bound provided by weak duality is often enough. Problems in deep learning are very complex, and having an approximate objective to optimize is already quite good.</p>
+    <p>4. The reader might ask: Why did we assume $\boldsymbol{y}^{\top}\boldsymbol{A}\leq \boldsymbol{c}^{\top}$ instead of simply $\boldsymbol{y}^{\top}\boldsymbol{A}=\boldsymbol{c}^{\top}$? Assuming the latter is simpler, but the problem is that equality is very difficult to achieve in practice, so we can only assume the former.</p>
+    </blockquote>
+
+    <h3 id="强对偶形式">Strong Duality</h3>
+
+    <p>As mentioned, from a practical standpoint, weak duality is often sufficient. However, for readers interested in the complete theory, let's explore "Strong Duality." Readers only interested in WGAN itself may consider skipping this part.</p>
+
+    <p>Strong duality means:</p>
+
+    \begin{equation}\max_{\boldsymbol{y}}\big\{\boldsymbol{b}^{\top}\boldsymbol{y}\,\big|\,\boldsymbol{A}^{\top}\boldsymbol{y}\leq \boldsymbol{c}\big\} = \min_{\boldsymbol{x}}\big\{\boldsymbol{c}^{\top}\boldsymbol{x}\,\big|\,\boldsymbol{A}\boldsymbol{x}=\boldsymbol{b},\,\boldsymbol{x}\geq 0\big\}\label{eq:strong-dual}\end{equation}
+
+    <p>Note that while weak duality holds for many optimization problems, strong duality does not always hold. However, for linear programming, strong duality does hold.</p>
+
+    <h4 id="Farkas引理">Farkas' Lemma</h4>
+
+    <p>The proof of strong duality mainly relies on a conclusion called "Farkas' Lemma":</p>
+
+    <blockquote>
+    <p>For a fixed matrix $\boldsymbol{A}\in\mathbb{R}^{m\times n}$ and vector $\boldsymbol{b}\in\mathbb{R}^m$, exactly one of the following two options holds:</p>
+    <p>1. There exists $\boldsymbol{x}\in \mathbb{R}^n$ with $\boldsymbol{x}\geq 0$ such that $\boldsymbol{A}\boldsymbol{x}=\boldsymbol{b}$;<br />
+    2. There exists $\boldsymbol{y}\in \mathbb{R}^m$ such that $\boldsymbol{A}^{\top}\boldsymbol{y}\leq 0$ and $\boldsymbol{b}^{\top}\boldsymbol{y} > 0$.</p>
+    </blockquote>
+
+    <p>What on earth? Matrix transposes and inequalities? Can we put this in plain language?</p>
+
+    <p>Actually, this lemma has a very intuitive geometric interpretation, though translating geometry into algebra isn't simple. The starting point for the geometric explanation is to consider the following set of vectors:</p>
+
+    \begin{equation}\big\{\boldsymbol{A}\boldsymbol{x}\,\big|\,\boldsymbol{x}\in \mathbb{R}^n\text{ and }\boldsymbol{x}\geq 0\big\}\end{equation}
+
+    <p>The meaning of this set is: if we view $\boldsymbol{A}$ as a combination of $n$ column vectors in $m$-dimensional space:</p>
+
+    \begin{equation}\boldsymbol{A}=(\boldsymbol{a}_1,\boldsymbol{a}_2,\dots,\boldsymbol{a}_n)\end{equation}
+
+    <p>then the set is all non-negative linear combinations of $\boldsymbol{a}_1, \boldsymbol{a}_2, \dots, \boldsymbol{a}_n$. What is this set? The answer is: a cone, as shown in the figure.</p>
+
+    <p><img src="https://files.kexue.fm/illustration/2019/farkas_1.png" alt="Geometric Interpretation of Vectors" /></p>
+    <p><i>Non-negative linear combinations of given vectors form a cone bounded by those vectors.</i></p>
+
+    <p>Now, if we are given an arbitrary vector $\boldsymbol{b}$, there are only two possibilities, and exactly one must be true: 1. It is inside the cone (including the boundary); 2. It is outside the cone. (This sounds like a truism, but when translated into algebraic language, it is not.)</p>
+
+    <p><img src="https://files.kexue.fm/illustration/2019/farkas_2.png" alt="Vector inside the cone" /></p>
+    <p><i>If the given vector is inside the cone, it means it can be represented as a non-negative linear combination.</i></p>
+
+    <p><img src="https://files.kexue.fm/illustration/2019/farkas_3.png" alt="Vector outside the cone" /></p>
+    <p><i>If the given vector is outside the cone, we can always find a "marker" vector for comparison.</i></p>
+
+    <p>If it is inside the cone, then by the definition of a cone, it can be expressed as a non-negative linear combination of $\boldsymbol{a}_1, \boldsymbol{a}_2, \dots, \boldsymbol{a}_n$ (the representation may not be unique). That is, there exists $\boldsymbol{x}\geq 0$ such that $\boldsymbol{A}\boldsymbol{x}=\boldsymbol{b}$. This is the first case.</p>
+
+    <p>What if it is outside the cone? How do we express being "outside"? We could just write the negation of the cone's definition, but that's not very useful. If vector $\boldsymbol{b}$ is outside the cone, then we can always find a "separating" vector $\boldsymbol{y}$ such that its angle with $\boldsymbol{a}_1, \boldsymbol{a}_2, \dots, \boldsymbol{a}_n$ is 90 degrees or greater. In vector notation, the inner products are all less than or equal to zero: $(\boldsymbol{a}_1^{\top}\boldsymbol{y}, \boldsymbol{a}_2^{\top}\boldsymbol{y}, \dots, \boldsymbol{a}_n^{\top}\boldsymbol{y}) \leq 0$, or $\boldsymbol{A}^{\top}\boldsymbol{y} \leq 0$. After finding this "separating" vector, the angle between $\boldsymbol{b}$ and $\boldsymbol{y}$ must be less than 90 degrees, i.e., $\boldsymbol{b}^{\top}\boldsymbol{y} > 0$. One being $\geq 90^\circ$ and the other being $< 90^\circ$ guarantees that vector $\boldsymbol{b}$ is outside the cone. This is the second case.</p>
+
+    <p>Of course, this is not a rigorous proof; it's just a heuristic guide. A complete proof requires carefully arguing why the non-negative combinations of these vectors form a cone. Those details are outside the scope of this article. The characteristic of Farkas' Lemma is the "either-or" nature: to prove the first case, you only need to prove the second case doesn't hold, and vice-versa. This is a transformation of the problem.</p>
+
+    <h4 id="从引理到强对偶">From Lemma to Strong Duality</h4>
+
+    <p>With Farkas' Lemma, we can prove strong duality. The strategy is to show that the $\max$ can get arbitrarily close to the $\min$.</p>
+
+    <p>Assume the minimum is reached at $\boldsymbol{x}^*$, i.e., the minimum value is $z^* = \boldsymbol{c}^{\top}\boldsymbol{x}^*$. We consider:</p>
+
+    \begin{equation}\hat{\boldsymbol{A}} = \begin{pmatrix} \boldsymbol{A} \\ -\boldsymbol{c}^{\top} \end{pmatrix}, \quad 
+    \hat{\boldsymbol{b}}_{\epsilon} = \begin{pmatrix} \boldsymbol{b} \\ -z^* + \epsilon \end{pmatrix}, \quad 
+    \hat{\boldsymbol{y}} = \begin{pmatrix} \boldsymbol{y} \\ \alpha \end{pmatrix}\end{equation}
+
+    <p>When $\epsilon > 0$, for any $\boldsymbol{x} \geq 0$, $\hat{\boldsymbol{A}} \boldsymbol{x}$ cannot equal $\hat{\boldsymbol{b}}_{\epsilon}$. This is because $\boldsymbol{c}^{\top} \boldsymbol{x}^* = z^*$ is already the minimum, so $-z^*$ is the maximum possible value of $-\boldsymbol{c}^{\top} \boldsymbol{x}$. It cannot equal the even larger value $-z^* + \epsilon$.</p>
+
+    <p>As discussed, if the first case is not satisfied, the second case must be: there exists $\hat{\boldsymbol{y}} = \begin{pmatrix} \boldsymbol{y} \\ \alpha \end{pmatrix}$ such that $\hat{\boldsymbol{A}}^{\top}\hat{\boldsymbol{y}}\leq 0$ and $\hat{\boldsymbol{b}}_{\epsilon}^{\top}\hat{\boldsymbol{y}} > 0$. This is equivalent to:</p>
+
+    \begin{equation}\boldsymbol{A}^{\top} \boldsymbol{y} \leq \alpha \boldsymbol{c}, \quad \boldsymbol{b}^{\top} \boldsymbol{y} > \alpha(z^* - \epsilon)\label{eq:whocare}\end{equation}
+
+    <p>Next, we show that $\alpha$ must be greater than 0. We know $0 < \hat{\boldsymbol{b}}_{\epsilon}^{\top}\hat{\boldsymbol{y}} = \hat{\boldsymbol{b}}_{0}^{\top}\hat{\boldsymbol{y}} + \alpha\epsilon$. Since $\hat{\boldsymbol{b}}_{0}^{\top}\hat{\boldsymbol{y}}$ appears here, let's look at the case $\epsilon=0$: when $\epsilon = 0$, $\hat{\boldsymbol{A}} \boldsymbol{x}^* = \hat{\boldsymbol{b}}_0$ holds, which satisfies the first case of Farkas' Lemma. Thus, it cannot satisfy the second case. Not satisfying the second case means "for all $\hat{\boldsymbol{A}}^{\top}\hat{\boldsymbol{y}}\leq 0$, $\hat{\boldsymbol{b}}_{0}^{\top}\hat{\boldsymbol{y}}\leq 0$". Since we just proved $\hat{\boldsymbol{b}}_{0}^{\top}\hat{\boldsymbol{y}} + \alpha\epsilon > 0$, we must have $\alpha > 0$.</p>
+
+    <p>Now that we know $\alpha > 0$, we can derive from \eqref{eq:whocare}:</p>
+
+    \begin{equation}\boldsymbol{A}^{\top} \big(\boldsymbol{y}/\alpha\big) \leq \boldsymbol{c}, \quad \boldsymbol{b}^{\top} \big(\boldsymbol{y}/\alpha\big) > z^* - \epsilon\end{equation}
+
+    <p>This means:</p>
+
+    \begin{equation}\max_{\boldsymbol{y}}\big\{\boldsymbol{b}^{\top}\boldsymbol{y}\,\big|\,\boldsymbol{A}^{\top}\boldsymbol{y}\leq \boldsymbol{c}\big\} > z^* - \epsilon\end{equation}
+
+    <p>And weak duality already tells us:</p>
+
+    \begin{equation}z^* \geq \max_{\boldsymbol{y}}\big\{\boldsymbol{b}^{\top}\boldsymbol{y}\,\big|\,\boldsymbol{A}^{\top}\boldsymbol{y}\leq \boldsymbol{c}\big\}\end{equation}
+
+    <p>So $\max\limits_{\boldsymbol{y}}\big\{\boldsymbol{b}^{\top}\boldsymbol{y}\,\big|\,\boldsymbol{A}^{\top}\boldsymbol{y}\leq \boldsymbol{c}\big\}$ is squeezed between $z^* - \epsilon$ and $z^*$. Since $\epsilon > 0$ is arbitrary, the two can be infinitely close, and thus:</p>
+
+    \begin{equation}\max_{\boldsymbol{y}}\big\{\boldsymbol{b}^{\top}\boldsymbol{y}\,\big|\,\boldsymbol{A}^{\top}\boldsymbol{y}\leq \boldsymbol{c}\big\}=z^*=\min_{\boldsymbol{x}}\big\{\boldsymbol{c}^{\top}\boldsymbol{x}\,\big|\,\boldsymbol{A}\boldsymbol{x}=\boldsymbol{b},\,\boldsymbol{x}\geq 0\big\}\end{equation}
+
+    <p>This proves strong duality.</p>
+
+    <h4 id="简单说明">Brief Explanation</h4>
+
+    <p>The proof of Farkas' Lemma and strong duality may seem roundabout, but it is one of the most classic and important proof cases in optimization theory. For beginners, it should be a powerful conceptual shock. In our previous understanding, transforming a proposition was usually limited to "logical transformations" like negations or contrapositives. However, duality theory and Farkas' Lemma present conclusions that "look very different, yet are precisely equivalent."</p>
+
+    <p>Farkas' Lemma and strong duality can also be further extended to general convex optimization problems. The proofs are similar, but the discussions about regions and inequalities are more refined and complex than in linear programming. However, I am not a specialist in these optimization problems, so I only have a general understanding and will refrain from further display of limited knowledge.</p>
+
+    <h2 id="Wasserstein GAN">Wasserstein GAN</h2>
+
+    <p>Finally, after quite a bit of preparation, we can derive the Wasserstein GAN. From the perspective of this article, it is merely a byproduct of the linear programming dual form of the optimal transport cost.</p>
+
+    <h3 id="传输成本的对偶">Duality of Transport Cost</h3>
+
+    <p>Before deriving, let's recap the path of this article: We introduced the definition of optimal transport cost $\eqref{eq:ot}$ which underlies the W-distance. Through analysis, we found it is essentially a continuous version of a common linear programming problem (transformation via Equations \eqref{eq:lp-ot-t1}, \eqref{eq:lp-ot-t2}, and \eqref{eq:lp-ot}). Consequently, we spent a significant portion of the article learning about linear programming and its duality, ultimately reaching Equation \eqref{eq:strong-dual}.</p>
+
+    <p>Now, what we need to do is "reverse" the process—specifically, finding the continuous version corresponding to Equation \eqref{eq:strong-dual} to find a dual expression for the optimal transport cost.</p>
+
+    <p>This process isn't complicated. From Equation \eqref{eq:strong-dual} and Equation \eqref{eq:lp-ot}, we have:</p>
+
+    \begin{equation}\min_{\boldsymbol{\Gamma}}\big\{\langle\boldsymbol{\Gamma},\boldsymbol{C}\rangle\,\big|\,\boldsymbol{A}\boldsymbol{\Gamma}=\boldsymbol{b},\,\boldsymbol{\Gamma}\geq 0\big\}=\max_{\boldsymbol{F}}\big\{\langle\boldsymbol{b},\boldsymbol{F}\rangle\,\big|\,\boldsymbol{A}^{\top}\boldsymbol{F}\leq \boldsymbol{C}\big\}\end{equation}
+
+    <p>Note that in Equation \eqref{eq:lp-ot-t2}, $\boldsymbol{b}$ is composed of two concatenated parts, so we can similarly write $\boldsymbol{F}$ as:</p>
+
+    \begin{equation}\boldsymbol{F}=\begin{pmatrix}
+    f(\boldsymbol{x}_1) \\
+    f(\boldsymbol{x}_2) \\
+    \vdots \\
+    f(\boldsymbol{x}_n) \\
+    \vdots \\ \hline
+    g(\boldsymbol{y}_1) \\
+    g(\boldsymbol{y}_2) \\
+    \vdots \\
+    g(\boldsymbol{y}_n) \\
+    \vdots \\
+    \end{pmatrix}\end{equation}
+
+    <p>Now $\langle\boldsymbol{b},\boldsymbol{F}\rangle$ can be written as:</p>
+
+    \begin{equation}\langle\boldsymbol{b},\boldsymbol{F}\rangle=\sum_n p(\boldsymbol{x}_n) f(\boldsymbol{x}_n) + \sum_n q(\boldsymbol{x}_n) g(\boldsymbol{x}_n)\end{equation}
+
+    <p>Or the corresponding integral form:</p>
+
+    \begin{equation}\langle\boldsymbol{b},\boldsymbol{F}\rangle=\int \big[p(\boldsymbol{x}) f(\boldsymbol{x}) + q(\boldsymbol{x}) g(\boldsymbol{x})\big]d\boldsymbol{x}\end{equation}
+
+    <p>Don't forget the constraint $\boldsymbol{A}^{\top}\boldsymbol{F}\leq \boldsymbol{C}$:</p>
+
+    \begin{equation}\underbrace{\left( \begin{array}{ccccc|ccccc}
+    1 & 0 & \dots & 0 & \dots & 1 & 0 & \dots & 0 & \dots \\
+    1 & 0 & \dots & 0 & \dots & 0 & 1 & \dots & 0 & \dots \\
+    \vdots & \vdots & \ddots & \vdots & \ddots & \vdots & \vdots & \ddots & \vdots & \ddots \\ \hline
+    0 & 1 & \dots & 0 & \dots & 1 & 0 & \dots & 0 & \dots \\
+    0 & 1 & \dots & 0 & \dots & 0 & 1 & \dots & 0 & \dots \\
+    \vdots & \vdots & \ddots & \vdots & \ddots & \vdots & \vdots & \ddots & \vdots & \ddots \\ \hline
+    \vdots & \vdots & \ddots & \vdots & \ddots & \vdots & \vdots & \ddots & \vdots & \ddots \\ \hline
+    0 & 0 & \dots & 1 & \dots & 1 & 0 & \dots & 0 & \dots \\
+    0 & 0 & \ddots & 1 & \ddots & 0 & 1 & \ddots & 0 & \ddots \\
+    \vdots & \vdots & \ddots & \vdots & \ddots & \vdots & \vdots & \ddots & \vdots & \ddots \\ \hline
+    \vdots & \vdots & \ddots & \vdots & \ddots & \vdots & \vdots & \ddots & \vdots & \ddots \\
+    \end{array} \right)}_{\Large\boldsymbol{A}^{\top}}\,\underbrace{\begin{pmatrix}
+    f(\boldsymbol{x}_1) \\
+    f(\boldsymbol{x}_2) \\
+    \vdots \\
+    f(\boldsymbol{x}_n) \\
+    \vdots \\ \hline
+    g(\boldsymbol{y}_1) \\
+    g(\boldsymbol{y}_2) \\
+    \vdots \\
+    g(\boldsymbol{y}_n) \\
+    \vdots \\
+    \end{pmatrix}}_{\Large\boldsymbol{F}}\,\leq\,\underbrace{\begin{pmatrix}
+    c(\boldsymbol{x}_1, \boldsymbol{y}_1) \\
+    c(\boldsymbol{x}_1, \boldsymbol{y}_2) \\
+    \vdots \\ \hline
+    c(\boldsymbol{x}_2, \boldsymbol{y}_1) \\
+    c(\boldsymbol{x}_2, \boldsymbol{y}_2) \\
+    \vdots \\ \hline
+    \vdots \\ \hline
+    c(\boldsymbol{x}_n, \boldsymbol{y}_1) \\
+    c(\boldsymbol{x}_n, \boldsymbol{y}_2) \\
+    \vdots \\ \hline
+    \vdots \\
+    \end{pmatrix}}_{\Large \boldsymbol{C}}\end{equation}
+
+    <p>After substitution, we find that this large matrix operation actually says one thing:</p>
+
+    \begin{equation}\forall i,j,\,\,f(\boldsymbol{x}_i) + g(\boldsymbol{y}_j)\leq c(\boldsymbol{x}_i,\boldsymbol{y}_j)\end{equation}
+
+    <p>Or directly:</p>
+
+    \begin{equation}\forall \boldsymbol{x},\boldsymbol{y},\,\,f(\boldsymbol{x}) + g(\boldsymbol{y})\leq c(\boldsymbol{x},\boldsymbol{y})\end{equation}
+
+    <h3 id="从对偶到WGAN">From Duality to WGAN</h3>
+
+    <p>Finally, we are nearing the end. We have obtained a dual form for the optimal transport cost in \eqref{eq:ot}:</p>
+
+    \begin{equation}\mathcal{C}[p,q]=\max_{f,g}\Bigg\{\int \big[p(\boldsymbol{x}) f(\boldsymbol{x}) + q(\boldsymbol{x}) g(\boldsymbol{x})\big]d\boldsymbol{x} \,\Bigg|\,\, f(\boldsymbol{x}) + g(\boldsymbol{y})\leq c(\boldsymbol{x},\boldsymbol{y})\Bigg\}\end{equation}
+
+    <p>Note that from $f(\boldsymbol{x}) + g(\boldsymbol{y})\leq c(\boldsymbol{x},\boldsymbol{y})$, we get:</p>
+
+    \begin{equation}f(\boldsymbol{x}) + g(\boldsymbol{x})\leq c(\boldsymbol{x},\boldsymbol{x})=0\end{equation}
+
+    <p>That is, $g(\boldsymbol{x}) \leq - f(\boldsymbol{x})$, so we have:</p>
+
+    \begin{equation}\begin{aligned}p(\boldsymbol{x}) f(\boldsymbol{x}) + q(\boldsymbol{x}) g(\boldsymbol{x})&\leq p(\boldsymbol{x}) f(\boldsymbol{x}) + q(\boldsymbol{x}) [-f(\boldsymbol{x})]\\
+    & = p(\boldsymbol{x}) f(\boldsymbol{x}) - q(\boldsymbol{x}) f(\boldsymbol{x})\end{aligned}\end{equation}
+
+    <p>This seems to imply a conclusion: if $g = -f$, the maximum will not be smaller than the original maximum. In fact, this conclusion is not entirely correct unless we specify that $c(\boldsymbol{x},\boldsymbol{y})$ is a distance (satisfying the triangle inequality). For further discussion on this detail, please refer to the <a href="https://kexue.fm/archives/6280/comment-page-3#comment-22351">comments section</a>. Next, we assume $c(\boldsymbol{x},\boldsymbol{y})$ is a distance function, which is exactly what WGAN considers. At this point, we can safely set $g=-f$, result in:</p>
+
+    \begin{equation}\mathcal{C}[p,q]=\max_{f}\Bigg\{\int \big[p(\boldsymbol{x}) f(\boldsymbol{x}) - q(\boldsymbol{x}) f(\boldsymbol{x})\big]d\boldsymbol{x} \,\Bigg|\,\, f(\boldsymbol{x}) - f(\boldsymbol{y})\leq c(\boldsymbol{x},\boldsymbol{y})\Bigg\}\label{eq:ot-dual-u}\end{equation}
+
+    <p>This is the dual form of the optimal transport cost \eqref{eq:ot} we were looking for. Specifically, when $c(\boldsymbol{x},\boldsymbol{y}) = \Vert \boldsymbol{x}-\boldsymbol{y}\Vert$, we have $\mathcal{C}[p,q] = \mathcal{W}_1[p,q]$, i.e.:</p>
+
+    \begin{equation}\mathcal{W}_1[p,q]=\max_{f}\Bigg\{\int \big[p(\boldsymbol{x}) f(\boldsymbol{x}) - q(\boldsymbol{x}) f(\boldsymbol{x})\big]d\boldsymbol{x} \,\Bigg|\,\, f(\boldsymbol{x}) - f(\boldsymbol{y})\leq \Vert \boldsymbol{x}-\boldsymbol{y}\Vert\Bigg\}\label{eq:wd-dual-u}\end{equation}
+
+    <p>This is the W-distance used by WGAN, where the constraint is usually written as $\Vert f\Vert_{L}\leq 1$, known as the Lipschitz constraint. From this process, we can also see that theoretically, $c(\boldsymbol{x},\boldsymbol{y})$ in WGAN could be a more general distance function, not just the Euclidean distance. But since many distances are equivalent, and the role of the distance here is solely to constrain the discriminator, choosing Euclidean distance is sufficient.</p>
+
+    <p>Since $p, q$ are probability distributions, we can write this in sampling form:</p>
+
+    \begin{equation}\mathcal{W}_1[p,q]=\max_{f,\,\Vert f\Vert_{L}\leq 1}\mathbb{E}_{\boldsymbol{x}\sim p(\boldsymbol{x})}[f(\boldsymbol{x})] - \mathbb{E}_{\boldsymbol{x}\sim q(\boldsymbol{x})}[f(\boldsymbol{x})]\end{equation}
+
+    <p>This is the loss used by the WGAN discriminator. Naturally, the entire training process of WGAN is:</p>
+
+    \begin{equation}\min_{G}\max_{f,\,\Vert f\Vert_{L}\leq 1}\mathbb{E}_{\boldsymbol{x}\sim p(\boldsymbol{x})}[f(\boldsymbol{x})] - \mathbb{E}_{\boldsymbol{z}\sim q(\boldsymbol{z})}[f(G(\boldsymbol{z}))]\end{equation}
+
+    <p>WGAN finally appearances. All that remains is the problem of how to add the Lipschitz constraint, which you can refer to: <a href="translation_6051.html">"Lipschitz Constraint in Deep Learning: Generalization and Generative Models"</a>.</p>
+
+    <h2 id="终于写完了">Wrapping Up</h2>
+
+    <p>This article primarily introduced the optimal transport cost and the Wasserstein distance, converted it into a linear programming problem, subsequently introduced the duality theory of linear programming, and finally derived the dual form of the Wasserstein distance. It can be used for training generative models, specifically WGAN and its subsequent variants.</p>
+
+    <p>This article summarizes my simple study of linear programming and duality theory. It should be of some reference value to readers who, after becoming familiar with linear algebra, wish to understand WGAN from a theoretical perspective. If there are any doubts or criticisms regarding the content of the article, please feel free to leave a message.</p>
+
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6280.html" style="color: #005fcc;">https://kexue.fm/archives/6280</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,323 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/7388">From EMD and WMD to WRD: Similarity Calculation of Text Vector Sequences</a></h1>
+
+    <p>By 苏剑林 | May 13, 2020</p>
+
+
+<p>In NLP, we often need to compare the similarity of two sentences. The standard method is to find a way to encode the sentences into fixed-size vectors and then use a geometric distance (Euclidean distance, $\cos$ distance, etc.) as the similarity. This scheme is relatively simple and allows for fast retrieval, satisfying engineering requirements to a certain extent. Additionally, one can directly compare the differences between two variable-length sequences, such as using Edit Distance, which finds the optimal mapping between two strings through dynamic programming and then calculates the degree of mismatch. Nowadays, we also have tools like Word2Vec and BERT, which can convert text sequences into corresponding vector sequences. Therefore, it is also possible to directly compare the differences between these two vector sequences, rather than first condensing the vector sequence into a single vector. The latter scheme is relatively slower but allows for a finer comparison and is theoretically more elegant, so it has certain application scenarios. This article briefly introduces two similarity metrics belonging to the latter category, referred to as WMD and WRD respectively.</p>
+
+<h2>Earth Mover's Distance</h2>
+
+<p>The two metrics to be introduced in this article are based on the Wasserstein distance. A brief introduction will be provided here; for related content, you can also read the author's previous work <a href="translation_4559.html">"From Wasserstein Distance and Duality Theory to WGAN"</a>. The Wasserstein distance is also vividly called the "Earth Mover's Distance" (EMD) because it can be expressed intuitively using an example of "moving earth."</p>
+
+<h3>Optimal Transport</h3>
+
+<p>Suppose that at positions $i=1,2,\dots,n$, we have a distribution of earth amounts $p_1,p_2,\dots,p_n$. For simplicity, assume the total amount of earth is 1, i.e., $p_1 + p_2 + \dots + p_n=1$. Now we want to move this earth to positions $j=1,2,\dots,n'$, where the required amounts are $q_1, q_2, \dots, q_{n'}$. The cost of moving from $i$ to $j$ is $d_{i,j}$. We want to find the scheme with the lowest cost and the corresponding minimum cost.</p>
+
+<p>This is actually a classic optimal transport problem. We represent the optimal scheme as $\gamma_{i,j}$, representing the amount of earth to be moved from $i$ to $j$ in this scheme. Obviously, we have the constraints:
+\begin{equation}\sum_j \gamma_{i,j}=p_i,\quad \sum_i \gamma_{i,j}=q_j,\quad \gamma_{i,j} \geq 0\label{eq:cond}\end{equation}
+Therefore, our optimization problem is:
+\begin{equation}\min_{\gamma_{i,j} \geq 0} \sum_{i,j} \gamma_{i,j} d_{i,j}\quad \text{s.t.} \quad \sum_j \gamma_{i,j}=p_i,\sum_i \gamma_{i,j}=q_j\end{equation}</p>
+
+<h3>Reference Implementation</h3>
+
+<p>It looks complex, but careful observation reveals that the above equation is actually a linear programming problem—seeking the extremum of a linear function under linear constraints. Python's <code>scipy</code> comes with a linear programming solver function <code>linprog</code>, so we can use it to implement the function for calculating the Wasserstein distance:</p>
+
+<pre><code>import numpy as np
+from scipy.optimize import linprog
+
+def wasserstein_distance(p, q, D):
+    """Calculate Wasserstein distance via linear programming
+    p.shape=[m], q.shape=[n], D.shape=[m, n]
+    p.sum()=1, q.sum()=1, p∈[0,1], q∈[0,1]
+    """
+    A_eq = []
+    for i in range(len(p)):
+        A = np.zeros_like(D)
+        A[i, :] = 1
+        A_eq.append(A.reshape(-1))
+    for i in range(len(q)):
+        A = np.zeros_like(D)
+        A[:, i] = 1
+        A_eq.append(A.reshape(-1))
+    A_eq = np.array(A_eq)
+    b_eq = np.concatenate([p, q])
+    D = D.reshape(-1)
+    result = linprog(D, A_eq=A_eq[:-1], b_eq=b_eq[:-1])
+    return result.fun</code></pre>
+
+<p>Readers may notice that when passing constraints, <code>A_eq=A_eq[:-1], b_eq=b_eq[:-1]</code> is used, which means the last constraint is removed. This is because $1=\sum\limits_{i=1}^n p_i = \sum\limits_{j=1}^{n'} q_j$, so the equality constraints in $\eqref{eq:cond}$ are inherently redundant. In actual calculation, floating-point errors might cause redundant constraints to contradict each other, leading to the failure of the linear programming solver. Therefore, the last redundant constraint is simply removed to reduce the possibility of errors.</p>
+
+<h2>Word Mover's Distance</h2>
+
+<p>Clearly, the Wasserstein distance is suitable for calculating the discrepancy between two sequences of different lengths. When we perform semantic similarity tasks, two sentences usually have different lengths, which perfectly fits this characteristic. Thus, it naturally occurs that the Wasserstein distance might be used for sentence similarity. The first attempt at this was the paper <a href="https://proceedings.mlr.press/v37/kusnerb15.pdf">"From Word Embeddings To Document Distances"</a>.</p>
+
+<h3>Basic Form</h3>
+
+<p>Suppose there are two sentences $s = (t_1,t_2,\dots,t_n)$ and $s' = (t'_1, t'_2, \dots, t'_{n'})$. After some mapping (such as Word2Vec or BERT), they become corresponding vector sequences $(\boldsymbol{w}_1,\boldsymbol{w}_2,\dots,\boldsymbol{w}_n)$ and $(\boldsymbol{w}'_1, \boldsymbol{w}'_2, \dots, \boldsymbol{w}'_{n'})$. Now we aim to use the Wasserstein distance to compare the similarity of these two sequences.</p>
+
+<p>According to the introduction in the previous section, the Wasserstein distance requires knowing the three quantities $p_i, q_j, d_{i,j}$. We define them one by one. Since there is no prior knowledge, we can simply let $p_i \equiv \frac{1}{n}, q_j \equiv \frac{1}{n'}$. This leaves $d_{i,j}$. Obviously, $d_{i,j}$ represents a certain discrepancy between the vector $\boldsymbol{w}_i$ from the first sequence and the vector $\boldsymbol{w}'_j$ from the second sequence. For simplicity, we can use the Euclidean distance $\left\Vert \boldsymbol{w}_i - \boldsymbol{w}'_j\right\Vert$. Thus, the degree of difference between the two sentences can be expressed as:
+\begin{equation}\min_{\gamma_{i,j} \geq 0} \sum_{i,j} \gamma_{i,j} \left\Vert \boldsymbol{w}_i - \boldsymbol{w}'_j\right\Vert\quad \text{s.t.} \quad \sum_j \gamma_{i,j}=\frac{1}{n},\sum_i \gamma_{i,j}=\frac{1}{n'}\end{equation}
+This is the Word Mover's Distance (WMD). It roughly represents the shortest path to transform one sentence into another, and in some sense, it can be understood as a smooth version of the edit distance. In practice, WMD is usually calculated after removing stop words.</p>
+
+<p style="text-align: center;"><img src="https://kexue.fm/usr/uploads/2020/05/263593006.png" alt="Schematic diagram of Word Mover's Distance, from the paper 'From Word Embeddings To Document Distances'" style="max-width: 100%;"><br>Schematic diagram of Word Mover's Distance, from the paper "From Word Embeddings To Document Distances"</p>
+
+<h3>Reference Implementation</h3>
+
+<p>The reference implementation is as follows:</p>
+
+<pre><code>def word_mover_distance(x, y):
+    """Reference implementation of WMD (Word Mover's Distance)
+    x.shape=[m,d], y.shape=[n,d]
+    """
+    p = np.ones(x.shape[0]) / x.shape[0]
+    q = np.ones(y.shape[0]) / y.shape[0]
+    D = np.sqrt(np.square(x[:, None] - y[None, :]).sum(axis=2))
+    return wasserstein_distance(p, q, D)</code></pre>
+
+<h3>Lower Bound Formula</h3>
+
+<p>In retrieval scenarios, if one were to calculate the WMD between an input sentence and every sentence in a database and then sort them, the computational cost would be quite large. Therefore, we should try to minimize the number of WMD calculations, for example, by filtering some samples through simpler and more efficient metrics before calculating WMD for the remaining candidates.</p>
+
+<p>Fortunately, we can indeed derive a lower bound formula for WMD, which the original paper calls Word Centroid Distance (WCD):
+\begin{equation}\begin{aligned} 
+\sum_{i,j} \gamma_{i,j} \left\Vert \boldsymbol{w}_i - \boldsymbol{w}'_j\right\Vert =& \sum_{i,j} \left\Vert \gamma_{i,j}(\boldsymbol{w}_i - \boldsymbol{w}'_j)\right\Vert\\ 
+\geq& \left\Vert \sum_{i,j}\gamma_{i,j}(\boldsymbol{w}_i - \boldsymbol{w}'_j)\right\Vert\\ 
+=& \left\Vert \sum_i\left(\sum_j\gamma_{i,j}\right)\boldsymbol{w}_i - \sum_j\left(\sum_i\gamma_{i,j}\right)\boldsymbol{w}'_j\right\Vert\\ 
+=& \left\Vert \frac{1}{n}\sum_i\boldsymbol{w}_i - \frac{1}{n'}\sum_j\boldsymbol{w}'_j\right\Vert\\ 
+\end{aligned}\end{equation}
+In other words, WMD is greater than the Euclidean distance between the average vectors of the two sentences. Therefore, when we want to retrieve sentences with small WMD, we can first use WCD to filter out sentences with large distances, and then use WMD to compare the remaining samples.</p>
+
+<h2>Word Rotator's Distance</h2>
+
+<p>WMD is actually quite good, but if one were to nitpick, some shortcomings can still be identified:
+1. It uses Euclidean distance as the measure of semantic gap, but we know from Word2Vec experience that using the $\cos$ similarity is often better than Euclidean distance for word vectors.
+2. WMD is theoretically an unbounded quantity, which means it is difficult to intuitively perceive the degree of similarity and thus hard to adjust the threshold for similarity correctly.</p>
+
+<p>To solve these two problems, a simple idea would be to normalize all vectors by dividing them by their respective norms before calculating WMD, but this would completely lose the norm information. A recent paper <a href="https://arxiv.org/abs/2004.15003">"Word Rotator's Distance: Decomposing Vectors Gives Better Representations"</a> cleverly proposes that while normalizing, the norms can be integrated into the constraints $p, q$, resulting in WRD.</p>
+
+<h3>Basic Form</h3>
+
+<p>First, WRD proposes the view that "the norm of a word vector is positively correlated with the importance of that word," and verifies this view through experimental results. In fact, this view is consistent with the view of the simpler GloVe model proposed by the author previously; see <a href="translation_4281.html">"A More Unique Word Vector Model (V): Interesting Results"</a>. In WMD, $p_i, q_j$ also represent the importance of a certain word in the corresponding sentence to some extent, so we can set:
+\begin{equation}\begin{aligned}&p_i = \frac{\left\Vert \boldsymbol{w}_i\right\Vert}{Z}, &Z=\sum_{i=1}^n \left\Vert\boldsymbol{w}_i\right\Vert\\ 
+&q_j = \frac{\left\Vert \boldsymbol{w}'_j\right\Vert}{Z'}, &Z'=\sum_{j=1}^{n'}\left\Vert\boldsymbol{w}'_j\right\Vert 
+\end{aligned}\end{equation}
+Then $d_{i,j}$ uses the cosine distance:
+\begin{equation}d_{i,j}=1 - \frac{\boldsymbol{w}_i\cdot \boldsymbol{w}'_j}{\left\Vert\boldsymbol{w}_i\right\Vert\times \left\Vert\boldsymbol{w}'_j\right\Vert}\end{equation}
+Resulting in:
+\begin{equation}\min_{\gamma_{i,j} \geq 0} \sum_{i,j} \gamma_{i,j} \left(1 - \frac{\boldsymbol{w}_i\cdot \boldsymbol{w}'_j}{\left\Vert\boldsymbol{w}_i\right\Vert\times \left\Vert\boldsymbol{w}'_j\right\Vert}\right)\quad \text{s.t.} \quad \sum_j \gamma_{i,j}=\frac{\left\Vert \boldsymbol{w}_i\right\Vert}{Z},\sum_i \gamma_{i,j}=\frac{\left\Vert \boldsymbol{w}'_j\right\Vert}{Z'}\end{equation}
+This is the Word Rotator's Distance (WRD). Since the metric used is cosine distance, the transformation between two vectors is more like a rotation rather than a movement, hence the name; similarly, because cosine distance is used, its result is within $[0, 2]$, making it relatively easier to perceive the degree of similarity.</p>
+
+<h3>Reference Implementation</h3>
+
+<p>The reference implementation is as follows:</p>
+
+<pre><code>def word_rotator_distance(x, y):
+    """Reference implementation of WRD (Word Rotator's Distance)
+    x.shape=[m,d], y.shape=[n,d]
+    """
+    x_norm = (x**2).sum(axis=1, keepdims=True)**0.5
+    y_norm = (y**2).sum(axis=1, keepdims=True)**0.5
+    p = x_norm[:, 0] / x_norm.sum()
+    q = y_norm[:, 0] / y_norm.sum()
+    D = 1 - np.dot(x / x_norm, (y / y_norm).T)
+    return wasserstein_distance(p, q, D)
+
+def word_rotator_similarity(x, y):
+    """1 - WRD
+    x.shape=[m,d], y.shape=[n,d]
+    """
+    return 1 - word_rotator_distance(x, y)</code></pre>
+
+<h3>Lower Bound Formula</h3>
+
+<p>Like WMD, we can also derive a lower bound formula for WRD:
+\begin{equation}\begin{aligned} 
+2\sum_{i,j} \gamma_{i,j} \left(1 - \frac{\boldsymbol{w}_i\cdot \boldsymbol{w}'_j}{\left\Vert\boldsymbol{w}_i\right\Vert\times \left\Vert\boldsymbol{w}'_j\right\Vert}\right)=&\sum_{i,j} \gamma_{i,j} \left\Vert \frac{\boldsymbol{w}_i}{\left\Vert \boldsymbol{w}_i\right\Vert} - \frac{\boldsymbol{w}'_j}{\left\Vert \boldsymbol{w}'_j\right\Vert}\right\Vert^2 \\ 
+\geq& \left\Vert \sum_{i,j}\gamma_{i,j}\left(\frac{\boldsymbol{w}_i}{\left\Vert \boldsymbol{w}_i\right\Vert} - \frac{\boldsymbol{w}'_j}{\left\Vert \boldsymbol{w}'_j\right\Vert}\right)\right\Vert^2\\ 
+=& \left\Vert \sum_i\left(\sum_j\gamma_{i,j}\right)\frac{\boldsymbol{w}_i}{\left\Vert \boldsymbol{w}_i\right\Vert} - \sum_j\left(\sum_i\gamma_{i,j}\right)\frac{\boldsymbol{w}'_j}{\left\Vert \boldsymbol{w}'_j\right\Vert}\right\Vert^2\\ 
+=& \left\Vert \frac{1}{Z}\sum_i\boldsymbol{w}_i - \frac{1}{Z'}\sum_j\boldsymbol{w}'_j\right\Vert^2\\ 
+\end{aligned}\end{equation}
+The inequality is based on Jensen's Inequality (or a generalization of basic inequalities). However, this part of the content does not appear in the WRD paper; it was supplemented by the author.</p>
+
+<h2>Summary</h2>
+
+<p>This article introduced two text similarity algorithms, WMD and WRD, both of which utilize the Wasserstein distance (Earth Mover's Distance) to directly compare the discrepancies between two vector sequences of indefinite length. While these similarity algorithms may lack efficiency, they are theoretically elegant and produce quite good results, making them well worth learning.</p>
+
+<hr>
+<p>
+Reprint please include the original address: <a href="translation_7388.html">https://kexue.fm/archives/7388</a>
+<br>
+For more detailed reprinting matters, please refer to: <a href="https://kexue.fm/faq.html">Scientific Space FAQ</a>
+</p>
+
+<p>If you need to cite this article, please refer to:</p>
+<p>
+Su Jianlin. (May. 13, 2020). "From EMD and WMD to WRD: Similarity Calculation of Text Vector Sequences" [Blog post]. Retrieved from https://kexue.fm/archives/7388
+</p>
+
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7388.html" style="color: #005fcc;">https://kexue.fm/archives/7388</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

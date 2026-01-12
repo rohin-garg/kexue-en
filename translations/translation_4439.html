@@ -1,0 +1,364 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/4439">The Art of Mutual Confrontation: From Zero to WGAN-GP</a></h1>
+
+<p>By 苏剑林 | June 08, 2017</p>
+
+<h2>Preface <a name="Preface"></a></h2>
+
+<p>GAN, which stands for Generative Adversarial Nets, is known in Chinese as "Shengcheng Duikang Shi Wangluo." The most common explanation for GAN is the "forger-discriminator" analogy, similar to a forger and a discriminator of art paintings. Initially, both the forger and the discriminator have low skill levels, but the discriminator still finds it relatively easy to identify the forger's works. However, as the forger learns new techniques, their forged paintings may cause the discriminator to make mistakes; conversely, as the discriminator improves their identification techniques, they can easily detect the forger's work again. This is a process where both parties continuously learn to reach the highest level of forgery and identification.</p>
+
+<p>However, readers who look a bit deeper will find that, unlike real-world forgers who might use new materials and technologies to forge items, the most miraculous and confusing thing about GAN is its ability to map random noise into the positive samples we desire. One has noise, and out comes a positive sample—isn't this a "business with no capital"? How profitable!</p>
+
+<p>Another point is that since WGAN was proposed, mainstream research on GAN has essentially shifted toward WGAN. However, the form of WGAN is actually quite far removed from the "forger-discriminator" explanation. Furthermore, while the final form of WGAN is not complex, the derivation process involves quite a bit of complex mathematics, which made me reluctant to study the original paper in depth. This forced me to find a simple and intuitive line of reasoning to understand GAN. Fortunately, after some thinking, I've had some insights.</p>
+
+<p>Before the main text, a disclaimer: all of my knowledge about GAN comes from popular science articles on the web. I have not directly read any papers on GAN. Therefore, the results in this text may coincide with mainstream findings, or they may differ significantly, and the narrative method used here does not follow the historical development of GAN. <strong>Rigorous scholars, enter with caution.</strong></p>
+
+<p>Note: Unless otherwise specified, the GANs discussed in this article are generalized—including the original GAN, WGAN, etc., without distinction. References to "positive samples" or "real samples" refer to a pre-specified set of samples, while "generated samples" refers to the results obtained by passing random noise through the generative model $G$.</p>
+
+<h2>An Interview Question <a name="Interview-Question"></a></h2>
+
+<p>A classic interview question is: If there is a pseudo-random number generator that produces uniform random numbers between $[0,1]$, how can you use it to generate pseudo-random numbers following a normal distribution? For instance, how do you map $U[0,1]$ to $N(0,1)$?</p>
+
+<p>There are different approaches to this problem from different angles. An engineering approach might involve running $n$ such programs simultaneously and summing the $n$ random numbers produced at each step; according to the Central Limit Theorem, this sum approximately follows a normal distribution. However, we are interested here in the theoretical approach rather than the engineering one. The theoretical approach is: map $X \sim U[0,1]$ through a function $Y=f(X)$ such that $Y \sim N(0,1)$. Let $\rho(x)$ be the probability density function of $U[0,1]$. The probability of intervals $[x, x+dx]$ and $[y, y+dy]$ should be equal. According to the definition of probability density, $\rho(x)$ is not a probability, but $\rho(x)dx$ is. Therefore:
+$$\rho(x)dx=\frac{1}{\sqrt{2\pi}}\exp\left(-\frac{y^2}{2}\right)dy$$
+Then
+$$\int_{0}^x \rho(t)dt=\int_{-\infty}^{y}\frac{1}{\sqrt{2\pi}}\exp\left(-\frac{t^2}{2}\right)dt=\Phi(y)$$
+Where $0 \leq x \leq 1$ and $y \in (-\infty, +\infty)$, and $\Phi(y)$ is the cumulative distribution function (CDF) of the standard normal distribution. Thus:
+$$y=\Phi^{-1}\left(\int_0^x \rho(t)dt\right)$$
+Note that the CDF cannot be expressed explicitly using elementary functions, let alone its inverse function. In short, the function $f$ in $Y=f(X)$ indeed exists but is very complex; the solution above is just a notation, and the actual calculation must still be done by a computer.</p>
+
+<p>The normal distribution is common and relatively simple, yet this mapping is already so complex. If we switch to an arbitrary distribution, or even one where the probability density function cannot be written explicitly, the complexity is imaginable.</p>
+
+<h2>The Power of Neural Networks <a name="Neural-Power"></a></h2>
+
+<p>Now let's generalize the problem: How do we find a mapping $Y=f(X)$ that maps a uniform distribution $X$ to a specified distribution? In general, this specified distribution is described by a specific set of distribution samples $Z=(z_1, z_2, \dots, z_N)$ (for example, provided as a set of random numbers following a normal distribution, rather than the density function $\frac{1}{\sqrt{2\pi}}e^{-x^2/2}$).</p>
+
+<p>This problem is quite general and is exactly what GAN aims to do. That is, GAN also hopes to map uniform random noise to a specific distribution, described by a set of "positive samples." This understanding answers our initial small question: Why can GAN transform noise into positive samples? In fact, GAN is not learning a transformation from noise to positive samples, but rather a transformation from a uniform distribution to a specified distribution. If it learns successfully, then inputting a random noise will transform it into data from the specified distribution. Usually, the distribution we specify is a "narrow" one (e.g., the specified positive samples are a collection of a certain class of images—while images are infinite, a specific class of images is quite narrow), so they will all map to what we see as "positive samples."</p>
+
+<p>The earlier example of the normal distribution showed that this mapping $f$ is usually very complex, so there's no need to seek its analytical solution. This is where the "Power of Neural Networks" comes in: anyone familiar with neural networks knows we can use one to approximate any function. Therefore, why not use a neural network $G(X, \theta)$ with multiple parameters to fit it? As long as we train the parameters $\theta$, we can consider $Y=G(X, \theta)$.</p>
+
+<p>But here's the question: What is our target for fitting? How do we know if $Y=G(X, \theta)$ is close to the specified distribution?</p>
+
+<h2>KL Divergence? JS Divergence? <a name="KL-JS-Divergence"></a></h2>
+
+<p>Let's clarify the problem again: We have a batch of data $Z=(z_1, z_2, \dots, z_N)$ following a certain specified distribution, and we want to find a neural network $Y=G(X, \theta)$ that maps uniform random numbers $X$ into this specified distribution.</p>
+
+<p>It is important to point out that we want to compare the closeness of two distributions, not the gap between individual samples. Usually, we use KL divergence to describe the difference between two distributions: let $p_1(x), p_2(x)$ be the probability densities of the two distributions (of course, other distances could be chosen, like the Wasserstein distance, but this doesn't change the essence of the discussion):
+$$KL\Big(p_1(x)\|p_2 (x)\Big)=\int p_1(x)\log\frac{p_1(x)}{p_2 (x)}dx$$
+For discrete probabilities, the integral is replaced by a sum. KL divergence is not a true metric distance, but it can describe the difference between two distributions; it is 0 when the distributions are identical. However, it is not symmetric. Sometimes we symmetrize it to get JS divergence:
+$$JS\Big(p_1(x),p_2(x)\Big)=\frac{1}{2}KL\Big(p_1(x)\|p_2(x)\Big)+\frac{1}{2}KL\Big(p_2(x)\|p_1(x)\Big)$$</p>
+
+<p>Wait, we're back to probability densities? Didn't we say the probability density isn't given? Well, that's what the formulas look like, so we just have to estimate them. Suppose we can divide the real numbers into several disjoint intervals $I_1, I_2, \dots, I_K$. Then we can estimate the probability distribution of the given distribution $Z$:
+$$p_z(I_i)=\frac{1}{N}\sum_{j=1}^{N}\#(z_j\in I_i)$$
+Where $\#(z_j\in I_i)$ is 1 if $z_j\in I_i$ and 0 otherwise. In other words, don't be intimidated by the formula; it's just a simple counting function, using frequency to estimate probability.</p>
+
+<p>Next, we generate $M$ uniform random numbers $x_1, x_2, \dots, x_M$ (it doesn't have to be $M=N$ because we are comparing distributions, not samples themselves; one more or one fewer sample doesn't change the estimation of the distribution much). Calculate the corresponding $y_1, y_2, \dots, y_M$ using $Y=G(X, \theta)$, and then calculate:
+$$p_y(I_i)=\frac{1}{M}\sum_{j=1}^{M}\#(y_j\in I_i)$$</p>
+
+<p>Now with $p_z(I_i)$ and $p_y(I_i)$, we can calculate their gap, for example, using JS divergence:
+$$\text{Loss} = JS\Big(p_y(I_i), p_z(I_i)\Big)$$
+Notice that $y_i$ is generated by $G(X, \theta)$, so $p_y(I_i)$ contains the parameter $\theta$. Thus, we can minimize the Loss to find the optimal values for $\theta$, thereby determining the network $Y=G(X, \theta)$.</p>
+
+<h2>Neural Distance! <a name="Neural-Distance"></a></h2>
+
+<p>If we were only studying transformations between univariate probability distributions, the process above would be sufficient. However, most truly meaningful things are multivariate, such as experiments on MNIST where we want to transform random noise into handwritten digit images. MNIST images are $28 \times 28 = 784$ pixels. If every pixel were random, this would be a 784-dimensional probability distribution. Following our previous approach of dividing intervals to calculate KL or JS divergence, even if each pixel was only divided into two intervals, there would be $2^{784} \approx 10^{236}$ intervals—a staggering amount of calculation!</p>
+
+<p>Finally, someone got fed up: "Why should I use your silly JS divergence? I'll build a distance measure using a neural network myself!" So they wrote a neural network $L$ with parameters $\Theta$:
+$$L\Big(\{y_i\}_{i=1}^M, \{z_i\}_{i=1}^N, \Theta\Big)$$
+In other words, directly put the created $y_i$ and the real $z_i$ into this neural network to compute a distance—how convenient. <strong>This idea is a milestone: even the definition of distance is learned by a neural network; what else is impossible to learn?</strong></p>
+
+<p>Let's see: if such an $L$ truly exists, what should it look like? First, for a specific task, $\{z_i\}_{i=1}^N$ is fixed, so it's not a variable; we can treat it as part of the model itself and simplify it to:
+$$L\Big(\{y_i\}_{i=1}^M, \Theta\Big)$$
+Next, remember we are describing the distance between distributions, not samples. A distribution is independent of the order in which $y_i$ appear. Therefore, the distance between distributions must be independent of the order of $y_i$. This means although $L$ is a function of each $y_i$, it must be fully symmetric! This is a very strong constraint. Of course, even so, we still have many choices, such as:
+$$L=\frac{1}{M!}\sum_{\text{sum over all permutations of } y_1, \dots, y_M} D\Big(y_1, y_2, \dots, y_M, \Theta\Big)$$
+In other words, we first find an ordered function $D$ and then average it over all possible orders to get an unordered function. Obviously, the computational cost of this is $\mathcal{O}(M!)$, which is impractical. So we choose the simplest version:
+$$L=\frac{1}{M}\sum_{i=1}^M D\Big(y_i, \Theta\Big)$$
+This is the <strong>simplest implementation of being unordered</strong>, which can be intuitively understood as: the distance between distributions is equal to the average of the distances of individual samples.</p>
+
+<h2>Confrontation Arrives! <a name="Confrontation-Arrives"></a></h2>
+
+<p>"Wait, your title says GAN, but after all this talking, I haven't felt a single bit of GAN flavor yet. Where is the confrontation?" Don't worry, it's coming right now~ (It seems you've just been waiting for the fight! ^_^)</p>
+
+<p>As mentioned earlier, using a neural network to learn a distance $L$, the simplified form should be:
+$$L=\frac{1}{M}\sum_{i=1}^M D\Big(y_i, \Theta\Big)$$
+The problem is: how do we train $D(Y, \Theta)$? Don't forget, $G(X, \theta)$ hasn't been trained yet, and now we've introduced $D(Y, \Theta)$. Things are getting complicated; be careful not to jump into a hole you can't get out of~ (and GAN really is a deep hole).</p>
+
+<p>Confrontation finally arrives...</p>
+
+<p>Because the mean of $D(Y, \Theta)$, which is $L$, measures the degree of difference between two distributions, this means $L$ must be able to distinguish between the two distributions—meaning $L$ should be as large as possible. However, our ultimate goal is to generate our specified distribution from a uniform distribution, so $G(X, \theta)$ wants the two distributions to get closer—meaning $L$ should be as small as possible. This is where a stroke of genius appears: <strong>Mutual confrontation (Hu Dui)</strong>! Don't back down, just "gan" (fight)!</p>
+
+<p>First, we randomly initialize $G(X, \theta)$ and fix it. Then we generate a batch $Y$. At this point, we need to train $D(Y, \Theta)$. Since $L$ represents the "difference from the specified samples $Z$", if we plug the specified samples $Z$ into $L$, the result should be as small as possible, and if we plug $Y$ into $L$, the result should be as large as possible. Thus:
+\[
+\begin{aligned}
+\Theta &= \text{argmin}_{\Theta} \frac{1}{N}\sum_{i=1}^N D\Big(z_i, \Theta\Big) \\
+\Theta &= \text{argmax}_{\Theta} \frac{1}{M}\sum_{i=1}^M D\Big(y_i, \Theta\Big)
+\end{aligned}
+\]
+However, balancing two objectives isn't easy, so let's just take the same number of samples $B$ (one batch) and train them together:
+\[
+\begin{aligned}
+\Theta &= \text{argmax}_{\Theta} L_1 \\
+&= \text{argmax}_{\Theta} \frac{1}{B}\sum_{i=1}^B \left[D\Big(y_i, \Theta\Big) - D\Big(z_i, \Theta\Big)\right]
+\end{aligned}
+\]
+Naturally, $G(X, \theta)$ hopes the samples it generates are as close to the real samples as possible. So now we fix $\Theta$ and only train $\theta$ to make $L$ smaller:
+\[
+\begin{aligned}
+\theta &= \text{argmin}_{\theta} L_2 \\
+&= \text{argmin}_{\theta} \frac{1}{B}\sum_{i=1}^B \left[D\Big(G(x_i, \theta), \Theta\Big)\right]
+\end{aligned}
+\]
+<strong>This is the genius of the Adversarial Network!</strong></p>
+
+<p>It is worth noting:</p>
+
+<blockquote>
+1. The Loss notation here is opposite to traditional GANs, where the convention is to make the $L$ of real samples as large as possible. But this is just a difference of a minus sign and is not a fundamental issue.<br><br>
+2. Since the beginning of GANs, the network $D$ has been given the meaning of a "Discriminator." However, in this context, $D$ itself has no meaning (just as we cannot say whether a single number is "normal distribution" or not). Only the mean $L$ of $D$ represents the gap with the real distribution (we can only estimate if a set of data follows a normal distribution). From this, we can see that GAN cannot be trained on single samples; it must be trained in batches because statistical features can only be seen in a batch of samples.<br><br>
+3. At first glance, $D$ seems to be just a binary classification problem while $G$ is mapping noise to positive samples, making $D$ seem much simpler than $G$. This is not the case; their complexities are at least comparable. We can intuitively consider their workings: since the mean $L$ of $D$ directly provides the difference between input data and the specified distribution, to truly do this, $D$ must "remember" all the "positive samples" (to some extent). For $G$ to generate good positive samples, it essentially "remembers" all the positive samples and interpolates them via random numbers. Therefore, the complexity of both networks should be comparable (of course, "remembering" here is an intuitive understanding, not literal memorization, otherwise it would be overfitting).<br><br>
+4. Since $L_1$ is the (maximum) distribution difference between real and fake samples, a smaller $L_1$ means the "forged" samples are of better quality. Therefore, $L_1$ also indicates the progress of GAN training; the smaller $L_1$, the better the training.
+</blockquote>
+
+<h2>Wait~ It's Not Over Yet <a name="Not-Over-Yet"></a></h2>
+
+<p>A little thought shows that the problem isn't finished. We haven't put any constraints on $D$ yet. It's easy to see that without constraints, the Loss will basically run off to negative infinity.</p>
+
+<p>Therefore, it is necessary to add some conditions to $D$. One solution that comes to mind easily is to constrain the range of $D$. For instance, could we add a Sigmoid activation function to the final output of $D$ so its value stays between 0 and 1? Theoretically, there is no problem with this approach, but it causes difficulty in training. Because the Sigmoid function has saturation regions, once $D$ enters a saturation region, it becomes very hard to pass gradients back to update $G$.</p>
+
+<p>What constraint is best? We should try to find constraints from basic principles to avoid artificial factors as much as possible. Returning to the purpose of distance: distance is meant to show the gap between two objects, and if the objects undergo a tiny change, the distance shouldn't fluctuate too much. This is a basic stability requirement for distance; "a small error at the beginning leads to a huge one at the end" would create chaos, and mathematical models shouldn't be like that. From this perspective, the so-called "JS divergence" is not even a distance, because for Bernoulli distributions $\{0:0.1, 1:0.9\}$ and $\{0:0, 1:1\}$, the "distance" calculated between these two similar distributions is infinity (because a $0.1/0$ term appears).</p>
+
+<p>How do we reflect this constraint in our $D$? Suppose a sample is $y'_i$ instead of $y_i$. Assuming $\|y_i - y'_i\|$ (using double vertical bars for Euclidean distance, as $y$ might be a multivariate vector) is not very large, it will have some impact on the distribution. How large is this impact? Clearly, it shouldn't be large, because a distribution is the statistical characteristic of a batch of samples. If only one sample is slightly changed, the change in the distribution difference shouldn't be large. We know that the distance between distributions is described by the mean $L$ of $D$. Changing one $y_i$ results in a distribution difference proportional to:
+$$\| D(y_i, \theta) - D(y'_i, \theta) \|$$
+We hope that as $y'_i \to y_i$, naturally $\| D(y_i, \theta) - D(y'_i, \theta) \| \to 0$. How do we achieve this? A simple solution is for $D$ to satisfy the following constraint:
+$$\| D(y, \theta) - D(y', \theta) \| \leq C \|y - y'\|^{\alpha}$$
+Where $\alpha > 0$. The simplest version is:
+$$\| D(y, \theta) - D(y', \theta) \| \leq C \|y - y'\|$$
+This is the common <strong>Lipschitz constraint</strong> in mathematics. If this constraint is satisfied, the distance will meet the stability requirement. Note that this is a sufficient condition, not a necessary one, and other options are available. However, it must be said that this is a simple and clear scheme. A sufficient condition for the function $D$ to satisfy the Lipschitz constraint is:
+$$\left\| \frac{\partial D(y, \Theta)}{\partial y} \right\| \leq C$$</p>
+
+<h2>Results from "Penalty" <a name="Penalty-Results"></a></h2>
+
+<p>How do we add this constraint to the model? Based on:
+$$\Theta = \mathop{\text{argmax}}\limits_{\Theta} \frac{1}{B}\sum\limits_{i=1}^B\left[D\Big(y_i,\Theta\Big)-D\Big(z_i,\Theta\Big)\right] = \mathop{\text{argmin}}\limits_{\Theta} \frac{1}{B}\sum\limits_{i=1}^B\left[D\Big(z_i,\Theta\Big)-D\Big(y_i,\Theta\Big)\right]$$
+We just need to add a penalty term:
+\[
+\Theta = \mathop{\text{argmin}}_{\Theta} \frac{1}{B}\sum_{i=1}^B\left[D\Big(z_i,\Theta\Big)-D\Big(y_i,\Theta\Big)\right]+\lambda \max\left(\left\| \frac{\partial D(y,\Theta)}{\partial y}\right\|, 1\right)
+\]
+Of course, a penalty is a "soft constraint." The final result might not satisfy this constraint perfectly but will fluctuate around it. That is, even though we specified $C=1$, the final $C$ might not be exactly 1, but it will fluctuate around 1, which is just a more relaxed Lipschitz constraint. We don't care about the specific size of $C$, so long as $C$ has an upper bound. Additionally, adding the constraint can be done in multiple ways. Martin Arjovsky, the author of WGAN, proposed this addition in his paper:
+\[
+\Theta = \mathop{\text{argmin}}_{\Theta} \frac{1}{B}\sum_{i=1}^B\left[D\Big(z_i,\Theta\Big)-D\Big(y_i,\Theta\Big)\right]+\lambda \left(\left\| \frac{\partial D(y,\Theta)}{\partial y}\right\| -1\right)^2
+\]
+Which one is better? Experimental results seem similar.</p>
+
+<p>However, the above penalty terms are formal. We haven't given a specific calculation method. Ideally, we should calculate $\left\| \frac{\partial D(y,\Theta)}{\partial y}\right\|$ for all $y$ (the entire space) and take the average, but obviously, this is impossible. So we take the next best thing: calculate it only for real samples $z_i$ and generated samples $y_i$. But this might make the constraint range too small, so we might as well randomly interpolate between real samples and generated samples, hoping this constraint "fills" the space between real and generated samples:
+\[
+\Theta = \mathop{\text{argmin}}_{\Theta} \frac{1}{B}\sum_{i=1}^B\left[D\Big(z_i,\Theta\Big)-D\Big(y_i,\Theta\Big)\right]+\frac{\lambda }{B}\sum_{i=1}^B\max\left(\left\| \frac{\partial D(y,\Theta)}{\partial y}\right\|_{y=\varepsilon_i y_i + (1-\varepsilon_i)z_i}, 1\right)
+\]
+And:
+\[
+\Theta = \mathop{\text{argmin}}_{\Theta} \frac{1}{B}\sum_{i=1}^B\left[D\Big(z_i,\Theta\Big)-D\Big(y_i,\Theta\Big)\right]+\frac{\lambda }{B}\sum_{i=1}^B\left(\left\| \frac{\partial D(y,\Theta)}{\partial y}\right\|_{y=\varepsilon_i y_i + (1-\varepsilon_i)z_i}-1\right)^2
+\]
+Where $\varepsilon_i$ is a random number from $U[0, 1]$. This should be the best "within our reach" scheme. The latter is the latest Lipschitz constraint scheme proposed by Martin Arjovsky, and experiments show the former also works well. Currently, they go by the big name of "WGAN-GP," short for <strong>Wasserstein Generative Adversarial Nets - Gradient Penalty</strong>.</p>
+
+<p>Finally, some might argue that having an upper bound on the gradient is just a sufficient condition for the Lipschitz constraint. Why not directly add the Lipschitz constraint in finite difference form to the penalty? (Actually, the main reason for this doubt is that many deep learning frameworks didn't provide gradient functions; additionally, although TensorFlow provides gradient functions, if the discriminator uses an RNN, the gradient function might not be available). In a sense, doing so is even more reasonable. I think Martin Arjovsky used the gradient directly just to make it a bit simpler. In that case, the penalty would be:
+\[
+\Theta = \mathop{\text{argmin}}_{\Theta} \frac{1}{B}\sum_{i=1}^B\left[D\Big(z_i,\Theta\Big)-D\Big(y_i,\Theta\Big)\right]+\frac{\lambda }{B}\sum_{i=1}^B\max\left(\frac{\|D(y_{i,1},\Theta)-D(y_{i,2},\Theta)\|}{\left\| y_{i,1}-y_{i,2}\right\| }, 1\right)
+\]
+And:
+\[
+\Theta = \mathop{\text{argmin}}_{\Theta} \frac{1}{B}\sum_{i=1}^B\left[D\Big(z_i,\Theta\Big)-D\Big(y_i,\Theta\Big)\right]+\frac{\lambda }{B}\sum_{i=1}^B\left(\frac{\|D(y_{i,1},\Theta)-D(y_{i,2},\Theta)\|}{\left\| y_{i,1}-y_{i,2}\right\| }-1\right)^2
+\]
+Where $y_{i,j}=\varepsilon_{i,j} y_i + (1-\varepsilon_{i,j})z_i$, which means interpolating twice per step and calculating the difference using the interpolated results.</p>
+
+<h2>And Then? <a name="And-Then"></a></h2>
+
+<p>There is no "then" for now~ I've finally finished writing. This is my understanding of GAN.</p>
+
+<p>Through this article, we can reach WGAN-GP in one breath without much historical or mathematical knowledge. Interestingly, our derivation process shows that WGAN-GP doesn't have a direct link to the Wasserstein distance, even though the original authors of WGAN derived them from it. That is to say, <strong>WGAN doesn't really have much to do with "W," which is awkward—can we still call it WGAN?</strong> Furthermore, some ask, "What are the advantages of WGAN over the original GAN?" According to the theory derived in this article, the original GAN isn't even a GAN because it can't be rewritten as a special case of this text! (The reason is that this text's derivation is based on distribution fitting, while the original GAN was based on game theory; they have different starting points.)</p>
+
+<p>There is still some room for improvement in this Loss, such as Loss Sensitive GAN (LS-GAN), and the even broader GLS-GAN (which unifies LS-GAN and WGAN). We won't discuss those generalizations here. However, these generalizations are built upon the Lipschitz constraint, merely tweaking the Loss. Perhaps in the future, someone will find a better constraint for $D$ than the Lipschitz constraint.</p>
+
+<h2>WGAN-GP Example <a name="WGAN-GP-Example"></a></h2>
+
+<p>Finally, I'll share an implementation of WGAN-GP using the MNIST dataset. Readers can modify it and play with it yourself~<br>
+<a href="https://github.com/bojone/gan/blob/master/mnist_gangp.py">https://github.com/bojone/gan/blob/master/mnist_gangp.py</a></p>
+
+<p>Training progress display~</p>
+
+<p>
+0<br>
+100<br>
+200<br>
+300<br>
+400
+</p>
+
+<hr>
+<p>
+<em><strong>Reprinted with the original address:</strong> <a href="translation_4439.html">https://kexue.fm/archives/4439</a></em>
+</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_4439.html" style="color: #005fcc;">https://kexue.fm/archives/4439</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

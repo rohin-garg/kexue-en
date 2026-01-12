@@ -1,0 +1,328 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/7758">Faster and Just as Good: Word-Based Chinese WoBERT</a></h1>
+
+    <p>By 苏剑林 | September 18, 2020</p>
+
+
+<p>Currently, most Chinese pre-trained models use characters as the basic unit, meaning that Chinese sentences are split into individual characters. There are also some multi-granularity Chinese language models, such as Innovation Works' <a href="https://github.com/sinosigmaproject/ZEN">ZEN</a> and ByteDance's <a href="https://arxiv.org/abs/2008.11869">AMBERT</a>, but the basic unit of these models is still characters, with mechanisms added to fuse word information. Currently, there are very few Chinese pre-trained models purely based on words; as far as the author knows, only Tencent UER has open-sourced a <a href="https://github.com/dbiir/UER-py">word-granularity BERT model</a>, but its practical performance was not ideal. So, how effective is a purely word-based Chinese pre-trained model? Does it have any value? Recently, we pre-trained and open-sourced a word-based Chinese BERT model, which we call <strong>WoBERT</strong> (Word-based BERT, or "My BERT!" in Chinese), and experiments show that word-based WoBERT has unique advantages in many tasks, such as significant speed improvements, while performance remains roughly the same or even improves. Here is a summary of our work.</p>
+
+<h2>Characters or Words?</h2>
+
+<p>Is "character" or "word" better? This is a frustrating question in Chinese NLP, and there have been several works systematically studying it. A relatively recent one is <a href="https://arxiv.org/abs/1905.05526">"Is Word Segmentation Necessary for Deep Learning of Chinese Representations?"</a> published by ShannonAI at ACL 2019, which concluded that characters are almost always superior to words. As mentioned earlier, current Chinese pre-trained models are indeed basically character-based. So, does it seem like the problem is solved? Are characters just better?</p>
+
+<p>Things are far from that simple. Taking the ShannonAI paper as an example, its experimental results are not wrong, but they are not representative. Why? Because it compared models where the embedding layers were randomly initialized. In such a case, for the same task, a word-based model has more parameters in the embedding layer, making it naturally more prone to overfitting and resulting in poorer performance—one could guess this without even running experiments. The issue is that when we use word-based models, we usually don't initialize them randomly; instead, we often use pre-trained word vectors (choosing whether to fine-tune them based on the downstream task). This is the typical scenario for word-segmented NLP models, yet the paper did not compare this scenario. Thus, the paper's results are not very convincing.</p>
+
+<p>In fact, "overfitting" is a double-edged sword. We want to prevent it, but overfitting also demonstrates that a model has strong fitting capabilities. If we find ways to suppress overfitting, we can obtain a stronger model under the same complexity, or a lower-complexity model for the same performance. One of the most important means to alleviate overfitting is more sufficient pre-training. Therefore, comparisons that do not introduce pre-training are unfair to word-based models, and our WoBERT confirms the feasibility of word-based pre-trained models.</p>
+
+<h2>Benefits of Words</h2>
+
+<p>The general consensus is that character-based models offer the following benefits:</p>
+<ol>
+    <li>Fewer parameters, less prone to overfitting;</li>
+    <li>No dependence on segmentation algorithms, avoiding boundary segmentation errors;</li>
+    <li>Less severe sparsity, with virtually no Out-of-Vocabulary (OOV) tokens.</li>
+</ol>
+
+<p>The reasons for choosing word-based models are:</p>
+<ol>
+    <li>Shorter sequences, resulting in faster processing speed;</li>
+    <li>Alleviation of the Exposure Bias problem in text generation tasks;</li>
+    <li>Lower uncertainty in word meanings, reducing modeling complexity.</li>
+</ol>
+
+<p>Some might have doubts about the benefits of words. For instance, regarding the second point about Exposure Bias, this is because, theoretically, shorter sequences make the Exposure Bias problem less pronounced (a word-based model predicting an $n$-character word in one step is equivalent to a character model taking $n$ steps, where each step is recursively dependent; thus, the character model's Exposure Bias is more severe). Regarding the third point, although polysemy exists, the meaning of most words is relatively fixed—at least clearer than the meaning of individual characters. Consequently, an embedding layer alone might be sufficient to model word meanings, unlike character models which require multiple layers to combine characters into words.</p>
+
+<p>While they seem evenly matched, the benefits of characters are not necessarily the weaknesses of words, provided some techniques are used. For example:</p>
+<ol>
+    <li>While word-based models have more parameters, pre-training can alleviate overfitting, so this issue is not severe;</li>
+    <li>Dependence on segmentation is an issue, but if we only keep the most common words, the results from different segmentation tools are mostly similar with little variance;</li>
+    <li>Boundary segmentation errors are hard to avoid, but accurate boundaries are primarily needed for sequence labeling tasks. Tasks like text classification and text generation don't actually require perfect boundaries, so word models shouldn't be dismissed on these grounds;</li>
+    <li>If we include most individual characters in the vocabulary, OOV issues won't occur.</li>
+</ol>
+
+<p>Therefore, word-based models actually offer many benefits. Except for sequence labeling tasks that require extremely precise boundaries, most NLP tasks won't have issues with word-based units. Thus, we proceeded to build a word-based BERT model.</p>
+
+<h2>Tokenizer</h2>
+
+<p>To include Chinese words in BERT, the first step is to enable the Tokenizer to recognize them. Is it enough to just add words to <code>vocab.txt</code>? Not really. BERT's built-in Tokenizer forcibly separates Chinese characters with spaces, so even if you add the words to the dictionary, it won't segment them as Chinese words. Furthermore, when BERT performs English WordPiece tokenization, it uses a maximum matching method, which is not accurate enough for Chinese word segmentation.</p>
+
+<p>To segment words, we modified BERT's Tokenizer slightly by adding a "<strong>pre_tokenize</strong>" operation. This allows us to segment Chinese words as follows:</p>
+<ol>
+    <li>Add Chinese words to <code>vocab.txt</code>;</li>
+    <li>Given an input sentence $s$, use <code>pre_tokenize</code> to segment it first, obtaining $[w_1, w_2, \dots, w_l]$;</li>
+    <li>Iterate through each $w_i$: if $w_i$ is in the vocabulary, keep it; otherwise, segment $w_i$ again using BERT's built-in <code>tokenize</code> function;</li>
+    <li>Concatenate the <code>tokenize</code> results of each $w_i$ in order as the final tokenization result.</li>
+</ol>
+
+<p>In <code>bert4keras>=0.8.8</code>, implementing this change only requires passing a single parameter when constructing the Tokenizer, for example:</p>
+
+<pre><code>tokenizer = Tokenizer(
+    dict_path,
+    do_lower_case=True,
+    pre_tokenize=lambda s: jieba.cut(s, HMM=False)
+)</code></pre>
+
+<p>Here, <code>pre_tokenize</code> is an externally passed segmentation function; if not passed, it defaults to <code>None</code>. For simplicity, WoBERT uses Jieba segmentation. We removed redundant parts of BERT's original vocabulary (such as Chinese words with <code>##</code>) and added 20,000 additional Chinese words (the top 20,000 highest frequency words from Jieba's built-in dictionary). The final <code>vocab.txt</code> size for WoBERT is 33,586.</p>
+
+<h2>Model Details</h2>
+
+<p>The currently open-sourced WoBERT is the Base version, built by continuing the pre-training of the <code>RoBERTa-wwm-ext</code> open-sourced by the Harbin Institute of Technology. The pre-training task is MLM. During the initialization phase, each word is segmented into characters by BERT's built-in Tokenizer, and the average of the character embeddings is used to initialize the word embedding.</p>
+
+<p>At this point, the technical highlights of WoBERT have basically been clarified; the rest was the training. We used a single 24G RTX to train for 1,000,000 steps (roughly 10 days), with a sequence length of 512, a learning rate of $5e^{-6}$, a <code>batch_size</code> of 16, and gradient accumulation for 16 steps, which is equivalent to training for about 60,000 steps with a <code>batch_size=256</code>. The training corpus consists of about 30GB of general-purpose text. The training code has been open-sourced at the link provided at the beginning of the article.</p>
+
+<p>In addition, we have provided WoNEZHA, which is based on the <code>NEZHA</code> open-sourced by Huawei. The training details are basically the same as WoBERT. NEZHA's model structure is similar to BERT, but it uses relative position encoding instead of absolute position encoding, meaning that theoretically, the text length NEZHA can handle is unlimited. Providing the word-based WoNEZHA here gives everyone another choice.</p>
+
+<h2>Model Performance</h2>
+
+<p>Finally, let's talk about the results of WoBERT. Simply put, in our evaluations, compared to BERT, WoBERT did not perform worse on NLP tasks that do not require precise boundaries, and in some cases even showed improvements. Meanwhile, there was a significant increase in speed, so in one sentence: "<strong>speed up without dropping points</strong>."</p>
+
+<p>For example, the comparison on two classification tasks from the Chinese benchmarks:</p>
+
+\[
+\begin{array}{c} 
+\text{Text Classification Performance Comparison}\\ 
+{\begin{array}{c|cc} 
+\hline 
+& \text{IFLYTEK} & \text{TNEWS} \\ 
+\hline 
+\text{BERT} & 60.31\% & 56.94\% \\ 
+\text{WoBERT} & \textbf{61.15%} & \textbf{57.05%} \\ 
+\hline 
+\end{array}} 
+\end{array} 
+\]
+
+<p>We also tested many internal tasks, and the results were similar, indicating that WoBERT and BERT are basically comparable on these NLU tasks. However, in terms of speed, WoBERT has a clear advantage. The table below compares the speeds of the two models when processing texts of different lengths:</p>
+
+\[
+\begin{array}{c} 
+\text{Speed Comparison}\\ 
+{\begin{array}{c|ccc} 
+\hline 
+& \text{128} & \text{256} & \text{512} \\ 
+\hline 
+\text{BERT} & \text{1.0x} & \text{1.0x} & \text{1.0x} \\ 
+\text{WoBERT} & \textbf{1.16x} & \textbf{1.22x} & \textbf{1.28x} \\ 
+\hline 
+\end{array}} 
+\end{array} 
+\]
+
+<p>We also tested Seq2Seq tasks (CSL/LCSTS title generation) using WoBERT + UniLM, and the results showed a marked improvement over character-based models:</p>
+
+\[
+\begin{array}{c} 
+\text{CSL Abstract Generation Experimental Results}\\ 
+{\begin{array}{c|c|cccc} 
+\hline 
+& \text{beam size} & \text{Rouge-L} & \text{Rouge-1} & \text{Rouge-2} & \text{BLEU} \\ 
+\hline 
+\text{BERT} & 1 & 63.81 & 65.45 & 54.91 & 45.52 \\ 
+\text{WoBERT} & 1 & \textbf{66.38} & \textbf{68.22} & \textbf{57.83} & \textbf{47.76} \\ 
+\hline 
+\text{BERT} & 2 & 64.44 & 66.09 & 55.75 & 46.39 \\ 
+\text{WoBERT} & 2 & \textbf{66.65} & \textbf{68.68} & \textbf{58.5} & \textbf{48.4} \\ 
+\hline 
+\text{BERT} & 3 & 64.75 & 66.34 & 56.06 & 46.7 \\ 
+\text{WoBERT} & 3 & \textbf{66.83} & \textbf{68.81} & \textbf{58.67} & \textbf{48.6} \\ 
+\hline 
+\end{array}}\\ 
+\\ 
+\text{LCSTS Abstract Generation Experimental Results}\\ 
+{\begin{array}{c|c|cccc} 
+\hline 
+& \text{beam size} & \text{Rouge-L} & \text{Rouge-1} & \text{Rouge-2} & \text{BLEU} \\ 
+\hline 
+\text{BERT} & 1 & 27.99 & 29.57 & 18.04 & 11.72 \\ 
+\text{WoBERT} & 1 & \textbf{31.51} & \textbf{32.9} & \textbf{21.13} & \textbf{13.74} \\ 
+\hline 
+\text{BERT} & 2 & 29.2 & 30.7 & 19.17 & 12.64 \\ 
+\text{WoBERT} & 2 & \textbf{31.91} & \textbf{33.35} & \textbf{21.55} & \textbf{14.13} \\ 
+\hline 
+\text{BERT} & 3 & 29.45 & 30.95 & 19.5 & 12.93 \\ 
+\text{WoBERT} & 3 & \textbf{32.19} & \textbf{33.72} & \textbf{21.81} & \textbf{14.29} \\ 
+\hline 
+\end{array}} 
+\end{array} 
+\]
+
+<p>This shows that using words as units is actually more advantageous for text generation. If even longer texts were generated, this advantage would be further amplified. Of course, we do not deny that when using WoBERT for sequence labeling tasks like NER, there may be a noticeable drop in performance; for example, on the People's Daily NER dataset, there was a drop of about 3%. Perhaps surprisingly, through error analysis, we found the cause was not segmentation errors, but rather sparsity (on average, there are fewer samples for each word, so the training is not as sufficient).</p>
+
+<p>Regardless, we are open-sourcing our work to provide everyone with an additional choice when using pre-trained models.</p>
+
+<h2>Summary</h2>
+
+<p>In this article, we open-sourced a word-based Chinese BERT model (WoBERT) and discussed the advantages and disadvantages of using words as units. Finally, through experiments, we showed that word-based pre-trained models have unique value in many NLP tasks (especially text generation). They offer an advantage in speed while matching the performance of character-based BERT. We welcome everyone to test it.</p>
+
+<p>Please include the original address when reprinting: <a href="translation_7758.html">https://kexue.fm/archives/7758</a></p>
+
+<p>For more detailed reprinting matters, please refer to: <a href="https://kexue.fm/faq.html">"Scientific Space FAQ"</a></p>
+
+<p>If you need to cite this article, please refer to:</p>
+<p>Su Jianlin. (Sep. 18, 2020). "Boosting Speed Without Dropping Performance: Word-based Chinese WoBERT" [Blog post]. Retrieved from <a href="translation_7758.html">https://kexue.fm/archives/7758</a></p>
+
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7758.html" style="color: #005fcc;">https://kexue.fm/archives/7758</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

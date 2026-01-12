@@ -1,0 +1,256 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9736">Abnormalities and Countermeasures for Embeddings under Lion/Tiger Optimizer Training</a></h1>
+
+<p>By 苏剑林 | August 28, 2023</p>
+
+<p>Ever since I proposed the Tiger optimizer in <a href="translation_9512.html"><i>"Tiger: An Extremely Frugal Optimizer"</i></a>, Tiger has become my "standard" optimizer for training models. Recently, I attempted to apply Tiger to the pre-training of a model with 7 billion parameters. The initial results looked promising, preliminary suggesting that Tiger is capable of scaling up. However, upon inspecting the weights of the trained model, I discovered some abnormalities in the Embeddings; certain components of the Embedding reached the magnitude of \(\pm 100\).</p>
+
+<p>After analysis, I found that similar phenomena do not occur with Adam. This is a specific issue for optimizers like Tiger or Lion that use the \(\text{sign}\) function. This article provides two reference solutions for this issue at the end. I will record the analysis process here for everyone's reference.</p>
+
+<h2 id="phenomenon">Phenomenon</h2>
+
+<p>Next, we will use the Tiger optimizer as an example for our analysis, but the process and conclusions apply equally to Lion.</p>
+
+<p>First, the phenomena I observed were as follows:</p>
+
+<blockquote>
+    <p>1. Some Embedding components for certain tokens became \(\pm 100\);<br>
+    2. A small portion of other tokens' Embedding components were trending towards \(\pm 100\);<br>
+    3. These tokens appeared to be very low-frequency tokens;<br>
+    4. The maximum value of the entire Embedding matrix was 100, and the minimum was -100;<br>
+    5. Except for the Embedding, other weights did not exhibit this problem;<br>
+    6. The overall performance of the model (such as training loss and generation tests) was normal.</p>
+</blockquote>
+
+<p>Some readers might wonder: since the model performance is normal, why bother? In my view, there are at least two reasons. First, if you want to perform fine-tuning later, some low-frequency tokens might become high-frequency again; if the Embeddings for these tokens are too poor, fine-tuning might not be able to save them. Second, some capabilities are not reflected in the loss. For instance, in Chinese-English pre-trained models, because the training data contains a small amount of other language data, the model usually exhibits some multilingual capability. Clearly, this capability relies on the quality of low-frequency token Embeddings. If this is compromised by the optimizer, it would be a "great loss."</p>
+
+<p>Of course, regardless of the optimizer, it is always possible for the training to collapse, which is not surprising and often difficult to investigate deeply. However, the most intriguing thing here is how "regularly" it collapsed—it reached exactly \(\pm 100\). This compelled me to further investigate the underlying cause.</p>
+
+<h2 id="thinking">Thinking</h2>
+
+<p>Based on the observations above, we can initially conclude that these outliers only appear in the "Embeddings of low-frequency tokens." This reminded me of the problem discussed in <a href="https://kexue.fm/archives/6869#LazyOptimizer"><i>"Implementing Two Optimizers in Keras: Lookahead and LazyOptimizer"</i></a>, where optimizers with momentum can lead to the over-optimization of the Embedding layer.</p>
+
+<p>Specifically, as long as a token appears once, the momentum corresponding to that token's Embedding is updated to a non-zero value (assuming the gradient is not exactly zero). Consequently, in subsequent updates, even if the token does not appear in the current sample (gradient is zero), its Embedding is still updated (because momentum is non-zero). This is the over-optimization problem for low-frequency tokens. This problem occurs in all optimizers with momentum, including Adam and Tiger. However, in Adam, this might not be noticeably felt because the update amount is proportional to the momentum. If a token does not reappear for a long time, the momentum decays exponentially, so it quickly approaches zero. In other words, the update amount also quickly tends to zero, meaning over-updating soon disappears.</p>
+
+<p>However, the situation is different in Tiger. The update amount in Tiger is proportional to the sign of the momentum, \(\text{sign}(m_t)\). Although the momentum \(m_t\) decays exponentially, the sign function does not. Until \(m_t\) becomes zero due to rounding errors, \(\text{sign}(m_t)\) maintains a value of \(\pm 1\), meaning the update amount remains constant. Thus, the over-updating problem for Embeddings is much more severe in Tiger. To make matters worse, after a token's Embedding has biased in a certain direction due to over-updating, its gradient might adapt to and reinforce this change. That is, the gradient the next time the token appears might be in the same direction rather than the opposite. This leads to long-term over-updating in the same direction, eventually resulting in the outliers.</p>
+
+<h2 id="calculation">Calculation</h2>
+
+<p>So, why is the outlier value exactly \(\pm 100\)? This is where weight decay comes into play. The total update formula for Tiger is:</p>
+
+\begin{equation}
+\theta_t = \theta_{t-1} - \eta_t [\text{sign}(m_t) + \lambda \theta_{t-1}]
+\label{eq:tiger_update}
+\end{equation}
+
+<p>In other words, in addition to the sign of the momentum, there is a weight decay term. In the abnormal experiment mentioned at the beginning, the decay rate \(\lambda\) was set to 0.01.</p>
+
+<p>It is not hard to see that if \(\text{sign}(m_t)\) remains constant for a long time, the iteration formula above will have an equilibrium point. It occurs when \(\text{sign}(m_t) + \lambda \theta^* = 0\), which is:</p>
+
+\begin{equation}
+\theta^* = -\frac{\text{sign}(m_t)}{\lambda}
+\label{eq:equilibrium}
+\end{equation}
+
+<p>This corresponds exactly to a vector with elements of \(\pm 100\), which explains why the outliers are \(\pm 100\). If interested, readers can also assume \(\eta_t\) is constant and directly solve for the analytical form of \(\theta_t\) to further analyze the convergence speed, etc. I will not expand further on that here.</p>
+
+<h2 id="countermeasures">Countermeasures</h2>
+
+<p>Since the problem arises from the over-updating of low-frequency token Embeddings, a natural solution is to "Lazy-ify" the Embedding updates, as suggested in <a href="https://kexue.fm/archives/6869#LazyOptimizer"><i>"Implementing Two Optimizers in Keras: Lookahead and LazyOptimizer"</i></a>. That is, only update the corresponding Embedding when the Token actually appears. If we can access the set of all input Token IDs, we can update only those Embeddings. If not, we can determine whether an Embedding needs to be updated by checking if the gradient norm of the Embedding is non-zero.</p>
+
+<p>On the other hand, from a more general perspective, this problem is a common defect of Lion/Tiger optimizers for parameters with sparse gradients, including but not limited to the Embedding layer. Therefore, another approach to solve the problem is to make the Embedding gradients non-sparse. To this end, we can consider Tied Embeddings—sharing input and output Embeddings. Since the output end reuses the entire Embedding matrix, the entire Embedding matrix will have non-zero gradients, preventing \(m_t\) from remaining constant for long periods. Of course, Tied Embeddings might bring other problems; corresponding solutions can be found in <a href="translation_9698.html"><i>"Re-exploration of Shared Embeddings at the Output End of Language Models"</i></a>. In my experiments, using Tied Embeddings that swap half of the model's feature channels solved the problem above, and the effect seemed even better than Untied Embeddings.</p>
+
+<p>Finally, I also consulted the authors of the Lion optimizer regarding this issue. Their reply was that they had noticed this problem before. Their solution was a hybrid optimizer; for example, using Adam for the Embedding layer and Lion/Tiger for the other layers. Uh, this solution was one I hadn't thought of. It feels not particularly elegant, but it certainly solves the problem. Readers can choose for themselves.</p>
+
+<h2 id="summary">Summary</h2>
+
+<p>This article introduced the phenomenon of Embedding abnormalities during training with the Lion/Tiger optimizers, analyzed the underlying causes, and provided reference solutions.</p>
+
+<hr>
+
+<p><i><b>Reprint Address: </b><a href="translation_9736.html">https://kexue.fm/archives/9736</a></i></p>
+
+<p><b>If you need to cite this article, please refer to:</b></p>
+<p>Su Jianlin. (Aug. 28, 2023). "Abnormalities and Countermeasures for Embeddings under Lion/Tiger Optimizer Training" [Blog post]. Retrieved from <a href="translation_9736.html">https://kexue.fm/archives/9736</a></p>
+
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9736.html" style="color: #005fcc;">https://kexue.fm/archives/9736</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

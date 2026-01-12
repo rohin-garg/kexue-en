@@ -1,0 +1,478 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']},
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/3863">Text Sentiment Classification (3): To Segment OR Not To Segment</a></h1>
+    <p>By 苏剑林 | June 29, 2016</p>
+
+    <p>After the Teddy Cup competition last year, I wrote a brief blog post introducing the application of deep learning in sentiment analysis: <a href="translation_3414.html">"Text Sentiment Classification (2): Deep Learning Models"</a>. Although the article was quite rough, it received a surprising amount of feedback from readers, which caught me off guard. However, there were some unclear points in the implementation of that article because: 1. Keras has undergone significant changes since then, rendering the original code non-functional; 2. The code included might have been randomly modified by me, so the version released wasn't the most appropriate one. Therefore, nearly a year later, I am revisiting this topic and completing some tests that were left unfinished.</p>
+
+    <p>Why use deep learning models? Besides reasons like higher accuracy, another important reason is that it is <strong>currently the only model capable of achieving "end-to-end" learning</strong>. "End-to-end" means being able to input raw data and labels directly, letting the model complete the entire process—including feature extraction and model learning. Looking back at our process for Chinese sentiment classification, it generally follows the steps: "segmentation — word vectors — sentence vectors (LSTM) — classification." While this type of model often achieves state-of-the-art results, some questions still need further testing. For Chinese, the <i>character</i> is the lowest granularity unit of text. Therefore, from an "end-to-end" perspective, sentences should be input directly as characters rather than being segmented into words first. <strong>Is there actually a necessity for word segmentation? This post compares the performance of character one-hot encoding, character embeddings, and word embeddings.</strong></p>
+
+    <h3 id="Model-Testing">Model Testing</h3>
+    <p>This post tests three models, or rather, three frameworks. The specific code is provided at the end. These three frameworks are:</p>
+
+    <blockquote>
+        <p>1. <strong>one hot</strong>: Character-based, no segmentation. Each sentence is truncated to 200 characters (padded with empty strings if shorter), then input into an LSTM model in the form of a "character-one hot" matrix for classification learning.</p>
+        <p>2. <strong>one embedding</strong>: Character-based, no segmentation. Each sentence is truncated to 200 characters (padded with empty strings if shorter), then input into an LSTM model in the form of a "character-embedding" matrix for classification learning.</p>
+        <p>3. <strong>word embedding</strong>: Word-based, with segmentation. Each sentence is truncated to 100 words (padded with empty strings if shorter), then input into an LSTM model in the form of a "word-embedding" matrix for classification learning.</p>
+    </blockquote>
+
+    <p>The LSTM structures used are similar. The corpus is the same as the one used in <a href="translation_3414.html">"Text Sentiment Classification (2): Deep Learning Models"</a>, with 15,000 samples for training and roughly 6,000 samples for testing. Surprisingly, all three models achieved similar results.</p>
+
+    \[
+    \begin{array}{c|ccc}
+    \hline
+    & \text{one hot} & \text{one embedding} & \text{word embedding} \\
+    \hline
+    \text{Num. of Iterations} & 90 & 30 & 30 \\
+    \text{Time per Epoch} & 100\text{s} & 36\text{s} & 18\text{s} \\
+    \text{Training Accuracy} & 96.60\% & 95.95\% & 98.41\% \\
+    \text{Testing Accuracy} & 89.21\% & 89.55\% & 89.03\% \\
+    \hline
+    \end{array}
+    \]
+
+    <p>As can be seen, the accuracy across the three is similar, with little differentiation. Whether using one-hot, character vectors, or word vectors, the results are almost the same. Perhaps using the method from <a href="translation_3414.html">"Text Sentiment Classification (2): Deep Learning Models"</a> to select an appropriate threshold for each model would result in higher test accuracy, but the relative accuracy between models likely wouldn't change much.</p>
+
+    <p>Of course, the test itself may have some inequities that could lead to unfair results, and I did not repeat the tests extensively. For example, the one-hot model iterated 90 times, while the other two iterated 30 times, because the sample dimensions constructed by the one-hot model are so large that it takes longer to show convergence. Furthermore, during training, the accuracy fluctuated while rising, rather than rising steadily like the other two models. This is actually a common characteristic of all one-hot models.</p>
+
+    <h3 id="A-Few-More-Points">A Few More Points</h3>
+    <p>It appears that the one-hot model does suffer from the curse of dimensionality, and its training time is longer without significantly improving performance. Does this mean there is no point in researching one-hot representations?</p>
+
+    <p>I don't think so. The reason people criticized one-hot models in the past, besides the curse of dimensionality, was the "semantic gap"—meaning there is no correlation between any two words (whether using Euclidean distance or cosine similarity, the result for any two words is the same). While this assumption doesn't hold for words, isn't it quite reasonable for Chinese "characters"? There aren't many cases where a single Chinese character forms a word alone; most are two-character words. This means the assumption that there is no correlation between any two characters is approximately true at the character level! Since we used an LSTM, and LSTMs have the function of integrating adjacent data, they implicitly include the process of integrating characters into words.</p>
+
+    <p>Furthermore, the one-hot model has a very important characteristic—it has <strong>no information loss</strong>. From the one-hot encoding result, we can conversely decode exactly which characters or words made up the original sentence. However, I cannot determine the original word solely from a word vector. These points suggest that, in many cases, one-hot models are very valuable.</p>
+
+    <p>So why do we use word vectors? Word vectors make an assumption: each word has a relatively fixed meaning. This assumption is also approximately true at the word level, as there aren't many polysemous words relatively speaking. Because of this, we can place words in a lower-dimensional real-number space, representing a word with a real vector and using the distance or cosine similarity between them to represent the similarity between words. This is also why word vectors can solve "synonyms" (same meaning, different words) but cannot easily solve "polysemy" (same word, different meanings).</p>
+
+    <p>From this perspective, among the three models above, only one-hot and word embedding are theoretically sound, while "one embedding" (character embeddings) seems a bit redundant because characters themselves can't be said to have a fixed "meaning" in the same way words do. But why did "one embedding" perform well? I estimate it's because binary classification is a very coarse problem (0 or 1). In multi-class problems, the "one embedding" approach might see its performance drop. However, I haven't conducted more tests because it is too time-consuming.</p>
+
+    <p>Of course, this is just my <strong>subjective speculation</strong>, and I welcome corrections. Particularly, the evaluation of the one-embedding part is open to debate.</p>
+
+    <h3 id="The-Code">The Code</h3>
+    <p>Perhaps you didn't want to hear my ramblings and just came for the code. Here are the scripts for the three models. It is best to have GPU acceleration, especially for the one-hot model experiment; otherwise, it will be painfully slow.</p>
+
+    <p><strong>Model 1: one hot</strong></p>
+<pre><code># -*- coding:utf-8 -*-
+
+'''
+one hot test
+On a GTX960, approx 100s per epoch
+After 90 iterations, training accuracy is 96.60%, test accuracy is 89.21%
+Dropout cannot be used too much, otherwise information loss is too severe
+'''
+
+import numpy as np
+import pandas as pd
+
+pos = pd.read_excel('pos.xls', header=None)
+pos['label'] = 1
+neg = pd.read_excel('neg.xls', header=None)
+neg['label'] = 0
+all_ = pos.append(neg, ignore_index=True)
+
+maxlen = 200 # truncate at 200 characters
+min_count = 20 # discard characters appearing fewer than 20 times. Simple dimensionality reduction.
+
+content = ''.join(all_[0])
+abc = pd.Series(list(content)).value_counts()
+abc = abc[abc >= min_count]
+abc[:] = list(range(len(abc)))
+word_set = set(abc.index)
+
+def doc2num(s, maxlen):
+    s = [i for i in s if i in word_set]
+    s = s[:maxlen]
+    return list(abc[s])
+
+all_['doc2num'] = all_[0].apply(lambda s: doc2num(s, maxlen))
+
+# Manually shuffle data
+idx = list(range(len(all_)))
+np.random.shuffle(idx)
+all_ = all_.loc[idx]
+
+# Generate data according to Keras input requirements
+x = np.array(list(all_['doc2num']))
+y = np.array(list(all_['label']))
+y = y.reshape((-1,1)) # adjust label shape
+
+from keras.utils import np_utils
+from keras.models import Sequential
+from keras.layers import Dense, Activation, Dropout
+from keras.layers import LSTM
+import sys
+sys.setrecursionlimit(10000) # increase stack depth
+
+# Build model
+model = Sequential()
+model.add(LSTM(128, input_shape=(maxlen,len(abc))))
+model.add(Dropout(0.5))
+model.add(Dense(1))
+model.add(Activation('sigmoid'))
+model.compile(loss='binary_crossentropy',
+              optimizer='rmsprop',
+              metrics=['accuracy'])
+
+# A single one-hot matrix has a size of maxlen * len(abc), which is memory intensive.
+# For testing on low-memory PCs, a generator is used here to produce one-hot matrices.
+# One-hot matrices are only generated at call time.
+# Memory usage can be lowered by reducing batch_size, though this increases training time.
+batch_size = 128
+train_num = 15000
+
+# Pad with zero rows if insufficient
+gen_matrix = lambda z: np.vstack((np_utils.to_categorical(z, len(abc)), np.zeros((maxlen-len(z), len(abc)))))
+
+def data_generator(data, labels, batch_size):
+    batches = [list(range(batch_size*i, min(len(data), batch_size*(i+1)))) for i in range(int(len(data)/batch_size)+1)]
+    while True:
+        for i in batches:
+            if len(i) == 0: continue
+            xx = np.array(list(map(gen_matrix, data[i])))
+            yy = labels[i]
+            yield (xx, yy)
+
+model.fit_generator(data_generator(x[:train_num], y[:train_num], batch_size), steps_per_epoch=train_num//batch_size, epochs=30)
+
+model.evaluate_generator(data_generator(x[train_num:], y[train_num:], batch_size), steps=len(x[train_num:])//batch_size)
+
+def predict_one(s): # Prediction function for a single sentence
+    s = gen_matrix(doc2num(s, maxlen))
+    s = s.reshape((1, s.shape[0], s.shape[1]))
+    return model.predict_classes(s, verbose=0)[0][0]
+</code></pre>
+
+    <p><strong>Model 2: one embedding</strong></p>
+<pre><code># -*- coding:utf-8 -*-
+
+'''
+one embedding test
+On a GTX960, 36s per epoch
+After 30 iterations, training accuracy is 95.95%, test accuracy is 89.55%
+Dropout cannot be used too much, otherwise information loss is too severe
+'''
+
+import numpy as np
+import pandas as pd
+
+pos = pd.read_excel('pos.xls', header=None)
+pos['label'] = 1
+neg = pd.read_excel('neg.xls', header=None)
+neg['label'] = 0
+all_ = pos.append(neg, ignore_index=True)
+
+maxlen = 200 # truncate at 200 characters
+min_count = 20 # discard characters appearing fewer than 20 times.
+
+content = ''.join(all_[0])
+abc = pd.Series(list(content)).value_counts()
+abc = abc[abc >= min_count]
+abc[:] = list(range(1, len(abc)+1))
+abc[''] = 0 # add empty string for padding
+word_set = set(abc.index)
+
+def doc2num(s, maxlen):
+    s = [i for i in s if i in word_set]
+    s = s[:maxlen] + ['']*max(0, maxlen-len(s))
+    return list(abc[s])
+
+all_['doc2num'] = all_[0].apply(lambda s: doc2num(s, maxlen))
+
+# Manually shuffle data
+idx = list(range(len(all_)))
+np.random.shuffle(idx)
+all_ = all_.loc[idx]
+
+# Generate data according to Keras input requirements
+x = np.array(list(all_['doc2num']))
+y = np.array(list(all_['label']))
+y = y.reshape((-1,1))
+
+from keras.models import Sequential
+from keras.layers import Dense, Activation, Dropout, Embedding
+from keras.layers import LSTM
+
+# Build model
+model = Sequential()
+model.add(Embedding(len(abc), 256, input_length=maxlen))
+model.add(LSTM(128))
+model.add(Dropout(0.5))
+model.add(Dense(1))
+model.add(Activation('sigmoid'))
+model.compile(loss='binary_crossentropy',
+              optimizer='adam',
+              metrics=['accuracy'])
+
+batch_size = 128
+train_num = 15000
+
+model.fit(x[:train_num], y[:train_num], batch_size = batch_size, epochs=30)
+
+model.evaluate(x[train_num:], y[train_num:], batch_size = batch_size)
+
+def predict_one(s): # Prediction function for a single sentence
+    s = np.array(doc2num(s, maxlen))
+    s = s.reshape((1, s.shape[0]))
+    return model.predict_classes(s, verbose=0)[0][0]
+</code></pre>
+
+    <p><strong>Model 3: word embedding</strong></p>
+<pre><code># -*- coding:utf-8 -*-
+
+'''
+word embedding test
+On a GTX960, 18s per epoch
+After 30 iterations, training accuracy is 98.41%, test accuracy is 89.03%
+Dropout cannot be used too much, otherwise information loss is too severe
+'''
+
+import numpy as np
+import pandas as pd
+import jieba
+
+pos = pd.read_excel('pos.xls', header=None)
+pos['label'] = 1
+neg = pd.read_excel('neg.xls', header=None)
+neg['label'] = 0
+all_ = pos.append(neg, ignore_index=True)
+all_['words'] = all_[0].apply(lambda s: list(jieba.cut(s))) # Call Jieba segmentation
+
+maxlen = 100 # truncate at 100 words
+min_count = 5 # discard words appearing fewer than 5 times.
+
+content = []
+for i in all_['words']:
+    content.extend(i)
+
+abc = pd.Series(content).value_counts()
+abc = abc[abc >= min_count]
+abc[:] = list(range(1, len(abc)+1))
+abc[''] = 0 # add empty string for padding
+word_set = set(abc.index)
+
+def doc2num(s, maxlen):
+    s = [i for i in s if i in word_set]
+    s = s[:maxlen] + ['']*max(0, maxlen-len(s))
+    return list(abc[s])
+
+all_['doc2num'] = all_['words'].apply(lambda s: doc2num(s, maxlen))
+
+# Manually shuffle data
+idx = list(range(len(all_)))
+np.random.shuffle(idx)
+all_ = all_.loc[idx]
+
+# Generate data according to Keras input requirements
+x = np.array(list(all_['doc2num']))
+y = np.array(list(all_['label']))
+y = y.reshape((-1,1))
+
+from keras.models import Sequential
+from keras.layers import Dense, Activation, Dropout, Embedding
+from keras.layers import LSTM
+
+# Build model
+model = Sequential()
+model.add(Embedding(len(abc), 256, input_length=maxlen))
+model.add(LSTM(128))
+model.add(Dropout(0.5))
+model.add(Dense(1))
+model.add(Activation('sigmoid'))
+model.compile(loss='binary_crossentropy',
+              optimizer='adam',
+              metrics=['accuracy'])
+
+batch_size = 128
+train_num = 15000
+
+model.fit(x[:train_num], y[:train_num], batch_size = batch_size, epochs=30)
+
+model.evaluate(x[train_num:], y[train_num:], batch_size = batch_size)
+
+def predict_one(s): # Prediction function for a single sentence
+    s = np.array(doc2num(list(jieba.cut(s)), maxlen))
+    s = s.reshape((1, s.shape[0]))
+    return model.predict_classes(s, verbose=0)[0][0]
+</code></pre>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_3863.html" style="color: #005fcc;">https://kexue.fm/archives/3863</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

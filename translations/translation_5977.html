@@ -1,0 +1,355 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']],
+      tags: 'ams',
+      packages: {'[+]': ['ams']}
+    }
+  };
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+  <h1><a href="https://kexue.fm/archives/5977">Flow Series: f-VAEs — The Marriage of Glow and VAEs</a></h1>
+
+  <p>By 苏剑林 | September 21, 2018</p>
+
+  <blockquote>
+    This article is the Chinese version of a paper we posted on arXiv a few days ago. In this paper, we present an approach to combine flow-based models (such as Glow introduced previously) and Variational Autoencoders (VAEs), which we call f-VAEs. Theoretically, it can be proven that f-VAEs constitute a more general framework encompassing both flow models and VAEs. Experiments show that compared to the original Glow model, f-VAEs converge faster and can achieve the same generation performance with a smaller network scale.
+    Original Paper: <a href="https://papers.cool/arxiv/1809.05861">《f-VAEs: Improve VAEs with Conditional Flows》</a>
+  </blockquote>
+
+  <p>Recently, generative models have received widespread attention. Among them, <a href="https://kexue.fm/search/%E5%8F%98%E5%88%86%E8%87%AA%E7%BC%96%E7%A0%81%E5%99%A8/">Variational Autoencoders (VAEs)</a> and <a href="https://kexue.fm/search/%E7%BB%86%E6%B0%B4%E9%95%BFflow/">Flow models</a> are two types of generative models distinct from Generative Adversarial Networks (GANs), and they have also been extensively studied. However, each has its own advantages and disadvantages. This article attempts to combine them.</p>
+
+  <p>Two real samples’ linear interpolation achieved by f-VAEs</p>
+
+  <h2 id="Basics">Basics</h2>
+
+  <p>Given the evidence distribution of the dataset as $\tilde{p}(x)$, the basic idea of a generative model is to fit the dataset distribution using the following distribution form:
+  \begin{equation}q(x)=\int q(z)q(x|z) dz\end{equation}
+  where $q(z)$ is usually taken as a standard Gaussian distribution, and $q(x|z)$ is usually a Gaussian distribution (in VAEs) or a Dirac delta distribution (in GANs and flow models). Ideally, the optimization objective is to maximize the likelihood function $\mathbb{E}[\log q(x)]$, or equivalently, to minimize $KL(\tilde{p}(x)\Vert q(x))$.</p>
+
+  <p>Since the integral might be difficult to calculate explicitly, special techniques are needed, leading to different generative models. VAEs introduce a posterior distribution $p(z|x)$ and change the optimization target to a more easily calculated upper bound $KL(\tilde{p}(x)p(z|x)\Vert q(z)q(x|z))$. As is well known, VAEs have the advantages of fast convergence and stable training, but in general, the generated images suffer from blurriness, the reasons for which we will discuss later.</p>
+
+  <p>In flow models, $q(x|z)=\delta(x - G(z))$, and $G(z)$ is carefully designed (through compositions of flows) to calculate this integral directly. The main component of a flow model is the "coupling layer": first, $x$ is partitioned into two parts $x_1, x_2$, and then the following operation is performed:
+  \begin{equation}\begin{aligned}&y_1 = x_1\\
+  &y_2 = s(x_1)\otimes x_2 + t(x_1)
+  \end{aligned}\label{eq:coupling}\end{equation}
+  This transformation is reversible, with the inverse being:
+  \begin{equation}\begin{aligned}&x_1 = y_1\\
+  &x_2 = (y_2 - t(y_1)) / s(x_1)
+  \end{aligned}\end{equation}
+  Its Jacobian determinant is $\prod_i s_i(x_i)$. This transformation is typically called "affine coupling" (if $s(x_1)\equiv 1$, it is typically called "additive coupling"), denoted by $f$. By combining many coupling layers, we can obtain complex non-linear transformations, i.e., $G = f_1 \circ f_2 \circ \dots \circ f_n$, which is a so-called "(unconditional) flow."</p>
+
+  <p>By calculating the integral directly, flow models can directly complete maximum likelihood optimization. The recently released Glow model showed powerful generation results, attracting much discussion and attention. However, flow models are usually quite massive and take a long time to train (the 256x256 image generation model was trained in one week using 40 GPUs, see <a href="https://github.com/openai/glow/issues/14#issuecomment-406650950">here</a> and <a href="https://github.com/openai/glow/issues/37#issuecomment-410019221">here</a>), which is clearly not friendly enough.</p>
+
+  <h2 id="Analysis">Analysis</h2>
+
+  <p>There are many explanations for why VAE-generated images are blurry. Some believe it is due to the MSE error, while others believe it is an inherent property of the KL divergence. However, it is noteworthy that even if the KL divergence term for the latent variable is removed, turning it into a regular autoencoder, the reconstructed images are still typically blurry. This suggests that blurriness in VAE images might be an inherent problem of reconstructing original images from a lower dimension.</p>
+
+  <p>What if the latent variable dimension is set to the same size as the input dimension? It seems that's still not enough, because standard VAEs assume the posterior distribution is also a Gaussian distribution. This limits the model's expressive power because the family of Gaussian distributions is only a very small part of many possible posterior distributions. If the nature of the posterior distribution is very different from a Gaussian distribution, the fitting effect will be poor.</p>
+
+  <p>What about flow models like Glow? Flow models convert the input distribution into a Gaussian distribution by designing a reversible (strongly non-linear) transformation. In this process, not only must the reversibility of the transformation be guaranteed, but also its Jacobian determinant must be easy to calculate, which leads to the design of "additive coupling layers" or "affine coupling layers." However, these coupling layers only bring very weak non-linear capabilities, so a sufficient number of coupling layers are needed to accumulate into a strong non-linear transformation. Therefore, Glow models are usually massive and training time is long.</p>
+
+  <h2 id="f-VAEs">f-VAEs</h2>
+
+  <p>Our approach is to introduce flow models into VAEs to fit a more general posterior distribution $p(z|x)$ instead of simply setting it as a Gaussian distribution. We call this f-VAEs (Flow-based Variational Autoencoders). Compared to standard VAEs, f-VAEs break out of the limitation that the posterior distribution must be Gaussian, ultimately leading to clear image generation. Compared to original flow models (like Glow), the f-VAE encoder brings stronger non-linear capability to the model, which can reduce reliance on coupling layers, thereby achieving equal generation effects with a smaller model size.</p>
+
+  <h3>Derivation Process</h3>
+
+  <p>Starting from the original objective of VAEs, the loss of a VAE can be written as:
+  \begin{equation}\begin{aligned}&KL(\tilde{p}(x)p(z|x)\Vert q(z)q(x|z))\\
+  =&\iint \tilde{p}(x)p(z|x)\log \frac{\tilde{p}(x)p(z|x)}{q(x|z)q(z)} dzdx\end{aligned}\label{eq:vae-loss}\end{equation}
+  where $p(z|x)$ and $q(x|z)$ are distributions with parameters. Unlike standard VAEs, $p(z|x)$ is no longer assumed to be Gaussian but is constructed through a flow model:
+  \begin{equation}p(z|x) = \int \delta(z - F_x(u))q(u)du\label{eq:cond-flow}\end{equation}
+  Here $q(u)$ is a standard Gaussian distribution, and $F_x(u)$ is a binary function of $x, u$, but it is reversible with respect to $u$. It can be understood that $F_x(u)$ is a flow model with respect to $u$, but its parameters may depend on $x$. We call this a "conditional flow." Substituting into $\eqref{eq:vae-loss}$ gives:
+  \begin{equation}\iint \tilde{p}(x)q(u)\log \frac{\tilde{p}(x) q(u)}{q(x| F_x(u))q(F_x(u))\left\|\det \left[\frac{\partial F_x (u)}{\partial u}\right]\right\|} dudx\label{eq:f-vae-loss}\end{equation}
+  This is the loss for a general f-VAE. Please refer to the notes below for the specific derivation process.</p>
+
+  <blockquote>
+    Combining $\eqref{eq:vae-loss}$ and $\eqref{eq:cond-flow}$, we have:
+    \begin{equation}\begin{aligned}&\iiint \tilde{p}(x)\delta(z - F_x(u))q(u)\log \frac{\tilde{p}(x)\int\delta(z - F_x(u'))q(u')du'}{q(x|z)q(z)} dzdudx\\
+    =&\iint \tilde{p}(x)q(u)\log \frac{\tilde{p}(x)\int\delta(F_x(u) - F_x(u'))q(u')du'}{q(x| F_x(u))q(F_x(u))} dudx
+    \end{aligned}\label{eq:vae-loss-cond-flow}\end{equation}
+    Let $v = F_x(u'), u'=H_x(v)$. Regarding the Jacobian determinant, we have the relationship:
+    \begin{equation}\det \left[\frac{\partial u'}{\partial v}\right]=1\Big/\det \left[\frac{\partial v}{\partial u'}\right]=1\Big/\det \left[\frac{\partial F_x (u')}{\partial u'}\right]\end{equation}
+    Thus $\eqref{eq:vae-loss-cond-flow}$ becomes:
+    \begin{equation}\begin{aligned}&\iint \tilde{p}(x)q(u)\log \frac{\tilde{p}(x)\int\delta(F_x(u) - v)q(H_x(v))\left\|\det \left[\frac{\partial u'}{\partial v}\right]\right\|dv}{q(x| F_x(u))q(F_x(u))} dudx\\
+    =&\iint \tilde{p}(x)q(u)\log \frac{\tilde{p}(x)\int\delta(F_x(u) - v)q(H_x(v))\Big/\left\|\det \left[\frac{\partial F_x (u')}{\partial u'}\right]\right\|dv}{q(x| F_x(u))q(F_x(u))} dudx\\
+    =&\iint \tilde{p}(x)q(u)\log \frac{\tilde{p}(x) q(H_x(F_x(u)))\Big/\left\|\det \left[\frac{\partial F_x (u')}{\partial u'}\right]\right\|_{v=F_x(u)}}{q(x| F_x(u))q(F_x(u))} dudx\\
+    =&\iint \tilde{p}(x)q(u)\log \frac{\tilde{p}(x) q(u)}{q(x| F_x(u))q(F_x(u))\left\|\det \left[\frac{\partial F_x (u)}{\partial u}\right]\right\|} dudx
+    \end{aligned}\end{equation}
+  </blockquote>
+
+  <h3>Two Special Cases</h3>
+
+  <p>Equation $\eqref{eq:f-vae-loss}$ describes a generalized framework, with different $F_x(u)$ corresponding to different generative models. If we set:
+  \begin{equation}\label{eq:vae-fxu} F_x(u)=\sigma(x)\otimes u + \mu(x)\end{equation}
+  Then we have:
+  \begin{equation}-\int q(u)\log \left\|\det \left[\frac{\partial F_x (u)}{\partial u}\right]\right\| du=-\sum_i\log \sigma_i(x)\end{equation}
+  And:
+  \begin{equation}\int q(u)\log \frac{q(u)}{q(F_x(u))}du=\frac{1}{2}\sum_{i=1}^d(\mu_i^2(x)+\sigma_i^2(x)-1)\end{equation}
+  Combining these two terms, it is exactly the KL divergence between the posterior and the prior. Substituting into $\eqref{eq:f-vae-loss}$ results in exactly the loss of a standard VAE. Unexpectedly, this result automatically includes the reparameterization process.</p>
+
+  <p>Another simple example to examine is:
+  \begin{equation}\label{eq:flow-fxu} F_x(u)=F(\sigma u + x),\quad q(x|z)=\mathcal{N}(x;F^{-1}(z),\sigma^2)\end{equation}
+  where $\sigma$ is a small constant, and $F$ is any flow model with parameters independent of $x$ (unconditional flow). Thus:
+  \begin{equation}\begin{aligned}&-\log q(x|F_x(u))\\
+  =& -\log \mathcal{N}(x; F^{-1}(F(\sigma u + x)),\sigma^2)\\
+  =& -\log \mathcal{N}(x; \sigma u + x,\sigma^2)\\
+  =& \frac{d}{2}\log 2\pi \sigma^2 + \frac{1}{2}\Vert u\Vert^2
+  \end{aligned}\end{equation}
+  So it does not contain training parameters. Consequently, the part of the whole loss containing training parameters is only:
+  \begin{equation}-\iint \tilde{p}(x)q(u)\log q(F(\sigma u + x))\left\|\det \left[\frac{\partial F(\sigma u + x)}{\partial u}\right]\right\| dudx\end{equation}
+  This is equivalent to a regular flow model whose input has added Gaussian noise with variance $\sigma^2$. Interestingly, standard Glow models do indeed add a certain amount of noise to input images during training.</p>
+
+  <h3>Our Model</h3>
+
+  <p>The two special cases above show that equation $\eqref{eq:f-vae-loss}$ in principle includes both VAEs and flow models. $F_x(u)$ actually describes different ways of mixing $u$ and $x$. In principle, we can choose any complex $F_x(u)$ to enhance the expressive power of the posterior distribution, such as:
+  \begin{equation}\begin{aligned}&f_1 = F_1\Big(\sigma_1(x)\otimes u + \mu_1(x)\Big)\\
+  &f_2 = F_2\Big(\sigma_2(x)\otimes f_1 + \mu_2(x)\Big)\\
+  &F_x(u) = \sigma_3(x)\otimes f_2 + \mu_3(x)\end{aligned}\end{equation}
+  where $F_1, F_2$ are unconditional flows.</p>
+
+  <p>At the same time, up to now, we have not explicitly constrained the dimension of the latent variable $z$ (which is the dimension of $u$). In fact, it is a hyperparameter that can be chosen freely, allowing us to train better dimensionality-reduction variational autoencoders. However, regarding the task of image generation, considering the inherent problem of blurriness in low-dimensional reconstructions, we choose the size of $z$ to be identical to the size of $x$.</p>
+
+  <p>Out of pragmatism and minimalism, we combine equations $\eqref{eq:flow-fxu}$ and $\eqref{eq:vae-fxu}$, choosing:
+  \begin{equation}\label{eq:f-vae-fxu} F_x(u)=F(\sigma_1 u + E(x)),\quad q(x|z)=\mathcal{N}(x;G(F^{-1}(z)),\sigma_2^2)\end{equation}
+  where $\sigma_1, \sigma_2$ are parameters to be trained (scalars are sufficient), $E(\cdot)$ and $G(\cdot)$ are the encoder and decoder (generator) to be trained, and $F(\cdot)$ is an unconditional flow model. Substituting into $\eqref{eq:f-vae-loss}$, the equivalent loss is:
+  \begin{equation}\begin{aligned}\iint \tilde{p}(x)q(u)\bigg[ &\frac{1}{2\sigma_2^2}\Vert G(\sigma_1 u + E(x))-x\Vert^2 + \frac{1}{2}F^2(\sigma_1 u + E(x)) \\
+  &\quad -\log \left\|\det \left[\frac{\partial F(\sigma_1 u + E(x))}{\partial u}\right]\right\|\bigg] dudx\end{aligned}\end{equation}
+  The generative sampling process is:
+  \begin{equation}u \sim q(u), \quad z = F^{-1}(u),\quad x = G(z)\end{equation}
+  </p>
+
+  <h2 id="Related">Related Work</h2>
+
+  <p>In fact, flow models are a general category of models. In addition to the aforementioned flow models based on coupling layers (NICE, RealNVP, Glow), there are also "autoregressive flows," with representative works like PixelRNNs and PixelCNNs. Autoregressive flows usually have good results, but they generate images pixel by pixel and cannot be parallelized, so generation speed is slow.</p>
+
+  <p>Flow models such as RealNVP and Glow are usually called "Normalizing flows," which are another type of flow model. Glow especially made this type of flow model popular again. In fact, Glow generates images quite quickly, but the training cycle is too long and the training cost is very high.</p>
+
+  <p>To our knowledge, the first attempt to integrate VAEs and flow models was <a href="https://papers.cool/arxiv/1505.05770">《Variational Inference with Normalizing Flows》</a>, followed by two improvements: <a href="https://papers.cool/arxiv/1606.04934">《Improving Variational Inference with Inverse Autoregressive Flow》</a> and <a href="https://papers.cool/arxiv/1611.02731">《Variational Lossy Autoencoder》</a>. These works (including this one) are similar. However, the previous works did not derive a general framework like equation $\eqref{eq:f-vae-loss}$, and they did not achieve major breakthroughs in image generation.</p>
+
+  <p>Our work is likely the first to introduce the RealNVP and Glow flow models into VAEs. These "flows" are based on coupling layers $\eqref{eq:coupling}$ and are easy to compute in parallel. Thus, they are generally more efficient than autoregressive flows and can be stacked quite deeply. At the same time, we ensure the latent variable dimension is the same as the input dimension; this choice of no dimensionality reduction also avoids the image blurriness problem.</p>
+
+  <h2 id="Experiments">Experiments</h2>
+
+  <p>Due to GPU limitations, we only conducted experiments on CelebA HQ at 64x64 and 128x128. We first compared VAE, Glow, and f-VAE models of similar scale on 64x64 images, and then demonstrated the 128x128 generation effect in detail.</p>
+
+  <h3>Experimental Flow</h3>
+
+  <p>First, our encoder $E(\cdot)$ is a stack of convolutions and Squeeze operators. Specifically, $E(\cdot)$ consists of several blocks, and a Squeeze is performed before each block. Each block is composed of several steps, each step taking the form $x + CNN(x)$, where $CNN(x)$ consists of 3x3 and 1x1 convolutions. Specific details can be found in the code.</p>
+
+  <p>As for the decoder (generator) $G(\cdot)$, it is a stack of convolutions and UnSqueeze operators, structurally the inverse of $E(\cdot)$. A $\tanh(\cdot)$ activation can be added to the end of the decoder, but it is not mandatory. The unconditional flow $F(\cdot)$ is directly adopted from the Glow model, though it is not as deep and the number of convolutional filters is fewer.</p>
+
+  <p>Source Code (based on Keras 2.2 + Tensorflow 1.8 + Python 2.7):
+  <a href="https://github.com/bojone/flow/blob/master/f-VAEs.py">https://github.com/bojone/flow/blob/master/f-VAEs.py</a></p>
+
+  <p>Basic structure of VAEs</p>
+  <p>Basic structure of Flow models</p>
+  <p>Basic structure of f-VAEs</p>
+
+  <h3>Experimental Results</h3>
+
+  <p>Comparing the results of VAE and f-VAE, we can consider that f-VAE has basically solved the VAE blurriness problem. Comparing Glow and f-VAE at the same scale, we find that f-VAE performs better in the same number of epochs. Of course, we do not doubt that Glow would perform as well or even better if it were deeper, but clearly, at the same complexity and training time, f-VAE shows better performance.</p>
+
+  <p>samples-vae</p>
+  <p>samples-glow</p>
+  <p>samples-f-vae</p>
+
+  <p>The results of f-VAEs on 64x64 only required training for about 120–150 epochs on a GTX 1060, taking roughly 7–8 hours.</p>
+
+  <p>To be precise, the complete encoder for f-VAEs should be $F(E(\cdot))$, the composite function of $F$ and $E$. In a standard flow model, we would need to calculate the Jacobian determinant of $E$, but in f-VAEs, it is not required. Thus, $E$ can be a standard convolutional network that implements most of the non-linearity, simplifying the dependence on the flow model $F$.</p>
+
+  <p>Below are the results for 128x128 (the annealing parameter $T$ refers to the standard deviation of the prior distribution). The 128x128 model was trained on a GTX 1060 for about 1.5 days (~150 epochs).</p>
+
+  <h4>Random Sampling Results</h4>
+  <p>Samples with annealing parameter 0.8</p>
+  <p>Samples with annealing parameter 0.8 (batch 2)</p>
+
+  <h4>Latent Variable Linear Interpolation</h4>
+  <p>Linear interpolation between two real samples</p>
+  <p>Linear interpolation between four samples (1)</p>
+  <p>Linear interpolation between four samples (2)</p>
+
+  <h4>Impact of Annealing Parameter</h4>
+  <p>T=0.0</p>
+  <p>T=0.5</p>
+  <p>T=0.6</p>
+  <p>T=0.7</p>
+  <p>T=0.8</p>
+  <p>T=0.9</p>
+  <p>T=1.0</p>
+
+  <h2 id="Conclusion">Summary</h2>
+
+  <h3>Article Summary</h3>
+
+  <p>In fact, the original goal of this work was to solve two problems posed by Glow:
+  <ul>
+    <li>1. How to reduce the computational cost of Glow?</li>
+    <li>2. How to obtain a "dimensionality-reduced" version of Glow?</li>
+  </ul>
+  Our results show that a non-dimensionality-reduced f-VAE is essentially a mini version of Glow but can achieve fairly good results. And equation $\eqref{eq:f-vae-loss}$ indeed allows us to train a dimensionality-reduced version of the flow model. We have also theoretically proven that ordinary VAEs and flow models are naturally included in our framework. Therefore, our original goal has been essentially completed, resulting in a more general generation and inference framework.</p>
+
+  <h3>Future Work</h3>
+
+  <p>Of course, we can see that randomly generated images still have an "oil painting" feel. One possible reason is that the model is not complex enough, but we suspect another important reason is the "overuse" of 3x3 convolutions, which leads to infinite expansion of the receptive field, preventing the model from focusing on details.</p>
+
+  <p>Therefore, a challenging task is how to design better and more reasonable encoders and decoders. It seems that the methods from <a href="https://papers.cool/arxiv/1312.4400">《Network in Network》</a> would have some value, and the structure of <a href="https://papers.cool/arxiv/1710.10196">PGGAN</a> is also worth a try, but these have not yet been verified.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_5977.html" style="color: #005fcc;">https://kexue.fm/archives/5977</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

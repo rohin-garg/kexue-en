@@ -1,0 +1,270 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/4582">Evaluation of Input Importance in RNN Models</a></h1>
+    <p>By 苏剑林 | September 10, 2017</p>
+
+    <h2 id="Saliency%20Maps%20for%20RNN">Saliency Maps for RNN</h2>
+    <p>RNN is the preferred method for many sequence tasks. For example, a common approach for text classification is "Word Vectors + LSTM + Fully Connected Classifier," as shown in the figure below:</p>
+
+    <p style="text-align:center;">
+        <a href="https://kexue.fm/usr/uploads/2017/09/3338810430.png">
+            <img src="https://kexue.fm/usr/uploads/2017/09/3338810430.png" alt="RNN Classifier" title="Click to view original image">
+        </a>
+        <br>RNN Classifier
+    </p>
+
+    <p>If such a model works well, let us consider a task: how to measure the relative importance (Saliency) of inputs $w_1, \dots, w_n$ on the final classification result? For instance, if this is a sentiment classification task, how do we identify which words had a more significant impact on the final classification? This article provides a relatively direct approach.</p>
+    
+    <p>The principle behind the idea is simple. Because we pass the state vector from the final step of the RNN (represented by the green shaded vector in the diagram) to the subsequent classifier for classification, the final state vector $\boldsymbol{h}_n$ serves as the target vector. Since an RNN is a recursive process, $\boldsymbol{h}_0, \boldsymbol{h}_1, \dots, \boldsymbol{h}_{n-1}$ (where $\boldsymbol{h}_0$ is typically initialized to all zeros) are steps that gradually approach $\boldsymbol{h}_n$.</p>
+
+    <p style="text-align:center;">
+        <a href="https://kexue.fm/usr/uploads/2017/09/382730706.png">
+            <img src="https://kexue.fm/usr/uploads/2017/09/382730706.png" alt="RNN Classifier 2" title="Click to view original image">
+        </a>
+        <br>RNN Classifier 2
+    </p>
+
+    <p>Therefore, we can sequentially consider the distance from intermediate vectors to the target vector:</p>
+    \[\|\boldsymbol{h}_n-\boldsymbol{h}_0\|, \|\boldsymbol{h}_n-\boldsymbol{h}_1\|, \dots, \|\boldsymbol{h}_n-\boldsymbol{h}_{n-1}\|, 0\]
+    <p>The transition from $\boldsymbol{h}_i$ to $\boldsymbol{h}_{i+1}$ occurs because the word $w_{i+1}$ was considered. The consequence is: <strong>originally, the distance between $\boldsymbol{h}_i$ and the target vector was $\|\boldsymbol{h}_n-\boldsymbol{h}_i\|$; now, the distance has become $\|\boldsymbol{h}_n-\boldsymbol{h}_{i+1}\|$.</strong> Thus, we can use the difference</p>
+    \[\|\boldsymbol{h}_n-\boldsymbol{h}_{i}\| - \|\boldsymbol{h}_n-\boldsymbol{h}_{i+1}\|\]
+    <p>to measure the impact of word $w_{i+1}$ on the final classification. This value can be positive, meaning the introduction of $w_{i+1}$ reduced the distance to the target, thus promoting correct classification; conversely, it can be negative, representing an adverse effect on classification. The larger the value, the greater the degree of impact. Therefore, we can use this indicator to sort words in descending order to obtain the relative importance of each word. Of course, one can also divide by the norm of the target vector to eliminate the influence of scale:</p>
+    \[\frac{\|\boldsymbol{h}_n-\boldsymbol{h}_{i}\|}{\|\boldsymbol{h}_n\|} - \frac{\|\boldsymbol{h}_n-\boldsymbol{h}_{i+1}\|}{\|\boldsymbol{h}_n\|}\]
+
+    <h2 id="%E7%AE%80%E5%8D%95%E7%9A%84%E5%AE%9E%E9%AA%8C">Simple Experiment</h2>
+    <p>Beyond theoretical explanation, experimental evidence is required for persuasiveness. Here, we use text sentiment classification as an example. The following code is modified from the article <a href="translation_3863.html">"Text Sentiment Classification (3): To Segment or Not to Segment"</a>.</p>
+
+<pre><code class="language-python">
+# [The original blog post code block was empty in the source provided]
+</code></pre>
+
+    <h2 id="%E4%B8%80%E4%BA%9B%E7%BB%93%E6%9E%9C">Some Results</h2>
+    <p>After 5 epochs, the validation accuracy of the model is around 90%. Then we began testing our saliency function:</p>
+
+    <blockquote>
+        <p>&gt;&gt;&gt; s = u'发货很快，物流也及时，热水器包装很好，已经打电话找师傅安装好了，用了加热挺快的，非常好的热水器' [Delivery was fast, logistics timely, water heater packaging very good, already called a technician to install it, works well and heats up quite fast, a very good water heater]<br>
+        &gt;&gt;&gt; saliency(s)<br>
+        [(1, u'很快' [Very fast], 0.27192765), (23, u'挺快' [Quite fast], 0.24280858), (5, u'及时' [Timely], 0.212547), (17, u'好' [Good], 0.20004171), (10, u'好' [Good], 0.18096809), (6, u'，', 0.091015637), (27, u'好' [Good], 0.089454532), (29, u'热水器' [Heater], 0.075981312), (9, u'很' [Very], 0.073918283), (19, u'，', 0.056054845), (2, u'，', 0.054350078), (25, u'，', 0.05254671), (16, u'安装' [Install], 0.047204345), (4, u'也' [Also], 0.032162607), (20, u'用' [Use], 0.032066017), (7, u'热水器' [Heater], 0.020733953), (28, u'的', 0.015783943), (11, u'，', 0.0068980753), (24, u'的', 0.0040297061), (21, u'了', -0.0028512329), (8, u'包装' [Package], -0.0061192214), (12, u'已经' [Already], -0.0071464926), (26, u'非常' [Very], -0.016652927), (3, u'物流' [Logistics], -0.034254551), (18, u'了', -0.041289926), (13, u'打电话' [Called], -0.067411274), (14, u'找' [Found], -0.076897413), (0, u'发货' [Shipment], -0.12187159), (15, u'师傅' [Technician], -0.13093886), (22, u'加热' [Heating], -0.25505972)]
+    </blockquote>
+
+    <blockquote>
+        <p>&gt;&gt;&gt; s = u'用过了才来评价，挺好用的和我在商场买的一样，应该是正品，烧水也快。五分。' [Reviewed after using, works very well, same as what I bought in the mall, should be authentic, heats water fast. Five stars.]<br>
+        &gt;&gt;&gt; saliency(s)<br>
+        [(13, u'商场' [Mall], 0.18483591), (20, u'正品' [Authentic], 0.18375245), (7, u'好' [Good], 0.10582721), (6, u'挺' [Quite], 0.091109157), (27, u'。', 0.078018099), (17, u'，', 0.068635911), (21, u'，', 0.060936138), (8, u'用' [Use], 0.05191648), (16, u'一样' [Same], 0.045136154), (18, u'应该' [Should], 0.038288802), (25, u'。', 0.036342919), (12, u'在' [At], 0.033013284), (26, u'五分' [Five stars], 0.032422632), (23, u'也' [Also], 0.030365154), (15, u'的', 0.028619051), (10, u'和' [And], 0.026087582), (9, u'的', 0.02335906), (22, u'烧水' [Boil water], 0.021587744), (5, u'，', 0.020465493), (11, u'我' [Me], 0.012083113), (3, u'来' [Come], 0.011826038), (1, u'了', 0.010910749), (24, u'快' [Fast], 0.0078535229), (4, u'评价' [Review], 0.0051870346), (19, u'是' [Is], -0.0072228611), (14, u'买' [Buy], -0.045606673), (0, u'用过' [Used], -0.048195302), (2, u'才' [Only then], -0.10755491)]
+    </blockquote>
+
+    <blockquote>
+        <p>&gt;&gt;&gt; s = u'新购入好吃的噻...左边的是光明酸奶保质期很贴心的是150天哦..盒子也很心水.味道超级棒哦...当然价钱也贵一点...' [New purchase, delicious... the one on the left is Bright dairy yogurt, the shelf life is a very considerate 150 days.. the box is also lovely. The taste is superb... of course the price is a bit more expensive...]<br>
+        &gt;&gt;&gt; saliency(s)<br>
+        [(9, u'光明' [Bright], 0.23620945), (2, u'好吃' [Delicious], 0.20977235), (0, u'新' [New], 0.098622561), (19, u'..', 0.082070053), (24, u'.', 0.051661924), (10, u'酸奶' [Yogurt], 0.051210225), (26, u'超级' [Superb], 0.050095648), (33, u'贵' [Expensive], 0.045776516), (34, u'一点' [A bit], 0.043491587), (5, u'...', 0.042084634), (28, u'哦', 0.041375414), (12, u'很' [Very], 0.039076477), (17, u'天' [Day], 0.036537394), (3, u'的', 0.035894275), (13, u'贴心' [Considerate], 0.035299033), (14, u'的', 0.034476012), (32, u'也', 0.034225687), (35, u'...', 0.03399314), (29, u'...', 0.030394047), (31, u'价钱' [Price], 0.022595212), (22, u'很', 0.017542139), (15, u'是', 0.017276704), (30, u'当然' [Of course], 0.016185507), (11, u'保质期' [Shelf-life], 0.015443504), (7, u'的', 0.013372183), (16, u'150', 0.0039001554), (4, u'噻', -0.0), (23, u'心水' [Favorite], -0.0), (1, u'购入' [Purchase], -0.0), (8, u'是', -0.0022000074), (21, u'也', -0.0026017427), (20, u'盒子' [Box], -0.019797415), (6, u'左边' [Left], -0.026007473), (25, u'味道' [Taste], -0.088489026), (18, u'哦', -0.092244744), (27, u'棒' [Great], -0.10724148)]
+    </blockquote>
+
+    <blockquote>
+        <p>&gt;&gt;&gt; s = u'安装我自己花了500多，美的够黑心的，真的是烦心，安装的售后叼的要死！差评！！！！！' [I spent over 500 on installation myself, Midea is black-hearted enough, really annoying, the installation after-sales service is incredibly rude! Negative review!!!!!]<br>
+        &gt;&gt;&gt; saliency(s)<br>
+        [(10, u'黑心' [Black-hearted], 0.42798662), (22, u'要死' [Extremely], 0.27835941), (3, u'花' [Spend], 0.19574976), (23, u'！', 0.1150609), (25, u'！', 0.099666387), (26, u'！', 0.086483672), (27, u'！', 0.075068578), (28, u'！', 0.065046221), (5, u'500', 0.064557791), (29, u'！', 0.056182593), (19, u'售后' [After-sales], 0.053749442), (8, u'美的' [Midea], 0.033454597), (4, u'了', 0.011106014), (24, u'差评' [Bad review], -0.0), (15, u'烦心' [Annoying], -0.0), (20, u'叼' [Rude], -0.0), (21, u' 的', -0.0019193888), (12, u'，', -0.007355392), (14, u'是', -0.0092425346), (11, u'的', -0.010129571), (13, u'真的' [Really], -0.018997073), (18, u'的', -0.023140371), (16, u'，', -0.025478244), (6, u'多' [More], -0.028243661), (1, u'我' [Me], -0.028675437), (7, u'，', -0.032953143), (2, u'自己' [Self], -0.040592432), (0, u'安装' [Installation], -0.086136341), (17, u'安装' [Installation], -0.11075348), (9, u'够' [Enough], -0.1388548)]
+    </blockquote>
+
+    <blockquote>
+        <p>&gt;&gt;&gt; s = u'作者的文笔一般，观点也是和市面上的同类书大同小异，不推荐读者购买。' [The author's writing is mediocre, the viewpoints are much the same as other books on the market, I do not recommend readers to buy it.]<br>
+        &gt;&gt;&gt; saliency(s)<br>
+        [(12, u'书' [Book], 0.21486527), (3, u'一般' [Mediocre], 0.21002132), (2, u'文笔' [Writing style], 0.1983965), (15, u'不' [Not], 0.13881186), (5, u'观点' [Viewpoint], 0.10552621), (19, u'。', 0.10454651), (17, u'读者' [Readers], 0.1005006), (11, u'同类' [Similar kind], 0.067096055), (16, u'推荐' [Recommend], 0.034221202), (8, u'和' [With], 0.0024021864), (4, u'，', 0.0023730397), (9, u'市面上' [On the market], 6.4194202e-05), (13, u'大同小异' [Similar], -0.0), (0, u'作者' [Author], -0.0029646158), (18, u'购买' [Purchase], -0.0097944811), (7, u'是', -0.018220723), (14, u'，', -0.029574722), (1, u'的', -0.031183362), (6, u'也', -0.03150624), (10, u'的', -0.055580795)]
+    </blockquote>
+
+    <blockquote>
+        <p>&gt;&gt;&gt; s = u'总的来说有点乱七八糟的感觉。重复又重复。' [Generally speaking, it's a bit of a messy feeling. Repeated and repeated.]<br>
+        &gt;&gt;&gt; saliency(s)<br>
+        [(2, u'乱七八糟' [Messy], 0.48706663), (1, u'有点' [A bit], 0.25306857), (5, u'。', 0.22749269), (9, u'。', 0.1819987), (4, u'感觉' [Feeling], 0.091413289), (6, u'重复' [Repeat], 0.042275667), (3, u'的', 0.035568655), (8, u'重复' [Repeat], 0.035231754), (7, u'又' [And], 0.0035995394), (0, u'总的来说' [Overall], -0.35771555)]
+    </blockquote>
+
+    <blockquote>
+        <p>&gt;&gt;&gt; s = u'太离谱了，现在什么年代了，都不能下载铃声！我几乎找遍了都不支持！有时还会突然、死机，真是后悔了！' [Too outrageous, what year is this, can't even download ringtones! I've searched everywhere and it's not supported! Sometimes it suddenly crashes, really regret it!]<br>
+        &gt;&gt;&gt; saliency(s)<br>
+        [(19, u'不' [Not], 0.24356699), (1, u'离谱' [Outrageous], 0.22871125), (11, u'下载' [Download], 0.20161489), (0, u'太' [Too], 0.14231563), (27, u'死机' [Crash], 0.12861626), (10, u'不能' [Cannot], 0.1119701), (5, u'什么' [What], 0.095636666), (13, u'！', 0.092601627), (21, u'！', 0.078016117), (32, u'！', 0.070392698), (6, u'年代' [Era], 0.048469543), (22, u'有时' [Sometimes], 0.046845198), (30, u'后悔' [Regret], 0.044225916), (31, u'了', 0.041907579), (25, u'突然' [Suddenly], 0.024277031), (28, u'，', 0.019716278), (24, u'会' [Will], 0.0099375397), (12, u'铃声' [Ringtone], 0.002569586), (16, u'找遍' [Searched everywhere], -0.0), (9, u'都' [All], -0.0023496151), (2, u'了', -0.0070439577), (4, u'现在' [Now], -0.013223112), (7, u'了', -0.014739335), (18, u'都' [All], -0.018258482), (3, u'，', -0.020016789), (8, u'，', -0.025391042), (17, u'了', -0.032811344), (29, u'真是' [Really], -0.053523436), (23, u'还' [Still], -0.072828561), (15, u'几乎' [Almost], -0.073504835), (26, u'、', -0.081194341), (14, u'我' [I], -0.089508265), (20, u'支持' [Support], -0.12699783)]
+    </blockquote>
+
+    <p>The effectiveness is evident; the words ranked at the top are generally those with strong emotional tendencies. It is worth noting that this evaluation scheme for importance also automatically considers the influence of word position. If an emotional word appears repeatedly in a sentence, the words that appear later will generally have lower weights (because the earlier ones already allowed us to complete the classification, and the weight of the later ones decreases). For example:</p>
+
+    <blockquote>
+        <p>&gt;&gt;&gt; s = u'很糟糕，没有比这更加糟糕的了，真是太糟糕了' [Very bad, nothing is worse than this, it really is too bad]<br>
+        &gt;&gt;&gt; saliency(s)<br>
+        [(1, u'糟糕' [Bad], 0.35864168), (3, u'没有' [Nothing], 0.20132971), (7, u'糟糕' [Bad], 0.20045981), (11, u'真是太' [Really too], 0.18850464), (13, u'了', 0.15443647), (6, u'更加' [More], 0.087445587), (4, u'比' [Than], 0.086736709), (5, u'这' [This], 0.033832848), (2, u'，', -0.013917089), (8, u'的', -0.021302044), (9, u'了', -0.04099898), (12, u'糟糕' [Bad], -0.051040836), (10, u'，', -0.055929884), (0, u'很' [Very], -0.12819862)]
+    </blockquote>
+
+    <blockquote>
+        <p>&gt;&gt;&gt; s = u'在快乐的地方做着快乐的事情，拥有快乐的心情' [Doing happy things in a happy place, having a happy mood]<br>
+        &gt;&gt;&gt; saliency(s)<br>
+        [(1, u'快乐' [Happy], 0.27486306), (6, u'快乐' [Happy], 0.20637855), (10, u'拥有' [Have], 0.11172111), (11, u'快乐' [Happy], 0.092637397), (12, u'的', 0.065387651), (9, u'，', 0.062397212), (5, u'着', 0.059462607), (7, u'的', 0.053004891), (2, u'的', 0.04632777), (13, u'心情' [Mood], 0.044671077), (0, u'在' [At], 0.023381054), (4, u'做' [Do], 0.014107406), (8, u'事情' [Things], -0.014113277), (3, u'地方' [Place], -0.040226519)]
+    </blockquote>
+
+    <h2 id="%E8%87%AA%E6%88%91%E7%9A%84%E8%AF%84%E4%BB%B7">Self-Evaluation</h2>
+    <p>Personally, I feel this is a simple and clear solution for evaluating input importance in RNN models, and it does not require extensive mathematical knowledge. Readers are welcome to try it out on more tasks.</p>
+
+    <hr>
+    <p>Su Jianlin. (Sep. 10, 2017). <i>Evaluation of Input Importance in RNN Models</i> [Blog post]. Retrieved from <a href="translation_4582.html">https://kexue.fm/archives/4582</a></p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_4582.html" style="color: #005fcc;">https://kexue.fm/archives/4582</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

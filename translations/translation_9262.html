@@ -1,0 +1,264 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['base', 'ams', 'noerrors', 'noundefined']}
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/9262">Generative Diffusion Model Discussion (10): Unified Diffusion Model (Theory)</a></h1>
+    <p>By 苏剑林 | September 14, 2022</p>
+
+    <p>Old readers may notice that, compared to previous update frequencies, this article is indeed "long overdue" because this article involves "thinking too much."</p>
+
+    <p>Through the previous nine articles, we have provided a relatively comprehensive introduction to generative diffusion models. Although the theoretical content is extensive, we can see that the diffusion models introduced earlier all deal with continuous objects and are constructed based on normal noise for the forward process. This article, "thinking too much," hopes to construct a Unified Diffusion Model (UDM) framework that can break through the above limitations:</p>
+
+    <blockquote>
+        1. No restriction on object types (can be continuous $\boldsymbol{x}$ or discrete $\boldsymbol{x}$);<br>
+        2. No restriction on the forward process (the forward process can be constructed using various transformations like adding noise, blurring, masking, or deletion);<br>
+        3. No restriction on time types (can be discrete $t$ or continuous $t$);<br>
+        4. Includes existing results (capable of deriving previous results like DDPM, DDIM, SDE, ODE, etc.).
+    </blockquote>
+
+    <p>Is this too much of a "pipe dream"? Is such an ideal framework possible? This article attempts to find out.</p>
+
+    <h2>Forward Process</h2>
+    <p>From the previous series of introductions, we know that constructing a diffusion model involves three parts: the "forward process," the "reverse process," and the "training objective." In this section, we analyze the "forward process."</p>
+
+    <p>In the original <a href="translation_9119.html">DDPM</a>, we described the forward process through $p(\boldsymbol{x}_t|\boldsymbol{x}_{t-1})$. Later, with the publication of works like <a href="translation_9181.html">DDIM</a>, we gradually realized that the training objective and generation process of diffusion models have no direct connection with $p(\boldsymbol{x}_t|\boldsymbol{x}_{t-1})$, but are more directly connected with $p(\boldsymbol{x}_t|\boldsymbol{x}_0)$. Furthermore, deriving $p(\boldsymbol{x}_t|\boldsymbol{x}_0)$ from $p(\boldsymbol{x}_t|\boldsymbol{x}_{t-1})$ is often difficult. Therefore, a more practical approach is to use $p(\boldsymbol{x}_t|\boldsymbol{x}_0)$ directly as the starting point, effectively treating $p(\boldsymbol{x}_t|\boldsymbol{x}_0)$ as the forward process.</p>
+
+    <p>The most direct role of $p(\boldsymbol{x}_t|\boldsymbol{x}_0)$ is to construct the training data for the diffusion model; hence, the most basic requirement for $p(\boldsymbol{x}_t|\boldsymbol{x}_0)$ is that it must be easy to sample from. To this end, we can express it through reparameterization:</p>
+    \begin{equation}\boldsymbol{x}_t = \boldsymbol{\mathcal{F}}_t(\boldsymbol{x}_0,\boldsymbol{\varepsilon})\label{eq:re-param}\end{equation}
+    <p>where $\boldsymbol{\mathcal{F}}$ is a deterministic function of $t, \boldsymbol{x}_0, \boldsymbol{\varepsilon}$, and $\boldsymbol{\varepsilon}$ is a random variable sampled from some standard distribution $q(\boldsymbol{\varepsilon})$. The common choice is a standard normal distribution, but other distributions are usually feasible. As one might imagine, this form contains sufficiently rich transformations from $\boldsymbol{x}_0$ to $\boldsymbol{x}_t$, and it imposes no constraints on the data types of $\boldsymbol{x}_0$ and $\boldsymbol{x}_t$. Generally, the only restriction is that the smaller the $t$, the more complete the information of $\boldsymbol{x}_0$ contained in $\boldsymbol{\mathcal{F}}_t(\boldsymbol{x}_0, \boldsymbol{\varepsilon})$. In other words, the easier it is to reconstruct $\boldsymbol{x}_0$ using $\boldsymbol{\mathcal{F}}_t(\boldsymbol{x}_0, \boldsymbol{\varepsilon})$; conversely, the larger the $t$, the more difficult the reconstruction becomes, until reaching some upper bound $T$ where the information of $\boldsymbol{x}_0$ contained in $\boldsymbol{\mathcal{F}}_T(\boldsymbol{x}_0,\boldsymbol{\varepsilon})$ almost vanishes, making reconstruction nearly impossible.</p>
+
+    <h2>Reverse Process</h2>
+    <p>The reverse process of a diffusion model gradually generates realistic data through multi-step iterations, the key to which is the probability distribution $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t)$. In general, we have:</p>
+    \begin{equation}p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t) = \int p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0) p(\boldsymbol{x}_0|\boldsymbol{x}_t) d\boldsymbol{x}_0\label{eq:p-factor}\end{equation}
+    <p>If $\boldsymbol{x}_0$ is discrete data, simply change the integral to a summation. The basic requirement for $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t)$ is also ease of sampling, so we require $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0)$ and $p(\boldsymbol{x}_0|\boldsymbol{x}_t)$ to be easy to sample from as well. In this way, we can complete the sampling of $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t)$ through the following flow:</p>
+    \begin{equation}\hat{\boldsymbol{x}}_0\sim p(\boldsymbol{x}_0|\boldsymbol{x}_t)\quad \& \quad \boldsymbol{x}_{t-1}\sim p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0=\hat{\boldsymbol{x}}_0) \quad \Rightarrow \quad \boldsymbol{x}_{t-1}\sim p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t)\end{equation}
+    <p>From this decomposition, each step of the $\boldsymbol{x}_t \to \boldsymbol{x}_{t-1}$ sampling actually consists of two sub-steps:</p>
+
+    <blockquote>
+        1. <b>Estimation:</b> Conduct a simple "estimation" of $\boldsymbol{x}_0$ via $p(\boldsymbol{x}_0|\boldsymbol{x}_t)$;<br>
+        2. <b>Correction:</b> Integrate the estimation result via $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0)$ to push the estimated value one small step forward.
+    </blockquote>
+
+    <p>Therefore, the reverse process of the diffusion model is a repeated "estimation-correction" process. By continuously integrating the estimation results of $\boldsymbol{x}_t \to \boldsymbol{x}_0$, one obtains a gradually advancing sequence of corrections $\boldsymbol{x}_T \to \cdots \to \boldsymbol{x}_t \to \boldsymbol{x}_{t-1} \to \cdots \to \boldsymbol{x}_0$, breaking down a generation task originally difficult to achieve in one step into multiple steps.</p>
+
+    <h2>Training Objective</h2>
+    <p>Of course, the reverse process at this point remains just "theory on paper," because we know nothing about $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0)$ and $p(\boldsymbol{x}_0|\boldsymbol{x}_t)$. In this section, we first discuss $p(\boldsymbol{x}_0|\boldsymbol{x}_t)$.</p>
+
+    <p>Clearly, $p(\boldsymbol{x}_0|\boldsymbol{x}_t)$ is a probabilistic model that predicts $\boldsymbol{x}_0$ using $\boldsymbol{x}_t$. We need to estimate it using a distribution that is "easy to sample and calculate." When $\boldsymbol{x}_0$ is continuous data, our choices are few, usually being a normal distribution with a trainable mean:</p>
+    \begin{equation}p(\boldsymbol{x}_0|\boldsymbol{x}_t) \approx q(\boldsymbol{x}_0|\boldsymbol{x}_t) = \mathcal{N}(\boldsymbol{x}_0;\boldsymbol{\mathcal{G}}_t(\boldsymbol{x}_t),\bar{\sigma}_t^2 \boldsymbol{I})\label{eq:normal}\end{equation}
+    <p>To reduce training difficulty, we generally do not treat the variance $\bar{\sigma}_t^2$ as a trainable parameter, but instead estimate it post-hoc using the method from <a href="translation_9245.html">"Generative Diffusion Model Discussion (7): Optimal Diffusion Variance Estimation (Part 1)"</a>. On the other hand, when $\boldsymbol{x}_0$ is discrete data, we can model it using autoregressive or non-autoregressive language models (Seq2Seq). Probabilistic modeling and sampling for discrete data are relatively easier.</p>
+
+    <p>Once we have the specific form of the approximate distribution $q(\boldsymbol{x}_0|\boldsymbol{x}_t)$, the training objective is simple. A natural choice is cross-entropy:</p>
+    \begin{equation}\mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0),\boldsymbol{x}_t\sim p(\boldsymbol{x}_t|\boldsymbol{x}_0)}[-\log q(\boldsymbol{x}_0|\boldsymbol{x}_t)] = \mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0),\boldsymbol{\varepsilon}\sim q(\boldsymbol{\varepsilon})}[-\log q(\boldsymbol{x}_0|\boldsymbol{\mathcal{F}}_t(\boldsymbol{x}_0,\boldsymbol{\varepsilon}))]\end{equation}
+    <p>This solves the problems of estimating $p(\boldsymbol{x}_0|\boldsymbol{x}_t)$ and designing the training objective. If $q(\boldsymbol{x}_0|\boldsymbol{x}_t)$ is the standard normal distribution of Eq. $\eqref{eq:normal}$, then after removing the constants, the result is:</p>
+    \begin{equation}\mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0),\boldsymbol{\varepsilon}\sim q(\boldsymbol{\varepsilon})}\left[\frac{1}{2\bar{\sigma}_t^2}\Vert\boldsymbol{x}_0 - \boldsymbol{\mathcal{G}}_t(\boldsymbol{\mathcal{F}}_t(\boldsymbol{x}_0,\boldsymbol{\varepsilon}))\Vert^2\right]\end{equation}
+
+    <h2>Conditional Probability</h2>
+    <p>All that remains is $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0)$, which is the probability of predicting $\boldsymbol{x}_{t-1}$ given $\boldsymbol{x}_t, \boldsymbol{x}_0$. This probability distribution also has some design space, provided it satisfies the marginal distribution identity:</p>
+    \begin{equation}\int p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0)p(\boldsymbol{x}_t|\boldsymbol{x}_0) d\boldsymbol{x}_t= p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_0)\label{eq:margin}\end{equation}
+    <p>Obviously, a simple choice that satisfies this identity is to take:</p>
+    \begin{equation}p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0) = p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_0)\end{equation}
+    <p>making $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0)$ independent of $\boldsymbol{x}_t$. Such a diffusion model can be described by the following two conceptual diagrams (using $T=5$ as an example):</p>
+
+    <p style="text-align:center;"><i>Schematic diagram of the forward process and training objective</i></p>
+    <p style="text-align:center;"><i>The reverse process under the simplest choice</i></p>
+
+    <p>This minimalist choice is theoretically fine; however, the actual results are usually not very good. This is because $\boldsymbol{x}_{t-1}$ depends entirely on $\boldsymbol{x}_0$, while $\boldsymbol{x}_0$ originally represents the true raw sample. During the reverse process, we can only sample via the approximate distribution $q(\boldsymbol{x}_0|\boldsymbol{x}_t)$, which is usually not accurate enough, causing errors to accumulate continuously. Additionally, $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_0)$ carries noise during the sampling process, which can severely damage the information of $\hat{\boldsymbol{x}}_0$ just estimated, leading to worse generation results.</p>
+
+    <p>Fortunately, in most cases, we can derive a new result based on the simple choice $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0) = p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_0)$. According to Eq. $\eqref{eq:re-param}$, we know:</p>
+    \begin{equation}\begin{aligned}
+    \boldsymbol{x}_{t-1} \sim p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_0)\quad\Leftrightarrow&\,\quad\boldsymbol{x}_{t-1} = \boldsymbol{\mathcal{F}}_{t-1}(\boldsymbol{x}_0,\boldsymbol{\varepsilon}) \\
+    \boldsymbol{x}_t \sim p(\boldsymbol{x}_t|\boldsymbol{x}_0)\quad\Leftrightarrow&\,\quad\boldsymbol{x}_t = \boldsymbol{\mathcal{F}}_t(\boldsymbol{x}_0,\boldsymbol{\varepsilon})
+    \end{aligned}\end{equation}
+    <p>Assuming $\boldsymbol{\mathcal{F}}_t(\boldsymbol{x}_0,\boldsymbol{\varepsilon})$ is invertible with respect to $\boldsymbol{\varepsilon}$, we can solve for $\boldsymbol{\varepsilon} = \boldsymbol{\mathcal{F}}_t^{-1}(\boldsymbol{x}_0,\boldsymbol{x}_t)$. At this point, the solved $\boldsymbol{\varepsilon}$ can be used to replace the $\boldsymbol{\varepsilon}$ in $\boldsymbol{\mathcal{F}}_{t-1}(\boldsymbol{x}_0,\boldsymbol{\varepsilon})$, yielding:</p>
+    \begin{equation}\boldsymbol{x}_{t-1} = \boldsymbol{\mathcal{F}}_{t-1}(\boldsymbol{x}_0,\boldsymbol{\mathcal{F}}_t^{-1}(\boldsymbol{x}_0,\boldsymbol{x}_t))\end{equation}
+    <p>This is equivalent to:</p>
+    \begin{equation}p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0) = \delta\big(\boldsymbol{x}_{t-1} - \boldsymbol{\mathcal{F}}_{t-1}(\boldsymbol{x}_0,\boldsymbol{\mathcal{F}}_t^{-1}(\boldsymbol{x}_0,\boldsymbol{x}_t))\big)\end{equation}
+    <p>This design for $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0)$ depends on both $\boldsymbol{x}_t$ and $\boldsymbol{x}_0$. Here, $\boldsymbol{x}_t$ shares some of the dependency of $\boldsymbol{x}_{t-1}$ on $\boldsymbol{x}_0$ and eliminates the noise, allowing the "progress" made at each generation step to accumulate stably. Consequently, the reverse process using this design usually yields better results.</p>
+
+    <p>Furthermore, if $q(\boldsymbol{\varepsilon})$ is a standard normal distribution, more general results can be obtained. Due to the additivity of normal distributions, we have:</p>
+    \begin{equation}\boldsymbol{x}_{t-1} = \boldsymbol{\mathcal{F}}_{t-1}(\boldsymbol{x}_0,\boldsymbol{\varepsilon})\quad\Leftrightarrow\quad\boldsymbol{x}_{t-1} = \boldsymbol{\mathcal{F}}_{t-1}(\boldsymbol{x}_0,\sqrt{1 - \tilde{\sigma}_t^2}\boldsymbol{\varepsilon}_1 + \tilde{\sigma}_t \boldsymbol{\varepsilon}_2)\end{equation}
+    <p>In this manner, the $\boldsymbol{\varepsilon}$ solved from $\boldsymbol{x}_0, \boldsymbol{x}_t$ can be used to replace only one of $\boldsymbol{\varepsilon}_1$ or $\boldsymbol{\varepsilon}_2$. The final sampling process for the designed $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0)$ is:</p>
+    \begin{equation}\quad\boldsymbol{x}_{t-1} = \boldsymbol{\mathcal{F}}_{t-1}(\boldsymbol{x}_0,\sqrt{1 - \tilde{\sigma}_t^2}\boldsymbol{\mathcal{F}}_t^{-1}(\boldsymbol{x}_0,\boldsymbol{x}_t) + \tilde{\sigma}_t \boldsymbol{\varepsilon})\end{equation}
+
+    <h2>Thinking and Analysis</h2>
+    <p>At this point, the theoretical framework for the Unified Diffusion Model (UDM) has been constructed. In the next article, we will introduce how to derive existing diffusion model results from the UDM framework through specific examples and further obtain new results. In this section, we reflect on the reasoning of the whole text.</p>
+
+    <p>After reading the whole article, many readers might be confused because the results are a summary of a unified framework based on the author's previous understanding of all diffusion models. The general technique is not very difficult, but the logic is not easy to untangle. First, the goal of this article is to "design a unified theory framework for diffusion models" that achieves the objectives listed at the beginning. The key to "design" is grasping "freedom" and "constraint": some parts can be chosen flexibly, while other parts are subject to constraints and cannot be decided arbitrarily.</p>
+
+    <p>If readers are already familiar with existing generative diffusion models, they will realize that the essential idea is "learning to construct from destruction." Therefore, the method of "destruction" can theoretically be chosen arbitrarily, while "construction" needs to be learned. Of course, the method of "destruction" is not actually without constraints; generally, it must be "incremental destruction" so that we can learn "incremental construction." Thus, we constructed the destruction process (forward process) of Eq. $\eqref{eq:re-param}$ where $t$ describes the progress of destruction, $\mathcal{F}$ represents any method of destruction, and there are no special restrictions on the original data $\boldsymbol{x}_0$. As for $\boldsymbol{\varepsilon}$, it describes the stochastic factors that might exist during the destruction process. In this way, we have established a most general destruction process.</p>
+
+    <p>Regarding construction, we first gave the decomposition Eq. $\eqref{eq:p-factor}$, which is an identity given by probability theory itself. Each of us can understand it as a constraint or as a guide. How did we know to think toward Eq. $\eqref{eq:p-factor}$? In hindsight, since the forward process is $\boldsymbol{x}_0 \to \boldsymbol{x}_t$, the reverse process should be associated with $\boldsymbol{x}_t \to \boldsymbol{x}_0$ as much as possible, leading to the connection with Eq. $\eqref{eq:p-factor}$.</p>
+
+    <p>Decomposition Eq. $\eqref{eq:p-factor}$ contains two parts. $p(\boldsymbol{x}_0|\boldsymbol{x}_t)$ is already very clear—it is the probability of predicting $\boldsymbol{x}_0$ using $\boldsymbol{x}_t$. This part obviously has no room for simplification and must be modeled directly. The other part, $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0)$, falls into the category of "free design," requiring only that it be easy to sample from. The "constraint" comes from the identity Eq. $\eqref{eq:margin}$, also provided by probability theory. As for the process of designing $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0)$ under this constraint, it indeed involves some ingenuity. This part has no shortcuts; the author also spent a long time reflecting on existing diffusion model works to clarify this process.</p>
+
+    <p>In summary, when designing a model, one must always know what they want ("freedom") and what constraints those desired things have ("constraints"). Under the premise of clarifying "freedom" and "constraints," one should try to draw from existing work and learned theoretical foundations to move closer to the goal.</p>
+
+    <h2>Summary</h2>
+    <p>This article constructs a new theoretical framework for diffusion models (Unified Diffusion Model, UDM). Theoretically, it can encompass existing generative diffusion model results and allows for more general diffusion methods and data types. Specific examples will be introduced in the next article.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9262.html" style="color: #005fcc;">https://kexue.fm/archives/9262</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,313 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/9209">Conversations on Generative Diffusion Models (5): General Framework - SDE Edition</a></h1>
+    <p>By 苏剑林 | August 03, 2022</p>
+
+    <p>When I wrote the <a href="https://kexue.fm/search/%E7%94%9F%E6%88%90%E6%89%A9%E6%95%A3%E6%A8%A1%E5%9E%8B/">first article on generative diffusion models</a>, a reader in the comments recommended Dr. Yang Song's paper <a href="https://papers.cool/arxiv/2011.13456">"Score-Based Generative Modeling through Stochastic Differential Equations"</a>. It can be said that this paper constructs a fairly generalized theoretical framework for generative diffusion models, linking results from DDPM, SDE, ODE, and many more. Admittedly, this is an excellent paper, but it is not suitable for beginners. It directly utilizes results from Stochastic Differential Equations (SDE), the Fokker-Planck equation, score matching, and other advanced topics, making the barrier to entry quite high.</p>
+
+    <p>However, after accumulating knowledge through the first four articles, we can now attempt to study this paper. In the following sections, I will try to replicate the derivation results of the original paper starting from as few theoretical foundations as possible.</p>
+
+    <h2>Stochastic Differentiation</h2>
+    <p>In DDPM, the diffusion process is divided into a fixed $T$ steps. Using the analogy from <a href="translation_9119.html">"Conversations on Generative Diffusion Models (1): DDPM = Demolition + Construction"</a>, both the "demolition" and "construction" of the building were pre-divided into $T$ steps, which is quite arbitrary. In fact, the real "demolition" and "construction" processes should not have intentionally divided steps; instead, we can understand them as continuous transformation processes over time, which can be described by a Stochastic Differential Equation (SDE).</p>
+
+    <p>To this end, we use the following SDE to describe the forward process ("demolition"):
+    \begin{equation}d\boldsymbol{x} = \boldsymbol{f}_t(\boldsymbol{x}) dt + g_t d\boldsymbol{w}\label{eq:sde-forward}\end{equation}
+    I believe many readers are unfamiliar with SDEs; I myself only encountered them briefly during my master's studies and only know the basics. But it doesn't matter if you don't understand it; we only need to view it as the limit of the following discrete form as $\Delta t \to 0$:
+    \begin{equation}\boldsymbol{x}_{t+\Delta t} - \boldsymbol{x}_t = \boldsymbol{f}_t(\boldsymbol{x}_t) \Delta t + g_t \sqrt{\Delta t}\boldsymbol{\varepsilon},\quad \boldsymbol{\varepsilon}\sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{I})\label{eq:sde-discrete}\end{equation}
+    To put it more plainly, if we assume demolition takes 1 day, then demolition is the process of change in $\boldsymbol{x}$ from $t=0$ to $t=1$. The change in each small step can be described by the above equation. As for the time interval $\Delta t$, we place no special restrictions on it, except that a smaller $\Delta t$ means a better approximation of the original SDE. If we take $\Delta t=0.001$, it corresponds to the original $T=1000$; if $\Delta t = 0.01$, it corresponds to $T=100$, and so on. In other words, from the perspective of a continuous-time SDE, different $T$ values are merely manifestations of different degrees of discretization of the SDE. They naturally lead to similar results, and we do not need to specify $T$ in advance; instead, we choose an appropriate $T$ for numerical calculation based on the required precision in practical scenarios.</p>
+
+    <p>Therefore, the fundamental benefit of introducing the SDE form to describe diffusion models is "separating theoretical analysis from code implementation." We can use the mathematical tools of continuous SDEs to analyze it, and when putting it into practice, we only need to use any appropriate discretization scheme to perform numerical calculations on the SDE.</p>
+
+    <p>Regarding equation \eqref{eq:sde-discrete}, readers might be confused as to why the first term on the right is $\mathcal{O}(\Delta t)$ while the second term is $\mathcal{O}(\sqrt{\Delta t})$. That is, why is the order of the stochastic term higher than the order of the deterministic term? This is not actually easy to explain and is one of the confusing aspects of SDEs. Briefly, since $\boldsymbol{\varepsilon}$ always follows a standard normal distribution, if the weight of the stochastic term were also $\mathcal{O}(\Delta t)$, then because the mean of the standard normal distribution is $\boldsymbol{0}$ and the covariance is $\boldsymbol{I}$, nearby stochastic effects would cancel each other out. It must be amplified to $\mathcal{O}(\sqrt{\Delta t})$ for the stochastic effect to play a role in long-term results.</p>
+
+    <h2>Reverse Equation</h2>
+    <p>In probabilistic language, equation \eqref{eq:sde-discrete} implies a conditional probability of:
+    \begin{equation}\begin{aligned}
+    p(\boldsymbol{x}_{t+\Delta t}|\boldsymbol{x}_t) =&\, \mathcal{N}\left(\boldsymbol{x}_{t+\Delta t};\boldsymbol{x}_t + \boldsymbol{f}_t(\boldsymbol{x}_t) \Delta t, g_t^2\Delta t \,\boldsymbol{I}\right)\\
+    \propto&\, \exp\left(-\frac{\Vert\boldsymbol{x}_{t+\Delta t} - \boldsymbol{x}_t - \boldsymbol{f}_t(\boldsymbol{x}_t) \Delta t\Vert^2}{2 g_t^2\Delta t}\right)
+    \end{aligned}\label{eq:sde-proba}\end{equation}
+    For the sake of simplicity, the irrelevant normalization factor is not written here. Following the idea of DDPM, we ultimately want to learn "construction" from the process of "demolition," i.e., to obtain $p(\boldsymbol{x}_t|\boldsymbol{x}_{t+\Delta t})$. To do this, just as in <a href="translation_9164.html">"Conversations on Generative Diffusion Models (3): DDPM = Bayesian + Denoising"</a>, we use Bayes' theorem:
+    \begin{equation}\begin{aligned}
+    p(\boldsymbol{x}_t|\boldsymbol{x}_{t+\Delta t}) =&\, \frac{p(\boldsymbol{x}_{t+\Delta t}|\boldsymbol{x}_t)p(\boldsymbol{x}_t)}{p(\boldsymbol{x}_{t+\Delta t})} = p(\boldsymbol{x}_{t+\Delta t}|\boldsymbol{x}_t) \exp\left(\log p(\boldsymbol{x}_t) - \log p(\boldsymbol{x}_{t+\Delta t})\right)\\
+    \propto&\, \exp\left(-\frac{\Vert\boldsymbol{x}_{t+\Delta t} - \boldsymbol{x}_t - \boldsymbol{f}_t(\boldsymbol{x}_t) \Delta t\Vert^2}{2 g_t^2\Delta t} + \log p(\boldsymbol{x}_t) - \log p(\boldsymbol{x}_{t+\Delta t})\right)
+    \end{aligned}\label{eq:bayes-dt}\end{equation}
+    It is not difficult to find that when $\Delta t$ is small enough, $p(\boldsymbol{x}_{t+\Delta t}|\boldsymbol{x}_t)$ will be significantly non-zero only when $\boldsymbol{x}_{t+\Delta t}$ is sufficiently close to $\boldsymbol{x}_t$. Conversely, only in this case will $p(\boldsymbol{x}_t|\boldsymbol{x}_{t+\Delta t})$ be significantly non-zero. Therefore, we only need to perform an approximation analysis for cases where $\boldsymbol{x}_{t+\Delta t}$ and $\boldsymbol{x}_t$ are sufficiently close. For this, we can use a Taylor expansion:
+    \begin{equation}\log p(\boldsymbol{x}_{t+\Delta t})\approx \log p(\boldsymbol{x}_t) + (\boldsymbol{x}_{t+\Delta t} - \boldsymbol{x}_t)\cdot \nabla_{\boldsymbol{x}_t}\log p(\boldsymbol{x}_t) + \Delta t \frac{\partial}{\partial t}\log p(\boldsymbol{x}_t)\end{equation}
+    Note that the $\frac{\partial}{\partial t}$ term should not be ignored, because $p(\boldsymbol{x}_t)$ is actually the "probability density that the random variable at time $t$ equals $\boldsymbol{x}_t$," while $p(\boldsymbol{x}_{t+\Delta t})$ is the "probability density that the random variable at time $t+\Delta t$ equals $\boldsymbol{x}_{t+\Delta t}$." In other words, $p(\boldsymbol{x}_t)$ is actually a function of both $t$ and $\boldsymbol{x}_t$, so an extra partial derivative with respect to $t$ is required. Substituting this into equation \eqref{eq:bayes-dt} and completing the square gives:
+    \begin{equation}p(\boldsymbol{x}_t|\boldsymbol{x}_{t+\Delta t}) \propto \exp\left(-\frac{\Vert\boldsymbol{x}_{t+\Delta t} - \boldsymbol{x}_t - \left[\boldsymbol{f}_t(\boldsymbol{x}_t) - g_t^2\nabla_{\boldsymbol{x}_t}\log p(\boldsymbol{x}_t) \right]\Delta t\Vert^2}{2 g_t^2\Delta t} + \mathcal{O}(\Delta t)\right)\end{equation}
+    As $\Delta t \to 0$, $\mathcal{O}(\Delta t)\to 0$ becomes irrelevant, therefore:
+    \begin{equation}\begin{aligned}
+    p(\boldsymbol{x}_t|\boldsymbol{x}_{t+\Delta t}) \propto&\, \exp\left(-\frac{\Vert\boldsymbol{x}_{t+\Delta t} - \boldsymbol{x}_t - \left[\boldsymbol{f}_t(\boldsymbol{x}_t) - g_t^2\nabla_{\boldsymbol{x}_t}\log p(\boldsymbol{x}_t) \right]\Delta t\Vert^2}{2 g_t^2\Delta t}\right) \\
+    \approx&\,\exp\left(-\frac{\Vert \boldsymbol{x}_t - \boldsymbol{x}_{t+\Delta t} + \left[\boldsymbol{f}_{t+\Delta t}(\boldsymbol{x}_{t+\Delta t}) - g_{t+\Delta t}^2\nabla_{\boldsymbol{x}_{t+\Delta t}}\log p(\boldsymbol{x}_{t+\Delta t}) \right]\Delta t\Vert^2}{2 g_{t+\Delta t}^2\Delta t}\right)
+    \end{aligned}\end{equation}
+    That is, $p(\boldsymbol{x}_t|\boldsymbol{x}_{t+\Delta t})$ approximates a normal distribution with mean $\boldsymbol{x}_{t+\Delta t} - \left[\boldsymbol{f}_{t+\Delta t}(\boldsymbol{x}_{t+\Delta t}) - g_{t+\Delta t}^2\nabla_{\boldsymbol{x}_{t+\Delta t}}\log p(\boldsymbol{x}_{t+\Delta t}) \right]\Delta t$ and covariance $g_{t+\Delta t}^2\Delta t\,\boldsymbol{I}$. Taking the limit $\Delta t\to 0$, this corresponds to the SDE:
+    \begin{equation}d\boldsymbol{x} = \left[\boldsymbol{f}_t(\boldsymbol{x}) - g_t^2\nabla_{\boldsymbol{x}}\log p_t(\boldsymbol{x}) \right] dt + g_t d\boldsymbol{w}\label{eq:reverse-sde}\end{equation}
+    This is the SDE corresponding to the reverse process, which first appeared in <a href="https://www.sciencedirect.com/science/article/pii/0304414982900515">"Reverse-Time Diffusion Equation Models"</a>. Here we have specifically added the subscript $t$ to $p$ to emphasize that this is the distribution at time $t$.
+
+    <h2>Score Matching</h2>
+    <p>Now that we have obtained the reverse SDE as \eqref{eq:reverse-sde}, if we further know $\nabla_{\boldsymbol{x}}\log p_t(\boldsymbol{x})$, we can use the discretization format:
+    \begin{equation}\boldsymbol{x}_t - \boldsymbol{x}_{t+\Delta t} = - \left[\boldsymbol{f}_{t+\Delta t}(\boldsymbol{x}_{t+\Delta t}) - g_{t+\Delta t}^2\nabla_{\boldsymbol{x}_{t+\Delta t}}\log p(\boldsymbol{x}_{t+\Delta t}) \right]\Delta t - g_{t+\Delta t} \sqrt{\Delta t}\boldsymbol{\varepsilon}\label{eq:reverse-sde-discrete}\end{equation}
+    to gradually complete the generative process of "construction" [where $\boldsymbol{\varepsilon}\sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{I})$], thereby completing the construction of a generative diffusion model.</p>
+
+    <p>So how do we obtain $\nabla_{\boldsymbol{x}}\log p_t(\boldsymbol{x})$? The $p_t(\boldsymbol{x})$ at time $t$ is the $p(\boldsymbol{x}_t)$ mentioned earlier, which represents the marginal distribution at time $t$. In practice, we generally design models so that an analytical solution for $p(\boldsymbol{x}_t|\boldsymbol{x}_0)$ can be found, which means:
+    \begin{equation}\small p(\boldsymbol{x}_t|\boldsymbol{x}_0) = \lim_{\Delta t\to 0}\int\cdots\iint p(\boldsymbol{x}_t|\boldsymbol{x}_{t-\Delta t})p(\boldsymbol{x}_{t-\Delta t}|\boldsymbol{x}_{t-2\Delta t})\cdots p(\boldsymbol{x}_{\Delta t}|\boldsymbol{x}_0) d\boldsymbol{x}_{t-\Delta t} d\boldsymbol{x}_{t-2\Delta t}\cdots d\boldsymbol{x}_{\Delta t}\end{equation}
+    can be solved directly. For example, when $\boldsymbol{f}_t(\boldsymbol{x})$ is a linear function of $\boldsymbol{x}$, $p(\boldsymbol{x}_t|\boldsymbol{x}_0)$ can be solved analytically. Under this premise, we have:
+    \begin{equation}p(\boldsymbol{x}_t) = \int p(\boldsymbol{x}_t|\boldsymbol{x}_0)\tilde{p}(\boldsymbol{x}_0)d\boldsymbol{x}_0=\mathbb{E}_{\boldsymbol{x}_0}\left[p(\boldsymbol{x}_t|\boldsymbol{x}_0)\right]\end{equation}
+    Thus:
+    \begin{equation}\nabla_{\boldsymbol{x}_t}\log p(\boldsymbol{x}_t) = \frac{\mathbb{E}_{\boldsymbol{x}_0}\left[\nabla_{\boldsymbol{x}_t} p(\boldsymbol{x}_t|\boldsymbol{x}_0)\right]}{\mathbb{E}_{\boldsymbol{x}_0}\left[p(\boldsymbol{x}_t|\boldsymbol{x}_0)\right]} = \frac{\mathbb{E}_{\boldsymbol{x}_0}\left[p(\boldsymbol{x}_t|\boldsymbol{x}_0)\nabla_{\boldsymbol{x}_t} \log p(\boldsymbol{x}_t|\boldsymbol{x}_0)\right]}{\mathbb{E}_{\boldsymbol{x}_0}\left[p(\boldsymbol{x}_t|\boldsymbol{x}_0)\right]}\end{equation}
+    We can see that the final expression has the form of a "weighted average of $\nabla_{\boldsymbol{x}_t} \log p(\boldsymbol{x}_t|\boldsymbol{x}_0)$." Since we assumed $p(\boldsymbol{x}_t|\boldsymbol{x}_0)$ has an analytical solution, this expression can be directly estimated. However, it involves an average over all training samples $\boldsymbol{x}_0$, which on one hand requires a large amount of computation, and on the other hand, its generalization capability is insufficient. Therefore, we hope to use a neural network to learn a function $\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ so that it can directly calculate $\nabla_{\boldsymbol{x}_t}\log p(\boldsymbol{x}_t)$.</p>
+
+    <p>Many readers should be familiar with the following result (or it's not hard to derive it once):
+    \begin{equation}\mathbb{E}[\boldsymbol{x}] = \mathop{\text{argmin}}_{\boldsymbol{\mu}}\mathbb{E}_{\boldsymbol{x}}\left[\Vert \boldsymbol{\mu} - \boldsymbol{x}\Vert^2\right]\end{equation}
+    That is, to make $\boldsymbol{\mu}$ equal to the mean of $\boldsymbol{x}$, one only needs to minimize the mean of $\Vert \boldsymbol{\mu} - \boldsymbol{x}\Vert^2$. Similarly, to make $\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ equal to the weighted average of $\nabla_{\boldsymbol{x}_t} \log p(\boldsymbol{x}_t|\boldsymbol{x}_0)$ [i.e., $\nabla_{\boldsymbol{x}_t}\log p(\boldsymbol{x}_t)$], one only needs to minimize the weighted average of $\left\Vert \boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t) - \nabla_{\boldsymbol{x}_t} \log p(\boldsymbol{x}_t|\boldsymbol{x}_0)\right\Vert^2$, which is:
+    \begin{equation} \frac{\mathbb{E}_{\boldsymbol{x}_0}\left[p(\boldsymbol{x}_t|\boldsymbol{x}_0)\left\Vert \boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t) - \nabla_{\boldsymbol{x}_t} \log p(\boldsymbol{x}_t|\boldsymbol{x}_0)\right\Vert^2\right]}{\mathbb{E}_{\boldsymbol{x}_0}\left[p(\boldsymbol{x}_t|\boldsymbol{x}_0)\right]}\end{equation}
+    The denominator $\mathbb{E}_{\boldsymbol{x}_0}\left[p(\boldsymbol{x}_t|\boldsymbol{x}_0)\right]$ just serves to adjust the loss weight; for simplicity, we can remove it directly, which will not affect the result of the optimal solution. Finally, we integrate over $\boldsymbol{x}_t$ (equivalent to minimizing the above loss for every $\boldsymbol{x}_t$), obtaining the final loss function:
+    \begin{equation}\begin{aligned}&\small \,\int \mathbb{E}_{\boldsymbol{x}_0}\left[p(\boldsymbol{x}_t|\boldsymbol{x}_0)\left\Vert \boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t) - \nabla_{\boldsymbol{x}_t} \log p(\boldsymbol{x}_t|\boldsymbol{x}_0)\right\Vert^2\right] d\boldsymbol{x}_t \\
+    =&\, \mathbb{E}_{\boldsymbol{x}_0,\boldsymbol{x}_t \sim p(\boldsymbol{x}_t|\boldsymbol{x}_0)\tilde{p}(\boldsymbol{x}_0)}\left[\left\Vert \boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t) - \nabla_{\boldsymbol{x}_t} \log p(\boldsymbol{x}_t|\boldsymbol{x}_0)\right\Vert^2\right]
+    \end{aligned}\label{eq:score-match}\end{equation}
+    This is the "(conditional) score matching" loss function. The analytical solution for the denoising autoencoder we derived previously in <a href="translation_7038.html">"From Denoising Autoencoders to Generative Models"</a> is also a special case of this. The earliest origin of score matching can be traced back to the 2005 paper <a href="https://www.jmlr.org/papers/v6/hyvarinen05a.html">"Estimation of Non-Normalized Statistical Models by Score Matching"</a>. As for the conditional score matching, the earliest source I traced is the 2011 paper <a href="https://www.iro.umontreal.ca/~vincentp/Publications/DenoisingScoreMatching_NeuralComp2011.pdf">"A Connection Between Score Matching and Denoising Autoencoders"</a>.</p>
+
+    <p>However, although the result is the same as score matching, in the derivation of this section, we have already set aside the concept of "score." It is purely an answer guided naturally by the objective. I believe such a treatment is more enlightening and hope this derivation can lower the difficulty of understanding score matching for everyone.</p>
+
+    <h2>Reverse Derivation of Results</h2>
+    <p>Up to this point, we have constructed a general workflow for generative diffusion models:</p>
+
+    <blockquote>
+        1. Define "demolition" (forward process) via stochastic differential equation \eqref{eq:sde-forward};<br><br>
+        2. Solve for the expression of $p(\boldsymbol{x}_t|\boldsymbol{x}_0)$;<br><br>
+        3. Train $\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ via loss function \eqref{eq:score-match} (score matching);<br><br>
+        4. Replace $\nabla_{\boldsymbol{x}}\log p_t(\boldsymbol{x})$ in equation \eqref{eq:reverse-sde} with $\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ to complete "construction" (reverse process).
+    </blockquote>
+
+    <p>Perhaps seeing terms like SDE and differential equations naturally makes people feel "panicked," but in essence, the SDE is just a "facade." In fact, once understanding of the SDE is converted to equation \eqref{eq:sde-discrete} and equation \eqref{eq:sde-proba}, the concept of SDE can be discarded. Therefore, conceptually, there isn't too much difficulty.</p>
+
+    <p>It is not difficult to find that defining a stochastic differential equation \eqref{eq:sde-forward} is easy, but solving for $p(\boldsymbol{x}_t|\boldsymbol{x}_0)$ from \eqref{eq:sde-forward} is not. The remainder of the original paper mainly consists of derivations and experiments for two practical examples. However, since solving for $p(\boldsymbol{x}_t|\boldsymbol{x}_0)$ is not easy, in my view, rather than first defining \eqref{eq:sde-forward} and then solving for $p(\boldsymbol{x}_t|\boldsymbol{x}_0)$, would it not be better to do as in <a href="translation_9181.html">DDIM</a>: define $p(\boldsymbol{x}_t|\boldsymbol{x}_0)$ first, and then reverse-engineer the corresponding SDE?</p>
+
+    <p>For example, we first define:
+    \begin{equation} p(\boldsymbol{x}_t|\boldsymbol{x}_0) = \mathcal{N}(\boldsymbol{x}_t; \bar{\alpha}_t \boldsymbol{x}_0,\bar{\beta}_t^2 \boldsymbol{I})\end{equation}
+    And without loss of generality, assume the start is $t=0$ and the end is $t=1$, then the boundaries that $\bar{\alpha}_t, \bar{\beta}_t$ must satisfy are:
+    \begin{equation} \bar{\alpha}_0 = 1,\quad \bar{\alpha}_1 = 0,\quad \bar{\beta}_0 = 0,\quad \bar{\beta}_1 = 1\end{equation}
+    Of course, theoretically, these boundary conditions only need to be sufficiently approximate and don't necessarily have to be exactly equal. For example, in the previous article, we analyzed that DDPM is equivalent to choosing $\bar{\alpha}_t = e^{-5t^2}$, which gives $e^{-5}\approx 0$ when $t=1$.</p>
+
+    <p>With $p(\boldsymbol{x}_t|\boldsymbol{x}_0)$, reversing \eqref{eq:sde-forward} essentially requires solving for $p(\boldsymbol{x}_{t+\Delta t}|\boldsymbol{x}_t)$, which must satisfy:
+    \begin{equation} p(\boldsymbol{x}_{t+\Delta t}|\boldsymbol{x}_0) = \int p(\boldsymbol{x}_{t+\Delta t}|\boldsymbol{x}_t) p(\boldsymbol{x}_t|\boldsymbol{x}_0) d\boldsymbol{x}_t\end{equation}
+    We consider a linear solution, namely:
+    \begin{equation}d\boldsymbol{x} = f_t\boldsymbol{x} dt + g_t d\boldsymbol{w}\end{equation}
+    As in <a href="https://kexue.fm/archives/9181#%E5%BE%85%E5%AE%9A%E7%B3%BB%E6%95%B0">"Conversations on Generative Diffusion Models (4): DDIM = High-viewpoint DDPM"</a>, we write:
+    <table style="width:100%; border-collapse: collapse; text-align: center;" border="1">
+    <thead>
+    <tr>
+    <th>Notation</th>
+    <th>Meaning</th>
+    <th>Sampling</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td>$p(\boldsymbol{x}_{t+\Delta t}|\boldsymbol{x}_0)$</td>
+    <td>$\mathcal{N}(\boldsymbol{x}_t;\bar{\alpha}_{t+\Delta t} \boldsymbol{x}_0,\bar{\beta}_{t+\Delta t}^2 \boldsymbol{I})$</td>
+    <td>$\boldsymbol{x}_{t+\Delta t} = \bar{\alpha}_{t+\Delta t} \boldsymbol{x}_0 + \bar{\beta}_{t+\Delta t} \boldsymbol{\varepsilon}$</td>
+    </tr>
+    <tr>
+    <td>$p(\boldsymbol{x}_t|\boldsymbol{x}_0)$</td>
+    <td>$\mathcal{N}(\boldsymbol{x}_t;\bar{\alpha}_t \boldsymbol{x}_0,\bar{\beta}_t^2 \boldsymbol{I})$</td>
+    <td>$\boldsymbol{x}_t = \bar{\alpha}_t \boldsymbol{x}_0 + \bar{\beta}_t \boldsymbol{\varepsilon}_1$</td>
+    </tr>
+    <tr>
+    <td>$p(\boldsymbol{x}_{t+\Delta t}|\boldsymbol{x}_t)$</td>
+    <td>$\mathcal{N}(\boldsymbol{x}_{t+\Delta t}; (1 + f_t\Delta t) \boldsymbol{x}_t, g_t^2 \Delta t\, \boldsymbol{I})$</td>
+    <td>$\boldsymbol{x}_{t+\Delta t} = (1 + f_t\Delta t) \boldsymbol{x}_t + g_t\sqrt{\Delta t}\boldsymbol{\varepsilon}_2$</td>
+    </tr>
+    <tr>
+    <td>$\begin{array}{c}\int p(\boldsymbol{x}_{t+\Delta t}|\boldsymbol{x}_t) \\ p(\boldsymbol{x}_t|\boldsymbol{x}_0) d\boldsymbol{x}_t\end{array}$</td>
+    <td></td>
+    <td>$\begin{aligned}&\,\boldsymbol{x}_{t+\Delta t} \\ =&\, (1 + f_t\Delta t) \boldsymbol{x}_t + g_t\sqrt{\Delta t} \boldsymbol{\varepsilon}_2 \\ =&\, (1 + f_t\Delta t) (\bar{\alpha}_t \boldsymbol{x}_0 + \bar{\beta}_t \boldsymbol{\varepsilon}_1) + g_t\sqrt{\Delta t} \boldsymbol{\varepsilon}_2 \\ =&\, (1 + f_t\Delta t) \bar{\alpha}_t \boldsymbol{x}_0 + ((1 + f_t\Delta t)\bar{\beta}_t \boldsymbol{\varepsilon}_1 + g_t\sqrt{\Delta t} \boldsymbol{\varepsilon}_2) \\ \end{aligned}$</td>
+    </tr>
+    </tbody>
+    </table>
+    </p>
+
+    <p>From this we obtain:
+    \begin{equation}\begin{aligned}
+    \bar{\alpha}_{t+\Delta t} =&\, (1 + f_t\Delta t) \bar{\alpha}_t \\
+    \bar{\beta}_{t+\Delta t}^2 =&\, (1 + f_t\Delta t)^2\bar{\beta}_t^2 + g_t^2\Delta t
+    \end{aligned}\end{equation}
+    Letting $\Delta t\to 0$, we solve respectively:
+    \begin{equation}
+    f_t = \frac{d}{dt} \left(\ln \bar{\alpha}_t\right) = \frac{1}{\bar{\alpha}_t}\frac{d\bar{\alpha}_t}{dt}, \quad g_t^2 = \bar{\alpha}_t^2 \frac{d}{dt}\left(\frac{\bar{\beta}_t^2}{\bar{\alpha}_t^2}\right) = 2\bar{\alpha}_t \bar{\beta}_t \frac{d}{dt}\left(\frac{\bar{\beta}_t}{\bar{\alpha}_t}\right)\end{equation}
+    When $\bar{\alpha}_t\equiv 1$, the result is the VE-SDE (Variance Exploding SDE) in the paper; whereas if $\bar{\alpha}_t^2 + \bar{\beta}_t^2=1$, the result is the VP-SDE (Variance Preserving SDE) in the original paper.</p>
+
+    <p>As for the loss function, at this point we can calculate:
+    \begin{equation}\nabla_{\boldsymbol{x}_t} \log p(\boldsymbol{x}_t|\boldsymbol{x}_0) = -\frac{\boldsymbol{x}_t - \bar{\alpha}_t\boldsymbol{x}_0}{\bar{\beta}_t^2}=-\frac{\boldsymbol{\varepsilon}}{\bar{\beta}_t}\end{equation}
+    The second equality holds because $\boldsymbol{x}_t = \bar{\alpha}_t\boldsymbol{x}_0 + \bar{\beta}_t\boldsymbol{\varepsilon}$. To align with previous results, we set $\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t) = -\frac{\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)}{\bar{\beta}_t}$, and equation \eqref{eq:score-match} becomes:
+    \begin{equation}\frac{1}{\bar{\beta}_t^2}\mathbb{E}_{\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0),\boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0},\boldsymbol{I})}\left[\left\Vert \boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\bar{\alpha}_t\boldsymbol{x}_0 + \bar{\beta}_t\boldsymbol{\varepsilon}, t) - \boldsymbol{\varepsilon}\right\Vert^2\right]\end{equation}
+    After ignoring the coefficient, this is the loss function of DDPM. Replacing $\nabla_{\boldsymbol{x}_{t+\Delta t}}\log p(\boldsymbol{x}_{t+\Delta t})$ in equation \eqref{eq:reverse-sde-discrete} with $-\frac{\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_{t+\Delta t}, t+\Delta t)}{\bar{\beta}_{t+\Delta t}}$, the result has the same first-order approximation as the sampling process of DDPM (meaning that they are equivalent as $\Delta t \to 0$).</p>
+
+    <h2>Summary</h2>
+    <p>This article mainly introduced the general framework for understanding diffusion models using SDE established by Dr. Yang Song. This included deriving results such as the reverse SDE and score matching in language as intuitive as possible, and providing my own thoughts on solving the equations.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9209.html" style="color: #005fcc;">https://kexue.fm/archives/9209</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

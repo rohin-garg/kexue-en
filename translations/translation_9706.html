@@ -1,0 +1,395 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    processEnvironments: true,
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/9706">Transformer Upgrade Path: 11. Taking the β-base Position Encoding to the End</a></h1>
+    
+    <p>By 苏剑林 | July 31, 2023</p>
+
+    <p>In the article <a href="translation_9675.html">"Transformer Upgrade Path: 10. RoPE is a β-base Encoding"</a>, we provided a $\beta$-base interpretation of RoPE and derived <strong>NTK-aware Scaled RoPE</strong>, which can extend Context length without fine-tuning, based on the idea of base conversion. It must be said that understanding position encoding through the analogy of $\beta$-base representation is a very beautiful and inspiring perspective. Every time I think deeply about it, I seem to gain new insights.</p>
+
+    <p>This article will revisit the $\beta$-base interpretation of RoPE and attempt to generalize the existing NTK-aware Scaled RoPE, with the aim of finding an optimal strategy for extending the Context length of LLMs without fine-tuning.</p>
+
+    <h2>Base Analogy</h2>
+    <p>We know that the parameterization of RoPE follows the form of <a href="translation_9675.html">Sinusoidal position encoding</a>. Whether by coincidence or design, the Sinusoidal position encoding of an integer $n$ has many similarities with its $\beta$-base encoding.</p>
+
+    <p>Specifically, the $m$-th digit (counting from right to left) of the $\beta$-base representation of an integer $n$ is:
+    \begin{equation}
+    \lfloor n / \beta^{m-1} \rfloor \bmod \beta \label{eq:1}
+    \end{equation}
+    And its Sinusoidal position encoding is:
+    \begin{equation}
+    p_n = [\cos \theta_1, \sin \theta_1, \cos \theta_2, \sin \theta_2, \dots, \cos \theta_{d/2}, \sin \theta_{d/2}], \quad \theta_m = n / \beta^{m-1}, \beta = 10000^{2/d} \label{eq:2}
+    \end{equation}
+    As we can see, both share the same $n / \beta^{m-1}$, and $\bmod$ is a periodic function just like $\cos$ and $\sin$. Therefore, the only difference between the two is the largely insignificant floor function $\lfloor \cdot \rfloor$. Thus, analogizing RoPE/Sinusoidal position encoding to a $\beta$-base representation is a very intuitive and reasonable result.</p>
+
+    <h2>Corrected NTK</h2>
+    <p>Following the logic in <a href="translation_9675.html">"Transformer Upgrade Path: 10. RoPE is a β-base Encoding"</a>, direct extrapolation concentrates the extrapolation pressure on the "high-order bits (large $m$)", while position interpolation makes the representation of "low-order bits (small $m$)" denser, which is detrimental to distinguishing relative distances. NTK-aware Scaled RoPE is essentially a base conversion that spreads the extrapolation pressure across every bit while keeping the adjacent intervals constant. These characteristics are very friendly and crucial for LLMs, which clearly tend to rely on relative positions, allowing it to achieve certain effects even without fine-tuning.</p>
+
+    <p>Looking closely at Equation \eqref{eq:2}, $\cos$ and $\sin$ actually form a single unit, so it effectively has $d/2$ bits. This means it corresponds to a $d/2$-digit $\beta$-base encoding of $n$. If we want to extend the Context length by $k$ times by converting the $\beta$-base to a $\beta\lambda$-base, then at least we should have:
+    \begin{equation}
+    \lambda^{d/2} = k \Rightarrow \lambda = k^{2/d}
+    \end{equation}
+    Then the new RoPE becomes:
+    \begin{equation}
+    p_n = [\cos \theta_1, \sin \theta_1, \cos \theta_2, \sin \theta_2, \dots, \cos \theta_{d/2}, \sin \theta_{d/2}], \quad \theta_m = n / (\beta\lambda)^{m-1}, \beta = 10000^{2/d}, \lambda = k^{2/d} \label{eq:4}
+    \end{equation}
+    This is the NTK-RoPE we proposed in the previous article.</p>
+
+    <p>However, after deeper reflection, I realized this is not quite reasonable. Returning to Equation \eqref{eq:1}, if we were to calculate the $m$-th digit of a $\beta\lambda$-base, it should be:
+    \begin{equation}
+    \lfloor n / (\beta\lambda)^{m-1} \rfloor \bmod (\beta\lambda) \label{eq:5}
+    \end{equation}
+    In other words, besides changing $n / \beta^{m-1}$ to $n / (\beta\lambda)^{m-1}$, the period of the $\bmod$ operation also needs to be expanded by $\lambda$ times. This is equivalent to dividing by an additional $\lambda$ before applying $\cos$ and $\sin$:
+    \begin{equation}
+    p_n = [\cos \theta_1, \sin \theta_1, \cos \theta_2, \sin \theta_2, \dots, \cos \theta_{d/2}, \sin \theta_{d/2}], \quad \theta_m = \frac{n}{\lambda (\beta\lambda)^{m-1}}, \beta = 10000^{2/d}, \lambda = k^{2/d} \label{eq:6}
+    \end{equation}
+    In subsequent experiments, we refer to Equation \eqref{eq:4} proposed in the previous article as "NTK-RoPE-old" and Equation \eqref{eq:6} as "NTK-RoPE-fixed".</p>
+
+    <h2>Mixed Base</h2>
+    <p>Now, let's let our imagination run a bit wilder—if we can use a $\beta$-base to represent position, why not use a more generalized "mixed base"? A mixed base means that the base used for each digit is not necessarily the same. This is not unfamiliar to us; for example, 60 seconds make 1 minute, 60 minutes make 1 hour, but 24 hours make 1 day, and 7 days make 1 week. Here, 60, 60, 24, and 7 are different bases. In other words, seconds, minutes, hours, days, and weeks are examples of using a mixed base.</p>
+
+    <p>Assuming that from right to left, the 1st digit uses base $\beta_1$, the 2nd digit uses base $\beta_2$, the 3rd digit uses base $\beta_3$, and so on, then the calculation of the $m$-th digit of $n$ results in:
+    \begin{equation}
+    \lfloor \frac{n}{\beta_1 \beta_2 \dots \beta_{m-1}} \rfloor \bmod \beta_m \label{eq:7}
+    \end{equation}
+    Why consider a mixed base? Because one day I discovered an interesting fact: RoPE is essentially a relative position encoding, and relative position is a special case of a <a href="https://en.wikipedia.org/wiki/Toeplitz_matrix">Toeplitz matrix</a>, which looks like this (since this article focuses on language models, only the lower triangular part is shown):
+    \begin{equation}
+    \begin{pmatrix}
+    0 & & & & & & \\
+    1 & 0 & & & & & \\
+    2 & 1 & 0 & & & & \\
+    3 & 2 & 1 & 0 & & & \\
+    4 & 3 & 2 & 1 & 0 & & \\
+    5 & 4 & 3 & 2 & 1 & 0 & \\
+    6 & 5 & 4 & 3 & 2 & 1 & 0
+    \end{pmatrix}
+    \end{equation}
+    From the above matrix, we can observe that the distribution of relative positions is unbalanced! 0 appears most frequently, followed by 1, then 2, and so on. That is, as $n$ increases, the number of occurrences decreases. This implies that as a $\beta$-base encoding, the "high-order bits" of RoPE are likely to be insufficiently trained; in other words, the generalization ability of the high-order bits is likely inferior to that of the low-order bits. As mentioned, NTK-RoPE spreads the extrapolation pressure evenly across all bits. If my suspicion is correct, then "even spreading" is not optimal. Instead, low-order bits should share more of the pressure, and high-order bits less, which leads to a mixed base.</p>
+
+    <h2>Allocation Optimization</h2>
+    <p>Specifically, we extend the context to $k$ times by converting the $\beta$-base into a mixed $\beta_1, \beta_2, \dots, \beta_{d/2}$ base, where $\beta_m = \beta\lambda_m$. At this point, Equation \eqref{eq:7} becomes:
+    \begin{equation}
+    \lfloor \frac{n}{\beta^{m-1}(\lambda_1 \lambda_2 \dots \lambda_{m-1})} \rfloor \bmod (\beta\lambda_m)
+    \end{equation}
+    Equation \eqref{eq:6} correspondingly becomes:
+    \begin{equation}
+    p_n = [\cos \theta_1, \sin \theta_1, \cos \theta_2, \sin \theta_2, \dots, \cos \theta_{d/2}, \sin \theta_{d/2}], \quad \theta_m = \frac{n}{\beta^{m-1}(\lambda_1 \lambda_2 \dots \lambda_m)}, \beta = 10000^{2/d} \label{eq:9}
+    \end{equation}
+    According to the principles of "extending $k$ times" and "low-order bits sharing more pressure," the constraints are:
+    \begin{equation}
+    \lambda_1 \lambda_2 \dots \lambda_{d/2} = k, \quad \lambda_1 \ge \lambda_2 \ge \dots \ge \lambda_{d/2} \ge 1 \label{eq:10}
+    \end{equation}
+    We discuss a solution of the following form (interested readers can try other forms, as there is a lot of freedom here):
+    \begin{equation}
+    \lambda_1 \lambda_2 \dots \lambda_m = \exp(a m^b) \label{eq:12}
+    \end{equation}
+    When $a > 0$ and $b \le 1$, it satisfies the condition $\lambda_1 \ge \lambda_2 \ge \dots \ge \lambda_{d/2} \ge 1$. When $b=1$, it is actually the previously mentioned "NTK-RoPE-fixed". When $b=0$, it is <a href="https://kexue.fm/archives/9675#%E7%BA%BF%E6%80%A7%E5%86%85%E6%8F%92">Positional Interpolation (PI)</a>. The constraint $\lambda_1 \lambda_2 \dots \lambda_{d/2} = k$ gives:
+    \begin{equation}
+    a(d/2)^b = \log k \label{eq:13}
+    \end{equation}
+    Thus, there is only one degree of freedom to adjust. Through a simple binary search, I found that in my experiments, $b = 0.625$ generally yields better expansion results (different models might have different optimal solutions, please tune accordingly). This version is called "NTK-RoPE-mixed".</p>
+
+    <h2>Experimental Results</h2>
+    <p>Based on the experiments in <a href="translation_9675.html">"Transformer Upgrade Path: 10. RoPE is a β-base Encoding"</a>, I added experiments for "NTK-RoPE-fixed" and "NTK-RoPE-mixed". The comparison is as follows:</p>
+
+    <table border="1" cellpadding="5" cellspacing="0">
+        <thead>
+            <tr>
+                <th>Test Length</th>
+                <th>512 (Train)</th>
+                <th>4096 (Repeated)</th>
+                <th>4096 (Non-repeated)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Baseline</td>
+                <td>49.41%</td>
+                <td>24.17%</td>
+                <td>23.16%</td>
+            </tr>
+            <tr>
+                <td>Baseline-logn</td>
+                <td>49.40%</td>
+                <td>24.60%</td>
+                <td>24.02%</td>
+            </tr>
+            <tr>
+                <td>PI-RoPE</td>
+                <td>49.41%</td>
+                <td>15.04%</td>
+                <td>13.54%</td>
+            </tr>
+            <tr>
+                <td>PI-RoPE-logn</td>
+                <td>49.40%</td>
+                <td>14.99%</td>
+                <td>16.51%</td>
+            </tr>
+            <tr>
+                <td>NTK-RoPE-old</td>
+                <td>49.41%</td>
+                <td>51.28%</td>
+                <td>39.27%</td>
+            </tr>
+            <tr>
+                <td>NTK-RoPE-logn-old</td>
+                <td>49.40%</td>
+                <td>61.71%</td>
+                <td>43.75%</td>
+            </tr>
+            <tr>
+                <td>NTK-RoPE-fixed</td>
+                <td>49.41%</td>
+                <td>51.86%</td>
+                <td>39.61%</td>
+            </tr>
+            <tr>
+                <td>NTK-RoPE-logn-fixed</td>
+                <td>49.40%</td>
+                <td>62.85%</td>
+                <td>44.14%</td>
+            </tr>
+            <tr>
+                <td>NTK-RoPE-mixed</td>
+                <td>49.41%</td>
+                <td>53.09%</td>
+                <td>40.12%</td>
+            </tr>
+            <tr>
+                <td>NTK-RoPE-logn-mixed</td>
+                <td>49.40%</td>
+                <td>68.91%</td>
+                <td>45.41%</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <p>As can be seen, compared to the constant-base "NTK-RoPE-old" and "NTK-RoPE-fixed", the "NTK-RoPE-mixed" derived from the mixed base brings a significant improvement. Moreover, it requires no fine-tuning, making it a "free lunch." Additionally, it is evident that the logn version has better extrapolation performance, but the logn trick needs to be added during the pre-training phase. Some readers have previously asked if models like LLAMA, which did not include the logn trick during pre-training, can still enjoy the "dividends" of logn. After testing, I found that the effect can be improved by adding the following scale factor:</p>
+    \begin{equation}
+    \max(1, \log_{\text{maxlen}} n) \label{eq:14}
+    \end{equation}
+    <p>Here, $maxlen$ is the maximum length during pre-training. In this article's experiments, it is 512; in LLAMA, it is 2048; in LLAMA2, it is 4096. This can be implemented by multiplying each $q_n$ by the corresponding factor. This way, the part within $maxlen$ is unaffected, while the part beyond is scaled by logn. This serves as a simple transition. The results are as follows (using $\dagger$ to distinguish from the original logn):</p>
+
+    <table border="1" cellpadding="5" cellspacing="0">
+        <thead>
+            <tr>
+                <th>Test Length</th>
+                <th>512 (Train)</th>
+                <th>4096 (Repeated)</th>
+                <th>4096 (Non-repeated)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>NTK-RoPE-fixed</td>
+                <td>49.41%</td>
+                <td>51.86%</td>
+                <td>39.61%</td>
+            </tr>
+            <tr>
+                <td>NTK-RoPE-logn†-fixed</td>
+                <td>49.41%</td>
+                <td>55.94%</td>
+                <td>41.11%</td>
+            </tr>
+            <tr>
+                <td>NTK-RoPE-mixed</td>
+                <td>49.41%</td>
+                <td>53.09%</td>
+                <td>40.12%</td>
+            </tr>
+            <tr>
+                <td>NTK-RoPE-logn†-mixed</td>
+                <td>49.41%</td>
+                <td>59.11%</td>
+                <td>42.38%</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <p>It can be seen that this $\text{logn}^{\dagger}$ can also be considered a free lunch. In short, if you plan to perform pre-training from scratch, you might as well add the logn trick in advance. If the training is already complete, you can use Equation \eqref{eq:14} instead and add NTK-RoPE-mixed to achieve better Context extension effects.</p>
+
+    <h2>Summary</h2>
+    <p>In this article, we revisited the $\beta$-base perspective of RoPE and attempted to generalize NTK-aware Scaled RoPE. Inspired by the mixed base concept, we obtained a superior strategy for extending Context length without fine-tuning. Finally, experimental results demonstrated its effectiveness.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9706.html" style="color: #005fcc;">https://kexue.fm/archives/9706</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

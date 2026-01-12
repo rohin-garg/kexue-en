@@ -1,0 +1,269 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/10001">Configuring different learning rates, can LoRA gain a bit more?</a></h1>
+
+    <p>By 苏剑林 | February 27, 2024</p>
+
+
+<p>LoRA (Low-Rank Adaptation) is one of the current parameter-efficient fine-tuning methods for LLMs. We previously had a brief discussion in <a href="translation_9590.html">"LoRA from a Gradient Perspective: Introduction, Analysis, Conjectures, and Generalization"</a>. In this article, we will study a new conclusion regarding LoRA:</p>
+
+<blockquote>
+  <strong>By assigning different learning rates to the two matrices in LoRA, the effectiveness of LoRA can be further improved.</strong>
+</blockquote>
+
+<p>This conclusion comes from the recent paper <a href="https://papers.cool/arxiv/2402.12354">"LoRA+: Efficient Low Rank Adaptation of Large Models"</a> (hereinafter referred to as "LoRA+"). At first glance, this conclusion might not seem particularly special, because configuring different learning rates is equivalent to introducing new hyperparameters, and generally, fine-tuning additional hyperparameters leads to improvements. However, the significance of "LoRA+" lies in the fact that it validates this necessity from a theoretical perspective and determines that the optimal solution inevitably requires the learning rate of the right matrix to be greater than that of the left matrix. In short, "LoRA+" is a classic example of theory guiding training that proves effective in practice, and it is worth studying carefully.</p>
+
+<h2>Analysis of the Conclusion</h2>
+
+<p>Assume the pre-trained parameters are $W_0 \in \mathbb{R}^{n\times m}$. If full-parameter fine-tuning is used, the increment is also an $n\times m$ matrix. To reduce the number of parameters, LoRA constrains the update to be a low-rank matrix, i.e., $W=W_0 + AB$, where $A\in\mathbb{R}^{n\times r}, B\in\mathbb{R}^{r\times m}$ and $r\ll \min(n,m)$. The original parameters of the model are replaced by the new $W$. During training, $W_0$ is kept fixed, and only $A, B$ are updated, as shown below:</p>
+
+<p>
+$$\style{display: inline-block; width: 24ex; padding: 10ex 0; border: 1px solid #6C8EBF; background-color: #DAE8FC}{W_0\in\mathbb{R}^{n\times m}} \quad + \quad \style{display: inline-block; width: 8ex; padding: 10ex 0; border: 1px solid #D79B00; background-color: #FFE6CC}{A\in\mathbb{R}^{n\times r}}\quad\times\quad \style{display: inline-block; width: 24ex; padding: 3ex 0; border: 1px solid #D79B00; background-color: #FFE6CC}{B\in\mathbb{R}^{r\times m}}$$
+</p>
+
+<p>Note that LoRA is typically applied to Dense layers. The analysis in the original paper is based on the weight matrix left-multiplying the input, but in implementation, it is almost always the input right-multiplying the weight matrix. To avoid confusion, the notation in this article is aligned with the implementation, assuming the input to the layer is $X\in\mathbb{R}^{b\times n}$ and the layer operation is $XW = X(W_0 + AB)$. Since the conclusion of "LoRA+" is independent of the pre-trained weights, without loss of generality, we can set $W_0=0$. Thus, the operation simplifies to $Y=XAB\in\mathbb{R}^{b\times m}$.</p>
+
+<p>The conclusion of "LoRA+" is:</p>
+
+<blockquote>
+  To make the effectiveness of LoRA as close to optimal as possible, the learning rate of weight $B$ should be greater than the learning rate of weight $A$.
+</blockquote>
+
+<p>Note that to ensure the initial model is equivalent to the original pre-trained model, LoRA usually initializes one of $A$ or $B$ to zero. Initially, I thought this conclusion was caused by the zero initialization and would depend on which matrix was zeroed out. However, after careful reading, the conclusion claimed by "LoRA+" is independent of zero initialization. That is to say, on the surface $A$ and $B$ are symmetric, but they actually have an inherent asymmetry, such that regardless of whether $A$ or $B$ is chosen for zero initialization, the conclusion remains that the learning rate of $B$ must be greater than $A$. This makes things interesting.</p>
+
+<p>However, it must be said that the explanation in the original "LoRA+" paper is quite difficult to follow. Therefore, the following is a derivation simplified using my own logic. Broadly, it is based on two assumptions:</p>
+
+<blockquote>
+  1. <strong>Numerical Stability</strong>: The output values of each layer of the model should be numerically stable and independent of the network width.<br>
+  2. <strong>Equivalent Contribution</strong>: To achieve optimal LoRA performance, the two matrices $A$ and $B$ should contribute to the results to an equal degree.
+</blockquote>
+
+<p>Next, we will analyze and quantify these two assumptions one by one.</p>
+
+<h2>Numerical Stability</h2>
+
+<p>First, numerical stability means that each component of $X, XA, XAB$ should be on the level of $\mathcal{O}(1)$, without depending on the network widths $n, m$. The $\mathcal{O}(1)$ here primarily describes its order relative to the network width as zero-order; it does not mean its absolute value is close to 1. This assumption should be uncontroversial; it is hard to imagine an unstable network having good predictive performance. However, some readers might question the necessity of "$XA$ being $\mathcal{O}(1)$." Since $X$ is the input and $XAB$ is the output, it is reasonable to require numerical stability for both. But since $XA$ is just an intermediate variable, must it also be numerically stable?</p>
+
+<p>Looking only at forward propagation, the numerical stability of $XA$ is indeed not strictly necessary. However, if $XA$ is numerically unstable while $XAB$ is stable, there are two cases: if $XA$ is numerically large and $B$ is small, then according to the derivation formulas, this will lead to a small gradient for $A$ and a large gradient for $B$. conversely, if $XA$ is numerically small and $B$ is large, this will lead to a large gradient for $A$ and a small gradient for $B$. In short, the numerical instability of $XA$ leads to instability in the gradients of $A$ and $B$, thereby increasing the optimization difficulty. Thus, it is better to include the numerical stability of $XA$ as a condition.</p>
+
+<p>This numerical stability condition reminds us of "<a href="translation_8620.html">LeCun initialization</a>," which states that if $W\in\mathbb{R}^{n\times m}$ is sampled i.i.d. from a distribution with "mean 0 and variance $1/n$," the order of magnitude of each component of $XW$ is roughly the same as that of the components of $X$. Following the same strategy, if the input $X$ is already $\mathcal{O}(1)$, then to maintain the magnitudes of the components of $XA$ and $XAB$ at $\mathcal{O}(1)$, $A$ and $B$ should be initialized with variances of $1/n$ and $1/r$ respectively (means are assumed to be 0 hereafter).</p>
+
+<p>Of course, as mentioned before, one of $A$ or $B$ must be initialized to zero for the identity of initialization. But this isn't very important. We only need to realize that variances of $1/n$ and $1/r$ allow $XA$ and $XAB$ to maintain numerical stability. Then we can guess that after training is completed, $A$ and $B$ likely also approximately have variances of $1/n$ and $1/r$. Given $r \ll n$, this is equivalent to saying that the absolute values of the components of $A$ will be significantly smaller than those of $B$. This is the source of the asymmetry between $A$ and $B$.</p>
+
+<h2>Equivalent Contribution</h2>
+
+<p>Next, let's look at the second assumption: $A$ and $B$ should contribute to the effectiveness to an equal degree. This assumption also seems reasonable because, in the LLM+LoRA scenario, we usually have $m=n$, meaning the number of parameters for $A$ and $B$ is the same, so it is reasonable that their contribution to effect is the same. If $m\neq n$, we could further generalize this assumption such that the contribution is proportional to the number of parameters. The most fundamental metric for measuring effectiveness is naturally the loss function, denoted here as $\mathcal{L}$.</p>
+
+<p>We want to measure the change in the loss function when $A\to A+\Delta A, B\to B + \Delta B$:</p>
+
+\begin{equation}\mathcal{L}(A+\Delta A,B+\Delta B) - \mathcal{L}(A,B)\approx \left\langle \frac{\partial\mathcal{L}}{\partial A},\Delta A\right\rangle + \left\langle \frac{\partial\mathcal{L}}{\partial B},\Delta B\right\rangle\label{eq:delta-loss}\end{equation}
+
+<p>A first-order linear approximation is used here, where $\frac{\partial\mathcal{L}}{\partial A}, \frac{\partial\mathcal{L}}{\partial B}$ are the gradients of $A$ and $B$, and $\langle\cdot,\cdot\rangle$ is the (Frobenius) inner product. The two terms on the right can be understood as the respective contributions of $A$ and $B$. However, note that the validity of the linear approximation depends on the increments $\Delta A, \Delta B$ being small. For trained weights, the increment relative to the original weights might not actually be small. Therefore, as a second best, we change the "equivalent contribution" assumption to "$A$ and $B$ should contribute to the effect to an equal degree in each update step." Since the update amount in a single step is usually very small, the linear approximation can be well satisfied.</p>
+
+<p>Since we are considering the update amount in each step, this leads us to the direction of optimizers. Currently, the mainstream optimizers for pre-training and fine-tuning are Adam. We will take Adam as our main subject of analysis. We know that the Adam optimizer has two sets of moving average states and corresponding hyperparameters $\beta_1, \beta_2$, which makes precise analysis difficult. However, for the purpose of this article, we only need an order of magnitude estimate. Therefore, we attempt to consider only an extreme case and assume it yields the same order of magnitude estimate as the general case. This example is $\beta_1=\beta_2=0$, where Adam reduces to <a href="translation_9473.html">SignSGD</a>:</p>
+
+\begin{equation}\Delta A = -\eta_A\,\text{sign}\left(\frac{\partial\mathcal{L}}{\partial A}\right),\quad\Delta B = -\eta_B\,\text{sign}\left(\frac{\partial\mathcal{L}}{\partial B}\right)\label{eq:sign-sgd}\end{equation}
+
+<p>where $\eta_A, \eta_B$ are their respective learning rates. The conclusion of "LoRA+" is that $\eta_B \gg \eta_A$.</p>
+
+<p>Substituting the SignSGD increment $\eqref{eq:sign-sgd}$ back into eq $\eqref{eq:delta-loss}$, we get:</p>
+
+\begin{equation}\mathcal{L}(A+\Delta A,B+\Delta B) - \mathcal{L}(A,B)\approx \underbrace{-\,\eta_A \left\Vert\frac{\partial\mathcal{L}}{\partial A}\right\Vert_1}_{\Delta \mathcal{L}_A}\,\underbrace{-\,\eta_B \left\Vert \frac{\partial\mathcal{L}}{\partial B}\right\Vert_1}_{\Delta \mathcal{L}_B}\end{equation}
+
+<p>where $\Vert\cdot\Vert_1$ is the $L_1$ norm, i.e., the sum of the absolute values of all components. "Equivalent contribution" means we hope that $\Delta \mathcal{L}_A$ and $\Delta \mathcal{L}_B$ on the right side are consistent in order of magnitude.</p>
+
+<h2>Quick Derivation</h2>
+
+<p>Further analysis requires finding the specific form of the gradients. Again, setting $Y = XAB$, we can derive:</p>
+
+\begin{equation}\frac{\partial \mathcal{L}}{\partial A} = X^{\top}\frac{\partial \mathcal{L}}{\partial Y}B^{\top},\quad \frac{\partial \mathcal{L}}{\partial B} = A^{\top} X^{\top}\frac{\partial \mathcal{L}}{\partial Y}\end{equation}
+
+<p>Readers unfamiliar with matrix calculus might be confused by the derivation of the above results. In fact, I am not very familiar with it either, but there is a simple trick that can be used. For example, with $\frac{\partial \mathcal{L}}{\partial A}$, we know it is an $n\times r$ matrix (same shape as $A$). Similarly, $\frac{\partial \mathcal{L}}{\partial Y}$ is a $b\times m$ matrix. According to the chain rule, we know that $\frac{\partial \mathcal{L}}{\partial A}$ should be the product of $\frac{\partial \mathcal{L}}{\partial Y}$, $X$, and $B$. Then we just figure out how these three matrices must be multiplied according to matrix multiplication rules to yield an $n\times r$ matrix.</p>
+
+<p>After finding the specific forms of $\frac{\partial \mathcal{L}}{\partial A}$ and $\frac{\partial \mathcal{L}}{\partial B}$, there is a quick way to understand LoRA+. First, $\Delta \mathcal{L}_A$ is proportional to $\left\Vert\frac{\partial\mathcal{L}}{\partial A}\right\Vert_1$. This is the sum of the absolute values of $nr$ components. If each component is roughly equal, this means $\Delta \mathcal{L}_A$ is roughly proportional to $nr$. Second, $\frac{\partial\mathcal{L}}{\partial A}$ is linear with respect to $B$, so we can roughly assume the magnitude of each component of $\frac{\partial\mathcal{L}}{\partial A}$ is proportional to the magnitude of the components of $B$. Combining these, $\Delta \mathcal{L}_A$ is simultaneously proportional to $nr$ and the magnitude of $B$. By the same logic, $\Delta \mathcal{L}_B$ is also simultaneously proportional to $mr$ and the magnitude of $A$. Earlier in the "<a href="#Numerical_Stability">Numerical Stability</a>" section, we said that for forward stability, the magnitude of $B$ should be greater than $A$ (proportional to their approximate standard deviations $\sqrt{1/r}$ and $\sqrt{1/n}$). Thus, for $\Delta \mathcal{L}_A$ and $\Delta \mathcal{L}_B$ to be of comparable size, we should have the approximation:</p>
+
+\begin{equation}\eta_A \times nr \times \sqrt{1/r} \approx \eta_B \times mr \times \sqrt{1/n}\quad\Rightarrow\quad \frac{\eta_B}{\eta_A} \approx \frac{n}{m}\sqrt{\frac{n}{r}}\end{equation}
+
+<p>Considering that in actual use, we often have $m=n$ and $r=\mathcal{O}(1)$, this can be simply written as:</p>
+
+\begin{equation}\frac{\eta_B}{\eta_A} = \mathcal{O}(\sqrt{n})\end{equation}
+
+<p>But we're not done yet. We need to check if the result is self-consistent because one of the conditions we used was "forward numerical stability," which has so far only been an ideal assumption. How do we make the assumption hold as much as possible? The way to overcome one assumption is to introduce another:</p>
+
+<blockquote>
+  In the Adam optimizer, if the ratio of the learning rates of two parameters is $\lambda$, then after long-term training, the ratio of the magnitudes of these two parameters is also $\lambda$.
+</blockquote>
+
+<p>According to the Adam approximation eq $\eqref{eq:sign-sgd}$, the magnitude of each step's increment is indeed proportional to the learning rate. However, the total update result is not simply the sum of each step. Nevertheless, this assumption feels like it "seems somewhat reasonable, but not entirely reasonable." But it doesn't matter. Assumptions are usually like this—as long as they are somewhat reasonable, the rest depends on belief. Under this assumption, if we train with a learning rate ratio of $\frac{\eta_B}{\eta_A} = \mathcal{O}(\sqrt{n})$, then the ratio of the magnitudes of the two parameters $B$ and $A$ will also be $\mathcal{O}(\sqrt{n})$. Previously, we expected them to have approximate standard deviations of $\sqrt{1/r}$ and $\sqrt{1/n}$, the ratio of which is exactly $\mathcal{O}(\sqrt{n})$. The result is perfectly self-consistent!</p>
+
+<p>The result in the original paper is slightly different; it gives the answer $\mathcal{O}(n)$. This is because the original paper considers $\Delta A$ and $\Delta B$ having equal increments relative to $Y$. However, $Y$ is only the output of a model layer and does not represent the final effectiveness. Therefore, this approach is slightly flawed. Although the original paper also attempted to link the increment of $Y$ to the increment of $\mathcal{L}$, it did not expand the calculations carefully, leading to a discrepancy in the calculated result. Furthermore, the derivation in the original paper, in principle, only applies to the specific case of $b=1, r=1, m=n$. The general case of $b > 1, r > 1$ is simply extended, which means the analysis process is not sufficiently general.</p>
+
+<p>Of course, whether it is $\mathcal{O}(n)$ or $\mathcal{O}(\sqrt{n})$ is not extremely important; in practice, you still have to tune it. However, LoRA+ conducted experiments on various model sizes where $r$ was typically 8, and $n$ ranged from 768 to 4096. Finally, they concluded that the recommended default learning rate ratio is $2^4 = 16$. This happens to be quite close to $\sqrt{n/r}$, suggesting the optimal value is closer to $\mathcal{O}(\sqrt{n})$ than $\mathcal{O}(n)$.</p>
+
+<h2>Summary</h2>
+
+<p>In this article, we introduced and derived a result called "LoRA+," which supports the inherent asymmetry between the two low-rank matrices $A$ and $B$ in LoRA. Regardless of which matrix is initialized to zero, the learning rate of $B$ should be set larger than that of $A$ to achieve better results.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10001.html" style="color: #005fcc;">https://kexue.fm/archives/10001</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

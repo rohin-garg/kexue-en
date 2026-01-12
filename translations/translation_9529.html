@@ -1,0 +1,276 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/9529">Why are current LLMs all using a Decoder-only architecture?</a></h1>
+
+    <p>By 苏剑林 | March 17, 2023</p>
+
+    <p>LLM is an abbreviation for "Large Language Model," which currently generally refers to language models with more than 10 billion parameters, primarily oriented towards <strong>text generation</strong> tasks. Unlike the "hundred flowers blooming" of small-scale models (around 1 billion or fewer), the current status of LLMs is that most research focuses on the Decoder-only architecture. Aside from OpenAI, which has always insisted on the Decoder-only GPT series, even companies like Google, which haven't placed all their bets on Decoder-only, have invested significant energy into researching Decoder-only models, such as PaLM. So, why has the Decoder-only architecture become the mainstream choice for LLMs?</p>
+
+    <p>There is a similar question on Zhihu: <a href="https://www.zhihu.com/question/588325646">"Why are current LLMs all using a Decoder-only architecture?"</a> Most answers there focus on the advantages of Decoder-only in terms of training efficiency and engineering implementation. But does it have theoretical advantages? This article attempts to provide a simple analysis from that perspective.</p>
+
+    <h2 id="Unified-Perspective">Unified Perspective</h2>
+
+    <p>It should be noted that the largest models I have trained are only at the billion-parameter level, so from the perspective of LLMs, I might not be qualified to answer this question. The following content is just my attempt to provide an answer based on some research experience and a theoretical perspective. Many inferences are based on my own experimental results, and some parts may conflict with the results of certain literature; please use your own judgment.</p>
+
+    <p>We know that general NLP tasks involve predicting an output based on a given input; completely unconditional random generation is rare. In other words, any NLP task can be decomposed into an "input" part and an "output" part. We can call the model that processes the "input" the Encoder and the model that generates the "output" the Decoder. Thus, all tasks can be understood from the "Encoder-Decoder" perspective. The difference between different models lies in the attention patterns of the Encoder and Decoder, and whether parameters are shared:</p>
+
+    <div style="overflow-x: auto;">
+    $$\begin{array}{c|ccc}
+    \hline
+    & \text{Encoder Attention} & \text{Decoder Attention} & \text{Shared Parameters} \\
+    \hline
+    \text{GPT} & \text{Unidirectional} & \text{Unidirectional} & \text{Yes} \\
+    \text{UniLM} & \text{Bidirectional} & \text{Unidirectional} & \text{Yes} \\
+    \text{T5} & \text{Bidirectional} & \text{Unidirectional} & \text{No} \\
+    \hline
+    \end{array}$$
+    </div>
+
+    <p>Here, GPT is the representative of Decoder-only; <a href="translation_6933.html">UniLM</a> is a Decoder architecture similar to GPT but uses a mixed attention pattern; <a href="translation_7867.html">T5</a> is the representative of the Encoder-Decoder architecture, which Google is particularly interested in.</p>
+
+    <p>
+        <a href="https://kexue.fm/usr/uploads/2023/03/2125837001.svg"><img src="https://kexue.fm/usr/uploads/2023/03/2125837001.svg" alt="Bidirectional" /></a><br />
+        Bidirectional
+    </p>
+
+    <p>
+        <a href="https://kexue.fm/usr/uploads/2023/03/1850915382.svg"><img src="https://kexue.fm/usr/uploads/2023/03/1850915382.svg" alt="Mixed" /></a><br />
+        Mixed
+    </p>
+
+    <p>
+        <a href="https://kexue.fm/usr/uploads/2023/03/1727344496.svg"><img src="https://kexue.fm/usr/uploads/2023/03/1727344496.svg" alt="Unidirectional (Forward)" /></a><br />
+        Unidirectional (Forward)
+    </p>
+
+    <p>
+        <a href="https://kexue.fm/usr/uploads/2023/07/316642906.svg"><img src="https://kexue.fm/usr/uploads/2023/07/316642906.svg" alt="Unidirectional (Backward)" /></a><br />
+        Unidirectional (Backward)
+    </p>
+
+    <p>Google conducted extensive comparative experiments in the <a href="https://papers.cool/arxiv/1910.10683">T5</a> and <a href="https://papers.cool/arxiv/2205.05131">UL2</a> papers. The results consistently showed the superiority of the Encoder-Decoder architecture over Decoder-only. However, since the model scales in these two papers are not large from an LLM perspective, and since most LLMs are indeed Decoder-only, whether this advantage carries over to larger scales and the reason for the advantage itself remain unanswered.</p>
+
+    <h2 id="Comparative-Experiments">Comparative Experiments</h2>
+
+    <p>From the table above, we can see that comparing GPT with UniLM is actually more of a controlled variable study. If GPT is directly compared with T5, two variables are actually introduced: the attention for the input part is changed to bidirectional, and the parameters are doubled. The reason they are compared together is that their inference costs are roughly the same.</p>
+
+    <p>Compared to GPT, since T5 has two variables, we cannot determine whether the advantage of the Encoder-Decoder architecture comes from the bidirectional attention in the input part or from the doubling of parameters. To this end, I conducted comparative experiments between GPT and UniLM on a model scale of 1 billion parameters. The results showed that for the same input and output training from scratch (Loss is only calculated for the output part, and the only difference is the attention pattern of the input part), UniLM showed no advantage over GPT and was even worse in some tasks.</p>
+
+    <p>Assuming this conclusion is representative, we can tentatively conclude:</p>
+
+    <blockquote>
+        Changing the attention of the input part to bidirectional does not bring benefits; the advantage of the Encoder-Decoder architecture likely stems merely from the doubling of parameters.
+    </blockquote>
+
+    <p>In other words, given the same number of parameters and the same inference cost, the Decoder-only architecture is likely the optimal choice. Of course, to fully verify this guess, more supplemental experiments are needed, such as keeping Encoder and Decoder parameters non-shared but changing the Encoder to unidirectional attention, or to the mixed forward-backward attention introduced in the next section, and then comparing it with the standard Encoder-Decoder architecture. However, due to my limited computing power, I leave these experiments to interested readers.</p>
+
+    <h2 id="Low-rank-Issue">Low-rank Issue</h2>
+
+    <p>Why does "changing the attention of the input part to bidirectional not bring benefits"? Since the input part doesn't need to consider autoregressive generation, wouldn't a complete attention matrix intuitively be better? I suspect this is likely due to the performance degradation caused by the low-rank issue of bidirectional attention.</p>
+
+    <p>As is well known, an Attention matrix is generally formed by adding a softmax to a matrix resulting from a low-rank decomposition. Specifically, it involves multiplying an $n \times d$ matrix by a $d \times n$ matrix and then adding a softmax ($n \gg d$). This form of Attention matrix suffers from a decline in expressive power due to the low-rank issue. For a detailed analysis, please refer to <a href="https://papers.cool/arxiv/2103.03404">"Attention is Not All You Need: Pure Attention Loses Rank Doubly Exponentially with Depth"</a>. In contrast, the Attention matrix of a Decoder-only architecture is a lower triangular matrix. Note that the determinant of a triangular matrix is the product of its diagonal elements. Because of the softmax, the diagonal elements must all be positive, so its determinant must be positive. This means that the Attention matrix of a Decoder-only architecture is necessarily full-rank! Full-rank implies a theoretically stronger expressive power. In other words, the Attention matrix of the Decoder-only architecture theoretically has stronger expressive power, and changing it to bidirectional attention might instead make it insufficient.</p>
+
+    <p>There is also an indirect phenomenon supporting this view: the performance gap between <a href="translation_7546.html">Linear Attention</a> and standard Attention on language modeling tasks (unidirectional attention) is smaller than the gap on MLM tasks (bidirectional attention). That is, Linear Attention performs relatively worse on bidirectional attention tasks. This is because when performing language modeling tasks, the Attention matrix of Linear Attention is a full-rank lower triangular matrix just like standard Attention. When performing MLM tasks, the rank of the Linear Attention matrix is lower than that of the standard Attention matrix (Linear Attention is an $n \times d$ matrix multiplied by a $d \times n$ matrix, so its rank never exceeds $d$; standard Attention is an $n \times d$ matrix multiplied by a $d \times n$ matrix followed by a softmax, and softmax has some rank-increasing effect; refer to the "Low-rank Issue" section and comment area in <a href="translation_8338.html">"Transformer Upgrade Road: 3. From Performer to Linear Attention"</a>).</p>
+
+    <p>Conversely, can this conclusion be used to improve bidirectional attention models like BERT? The idea is not hard to conceive. For example, in Multi-Head Attention, half of the heads' Attention matrices could be truncated into lower triangular matrices (forward attention), and the other half truncated into upper triangular matrices (backward attention). Or, the Attention matrices of odd-numbered layers could be truncated into lower triangular matrices (forward attention), and even-numbered layers truncated into upper triangular matrices (backward attention). Both designs could maintain the overall bidirectional interaction of the model (unlike GPT, where a previous token cannot interact with a subsequent token) while integrating the full-rank advantage of unidirectional attention.</p>
+
+    <p>I also conducted simple comparative experiments and found that the mixed forward-backward attention performs slightly better in MLM tasks than full bidirectional attention models like BERT:</p>
+
+    <p>
+        <a href="https://kexue.fm/usr/uploads/2023/03/4233260423.svg"><img src="https://kexue.fm/usr/uploads/2023/03/4233260423.svg" alt="Comparison of training curves between full bidirectional attention and mixed forward-backward attention" /></a><br />
+        Comparison of training curves between full bidirectional attention and mixed forward-backward attention
+    </p>
+
+    <p>The good news is that there is a slight advantage, providing indirect support for the previous guess. The bad news is that this experiment was only conducted on a base version model (100 million parameters); the effect on larger models is still unknown.</p>
+
+    <h2 id="Article-Summary">Article Summary</h2>
+
+    <p>Therefore, the answer I offer is: LLMs primarily use the Decoder-only architecture not only because of its advantages in training efficiency and engineering implementation but also because, theoretically, the bidirectional attention of the Encoder suffers from a low-rank issue that may weaken the model's expressive power. For generation tasks, introducing bidirectional attention offers no substantial benefit. The reason the Encoder-Decoder architecture performs better in certain scenarios is likely just because it has double the parameters. Thus, for the same number of parameters and the same inference cost, the Decoder-only architecture is the optimal choice.</p>
+
+    <hr />
+
+    <p><em><strong>Original Address:</strong> <a href="translation_9529.html">https://kexue.fm/archives/9529</a></em></p>
+
+    <p>Su Jianlin. (Mar. 17, 2023). "Why are current LLMs all using a Decoder-only architecture?" [Blog post]. Retrieved from <a href="translation_9529.html">https://kexue.fm/archives/9529</a></p>
+
+    </article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9529.html" style="color: #005fcc;">https://kexue.fm/archives/9529</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

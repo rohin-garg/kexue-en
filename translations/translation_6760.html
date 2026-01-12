@@ -1,0 +1,337 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/6760">A Concise Introduction to VQ-VAE: Quantized Autoencoder</a></h1>
+
+<p>By 苏剑林 | June 24, 2019</p>
+
+<p>I recall seeing VQ-VAE quite some time ago, but I didn't have much interest in it then. Recently, two things have reignited my interest. First, <a href="https://papers.cool/arxiv/1906.00446">VQ-VAE-2</a> achieved generation results comparable to BigGAN (according to <a href="https://mp.weixin.qq.com/s/GJr-YtV84eV1KbkyVSkcBA">reports by Machine Heart</a>); second, while reading the NLP paper <a href="https://papers.cool/arxiv/1905.12752">"Unsupervised Paraphrasing without Translation"</a>, I noticed it also utilized VQ-VAE. These two events suggest that VQ-VAE is a fairly versatile and interesting model, so I decided to study it thoroughly.</p>
+
+<p>
+    <a href="https://kexue.fm/usr/uploads/2019/06/3057025890.png">
+        <img src="https://kexue.fm/usr/uploads/2019/06/3057025890.png" alt="My personal reproduction of VQ-VAE reconstruction on CelebA. Note that details are preserved well, though some blurriness appears upon magnification." style="max-width:100%;">
+    </a>
+    <br>
+    <em>My personal reproduction of VQ-VAE reconstruction on CelebA. Note that details are preserved well, though some blurriness appears upon magnification.</em>
+</p>
+
+<h2>Model Overview</h2>
+<p>VQ-VAE (Vector Quantised - Variational AutoEncoder) first appeared in the paper <a href="https://papers.cool/arxiv/1711.00937">"Neural Discrete Representation Learning"</a>, which, like VQ-VAE-2, is a major work from the Google team.</p>
+
+<h3>Interesting yet Abstruse</h3>
+<p>As an autoencoder, a distinct feature of VQ-VAE is that the vectors it encodes are discrete. In other words, every element of the final encoding vector is an integer. This is the meaning of "Quantised" (similar to "Quantum" in quantum mechanics, referring to discretization).</p>
+
+<p>Despite the entire model being continuous and differentiable, the resulting encoding vectors are discrete, and the reconstruction quality appears very sharp (as shown in the image at the beginning). This implies VQ-VAE contains some interesting and valuable techniques worth learning. However, after reading the original paper, it feels somewhat difficult to grasp—not because of the same dense technicality found in the ON-LSTM paper, but because of a sense of being "intentionally abstruse."</p>
+
+<p>First, once you finish the paper, you realize VQ-VAE is actually an AE (Autoencoder) rather than a VAE (Variational Autoencoder). I am not sure why the authors felt compelled to use probabilistic language to tether it to VAE, as this significantly increases the difficulty of understanding. Second, a core step in VQ-VAE is the Straight-Through Estimator, an optimization trick for discrete latent variables. The paper lacks a detailed explanation, making it necessary to look at the source code to understand what is being said. Finally, the core idea of the model isn't explained well; it feels as if the paper focuses purely on presenting the model itself without explaining the underlying ideology.</p>
+
+<h3>PixelCNN</h3>
+<p>To trace the ideology of VQ-VAE, one must discuss autoregressive models. The strategy VQ-VAE uses for generative modeling stems from autoregressive models like <a href="https://papers.cool/arxiv/1601.06759">PixelRNN</a> and <a href="https://papers.cool/arxiv/1606.05328">PixelCNN</a>. These models recognize that the images we want to generate are actually discrete rather than continuous. Take a CIFAR-10 image as an example: it is a $32 \times 32$ image with 3 channels. In other words, it is a $32 \times 32 \times 3$ matrix where each element is an integer from 0 to 255. Thus, we can view it as a sentence with a length of $32 \times 32 \times 3 = 3072$ and a vocabulary size of 256. We can then use language modeling methods to generate the image pixel-by-pixel, recursively (predicting the next pixel given all previous pixels). This is the so-called autoregressive approach:</p>
+
+\begin{equation}p(x)=p(x_1)p(x_2|x_1)\dots p(x_{3n^2}|x_1,x_2,\dots,x_{3n^2-1})\end{equation}
+
+<p>where each $p(x_1), p(x_2|x_1), \dots, p(x_{3n^2}|x_1,x_2,\dots,x_{3n^2-1})$ is a 256-way classification problem, albeit with different dependencies.</p>
+
+<p>Introductory materials for PixelRNN and PixelCNN are readily available online, so I won't repeat them here. I feel one could even ride the Bert wave and create a "PixelAtt" (Attention) to do this. Research on autoregressive models mainly focuses on two aspects: first, how to design the recursion order to better generate samples, as image sequences aren't simple 1D sequences (they are at least 2D or 3D). Whether you go "left-to-right then top-to-bottom," "top-to-bottom then left-to-right," or "center-outwards" significantly impacts the generation. Second, research focuses on accelerating the sampling process. Among the literature I've read, a relatively recent achievement in autoregressive models is the ICLR 2019 work <a href="https://papers.cool/arxiv/1812.01608">"Generating High Fidelity Images with Subscale Pixel Networks and Multidimensional Upscaling"</a>.</p>
+
+<p>The autoregressive method is robust and allows for effective probability estimation, but it has one fatal flaw: it is <strong>slow</strong>. Because it generates pixel-by-pixel, random sampling must be performed for every single pixel. The CIFAR-10 example is considered a small image; convincing image generation today requires at least $128 \times 128 \times 3$, totaling nearly 50,000 pixels. Generating a 50,000-length "sentence" pixel-by-pixel is extremely time-consuming. Furthermore, such long sequences are difficult for both RNN and CNN models to capture long-range dependencies.</p>
+
+<p>Original autoregressive methods also have an issue: they decouple the relationship between categories. While pixels are discrete (making 256-way classification viable), continuous pixel values are actually very similar. Pure classification fails to capture this connection. Mathematically, our cross-entropy objective is $-\log p_t$. If the target pixel is 100 but I predict 99, since they are different classes, $p_t$ might be near 0, making $-\log p_t$ very large. Visually, however, there is little difference between a pixel value of 100 or 99; such a large penalty shouldn't exist.</p>
+
+<h2>VQ-VAE</h2>
+
+<p>To address the inherent flaws of autoregressive models, VQ-VAE proposes a solution: first perform dimension reduction, and then use PixelCNN to model the encoding vectors.</p>
+
+<h3>Dimension Reduction and Discretization</h3>
+<p>This solution seems natural, yet it is actually anything but.</p>
+
+<p>Because PixelCNN generates discrete sequences, modeling encoding vectors with PixelCNN implies those vectors must also be discrete. However, standard dimension reduction methods, like autoencoders, produce continuous latent variables that cannot directly yield discrete variables. Furthermore, generating discrete variables often entails gradient vanishing problems. Additionally, how can we ensure the image doesn't lose significant detail during the reduction and reconstruction process? If the distortion is severe, or if it performs worse than a standard VAE, then VQ-VAE would have no value.</p>
+
+<p>Fortunately, VQ-VAE provides an effective training strategy to solve these two problems.</p>
+
+<h3>Nearest Neighbor Reconstruction</h3>
+<p>In VQ-VAE, an $n \times n \times 3$ image $x$ is first passed into an $encoder$ to obtain a continuous encoding vector $z$:</p>
+
+\begin{equation}z = encoder(x)\end{equation}
+
+<p>Here, $z$ is a vector of size $d$. Additionally, VQ-VAE maintains an Embedding layer, which we can call a codebook, denoted as:</p>
+
+\begin{equation}E = [e_1, e_2, \dots, e_K]\end{equation}
+
+<p>where each $e_i$ is a vector of size $d$. Then, VQ-VAE uses a nearest neighbor search to map $z$ to one of these $K$ vectors:</p>
+
+\begin{equation}z\to e_k,\quad k = \mathop{\text{argmin}}_j \Vert z - e_j\Vert_2\end{equation}
+
+<p>We denote the codebook vector corresponding to $z$ as $z_q$, and we consider $z_q$ to be the final encoding result. Finally, $z_q$ is passed through a $decoder$ to reconstruct the original image $\hat{x}=decoder(z_q)$.</p>
+
+<p>The entire workflow is:</p>
+
+\begin{equation}x\xrightarrow{encoder} z \xrightarrow{\text{Nearest Neighbor}} z_q \xrightarrow{decoder}\hat{x}\end{equation}
+
+<p>In this way, because $z_q$ is one of the vectors in codebook $E$, it is effectively equivalent to one of the integers $1, 2, \dots, K$. Thus, this entire process essentially encodes the image into an integer.</p>
+
+<p>Of course, the process above is simplified. If we only encode into a single vector, reconstruction would inevitably lose detail and generalization would be hard to guarantee. Therefore, in practice, multiple convolutional layers are used to encode $x$ into an $m \times m$ grid of vectors of size $d$:</p>
+
+\begin{equation}z = \begin{pmatrix}z_{11} & z_{12} & \dots & z_{1m}\\
+z_{21} & z_{22} & \dots & z_{2m}\\
+\vdots & \vdots & \ddots & \vdots\\
+z_{m1} & z_{m2} & \dots & z_{mm}\\
+\end{pmatrix}\end{equation}
+
+<p>That is, the total size of $z$ is $m \times m \times d$, preserving spatial structure. Each vector is then mapped to one in the codebook using the aforementioned method to obtain $z_q$ of the same size, which is then used for reconstruction. Consequently, <strong>$z_q$ is equivalent to an $m \times m$ integer matrix, achieving discrete encoding</strong>.</p>
+
+<h3>Designing Your Own Gradients</h3>
+<p>We know that for a standard autoencoder, we can train directly using the following loss:</p>
+
+\begin{equation}\Vert x - decoder(z)\Vert_2^2\end{equation}
+
+<p>However, in VQ-VAE, we use $z_q$ rather than $z$ for reconstruction, so it seems we should use this loss instead:</p>
+
+\begin{equation}\Vert x - decoder(z_q)\Vert_2^2\end{equation}
+
+<p>The problem is that the construction of $z_q$ involves an $\text{argmin}$ operation, which is non-differentiable. Therefore, if we used the second loss, we couldn't update the $encoder$.</p>
+
+<p>In other words, our actual goal is to minimize $\Vert x - decoder(z_q)\Vert_2^2$, but it's hard to optimize; meanwhile, $\Vert x - decoder(z)\Vert_2^2$ is easy to optimize but isn't our real target. What do we do? A crude method would be to use both:</p>
+
+\begin{equation}\Vert x - decoder(z)\Vert_2^2 + \Vert x - decoder(z_q)\Vert_2^2\end{equation}
+
+<p>But this isn't ideal, as minimizing $\Vert x - decoder(z)\Vert_2^2$ is not our objective and adds extra constraints.</p>
+
+<p>VQ-VAE uses a very clever and direct method called the Straight-Through Estimator (STE). It originated from Bengio's paper <a href="https://papers.cool/arxiv/1308.3432">"Estimating or Propagating Gradients Through Stochastic Neurons for Conditional Computation"</a>. The VQ-VAE paper simply cites this without much explanation. In fact, reading the original Bengio paper is quite unfriendly; looking at source code is better.</p>
+
+<p>The core idea of Straight-Through is simple: during the forward pass, you can use the desired variable (even if it's non-differentiable), but during the backward pass, you use a gradient that you designed for it. Based on this idea, the loss function we design is:</p>
+
+\begin{equation}\Vert x - decoder(z + sg[z_q - z])\Vert_2^2\end{equation}
+
+<p>where $sg$ stands for "stop gradient," meaning its gradient is not calculated. In the forward pass for calculating the loss, this is identical to $decoder(z + z_q - z) = decoder(z_q)$. During the backward pass for gradients, since $z_q - z$ contributes no gradient, it is equivalent to $decoder(z)$, which allows us to optimize the $encoder$.</p>
+
+<p>As a side note, based on this idea, we can customize gradients for many functions. For example, $x + sg[\text{relu}(x) - x]$ defines the gradient of $\text{relu}(x)$ as consistently 1, while remaining identical to $\text{relu}(x)$ for the error calculation itself. We can use the same method to arbitrarily assign a gradient to a function; whether it has practical value depends on the specific task.</p>
+
+<h3>Maintaining the Codebook</h3>
+<p>Note that according to the design of the nearest neighbor search in VQ-VAE, we expect $z_q$ and $z$ to be very close (in fact, each vector in the codebook $E$ ends up acting like a cluster center for various $z$). However, this isn't guaranteed. Even if both $\Vert x - decoder(z)\Vert_2^2$ and $\Vert x - decoder(z_q)\Vert_2^2$ are small, it doesn't necessarily mean $z_q$ and $z$ are similar (just as $f(z_1)=f(z_2)$ doesn't imply $z_1 = z_2$).</p>
+
+<p>So, to bring $z_q$ and $z$ closer, we can directly add $\Vert z - z_q\Vert_2^2$ to the loss:</p>
+
+\begin{equation}\Vert x - decoder(z + sg[z_q - z])\Vert_2^2 + \beta \Vert z - z_q\Vert_2^2\end{equation}
+
+<p>Beyond this, we can be even more precise. Since the codebook ($z_q$) is relatively free while $z$ must ensure reconstruction quality, we should primarily "move $z_q$ toward $z$" rather than "move $z$ toward $z_q$." Since the gradient of $\Vert z_q - z\Vert_2^2$ is the sum of the gradient with respect to $z_q$ and the gradient with respect to $z$, we can decompose it equivalently as:</p>
+
+\begin{equation}\Vert sg[z] - z_q\Vert_2^2 + \Vert z - sg[z_q]\Vert_2^2\end{equation}
+
+<p>The first term fixes $z$ and moves $z_q$ toward $z$; the second term fixes $z_q$ and moves $z$ toward $z_q$. Note this "equivalence" applies to the backward pass (gradients); for the forward pass (loss), it is twice the original. Based on our discussion, we want $z_q$ to move toward $z$ more than vice-versa, so we can adjust the ratio in the final loss:</p>
+
+\begin{equation}\Vert x - decoder(z + sg[z_q - z])\Vert_2^2 + \beta \Vert sg[z] - z_q\Vert_2^2 + \gamma \Vert z - sg[z_q]\Vert_2^2\end{equation}
+
+<p>where $\gamma < \beta$. In the original paper, $\gamma = 0.25 \beta$ is used.</p>
+
+<p>(Note: One can also update the codebook using an exponential moving average; please see the original paper for details.)</p>
+
+<h3>Fitting the Code Distribution</h3>
+<p>After this extensive design, we have finally encoded the image into an $m \times m$ integer matrix. Because this $m \times m$ matrix preserves the spatial information of the original input image to some extent, we can use autoregressive models like PixelCNN to fit the encoding matrix (i.e., modeling the prior distribution). Once the distribution is obtained via PixelCNN, we can randomly generate a new encoding matrix, map it to a 3D real-valued matrix $z_q$ (rows $\times$ columns $\times$ encoding dimension) using codebook $E$, and finally pass it through the $decoder$ to get an image.</p>
+
+<p>Generally, the current $m \times m$ is much smaller than the original $n \times n \times 3$. For instance, in my experiments with CelebA data, an original $128 \times 128 \times 3$ image can be encoded into a $32 \times 32$ matrix with almost no distortion. Thus, modeling the encoding matrix with an autoregressive model is much easier than modeling the original image directly.</p>
+
+<h3>Personal Implementation</h3>
+<p>This is my own VQ-VAE implementation using Keras (Python 2.7 + Tensorflow 1.8 + Keras 2.2.4, with the model part referencing <a href="https://github.com/nadavbh12/VQ-VAE">this</a>):</p>
+
+<blockquote>
+    <strong><a href="https://github.com/bojone/vae/blob/master/vq_vae_keras.py">https://github.com/bojone/vae/blob/master/vq_vae_keras.py</a></strong>
+</blockquote>
+
+<p>The main body of this script only contains the VQ-VAE encoding and reconstruction (the image at the beginning of the post was reconstructed with this script; the results are quite good). It does not include the PixelCNN modeling of the prior distribution. However, the comments at the end include an example of using Attention to model the prior. After modeling the prior distribution with Attention, random sampling results look like this:</p>
+
+<p>
+    <a href="https://kexue.fm/usr/uploads/2019/06/2483775767.png">
+        <img src="https://kexue.fm/usr/uploads/2019/06/2483775767.png" alt="Randomly sampled results after modeling the prior with PixelAtt (randomly picked, not screened)" style="max-width:100%;">
+    </a>
+    <br>
+    <em>Randomly sampled results after modeling the prior with PixelAtt (randomly picked, not screened)</em>
+</p>
+
+<p>The results indicate that random sampling is feasible, but the generation quality isn't perfect. I used PixelAtt instead of PixelCNN because, in my reproduction, PixelCNN performed significantly worse than PixelAtt. PixelAtt has specific advantages, though it is memory-hungry and prone to OOM. My personal reproduction not being perfect doesn't mean the method itself is flawed; it could be due to my lack of tuning or the network not being deep enough. Personally, I am optimistic about research into discrete encoding.</p>
+
+<h2>Final Summary</h2>
+
+<p>By now, I've finally explained VQ-VAE in a way I consider clear. Looking back at the text, there's actually no hint of VAE; as I said, it is simply an AE with discrete vector encoding. The reason it can reconstruct sharp images is that it preserves a sufficiently large feature map during encoding.</p>
+
+<p>Once you understand VQ-VAE, the newly released Version 2.0 isn't hard to grasp. VQ-VAE-2 has almost no fundamental technical updates compared to VQ-VAE; it just performs encoding and decoding in two layers (one global, one local), further reducing blurriness (or at least making it less noticeable, though if you look closely at VQ-VAE-2's large images, slight blurriness remains).</p>
+
+<p>Nevertheless, it's worth acknowledging that the VQ-VAE model is quite interesting. Concepts like discrete encoding and using Straight-Through to assign gradients are novel and worth serious study. They deepen our understanding of deep learning models and optimization (if you can design the gradients, are you still worried about designing the model?).</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6760.html" style="color: #005fcc;">https://kexue.fm/archives/6760</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

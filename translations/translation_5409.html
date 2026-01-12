@@ -1,0 +1,503 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/5409">DGCNN: A CNN-based Reading Comprehension Question Answering Model</a></h1>
+
+<p>By 苏剑林 | April 15, 2018</p>
+
+<p><strong>Update 2019.08.20: An open-source Keras version has been released (<a href="translation_6906.html">https://kexue.fm/archives/6906</a>)</strong></p>
+
+<p>As early as the beginning of the year in the <a href="translation_4765.html">introductory article on "Attention is All You Need"</a>, I promised to share my experience using CNNs in NLP. However, I haven't had the chance until now. These past few days, I finally decided to organize the relevant content.</p>
+
+<h2>Background</h2>
+
+<p>Without further ado, let's first introduce the basic situation of the model.</p>
+
+<h3>Model Features</h3>
+
+<p>This model—which I call <strong>DGCNN</strong>—is based on CNNs and a simple Attention mechanism. Since it does not use an RNN structure, it is quite fast. Moreover, it is specifically tailored for WebQA-style tasks, making it very lightweight. Models at the top of the SQuAD leaderboard, such as AoA and R-Net, all use RNNs and are accompanied by complex attention interaction mechanisms, none of which appear in DGCNN.</p>
+
+<p><strong>This is a model that can be trained in just a few hours on a GTX 1060!</strong></p>
+
+<p>DGCNN, which stands for Dilated Gated Convolutional Neural Network, as the name suggests, integrates two relatively new convolutional techniques: Dilated Convolution and Gated Convolution. By adding some handcrafted features and tricks, the model achieves state-of-the-art results while remaining lightweight and fast. At the time of writing this article, the model described here reached the top of the leaderboard with a score (average of accuracy and F1) of 0.7583. It is currently the only model that has never dropped out of the top three and has won the weekly championship the most times.</p>
+
+<h3>Competition Status</h3>
+
+<p>This model was a product of my participation in the CIPS-SOGOU Question Answering Competition on behalf of "Guangzhou Flame Technology Co., Ltd." The competition started last October, but it has been somewhat dragging on, with no signs of ending or moving to new tasks.</p>
+
+<p>Actually, in the first two or three months, the competition was quite intense. Many companies and universities submitted models, and the leaderboard was constantly being refreshed. I feel it's a bit of a letdown by SOGOU to be so indecisive, as it doesn't quite respect the enthusiasm of the participants. Most importantly, there have been no public notices about plans, changes, or the end date; contestants have just been left in limbo. I later heard the deadline is before this year's CIPS conference... a competition lasting a whole year??</p>
+
+<h3>Task Description</h3>
+
+<p>So far, this SOGOU competition has only held the factoid portion, which is basically the same as the <a href="translation_4338.html">WebQA dataset</a> previously released by Baidu. That is, a "One Question + Multiple Materials" format, where the goal is to collectively decide the precise answer (usually an entity fragment) from multiple material segments.</p>
+
+<blockquote>
+<p>Question: How many years of social security contributions are needed to receive a pension?<br>
+Answer: 15 years<br>
+Material 1: It's best not to quit; if you pay for 15 years until retirement, you can receive a pension. If there's a special reason you must quit, you can continue paying individually.<br>
+Material 2: Hello! Once pension insurance has been paid for 15 years and you reach retirement age, you can receive a pension.<br>
+Material 3: In life, everyone pays social security. How many years before retirement... regarding how many years you need to pay for social security to get a pension, it was introduced in the text above.</p>
+</blockquote>
+
+<p>Compared to WebQA, the training set provided by SOGOU has much more noise, which increases the prediction difficulty. Furthermore, I believe this WebQA-style task leans more toward retrieval matching and preliminary semantic understanding techniques. This differs significantly from foreign tasks like <a href="https://rajpurkar.github.io/SQuAD-explorer/">SQuAD</a> (one long passage + multiple questions). In the SQuAD corpus, some questions involve complex reasoning, so the models at the top of the SQuAD leaderboard are typically more complex and massive.</p>
+
+<h2>The Model</h2>
+
+<p>Now, let's formally enter the introduction of the model~</p>
+
+<h3>Architecture Overview</h3>
+
+<p>First, let's look at a general diagram of the model.</p>
+
+<p style="text-align:center"><img src="https://kexue.fm/usr/uploads/2018/04/3028308731.png" alt="DGCNN General Diagram" /></p>
+
+<p>As seen from the schematic, as a "Reading Comprehension" or "Question Answering" model, the structure is almost as simple as it gets.</p>
+
+<p>The overall architecture of the model originates from the WebQA reference paper <a href="https://papers.cool/arxiv/1607.06275">"Dataset and Neural Recurrent Sequence Labeling Model for Open-Domain Factoid Question"</a>. This paper has several characteristics:</p>
+
+<blockquote>
+<p>1. It directly encodes the question with an LSTM to get a "question encoding," then concatenates it with each word vector in the material;<br>
+2. It manually extracts 2 co-occurrence features;<br>
+3. it treats the final prediction as a sequence labeling task, solved with a CRF.</p>
+</blockquote>
+
+<p>DGCNN essentially follows this line of thought. Our differences lie in:</p>
+
+<blockquote>
+<p>1. Replacing all LSTM parts in the original model with CNNs;<br>
+2. Extracting richer co-occurrence features (8 in total);<br>
+3. Removing the CRF and changing it to "0/1 labeling" to separately identify the start and end positions of the answer, which can be seen as a "half-pointer, half-labeling" structure.</p>
+</blockquote>
+
+<h3>Convolutional Structure</h3>
+
+<p>In this part, we analyze the Conv1D Block shown in the diagram.</p>
+
+<h4>Gated Mechanism</h4>
+
+<p>The convolutional structure used in the model comes from Facebook's <a href="https://papers.cool/arxiv/1705.03122">"Convolutional Sequence to Sequence Learning"</a>, which was also mentioned in <a href="translation_4823.html">"Sharing a Slide: Fancy Natural Language Processing"</a>. Assume the vector sequence we want to process is $\boldsymbol{X}=[\boldsymbol{x}_1,\boldsymbol{x}_2,\dots,\boldsymbol{x}_n]$. We can add a gate to a standard 1D convolution:</p>
+
+\[\boldsymbol{Y}=\text{Conv1D}_1(\boldsymbol{X}) \otimes \sigma\Big(\text{Conv1D}_2(\boldsymbol{X})\Big)\tag{1}\]
+
+<p>Note that the two Conv1D forms are identical (e.g., same number of kernels, window size), but the weights are not shared. This means the parameters are doubled. One uses a sigmoid activation, while the other has no activation function. They are then multiplied element-wise. Since the range of the sigmoid function is $(0,1)$, intuitively, it acts as a "valve" for each output of the Conv1D to control the flow. This is the GCNN structure, or it can be viewed as an activation function called GLU (Gated Linear Unit).</p>
+
+<p style="text-align:center"><img src="https://kexue.fm/usr/uploads/2018/04/1045230325.png" alt="Gated Conv with Residual" /></p>
+
+<p>In addition to its intuitive meaning, an advantage of GCNN is the lower risk of vanishing gradients because one part of the convolution does not have any activation function. If the input and output dimensions are the same, we add the input as well, i.e., use a residual structure:</p>
+
+\[\boldsymbol{Y}=\boldsymbol{X} + \text{Conv1D}_1(\boldsymbol{X}) \otimes \sigma\Big(\text{Conv1D}_2(\boldsymbol{X})\Big)\tag{2}\]
+
+<p>It is worth mentioning that we use <strong>residual structures not just to solve vanishing gradients, but to allow information to be transmitted through multiple channels.</strong> We can rewrite the above equation into a more illustrative equivalent form to see clearly how information flows:</p>
+
+\begin{align}\boldsymbol{Y}=&\boldsymbol{X}\otimes \Big(1-\boldsymbol{\sigma}\Big) + \text{Conv1D}_1(\boldsymbol{X}) \otimes \boldsymbol{\sigma}\\\
+\boldsymbol{\sigma} =& \sigma\Big(\text{Conv1D}_2(\boldsymbol{X})\Big)
+\end{align}\tag{3}
+
+<p>From equation $(3)$, we can see the flow of information more clearly: it passes directly through with a probability of $1-\sigma$ and passes through after transformation with a probability of $\sigma$. This form is very similar to the GRU model in recurrent neural networks.</p>
+
+<blockquote>
+<p><strong>Supplementary Derivation:</strong></p>
+\begin{align}
+\boldsymbol{Y}=&\boldsymbol{X}\otimes \Big[1-\sigma\Big(\text{Conv1D}_2(\boldsymbol{X})\Big)\Big] + \text{Conv1D}_1(\boldsymbol{X}) \otimes \sigma\Big(\text{Conv1D}_2(\boldsymbol{X})\Big)\\
+=&\boldsymbol{X} + \Big(\text{Conv1D}_1(\boldsymbol{X}) - \boldsymbol{X}\Big)\otimes \sigma\Big(\text{Conv1D}_2(\boldsymbol{X})\Big)
+\end{align}
+<p>Since $\text{Conv1D}_1$ has no activation function, it is just a linear transformation. Thus, $\text{Conv1D}_1(\boldsymbol{X}) - \boldsymbol{X}$ can be combined into a single equivalent $\text{Conv1D}_1$. Simply put, during training, whatever $\text{Conv1D}_1(\boldsymbol{X}) - \boldsymbol{X}$ can achieve, $\text{Conv1D}_1(\boldsymbol{X})$ can also achieve. Thus, $(2)$ and $(3)$ are equivalent.</p>
+</blockquote>
+
+<h4>Dilated Convolution</h4>
+
+<p>Next, to enable the CNN model to capture longer distances without increasing model parameters, we use <strong>Dilated Convolution</strong>.</p>
+
+<p style="text-align:center"><img src="https://kexue.fm/usr/uploads/2018/04/1098675765.png" alt="Standard vs Dilated Convolution" /></p>
+
+<p>Consider a three-layer CNN (the first layer is the input) with a window size of 3. In the third layer, each node in a standard convolution can only capture 3 inputs from the previous layer. In contrast, a dilated convolution in the third layer can capture 7 inputs, yet the number of parameters and speed remain unchanged. This is because, in the second layer of convolution, the dilated convolution skips the input directly adjacent to the center and captures the center and the next-adjacent input (dilation rate of 2). This can be seen as a "window size of 5 with two holes." In the third layer, it skips three inputs (dilation rate of 4), which can be seen as a "window size of 9 with 6 holes." If you draw lines connecting the relevant inputs and outputs, you will find any node in the third layer is connected to 7 original inputs.</p>
+
+<p>Following the principle of "trying not to overlap or miss," the dilation rates of dilated convolutions generally grow in a geometric progression like 1, 2, 4, 8, ... Of course, "trying" is the keyword, as there is still some overlap. This proportion is inspired by Google's WaveNet model.</p>
+
+<h4>Block</h4>
+
+<p>Now we can explain the Conv1D Blocks in the diagram. If the input and output dimensions match, it follows the dilated version of formula $(3)$. If they do not match, it is a simple version of formula $(1)$. The window sizes and dilation rates are noted in the diagram.</p>
+
+<h3>Attention</h3>
+
+<p>As seen in the schematic, in the DGCNN model, Attention is mainly used instead of simple Pooling to integrate sequence information. This includes encoding the question vector sequence into a single global question vector and encoding the material sequence into a global material vector. The Attention used here is slightly different from the one in <a href="translation_4765.html">"Attention is All You Need"</a>. This can be considered a "hard additive attention" of the form:</p>
+
+\begin{align}\boldsymbol{x}&=\text{Encoder}\big(\boldsymbol{x}_1,\boldsymbol{x}_2,\dots,\boldsymbol{x}_n\big)=\sum_{i=1}^n \lambda_i \boldsymbol{x}_i\\
+\lambda_i&=\mathop{\text{softmax}}_i\Big(\boldsymbol{\alpha}^{\top}\,\text{Act}\big(\boldsymbol{W}\boldsymbol{x}_i\big)\Big)\end{align}\tag{4}
+
+<p>Here $\boldsymbol{\alpha}, \boldsymbol{W}$ are trainable parameters. $\text{Act}$ is an activation function, usually $\tanh$, though the $\text{swish}$ function can also be considered. When using $\text{swish}$, it's best to add the bias term:</p>
+
+\[\lambda_i=\mathop{\text{softmax}}_i\Big(\boldsymbol{\alpha}^{\top}\,\text{Act}\big(\boldsymbol{W}\boldsymbol{x}_i+\boldsymbol{b}\big)+\beta\Big)\tag{5}\]
+
+<p>This Attention scheme is referenced from the R-Net model. (Note: It might not have originated with R-Net, but that's where I learned it.)</p>
+
+<h3>Position Embedding</h3>
+
+<p>To enhance the CNN's sense of position, we also add <strong>Position Embeddings</strong>, concatenated to each word vector in the material. The construction method directly follows the plan in <a href="https://kexue.fm/archives/4765#Position%20Embedding">"Attention is All You Need"</a>:</p>
+
+\[\left\{\begin{aligned}&PE_{2i}(p)=\sin\Big(p/10000^{2i/{d_{pos}}}\Big)\\
+&PE_{2i+1}(p)=\cos\Big(p/10000^{2i/{d_{pos}}}\Big)
+\end{aligned}\right.\tag{6}\]
+
+<h3>Output Design</h3>
+
+<p>This part is a distinctive feature of our entire model.</p>
+
+<h4>Analysis</h4>
+
+<p>By now, the overall structure of the model should be clear. First, we encode the question into a fixed vector through convolution and attention. This vector is concatenated to each word vector of the material, along with position embeddings and handcrafted features. We then obtain a feature sequence mixing question and material information, which is processed directly. No further interaction with the question is needed, as subsequent convolutional layers handle the encoding and labeling.</p>
+
+<p>In the SQuAD evaluation, materials definitely contain the answer, and the positions are labeled. SQuAD models typically perform two softmaxes over the sequence to predict the start and end positions, often called a "Pointer Network." However, in our WebQA-style QA, the material does not necessarily contain the answer. Therefore, we do not use softmax but rather use sigmoid on the entire sequence. This allows for cases where the answer doesn't exist or appears multiple times.</p>
+
+<h4>Double Labeling Output</h4>
+
+<p>Since we use labeling, theoretically, the simplest plan is to output a 0/1 sequence for each word ("is (1)" or "is not (0)" the answer). However, this doesn't work well because an answer might consist of multiple consecutive different words. Forcing the model to label all these words exactly the same might be too difficult. Thus, we use two labeling passes to mark the start and end positions separately.</p>
+
+\begin{align}p^{start}_i = \sigma\Big(\boldsymbol{\alpha}_1^{\top}\,\text{Act}\big(\boldsymbol{W}_1\boldsymbol{x}_i+\boldsymbol{b}_1\big)+\beta_1\Big)\\
+p^{end}_i = \sigma\Big(\boldsymbol{\alpha}_2^{\top}\,\text{Act}\big(\boldsymbol{W}_2\boldsymbol{x}_i+\boldsymbol{b}_2\big)+\beta_2\Big)\end{align}\tag{7}
+
+<p>As a result, <strong>the output design of the model is different from both the pointer method and pure sequence labeling, or rather, a simplification and fusion of both.</strong></p>
+
+<h4>Global Perspective</h4>
+
+<p>Finally, to increase the "global view" of the model, we encode the material sequence into a global vector, followed by a fully connected layer to get a global score. This global score is then multiplied by the previous labels:</p>
+
+\begin{align}\boldsymbol{o}=&\text{Encoder}\big(\boldsymbol{x}_1,\boldsymbol{x}_2,\dots,\boldsymbol{x}_n\big)\\
+p^{global}=&\sigma\Big(\boldsymbol{W}\boldsymbol{o}+\boldsymbol{b}\Big)\\
+p^{start}_i =& p^{global}\cdot\sigma\Big(\boldsymbol{\alpha}_1^{\top}\,\text{Act}\big(\boldsymbol{W}_1\boldsymbol{x}_i+\boldsymbol{b}_1\big)+\beta_1\Big)\\
+p^{end}_i =& p^{global}\cdot\sigma\Big(\boldsymbol{\alpha}_2^{\top}\,\text{Act}\big(\boldsymbol{W}_2\boldsymbol{x}_i+\boldsymbol{b}_2\big)+\beta_2\Big)\end{align}\tag{8}
+
+<p>This global score is significantly important for model convergence and performance. Its role is to better judge whether an answer exists in the material. Once the material lacks an answer, setting $p^{global}=0$ suffices, rather than "struggling" to force every word's label to 0.</p>
+
+<h3>Handcrafted Features</h3>
+
+<p>Earlier in the article, we mentioned handcrafted features multiple times. How effective are they? Based on simple observation, <strong>these few features might improve model performance by more than 2%! This shows that well-designed features are crucial for improving performance and reducing model complexity.</strong></p>
+
+<p>The features are designed for words in the material (Q for question, E for evidence/material).</p>
+
+<h4>Q-E Full Match</h4>
+
+<p>This determines whether a word in the material appears in the question (1 if yes, 0 if no). The idea is to tell the model where the question words appear in the material, as the answer is likely nearby. This matches human logic for reading comprehension.</p>
+
+<h4>E-E Co-occurrence</h4>
+
+<p>This feature calculates the proportion of times a material word appears in other materials. For example, if there are 10 material segments and word $w$ appears in 4 of the other 9 segments, the word $w$ gets a feature value of 4/10.</p>
+
+<p>The idea is that the more segments a word appears in, the more likely it is to be the answer.</p>
+
+<h4>Q-E Soft Match</h4>
+
+<p>Using the question size as a window, calculate Jaccard similarity and relative edit distance for each window in the material.</p>
+
+<p>For example, for the question "What is the altitude of Baiyun Mountain?", and material "Baiyun Mountain is located in Guangzhou, the main peak altitude is 382 meters." If the question has 6 words, the window size is 6. We split the material:</p>
+
+<blockquote>
+X X X Baiyun Mountain is located in<br>
+X X Baiyun Mountain is located in Guangzhou<br>
+X Baiyun Mountain is located in Guangzhou ,<br>
+Baiyun Mountain is located in Guangzhou , the<br>
+...and so on.
+</blockquote>
+
+<p>Where X represents a placeholder. We can then calculate the Jaccard similarity between each block and the question. The similarity result serves as a feature for the current word. Similarly, we calculate the edit distance and divide by the window size to get a number between 0 and 1, which I call "relative edit distance."</p>
+
+<p>Jaccard similarity is unordered, while edit distance is ordered. Thus, these two methods measure similarity from both unordered and ordered perspectives. The idea is identical to the first feature: telling the model which part of the material is similar to the question, as the answer is likely nearby.</p>
+
+<p>The main idea for these two features came from Yin-shen in the Keras group. Thanks!</p>
+
+<h4>Character Features</h4>
+
+<p>In top SQuAD models, word and character vectors are typically both input. To improve results, we should also input character-level information. But we didn't want the model to become too massive, so we integrated character-level features here.</p>
+
+<p>The idea is simple: the four features described above are calculated per word. They can also be calculated per character, then the results of characters within each word are averaged to serve as a feature for that word. For example, in "Q-E full match," if the question only has the word "acting" and the material has "co-acting," at the word level, they don't match (0). But at the character level, "co-acting" is split into characters. "acting" match would be 1, "co" would be 0, and the average would be a character-level Q-E match feature for the word "co-acting."</p>
+
+<p>Applying this to all four features gives us another 4 features, totaling 8 handcrafted features.</p>
+
+<h2>Implementation</h2>
+
+<p>Now, all parts of the model have been explained. The overall model is simple and clear, giving an "Great truth is always simple" feeling. Below are the implementation details.</p>
+
+<h3>Model Settings</h3>
+
+<h4>Chinese Tokenization</h4>
+
+<p>As seen from the introduction, this model is word-based and introduces character-level information through handcrafted features. However, to make the model more flexible and able to answer more questions, I only performed basic tokenization to keep granularity as low as possible.</p>
+
+<p>Specifically: I wrote a tokenization module based on a unigram model, with a self-prepared dictionary of about 500k words. All English and numbers are split into single letters and digits. For example, "apple" becomes five "words": a p p l e; "382" becomes three "words": 3 8 2.</p>
+
+<p>Since there is no new word discovery, the total vocabulary does not exceed 500k. In fact, our final model's total vocabulary was only about 300k.</p>
+
+<h4>Parameters</h4>
+
+<blockquote>
+<p>1. Word vectors are 128 dimensions, pre-trained using Word2Vec (Skip Gram, window 5, 8 negative samples, 8 iterations) on provided training data, WebQA corpus, 500k Baidu Baike entries, and 1 million Baike Zhidao questions. Training took about 12 hours;<br>
+2. Padding tokens use all-zero vectors; word vectors remain fixed during DGCNN training;<br>
+3. All Conv1D output dimensions are 128; position vectors are 128;<br>
+4. Maximum sequence length is 100; masking is used for padding in batches;<br>
+5. Since it's a binary labeling format with class imbalance, binary focal loss is used as the loss function;<br>
+6. Adam optimizer is used: first at $10^{-3}$ until optimal (around 6 epochs), then at $10^{-4}$ (3 epochs).</p>
+</blockquote>
+
+<h4>Regularization</h4>
+
+<p>Late in the competition, we found that a <strong>DropPath-like regularization</strong> slightly improved performance. This technique is built on equation $(3)$; the idea is to perturb the "gate" during training:</p>
+
+\begin{align}\boldsymbol{Y}=&\boldsymbol{X}\otimes \Big(1-\boldsymbol{\sigma}\Big) + \text{Conv1D}_1(\boldsymbol{X}) \otimes \boldsymbol{\sigma}\\\
+\boldsymbol{\sigma} =& \sigma\Big(\text{Conv1D}_2(\boldsymbol{X})\otimes (1 + \boldsymbol{\varepsilon})\Big)
+\end{align}\tag{9}
+
+<p>Where $\boldsymbol{\varepsilon}$ is a uniform random noise tensor in $[-0.1, 0.1]$. By adding "multiplicative noise" to the GCNN door, the model becomes more robust against parameter perturbations.</p>
+
+<p>This was inspired by regularization techniques in <a href="https://papers.cool/arxiv/1605.07648">"FractalNet"</a> and <a href="https://papers.cool/arxiv/1705.07485">"Shake-Shake regularization"</a>.</p>
+
+<h3>Data Preparation</h3>
+
+<h4>Data Pre-processing</h4>
+
+<p>Since SOGOU allowed external data, we and most teams used the WebQA dataset. Given that WebQA is more structured while SOGOU's data is noisier, we mixed them at a 2:1 ratio.</p>
+
+<p>The provided data is "one question + multiple materials + one answer" without specifying where the answer is in the materials. Thus, we treated all substrings matching the answer as labels. While sometimes unreasonable, this was the best approach without additional manual labeling.</p>
+
+<p>Another issue is synonymous answers. SOGOU's evaluation script considers synonyms, so we extracted them from the script to label all synonymous answers in the materials.</p>
+
+<h4>Data Shuffling</h4>
+
+<p>SOGOU provided 30,000 labeled questions, pre-divided into 25,000 training and 5,000 validation. However, the pre-divided validation set didn't match the online test set's distribution well. We mixed and reshuffled all data, taking 20,000 for training and 10,000 for validation. This resulted in a validation score (~0.76) close to the online leaderboards.</p>
+
+<h4>Data Augmentation</h4>
+
+<p>Three operations were used during training:</p>
+
+<blockquote>
+<p>1. Randomly zeroing out word IDs in questions/materials (analogous to replacing words with [UNK]);<br>
+2. Repeatedly concatenating and randomly cropping materials to create new segments;<br>
+3. For materials with multiple answers, randomly removing some answer labels.</p>
+</blockquote>
+
+<p>The first method significantly improved stability and accuracy. The others had a minor effect.</p>
+
+<h3>Decoding Strategy</h3>
+
+<p>A detail many contestants overlook: <strong>Answer decoding has huge optimization space. Improving decoding can yield more gains than repeated hyperparameter tuning!</strong></p>
+
+<h4>Scoring Method</h4>
+
+<p>What is answer decoding? Whether using softmax pointers or sigmoid labeling, the model outputs two columns of floats for start and end scores. How do we determine the answer interval? The standard way is to set a max length (e.g., 10), traverse all intervals, and compute a score (sum or product of start/end). Is "sum" or "product" better? I found "product" worked much better than "root of product" (1% gain).</p>
+
+<h4>Voting Method</h4>
+
+<p>If the same fragment appears multiple times in a passage, should we sum, average, or take the max? Across different passages, how do we vote? For example, with scores (A, 0.7), (B, 0.2), (B, 0.2), (B, 0.2), (B, 0.2), should we pick A or B? Some say B because 4 * 0.2 = 0.8 > 0.7. But A is nearly 1—a "master."</p>
+
+<p>Our voting reflects two points: 1. numbers matter, 2. $1+1 < 2$. We used "square sum":</p>
+
+<blockquote>
+<p>1. Within a passage, if a fragment appears multiple times, take only the max score;<br>
+2. Across passages, sum the <strong>squared scores</strong> of the same answer:<br>
+$$s_a = \sum_{i=1}^n s^2_{a,i}$$<br>
+Squaring amplifies the weight of high-score samples.<br>
+3. In the competition, I actually used a slightly different formula which is a bit more smoothed:<br>
+$$s_a = \frac{\sum\limits_{i=1}^n s^2_{a,i}}{1+\sum\limits_{i=1}^n s_{a,i}}$$</p>
+</blockquote>
+
+<h3>Model Ensemble</h3>
+
+<p>With the above, a score of 0.74-0.75 is achievable. To reach 0.7583, you need model ensemble. We used single-model ensemble through K-fold cross-validation, training the same architecture multiple times on different folds and averaging the results.</p>
+
+<h2>Conclusion</h2>
+
+<h3>Evaluation</h3>
+
+<p>The model reached 0.7583 on the noisy SOGOU test set. Given the noise, I suspect the actual performance in clean scenarios is even higher. Being a pure CNN model, it is lightweight and ready for industrial use. On SQuAD, it scored around 50-60% without tuning, showing that WebQA-style and SQuAD-style tasks are quite different.</p>
+
+<h3>Code & Testing</h3>
+
+<p>The model is online on the Flame Technology official website for testing:<br>
+<a href="http://www.birdbot.cn/online-factual-qa.html">http://www.birdbot.cn/online-factual-qa.html</a></p>
+
+<p>The code is not public as it was done for a company. However, the model is simple to implement based on this article. The SOGOU data is also not ours to share, but WebQA data can be used for testing.</p>
+
+<h3>Hundreds of Trials</h3>
+
+<p>The development involved hundreds of iterations and experiments. While not a formal paper, if this helps you, please cite this article.</p>
+
+<p>Finally, thanks to Guangzhou Flame Technology for the support in hardware and software.</p>
+
+<p><strong>PS: Later, I discovered this model "collided" with <a href="https://papers.cool/arxiv/1711.04352">"Fast Reading Comprehension with ConvNets"</a> and <a href="https://openreview.net/pdf?id=B14TlG-RW">"QANET"</a>, though I had not referenced them at the time. I started from the WebQA paper and tried CNNs out of curiosity, and never looked back.</strong></p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_5409.html" style="color: #005fcc;">https://kexue.fm/archives/5409</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

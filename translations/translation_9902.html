@@ -1,0 +1,307 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9902">Making Alchemy More Scientific (I): Average Loss Convergence of SGD</a></h1>
+
+<p>By 苏剑林 | December 19, 2023</p>
+
+<p>Many times, we jokingly refer to the training process of deep learning models as "alchemy," because, like the alchemy of ancient times, the process seems to have a certain scientific basis but overall feels "mysterious and profound." Although this site has previously covered some work related to <a href="https://kexue.fm/tag/%E4%BC%98%E5%8C%96%E5%99%A8/">optimizers</a> and even written a series titled <a href="https://kexue.fm/search/%E4%BB%8E%E5%8A%A8%E5%8A%9B%E5%AD%A6%E8%A7%92%E5%BA%A6%E7%9C%8B%E4%BC%98%E5%8C%96%E7%AE%97%E6%B3%95/">"Optimization Algorithms from a Dynamical Perspective,"</a> those were relatively superficial introductions that did not delve into deeper theoretical results. To make future alchemy more scientific, I have decided to brush up on some theoretical results related to optimization, striving to provide more theoretical support for the path of alchemy.</p>
+
+<p>In this article, we will learn a very fundamental convergence result for Stochastic Gradient Descent (SGD). Although this result may now seem crude and impractical, it was a very important attempt at proving optimizer convergence, especially since it considered the characteristic that we actually use Stochastic Gradient Descent (SGD) rather than Full Gradient Descent (GD), making the conclusion significantly more meaningful as a reference.</p>
+
+<h2 id="Problem-Setup">Problem Setup</h2>
+
+<p>Let the loss function be $L(\boldsymbol{x}, \boldsymbol{\theta})$, where $\boldsymbol{x}$ is the training set and $\boldsymbol{\theta} \in \mathbb{R}^d$ represents the training parameters. Limited by computational power, we can usually only perform Stochastic Gradient Descent (SGD), which means at each step we only sample a subset of the training data to calculate the loss function and update the parameters. Assuming the sampling is independent and identically distributed, and the subset sampled at step $t$ is $\boldsymbol{x}_t$, we can reasonably believe that the ultimate goal of the actual optimization is:</p>
+\begin{equation}L(\boldsymbol{\theta}) = \lim_{T \to \infty} \frac{1}{T} \sum_{t=1}^T L(\boldsymbol{x}_t, \boldsymbol{\theta}) \label{eq:loss}\end{equation}
+<p>In practice, we can only train for a finite number of steps, so we assume $T$ is a sufficiently large positive integer constant. Our goal is to find the minimum of $L(\boldsymbol{\theta})$, i.e., we hope to find $\boldsymbol{\theta}^*$:</p>
+\begin{equation}\boldsymbol{\theta}^* = \mathop{\text{argmin}}_{\boldsymbol{\theta} \in \mathbb{R}^d} L(\boldsymbol{\theta}) \label{eq:argmin}\end{equation}
+<p>Now, we consider the following SGD iteration:</p>
+\begin{equation}\boldsymbol{\theta}_{t+1} = \boldsymbol{\theta}_t - \eta_t \boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_t) \label{eq:sgd}\end{equation}
+<p>where $\eta_t > 0$ is the learning rate, and $\boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}) \triangleq \nabla_{\boldsymbol{\theta}} L(\boldsymbol{x}_t, \boldsymbol{\theta})$ is the gradient of $L(\boldsymbol{x}_t, \boldsymbol{\theta})$ with respect to $\boldsymbol{\theta}$. Our task is to analyze whether $\boldsymbol{\theta}_t$ can converge to the target point $\boldsymbol{\theta}^*$ as the iterations proceed.</p>
+
+<h2 id="Initial-Look-at-the-Conclusion">Initial Look at the Conclusion</h2>
+
+<p>First, we provide the final inequality to be proven: under appropriate assumptions, we have</p>
+\begin{equation}\frac{1}{T} \sum_{t=1}^T L(\boldsymbol{x}_t, \boldsymbol{\theta}_t) - \frac{1}{T} \sum_{t=1}^T L(\boldsymbol{x}_t, \boldsymbol{\theta}^*) \leq \frac{D^2}{2T\eta_T} + \frac{G^2}{2T} \sum_{t=1}^T \eta_t \label{neq:core}\end{equation}
+
+<p>where $D, G$ are constants independent of the optimization process. We will introduce what the "appropriate assumptions" specifically are later; before that, let's observe the specific meaning expressed by inequality $\eqref{neq:core}$:</p>
+
+<blockquote>
+<p>1. The first term on the left side is the average result of the loss functions at each step in the optimization process;</p>
+<p>2. According to Equation $\eqref{eq:loss}$, when $T$ is sufficiently large, the second term on the left side can be considered $L(\boldsymbol{\theta}^*)$;</p>
+<p>3. Combining the left side, it represents the difference between the average loss during the optimization process and the theoretical minimum of the loss function;</p>
+<p>4. The right side is an expression that depends only on the learning rate strategy $\{\eta_t\}$.</p>
+</blockquote>
+
+<p>Synthesizing points 1, 2, 3, and 4, inequality $\eqref{neq:core}$ says: under appropriate assumptions, the gap between the average SGD loss and the ideal target we are looking for can be controlled by an expression that depends only on the learning rate strategy. If we can choose an appropriate learning rate to make this expression tend to zero, it means the average loss of SGD will definitely converge to the theoretical generalized optimum. (Of course, theoretically, this conclusion can only guarantee finding the minimum value of the loss function $L(\boldsymbol{\theta}^*)$, but it cannot guarantee finding the specific minimum point $\boldsymbol{\theta}^*$.)</p>
+
+<p>Simply put, this is a theoretical result about when SGD will converge. By the way, the left side of inequality $\eqref{neq:core}$ has a special name called "Regret."</p>
+
+<h2 id="Two-Examples">Two Examples</h2>
+
+<p>For instance, assuming the learning rate is a constant $\eta$, the right side of inequality $\eqref{neq:core}$ yields:</p>
+\begin{equation}\frac{D^2}{2T\eta} + \frac{G^2}{2T} \sum_{t=1}^T \eta = \frac{D^2}{2T\eta} + \frac{G^2 \eta}{2} \geq \frac{DG}{\sqrt{T}}\end{equation}
+<p>The equality holds when $\eta = \frac{D}{G\sqrt{T}}$. That is to say, if we take the learning rate as the constant $\frac{D}{G\sqrt{T}}$, then we have:</p>
+\begin{equation}\frac{1}{T} \sum_{t=1}^T L(\boldsymbol{x}_t, \boldsymbol{\theta}_t) - \frac{1}{T} \sum_{t=1}^T L(\boldsymbol{x}_t, \boldsymbol{\theta}^*) \leq \frac{DG}{\sqrt{T}} \label{neq:case-1}\end{equation}
+<p>As $T \to \infty$, the right side tends to zero. This means when the number of training steps $T$ is large enough, setting the learning rate to the constant $\frac{D}{G\sqrt{T}}$ can make the gap between the average SGD iteration and the theoretical optimum arbitrarily small.</p>
+
+<p>Another example is considering a decay strategy $\eta_t = \frac{\alpha}{\sqrt{t}}$. Using:</p>
+\begin{equation}\sum_{t=1}^T \frac{1}{\sqrt{t}} = 1 + \sum_{t=2}^T \frac{1}{\sqrt{t}} \leq 1 + \sum_{t=2}^T \frac{2}{\sqrt{t-1} + \sqrt{t}} = 1 + \sum_{t=2}^T 2(\sqrt{t} - \sqrt{t-1}) = 2\sqrt{T} - 1 < 2\sqrt{T}\end{equation}
+<p>Substituting into Equation $\eqref{neq:core}$ gives:</p>
+\begin{equation}\frac{1}{T} \sum_{t=1}^T L(\boldsymbol{x}_t, \boldsymbol{\theta}_t) - \frac{1}{T} \sum_{t=1}^T L(\boldsymbol{x}_t, \boldsymbol{\theta}^*) < \frac{D^2}{2\alpha\sqrt{T}} + \frac{G^2 \alpha}{\sqrt{T}} \label{neq:case-2}\end{equation}
+<p>Both Equation $\eqref{neq:case-2}$ and Equation $\eqref{neq:case-1}$ are $\mathcal{O}\left(\frac{1}{\sqrt{T}}\right)$ with respect to $T$, so theoretically they can both converge. Compared to Equation $\eqref{neq:case-1}$, Equation $\eqref{neq:case-2}$ has a larger constant, which means the convergence speed of $\eta_t \equiv \frac{D}{G\sqrt{T}}$ is likely faster than $\eta_t = \frac{\alpha}{\sqrt{t}}$. However, in practice, we prefer the latter because the former requires pre-determining the total training steps $T$; once training is done, it's over and the precision is fixed. The latter has no such restrictions; even $\alpha$ doesn't necessarily need to be tuned—$\eta_t = \frac{1}{\sqrt{t}}$ can be used to train continuously, and theoretically, the gap between the average loss and the theoretical minimum will get smaller and smaller.</p>
+
+<p>Even so, a learning rate strategy like $\eta_t = \frac{1}{\sqrt{t}}$ is still far from the scales or patterns we usually use in training. Therefore, it is not hard to guess that many strong assumptions must have been added. Without further ado, let's start the proof process and unfold the assumptions one by one.</p>
+
+<h2 id="Proof-Process">Proof Process</h2>
+
+<p>At the beginning of the proof, we assume that for any $\boldsymbol{x}$, $L(\boldsymbol{x}, \boldsymbol{\theta})$ is a convex function of $\boldsymbol{\theta}$. This is a very strong and usually very unrealistic assumption for training, but there is no choice; theoretical analysis usually can only be done under strong assumptions, and then the conclusions under these assumptions can be used heuristically in practical scenarios.</p>
+
+<p>Convex functions have many different definitions; here we adopt the following definition directly:</p>
+\begin{equation}L(\boldsymbol{x}_t, \boldsymbol{\theta}_2) - L(\boldsymbol{x}_t, \boldsymbol{\theta}_1) \geq (\boldsymbol{\theta}_2 - \boldsymbol{\theta}_1) \cdot \boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_1), \quad \forall \boldsymbol{\theta}_1, \boldsymbol{\theta}_2 \label{eq:convex}\end{equation}
+<p>where $\boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_1) \triangleq \nabla_{\boldsymbol{\theta}} L(\boldsymbol{x}_t, \boldsymbol{\theta})$ is the gradient of $L(\boldsymbol{x}_t, \boldsymbol{\theta})$ with respect to $\boldsymbol{\theta}$, $\cdot$ is the vector inner product, and the geometric meaning of the above definition is that the graph of a convex function always lies above its tangent (plane).</p>
+
+<p>The key to the proof is considering the distance between $\boldsymbol{\theta}_{t+1}$ and $\boldsymbol{\theta}^*$:</p>
+\begin{equation}\begin{aligned}
+\Vert\boldsymbol{\theta}_{t+1} - \boldsymbol{\theta}^*\Vert^2 =&\, \Vert\boldsymbol{\theta}_t - \eta_t \boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_t) - \boldsymbol{\theta}^*\Vert^2 \\
+=&\, \Vert\boldsymbol{\theta}_t - \boldsymbol{\theta}^*\Vert^2 - 2\eta_t (\boldsymbol{\theta}_t - \boldsymbol{\theta}^*) \cdot \boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_t) + \eta_t^2\Vert\boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_t)\Vert^2
+\end{aligned}\end{equation}
+<p>Rewriting this as:</p>
+\begin{equation}(\boldsymbol{\theta}_t - \boldsymbol{\theta}^*) \cdot \boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_t) = \frac{\Vert\boldsymbol{\theta}_t - \boldsymbol{\theta}^*\Vert^2}{2\eta_t} - \frac{\Vert\boldsymbol{\theta}_{t+1} - \boldsymbol{\theta}^*\Vert^2}{2\eta_t} + \frac{1}{2} \eta_t \Vert\boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_t)\Vert^2\end{equation}
+<p>According to Equation $\eqref{eq:convex}$, we have $L(\boldsymbol{x}_t, \boldsymbol{\theta}_t) - L(\boldsymbol{x}_t, \boldsymbol{\theta}^*) \leq (\boldsymbol{\theta}_t - \boldsymbol{\theta}^*) \cdot \boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_t)$. Substituting this into the above equation gives:</p>
+\begin{equation}L(\boldsymbol{x}_t, \boldsymbol{\theta}_t) - L(\boldsymbol{x}_t, \boldsymbol{\theta}^*) \leq \frac{\Vert\boldsymbol{\theta}_t - \boldsymbol{\theta}^*\Vert^2}{2\eta_t} - \frac{\Vert\boldsymbol{\theta}_{t+1} - \boldsymbol{\theta}^*\Vert^2}{2\eta_t} + \frac{1}{2} \eta_t \Vert\boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_t)\Vert^2\end{equation}
+<p>Summing both sides for $t = 1, 2, \dots, T$:</p>
+\begin{equation}\sum_{t=1}^T L(\boldsymbol{x}_t, \boldsymbol{\theta}_t) - \sum_{t=1}^T L(\boldsymbol{x}_t, \boldsymbol{\theta}^*) \leq \sum_{t=1}^T \left( \frac{\Vert\boldsymbol{\theta}_t - \boldsymbol{\theta}^*\Vert^2}{2\eta_t} - \frac{\Vert\boldsymbol{\theta}_{t+1} - \boldsymbol{\theta}^*\Vert^2}{2\eta_t} \right) + \sum_{t=1}^T \frac{1}{2} \eta_t \Vert\boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_t)\Vert^2 \label{neq:base}\end{equation}
+<p>Introducing another new assumption—$\eta_t$ is a monotonically decreasing function of $t$ (i.e., $\eta_t \geq \eta_{t+1}$)—and letting $D = \max_t \Vert\boldsymbol{\theta}_t - \boldsymbol{\theta}^*\Vert$, we then have:</p>
+\begin{equation}\begin{aligned}
+&\, \sum_{t=1}^T \left( \frac{\Vert\boldsymbol{\theta}_t - \boldsymbol{\theta}^*\Vert^2}{2\eta_t} - \frac{\Vert\boldsymbol{\theta}_{t+1} - \boldsymbol{\theta}^*\Vert^2}{2\eta_t} \right) \\
+=&\, \frac{\Vert\boldsymbol{\theta}_1 - \boldsymbol{\theta}^*\Vert^2}{2\eta_1} - \frac{\Vert\boldsymbol{\theta}_{T+1} - \boldsymbol{\theta}^*\Vert^2}{2\eta_T} + \sum_{t=2}^T \left( \frac{1}{2\eta_t} - \frac{1}{2\eta_{t-1}} \right) \Vert\boldsymbol{\theta}_t - \boldsymbol{\theta}^*\Vert^2 \\
+\leq&\, \frac{D^2}{2\eta_1} + \sum_{t=2}^T \left( \frac{1}{2\eta_t} - \frac{1}{2\eta_{t-1}} \right) D^2 \\
+=&\, \frac{D^2}{2\eta_T}
+\end{aligned}\end{equation}
+<p>Finally, we let $G = \max_t \Vert\boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_t)\Vert$, and then substitute the result above into Equation $\eqref{neq:base}$ to get:</p>
+\begin{equation}\sum_{t=1}^T L(\boldsymbol{x}_t, \boldsymbol{\theta}_t) - \sum_{t=1}^T L(\boldsymbol{x}_t, \boldsymbol{\theta}^*) \leq \frac{D^2}{2\eta_T} + \sum_{t=1}^T \frac{1}{2} \eta_t \Vert\boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_t)\Vert^2 \leq \frac{D^2}{2\eta_T} + \frac{G^2}{2} \sum_{t=1}^T \eta_t\end{equation}
+<p>Dividing both sides by $T$ gives the inequality $\eqref{neq:core}$.</p>
+
+<p>Note that currently the constants $D, G$ are related to the optimization; that is, the learning rate strategy $\{\eta_t\}$ must be determined first, and then the optimization process must be completed to obtain $D, G$. For $D, G$ to be constants independent of optimization, we need to assume that for any $\{\eta_t\}$, $\Vert\boldsymbol{\theta}_t - \boldsymbol{\theta}^*\Vert$ and $\Vert\boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_t)\Vert$ do not exceed some constants $D$ and $G$ respectively, which makes the right side of inequality $\eqref{neq:core}$ depend only on the learning rate strategy.</p>
+
+<h2 id="In-Domain-Projection">In-Domain Projection</h2>
+
+<p>However, the final assumption "for any $\{\eta_t\}$, $\Vert\boldsymbol{\theta}_t - \boldsymbol{\theta}^*\Vert$ and $\Vert\boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_t)\Vert$ do not exceed some constants $D$ and $G$" always feels "backwards": it seems like one needs to finish the optimization to determine $D, G$, while our purpose is to improve the optimization through the proven results. To eliminate this strange feeling, let's simply change these two assumptions to:</p>
+
+<blockquote>
+<p>1. $\boldsymbol{\theta} \in \mathbb{R}^d$ in Equation $\eqref{eq:argmin}$ is changed to $\boldsymbol{\theta} \in \boldsymbol{\Theta}$, where $\boldsymbol{\Theta} \subseteq \mathbb{R}^d$ is a bounded convex set;</p>
+<p>1.1) <strong>Bounded</strong>: $D = \max_{\boldsymbol{\theta}_1, \boldsymbol{\theta}_2 \in \boldsymbol{\Theta}} \Vert\boldsymbol{\theta}_1 - \boldsymbol{\theta}_2\Vert < \infty$;</p>
+<p>1.2) <strong>Convex Set</strong>: $\forall \boldsymbol{\theta}_1, \boldsymbol{\theta}_2 \in \boldsymbol{\Theta}$ and $\forall \lambda \in [0,1]$, we have $\lambda \boldsymbol{\theta}_1 + (1-\lambda) \boldsymbol{\theta}_2 \in \boldsymbol{\Theta}$.</p>
+<p>2. For any $\boldsymbol{\theta} \in \boldsymbol{\Theta}$ and any $\boldsymbol{x}$, we have $\Vert\boldsymbol{g}(\boldsymbol{x}, \boldsymbol{\theta})\Vert \leq G$.</p>
+</blockquote>
+
+<p>The second point might be easier to accept; it's just adding an assumption to the loss function $L(\boldsymbol{x}, \boldsymbol{\theta})$. It's like having many debts—the convex function assumption is already so strong, adding a few more won't hurt. But the first point doesn't seem so easy to understand: a convex set is necessary because the convex function itself must be defined on a convex set, which is acceptable, but how can we ensure boundedness? Specifically, how can we guarantee that the output of iteration $\eqref{eq:sgd}$ will be bounded?</p>
+
+<p>The answer is "adding a projection step." We define the projection operation:</p>
+\begin{equation}\Pi_{\boldsymbol{\Theta}}(\boldsymbol{\varphi}) = \mathop{\text{argmin}}_{\boldsymbol{\theta} \in \boldsymbol{\Theta}} \Vert\boldsymbol{\varphi} - \boldsymbol{\theta}\Vert\end{equation}
+<p>which means finding the vector in $\boldsymbol{\Theta}$ that is closest to $\boldsymbol{\varphi}$. Thus, we can modify Equation $\eqref{eq:sgd}$ to:</p>
+\begin{equation}\boldsymbol{\theta}_{t+1} = \Pi_{\boldsymbol{\Theta}} \big( \boldsymbol{\theta}_t - \eta_t \boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_t) \big) \in \boldsymbol{\Theta} \label{eq:sgd-p}\end{equation}
+<p>This ensures that the iteration result will always be within the set $\boldsymbol{\Theta}$.</p>
+
+<p>However, after such a modification, is the proof from the previous section and the previous conclusion (mainly inequality $\eqref{neq:core}$) still valid? Fortunately, it still holds; we only need to prove that for the projected SGD defined by Equation $\eqref{eq:sgd-p}$, we have:</p>
+\begin{equation}\Vert\boldsymbol{\theta}_{t+1} - \boldsymbol{\theta}^*\Vert \leq \Vert\boldsymbol{\theta}_t - \eta_t \boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_t) - \boldsymbol{\theta}^*\Vert\end{equation}
+<p>Then the derivation in the "<a href="#Proof-Process">Proof Process</a>" section can still proceed, except that some equal signs may become $\leq$. To this end, we only need to prove that for $\forall \boldsymbol{\varphi} \in \mathbb{R}^d, \boldsymbol{\theta} \in \boldsymbol{\Theta}$, we have:</p>
+\begin{equation}\Vert\Pi_{\boldsymbol{\Theta}}(\boldsymbol{\varphi}) - \boldsymbol{\theta}\Vert \leq \Vert\boldsymbol{\varphi} - \boldsymbol{\theta}\Vert\end{equation}
+
+<blockquote>
+<p><strong>Proof</strong>: The key to the proof is combining the definition of a convex set and $\Pi_{\boldsymbol{\Theta}}$. First, according to the definition of a convex set, we know that for $\forall \lambda \in (0,1)$, we have $\lambda \boldsymbol{\theta} + (1-\lambda) \Pi_{\boldsymbol{\Theta}}(\boldsymbol{\varphi}) \in \boldsymbol{\Theta}$. Thus, according to the definition of $\Pi_{\boldsymbol{\Theta}}$, it always holds that:</p>
+\begin{equation}\Vert\boldsymbol{\varphi} - \Pi_{\boldsymbol{\Theta}}(\boldsymbol{\varphi})\Vert \leq \Vert\boldsymbol{\varphi} - \lambda \boldsymbol{\theta} - (1-\lambda) \Pi_{\boldsymbol{\Theta}}(\boldsymbol{\varphi})\Vert = \Vert(\boldsymbol{\varphi} - \Pi_{\boldsymbol{\Theta}}(\boldsymbol{\varphi})) + \lambda (\Pi_{\boldsymbol{\Theta}}(\boldsymbol{\varphi}) - \boldsymbol{\theta})\Vert\end{equation}
+<p>Squaring both sides and subtracting yields:</p>
+\begin{equation}\lambda^2 \Vert\Pi_{\boldsymbol{\Theta}}(\boldsymbol{\varphi}) - \boldsymbol{\theta}\Vert^2 + 2\lambda (\Pi_{\boldsymbol{\Theta}}(\boldsymbol{\varphi}) - \boldsymbol{\theta}) \cdot (\boldsymbol{\varphi} - \Pi_{\boldsymbol{\Theta}}(\boldsymbol{\varphi})) \geq 0\end{equation}
+<p>Since we restricted $\lambda \in (0,1)$, we can divide both sides by $\lambda$:</p>
+\begin{equation}\lambda \Vert\Pi_{\boldsymbol{\Theta}}(\boldsymbol{\varphi}) - \boldsymbol{\theta}\Vert^2 + 2 (\Pi_{\boldsymbol{\Theta}}(\boldsymbol{\varphi}) - \boldsymbol{\theta}) \cdot (\boldsymbol{\varphi} - \Pi_{\boldsymbol{\Theta}}(\boldsymbol{\varphi})) \geq 0\end{equation}
+<p>This is a formula that holds constantly, so it remains true as $\lambda \to 0^+$. Thus:</p>
+\begin{equation}(\Pi_{\boldsymbol{\Theta}}(\boldsymbol{\varphi}) - \boldsymbol{\theta}) \cdot (\boldsymbol{\varphi} - \Pi_{\boldsymbol{\Theta}}(\boldsymbol{\varphi})) \geq 0\end{equation}
+<p>By adding $\Vert\Pi_{\boldsymbol{\Theta}}(\boldsymbol{\varphi}) - \boldsymbol{\theta}\Vert^2 + \Vert\boldsymbol{\varphi} - \Pi_{\boldsymbol{\Theta}}(\boldsymbol{\varphi})\Vert^2$ to both sides, the left side becomes exactly $\Vert\boldsymbol{\varphi} - \boldsymbol{\theta}\Vert^2$, so we have:</p>
+\begin{equation}\Vert\boldsymbol{\varphi} - \boldsymbol{\theta}\Vert^2 \geq \Vert\Pi_{\boldsymbol{\Theta}}(\boldsymbol{\varphi}) - \boldsymbol{\theta}\Vert^2 + \Vert\boldsymbol{\varphi} - \Pi_{\boldsymbol{\Theta}}(\boldsymbol{\varphi})\Vert^2 \geq \Vert\Pi_{\boldsymbol{\Theta}}(\boldsymbol{\varphi}) - \boldsymbol{\theta}\Vert^2\end{equation}
+</blockquote>
+
+<h2 id="Analysis-of-Assumptions">Analysis of Assumptions</h2>
+
+<p>So far, we have completed the entire proof. The results above come from the 2003 paper <a href="https://www.cs.cmu.edu/~maz/publications/techconvex.pdf">"Online Convex Programming and Generalized Infinitesimal Gradient Ascent."</a> Notably, there is a vast amount of literature on optimization; as a beginner, I likely will make omissions or mistakes regarding the origins of references, so readers who know better are welcomed to point them out.</p>
+
+<p>Now we can summarize all the assumptions used in the complete proof process:</p>
+
+<blockquote>
+<p>1. $\boldsymbol{\Theta}$ is a bounded convex set, $D = \max_{\boldsymbol{\theta}_1, \boldsymbol{\theta}_2 \in \boldsymbol{\Theta}} \Vert\boldsymbol{\theta}_1 - \boldsymbol{\theta}_2\Vert < \infty$;</p>
+<p>2. For any $\boldsymbol{\theta} \in \boldsymbol{\Theta}$ and any $\boldsymbol{x}$, $L(\boldsymbol{x}, \boldsymbol{\theta})$ is a convex function of $\boldsymbol{\theta}$;</p>
+<p>3. For any $\boldsymbol{\theta} \in \boldsymbol{\Theta}$ and any $\boldsymbol{x}$, we have $\Vert\nabla_{\boldsymbol{\theta}} L(\boldsymbol{x}, \boldsymbol{\theta})\Vert \leq G < \infty$;</p>
+<p>4. The learning rate $\eta_t$ is a monotonically decreasing function of $t$ (i.e., $\eta_t \geq \eta_{t+1}$);</p>
+</blockquote>
+
+<p>Under these assumptions, the projected SGD (Equation $\eqref{eq:sgd-p}$) satisfies inequality $\eqref{neq:core}$.</p>
+
+<p>Among these, assumptions 1 and 4 are beyond reproach, even very reasonable—for example, in assumption 1, for practical calculations, a sufficiently large sphere is effectively no different from $\mathbb{R}^d$, while the decreasing learning rate in 4 aligns with existing knowledge. The strongest and most unrealistic is the second assumption of convexity, but there's nothing for it; you'll get over it after reading a few optimization papers, as almost all optimization theories are based on the convexity assumption. We can only hope that once the optimization enters a certain region, the loss function can partially exhibit characteristics of a convex function. The third point is essentially also a strong assumption, but in practice, if the initialization is good and the learning rate is set appropriately, the gradient norm can basically be controlled within a certain range, making it generally acceptable.</p>
+
+<h2 id="Summary">Summary</h2>
+
+<p>In this article, we revisited an old paper on convex optimization and introduced a very basic proof of convergence for SGD: under appropriate (and actually very strong) assumptions, the convergence of SGD can be guaranteed. Although these assumptions may not always hold in practical applications—such as the convexity assumption and limits on gradient magnitude—these theoretical results still provide important insights into the convergence of SGD.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9902.html" style="color: #005fcc;">https://kexue.fm/archives/9902</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,280 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/mathjax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/9152">Generative Diffusion Model Talk (2): DDPM = Autoregressive VAE</a></h1>
+    <p>By 苏剑林 | July 06, 2022</p>
+
+    <p>In the article <a href="translation_9119.html">"Generative Diffusion Model Talk (1): DDPM = Tearing Down + Building Up"</a>, we constructed a popular analogy of "tearing down a building and rebuilding it" for the generative diffusion model DDPM, and used this analogy to completely derive the theoretical form of the DDPM model. In that article, we also pointed out that DDPM is essentially no longer a traditional diffusion model; it is more of a Variational Autoencoder (VAE). In fact, the original DDPM paper also derived it following the VAE line of thought.</p>
+
+    <p>Therefore, this article introduces DDPM again from the perspective of a VAE, while sharing my Keras implementation code and practical experience.</p>
+
+    <h2>Multi-step Breakthrough</h2>
+    <p>In traditional VAEs, both the encoding process and the generation process are done in one step:</p>
+    \begin{equation}\text{Encoding:}\,\,x\to z\,,\quad \text{Generation:}\,\,z\to x\end{equation}
+    <p>This approach involves only three distributions: the encoding distribution $p(z|x)$, the generation distribution $q(x|z)$, and the prior distribution $q(z)$. The advantage is that the form is relatively simple, and the mapping relationship between $x$ and $z$ is quite clear, allowing for the simultaneous acquisition of the encoding and generation models to fulfill needs like latent variable editing. However, the disadvantage is also obvious: because our ability to model probability distributions is limited, these three distributions can usually only be modeled as Normal distributions. This restricts the model's expressive power, typically resulting in blurry generation results.</p>
+
+    <p>To break through this limitation, DDPM decomposes the encoding and generation processes into $T$ steps:</p>
+    \begin{equation}\begin{aligned}&\text{Encoding:}\,\,\boldsymbol{x} = \boldsymbol{x}_0 \to \boldsymbol{x}_1 \to \boldsymbol{x}_2 \to \cdots \to \boldsymbol{x}_{T-1} \to \boldsymbol{x}_T = \boldsymbol{z} \\
+    &\text{Generation:}\,\,\boldsymbol{z} = \boldsymbol{x}_T \to \boldsymbol{x}_{T-1} \to \boldsymbol{x}_{T-2} \to \cdots \to \boldsymbol{x}_1 \to \boldsymbol{x}_0 = \boldsymbol{x}
+    \end{aligned}\label{eq:factor}\end{equation}
+    <p>In this way, each $p(\boldsymbol{x}_t|\boldsymbol{x}_{t-1})$ and $q(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t)$ is only responsible for modeling a tiny change, and they are still modeled as Normal distributions. One might ask: if they are still Normal distributions, why is decomposing them into multiple steps better than a single step? This is because a tiny change can be approximated sufficiently well by a Normal distribution, much like how a curve can be approximated by a straight line in a small range. Multi-step decomposition is somewhat like using piecewise linear functions to fit complex curves, so theoretically, it can break through the fitting capacity limits of traditional single-step VAEs.</p>
+
+    <h2>Joint Divergence</h2>
+    <p>So, the plan now is to enhance the capability of the traditional VAE through the recursive decomposition in $\eqref{eq:factor}$. Each step of the encoding process is modeled as $p(\boldsymbol{x}_t|\boldsymbol{x}_{t-1})$, and each step of the generation process is modeled as $q(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t)$. The corresponding joint distributions are:</p>
+    \begin{equation}\begin{aligned}&p(\boldsymbol{x}_0, \boldsymbol{x}_1, \boldsymbol{x}_2, \cdots, \boldsymbol{x}_T) = p(\boldsymbol{x}_T|\boldsymbol{x}_{T-1})\cdots p(\boldsymbol{x}_2|\boldsymbol{x}_1) p(\boldsymbol{x}_1|\boldsymbol{x}_0) \tilde{p}(\boldsymbol{x}_0) \\
+    &q(\boldsymbol{x}_0, \boldsymbol{x}_1, \boldsymbol{x}_2, \cdots, \boldsymbol{x}_T) = q(\boldsymbol{x}_0|\boldsymbol{x}_1)\cdots q(\boldsymbol{x}_{T-2}|\boldsymbol{x}_{T-1}) q(\boldsymbol{x}_{T-1}|\boldsymbol{x}_T) q(\boldsymbol{x}_T)
+    \end{aligned}\end{equation}
+    <p>Don't forget that $\boldsymbol{x}_0$ represents the real sample, so $\tilde{p}(\boldsymbol{x}_0)$ is the data distribution; and $\boldsymbol{x}_T$ represents the final encoding, so $q(\boldsymbol{x}_T)$ is the prior distribution. The remaining $p(\boldsymbol{x}_t|\boldsymbol{x}_{t-1})$ and $q(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t)$ represent the small steps of encoding and generation. (<strong>Prompt:</strong> After consideration, I will continue to use the notation convention consistently used on this website when introducing VAEs: "encoding distribution uses $p$, generation distribution uses $q$". Therefore, the meanings of $p$ and $q$ here are exactly the opposite of the DDPM paper; I hope readers will take note.)</p>
+
+    <p>In <a href="translation_5343.html">"Variational Autoencoder (2): Starting from the Bayesian Point of View"</a>, I proposed that the most concise theoretical way to understand VAE is to see it as minimizing the KL divergence of the joint distributions. For DDPM, it is the same. We have already written the two joint distributions above, so the goal of DDPM is to minimize:</p>
+    \begin{equation}KL(p\Vert q) = \int p(\boldsymbol{x}_T|\boldsymbol{x}_{T-1})\cdots p(\boldsymbol{x}_1|\boldsymbol{x}_0) \tilde{p}(\boldsymbol{x}_0) \log \frac{p(\boldsymbol{x}_T|\boldsymbol{x}_{T-1})\cdots p(\boldsymbol{x}_1|\boldsymbol{x}_0) \tilde{p}(\boldsymbol{x}_0)}{q(\boldsymbol{x}_0|\boldsymbol{x}_1)\cdots q(\boldsymbol{x}_{T-1}|\boldsymbol{x}_T) q(\boldsymbol{x}_T)} d\boldsymbol{x}_0 d\boldsymbol{x}_1\cdots d\boldsymbol{x}_T\label{eq:kl}\end{equation}
+    <p>This is the optimization objective of DDPM. The results so far are consistent with the DDPM original paper (just with slightly different notation) and consistent with the more primitive paper <a href="https://papers.cool/arxiv/1503.03585">"Deep Unsupervised Learning using Nonequilibrium Thermodynamics"</a>. Next, we need to determine the specific forms of $p(\boldsymbol{x}_t|\boldsymbol{x}_{t-1})$ and $q(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t)$, and then simplify the DDPM optimization objective $\eqref{eq:kl}$.</p>
+
+    <h2>Divide and Conquer</h2>
+    <p>First, we must know that DDPM only wants to be a generative model, so it simply models each step of encoding as a very simple Normal distribution: $p(\boldsymbol{x}_t|\boldsymbol{x}_{t-1})=\mathcal{N}(\boldsymbol{x}_t;\alpha_t \boldsymbol{x}_{t-1}, \beta_t^2 \boldsymbol{I})$. Its main characteristic is that the mean vector is obtained merely by multiplying the input $\boldsymbol{x}_{t-1}$ by a scalar $\alpha_t$. In contrast, in a traditional VAE, both mean and variance are learned using neural networks. Therefore, DDPM abandons the model's encoding ability to ultimately obtain a pure generative model. As for $q(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t)$, it is modeled as a Normal distribution with a learnable mean vector $\mathcal{N}(\boldsymbol{x}_{t-1};\boldsymbol{\mu}(\boldsymbol{x}_t), \sigma_t^2 \boldsymbol{I})$. Here, $\alpha_t, \beta_t, \sigma_t$ are not trainable parameters but pre-set values (we will discuss how to set them later), so the only trainable parameter in the entire model is $\boldsymbol{\mu}(\boldsymbol{x}_t)$. (<strong>Prompt:</strong> The definitions of $\alpha_t, \beta_t$ in this article differ from the original paper.)</p>
+
+    <p>Since the current distribution $p$ does not contain any trainable parameters, the integral concerning $p$ in objective $\eqref{eq:kl}$ only contributes a negligible constant. Therefore, objective $\eqref{eq:kl}$ is equivalent to:</p>
+    \begin{equation}\begin{aligned}&\,-\int p(\boldsymbol{x}_T|\boldsymbol{x}_{T-1})\cdots p(\boldsymbol{x}_1|\boldsymbol{x}_0) \tilde{p}(\boldsymbol{x}_0) \log q(\boldsymbol{x}_0|\boldsymbol{x}_1)\cdots q(\boldsymbol{x}_{T-1}|\boldsymbol{x}_T) q(\boldsymbol{x}_T) d\boldsymbol{x}_0 d\boldsymbol{x}_1\cdots d\boldsymbol{x}_T \\
+    =&\,-\int p(\boldsymbol{x}_T|\boldsymbol{x}_{T-1})\cdots p(\boldsymbol{x}_1|\boldsymbol{x}_0) \tilde{p}(\boldsymbol{x}_0) \left[\log q(\boldsymbol{x}_T) + \sum_{t=1}^T\log q(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t)\right] d\boldsymbol{x}_0 d\boldsymbol{x}_1\cdots d\boldsymbol{x}_T
+    \end{aligned}\end{equation}
+    <p>Since the prior distribution $q(\boldsymbol{x}_T)$ is generally taken as a standard Normal distribution and has no parameters, this term also contributes only a constant. Therefore, what needs to be calculated are the individual terms:</p>
+    \begin{equation}\begin{aligned}&\,-\int p(\boldsymbol{x}_T|\boldsymbol{x}_{T-1})\cdots p(\boldsymbol{x}_1|\boldsymbol{x}_0) \tilde{p}(\boldsymbol{x}_0) \log q(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t) d\boldsymbol{x}_0 d\boldsymbol{x}_1\cdots d\boldsymbol{x}_T\\
+    =&\,-\int p(\boldsymbol{x}_t|\boldsymbol{x}_{t-1})\cdots p(\boldsymbol{x}_1|\boldsymbol{x}_0) \tilde{p}(\boldsymbol{x}_0) \log q(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t) d\boldsymbol{x}_0 d\boldsymbol{x}_1\cdots d\boldsymbol{x}_t\\
+    =&\,-\int p(\boldsymbol{x}_t|\boldsymbol{x}_{t-1})p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_0) \tilde{p}(\boldsymbol{x}_0) \log q(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t) d\boldsymbol{x}_0 d\boldsymbol{x}_{t-1}d\boldsymbol{x}_t
+    \end{aligned}\end{equation}
+    <p>The first equality is because $q(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t)$ depends at most on $\boldsymbol{x}_t$, so the distributions from $t+1$ to $T$ can be integrated to 1. The second equality is because $q(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t)$ does not depend on $\boldsymbol{x}_1, \dots, \boldsymbol{x}_{t-2}$, so we can pre-calculate the integrals concerning them, yielding the result $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_0)=\mathcal{N}(\boldsymbol{x}_{t-1};\bar{\alpha}_{t-1} \boldsymbol{x}_0, \bar{\beta}_{t-1}^2 \boldsymbol{I})$. This result can be referenced from formula $\eqref{eq:x0-xt}$ in the next section.</p>
+
+    <h2>Re-enacting the Scene</h2>
+    <p>The subsequent process is basically the same as the "And How to Build" section of the <a href="https://kexue.fm/archives/9119#%E5%8F%82%E8%80%83%E5%AE%9E%E7%8E%B0">previous article</a>:</p>
+    <blockquote>
+        <p>1. Removing constants unrelated to optimization, the contribution of the $-\log q(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t)$ term is $\frac{1}{2\sigma_t^2}\left\Vert\boldsymbol{x}_{t-1} - \boldsymbol{\mu}(\boldsymbol{x}_t)\right\Vert^2$.</p>
+        <p>2. $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_0)$ implies $\boldsymbol{x}_{t-1} = \bar{\alpha}_{t-1}\boldsymbol{x}_0 + \bar{\beta}_{t-1}\bar{\boldsymbol{\varepsilon}}_{t-1}$, and $p(\boldsymbol{x}_t|\boldsymbol{x}_{t-1})$ implies $\boldsymbol{x}_t = \alpha_t \boldsymbol{x}_{t-1} + \beta_t \boldsymbol{\varepsilon}_t$, where $\bar{\boldsymbol{\varepsilon}}_{t-1}, \boldsymbol{\varepsilon}_t \sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{I})$.</p>
+        <p>3. From $\boldsymbol{x}_{t-1} = \frac{1}{\alpha_t}\left(\boldsymbol{x}_t - \beta_t \boldsymbol{\varepsilon}_t\right)$, we are inspired to parameterize $\boldsymbol{\mu}(\boldsymbol{x}_t)$ as $\boldsymbol{\mu}(\boldsymbol{x}_t) = \frac{1}{\alpha_t}\left(\boldsymbol{x}_t - \beta_t \boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)\right)$.</p>
+    </blockquote>
+    <p>Through this series of transformations, the optimization objective is equivalent to:</p>
+    \begin{equation}\frac{\beta_t^2}{\alpha_t^2\sigma_t^2}\mathbb{E}_{\bar{\boldsymbol{\varepsilon}}_{t-1},\boldsymbol{\varepsilon}_t\sim \mathcal{N}(\boldsymbol{0},\boldsymbol{I}),\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0)}\left[\left\Vert \boldsymbol{\varepsilon}_t - \boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\bar{\alpha}_t\boldsymbol{x}_0 + \alpha_t\bar{\beta}_{t-1}\bar{\boldsymbol{\varepsilon}}_{t-1} + \beta_t \boldsymbol{\varepsilon}_t, t)\right\Vert^2\right]\end{equation}
+    <p>Following the "Reducing Variance" section for change of variables, the result is:</p>
+    \begin{equation}\frac{\beta_t^4}{\bar{\beta}_t^2\alpha_t^2\sigma_t^2}\mathbb{E}_{\boldsymbol{\varepsilon}\sim \mathcal{N}(\boldsymbol{0},\boldsymbol{I}),\boldsymbol{x}_0\sim \tilde{p}(\boldsymbol{x}_0)}\left[\left\Vert\boldsymbol{\varepsilon} - \frac{\bar{\beta}_t}{\beta_t}\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\bar{\alpha}_t\boldsymbol{x}_0 + \bar{\beta}_t\boldsymbol{\varepsilon}, t)\right\Vert^2\right]\label{eq:loss}\end{equation}
+    <p>This gives the DDPM training objective (the original paper found through experiments that removing the coefficient in front of the above formula yielded better practical results). We derived this by simplifying the integral results step-by-step starting from the VAE optimization objective. Although it's long, every step is traceble; there is computational difficulty, but no conceptual difficulty.</p>
+
+    <p>In contrast, the original DDPM paper somewhat abruptly introduced a $q(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0)$ (original paper notation) to perform term cancellation, converting it into a KL divergence form between Normal distributions. This step in the process is highly technical and feels quite "mysterious." For me, it's rather difficult to accept intuitively.</p>
+
+    <h2>Hyperparameter Settings</h2>
+    <p>In this section, we discuss the selection of $\alpha_t, \beta_t, \sigma_t$.</p>
+
+    <p>For $p(\boldsymbol{x}_t|\boldsymbol{x}_{t-1})$, it is customary to stipulate $\alpha_t^2 + \beta_t^2=1$. This reduces the parameters by half and helps simplify the math. We already derived this in the previous article. Due to the additive property of Normal distributions, under this constraint, we have:</p>
+    \begin{equation}p(\boldsymbol{x}_t|\boldsymbol{x}_0) = \int p(\boldsymbol{x}_t|\boldsymbol{x}_{t-1})\cdots p(\boldsymbol{x}_1|\boldsymbol{x}_0) d\boldsymbol{x}_1\cdots d\boldsymbol{x}_{t-1} = \mathcal{N}(\boldsymbol{x}_t;\bar{\alpha}_t \boldsymbol{x}_0, \bar{\beta}_t^2 \boldsymbol{I})\label{eq:x0-xt}\end{equation}
+    <p>where $\bar{\alpha}_t = \alpha_1\cdots\alpha_t$, and $\bar{\beta}_t = \sqrt{1-\bar{\alpha}_t^2}$, so $p(\boldsymbol{x}_t|\boldsymbol{x}_0)$ has a simpler form. One might ask how we thought of the $\alpha_t^2 + \beta_t^2=1$ constraint beforehand. We know $\mathcal{N}(\boldsymbol{x}_t;\alpha_t \boldsymbol{x}_{t-1}, \beta_t^2 \boldsymbol{I})$ means $\boldsymbol{x}_t = \alpha_t \boldsymbol{x}_{t-1} + \beta_t \boldsymbol{\varepsilon}_t, \boldsymbol{\varepsilon}_t \sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{I})$. If $\boldsymbol{x}_{t-1}$ is also $\sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{I})$, we want $\boldsymbol{x}_t$ to be $\sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{I})$ as well, which determines $\alpha_t^2 + \beta_t^2 = 1$.</p>
+
+    <p>As mentioned before, $q(\boldsymbol{x}_T)$ is usually taken as the standard Normal distribution $\mathcal{N}(\boldsymbol{x}_T; \boldsymbol{0}, \boldsymbol{I})$. Since our learning goal is to minimize the KL divergence between two joint distributions (i.e., we hope $p \approx q$), their marginal distributions would naturally be equal. So we also hope:</p>
+    \begin{equation}q(\boldsymbol{x}_T) = \int p(\boldsymbol{x}_T|\boldsymbol{x}_{T-1})\cdots p(\boldsymbol{x}_1|\boldsymbol{x}_0) \tilde{p}(\boldsymbol{x}_0) d\boldsymbol{x}_0 d\boldsymbol{x}_1\cdots d\boldsymbol{x}_{T-1} = \int p(\boldsymbol{x}_T|\boldsymbol{x}_0) \tilde{p}(\boldsymbol{x}_0) d\boldsymbol{x}_0 \end{equation}
+    <p>Since the data distribution $\tilde{p}(\boldsymbol{x}_0)$ is arbitrary, for the above equation to always hold, we must let $p(\boldsymbol{x}_T|\boldsymbol{x}_0)=q(\boldsymbol{x}_T)$, which means it degenerates to a standard Normal distribution unrelated to $\boldsymbol{x}_0$. This means we need to design $\alpha_t$ appropriately such that $\bar{\alpha}_T \approx 0$. At the same time, this tells us again that DDPM lacks encoding capability; the final $p(\boldsymbol{x}_T|\boldsymbol{x}_0)$ is essentially independent of the input $\boldsymbol{x}_0$. Using the "tearing down - building up" analogy: the original building has been completely reduced to raw materials. If these materials are used to rebuild, any kind of building can be made, not necessarily identical to the one before. DDPM chose $\alpha_t = \sqrt{1 - \frac{0.02t}{T}}$; we analyzed the properties of this choice in the "Hyperparameter Settings" section of the previous article.</p>
+
+    <p>Regarding $\sigma_t$, theoretically, different data distributions $\tilde{p}(\boldsymbol{x}_0)$ correspond to different optimal $\sigma_t$. However, since we don't want to set $\sigma_t$ as a trainable parameter, we choose some specific $\tilde{p}(\boldsymbol{x}_0)$ to derive the corresponding optimal $\sigma_t$ and assume it generalizes to general data distributions. We can consider two simple examples:</p>
+    <blockquote>
+        <p>1. Assume the training set has only one sample $\boldsymbol{x}_*$, i.e., $\tilde{p}(\boldsymbol{x}_0)$ is the Dirac distribution $\delta(\boldsymbol{x}_0 - \boldsymbol{x}_*)$. This yields the optimal $\sigma_t = \frac{\bar{\beta}_{t-1}}{\bar{\beta}_t}\beta_t$.</p>
+        <p>2. Assume the data distribution $\tilde{p}(\boldsymbol{x}_0)$ follows a standard Normal distribution. This yields the optimal $\sigma_t = \beta_t$.</p>
+    </blockquote>
+    <p>Experimental results show the performances of these two choices are similar, so either one can be used for sampling. The derivations for these two results are a bit long; we will discuss them at a later time.</p>
+
+    <h2>Reference Implementation</h2>
+    <p>How can such a wonderful model lack a Keras implementation? Here is my reference implementation:</p>
+    <blockquote>
+        <p><strong>GitHub Address: <a href="https://github.com/bojone/Keras-DDPM">https://github.com/bojone/Keras-DDPM</a></strong></p>
+    </blockquote>
+    <p>Note that my implementation does not strictly follow the official DDPM source code. Instead, I simplified the U-Net architecture (e.g., changing feature concatenation to addition, removing Attention, etc.) to produce results quickly. In testing, on a single 3090 with 24G VRAM, training on the CelebA HQ face dataset with size 128*128 and <code>blocks=1, batch_size=64</code>, initial results were seen in half a day. After 3 days of training, the sampling results are shown below:</p>
+
+    <p style="text-align:center;"><em>(Sampling results from the author's trained DDPM)</em></p>
+
+    <p>During the debugging process, I summarized the following practical experiences:</p>
+    <blockquote>
+        <p>1. The loss function cannot simply be <code>mse</code> as implemented in some frameworks; it must be the squared Euclidean distance. The difference between the two is that <code>mse</code> divides the squared Euclidean distance by $\text{Width} \times \text{Height} \times \text{Channels}$. This leads to loss values that are too small, and gradients for some parameters might be rounded to zero due to precision limits, causing the training to converge first and then diverge. This phenomenon often appears in mixed-precision training as well. Refer to <a href="translation_9059.html">"Using Mixed Precision and XLA to Accelerate Training in bert4keras"</a>.</p>
+        <p>2. For normalization, you can use Instance Norm, Layer Norm, Group Norm, etc., but do not use Batch Norm. Batch Norm has consistency issues between training and inference, which might lead to great training results but very poor generation results.</p>
+        <p>3. There is no need to copy the original paper’s network structure exactly. The original paper was aiming to hit SOTA. If you copy it exactly, it will be huge and slow. You just need to follow the U-Net idea to design an autoencoder, and you can basically train a decent result. Since it's essentially a pure regression problem, it's quite easy to train.</p>
+        <p>4. Regarding the input of parameter $t$, the original paper uses Sinusoidal position encoding. I found that replacing it with a trainable Embedding works just as well.</p>
+        <p>5. Following the habit of pre-training language models, I used the LAMB optimizer. It makes tuning the learning rate easier; basically $10^{-3}$ works for model training with various initialization methods.</p>
+    </blockquote>
+
+    <h2>Comprehensive Evaluation</h2>
+    <p>Combining <a href="translation_9119.html">"Generative Diffusion Model Talk (1): DDPM = Tearing Down + Building Up"</a> and this article, listeners likely have their own views on DDPM. One can basically see where the advantages, disadvantages, and corresponding improvement directions lie.</p>
+
+    <p>DDPM's advantages are clear: it's easy to train, and generated images are sharp. This "ease of training" is relative to GANs. GANs are a $\min-\max$ process where training uncertainty is high and prone to collapse, whereas DDPM is purely a regression loss—it's strictly minimization, so the training process is very stable. Also, through the "tearing down - building up" analogy, we find DDPM is not inferior to GANs in terms of popular, intuitive understanding.</p>
+
+    <p>However, DDPM's disadvantages are also prominent. The most obvious one is the slow sampling speed; it requires executing the model $T$ times ($T=1000$ in the original paper) to complete sampling. One could say this is $T$ times slower than a GAN's one-step sampling. There is much subsequent work focusing on improving this. Secondly, in GANs, the training from random noise to a sample is a deterministic transformation—the random noise is a decoupled latent variable, allowing for interpolation or editing to achieve controlled generation. In DDPM, the generation process is completely stochastic; there is no deterministic relationship, so this type of latent editing/generation doesn't exist natively. While the original paper demonstrated interpolation, it was done on the original images by blurring them with noise and letting the model "imagine" a new image; this is hard to describe as semantic fusion.</p>
+
+    <p>Beyond these weaknesses, there are other directions for DDPM. For example, the DDPMs demonstrated so far are unconditional. It's natural to think of conditional DDPMs, just as we have C-VAE from VAE and C-GAN from GAN. This is currently a mainstream application, as seen in Google's Imagen, which uses diffusion models for text-to-image and super-resolution—both being essentially conditional diffusion models. Furthermore, while the current DDPM is designed for continuous variables, its philosophy should apply to discrete data. So how do we design DDPM for discrete data?</p>
+
+    <h2>Related Work</h2>
+    <p>Speaking of related work, most people think of traditional diffusion models, energy-based models, or denoising autoencoders. But what I want to mention next is not those, but <a href="translation_7574.html">"The Powerful NVAE: We Can No Longer Say VAE Generated Images are Blurry"</a>, which was previously introduced on this blog and can even be considered a predecessor of the DDPM logic.</p>
+
+    <p>From the VAE perspective, traditional VAE images are blurry, and DDPM is (as far as I know) only the second VAE capable of generating sharp images, the first being NVAE. Looking at the form of NVAE, we can find many similarities with DDPM. For instance, NVAE also introduces many latent variables $z=\{z_1, z_2, \dots, z_L\}$, and these variables have a recursive relationship. Thus, the sampling process of NVAE is very similar to DDPM.</p>
+
+    <p>In terms of theoretical form, DDPM can be viewed as an extremely simplified NVAE, where the recursive relationship between latent variables is modeled only as Markovian conditional Normal distributions, rather than NVAE's non-Markovian style. The generative model is also just a repeated iteration of the same model, rather than NVAE using a massive model with $z=\{z_1, z_2, \dots, z_L\}$ simultaneously. However, NVAE also uses parameter sharing when utilizing its numerous $z$'s, which is essentially similar to the repeated iteration of a single model.</p>
+
+    <h2>Article Summary</h2>
+    <p>This article derived DDPM from the perspective of Variational Autoencoders (VAE). In this light, DDPM is a simplified autoregressive VAE, very similar to the previous NVAE. I also shared my DDPM implementation code and practical experiences, along with a comprehensive evaluation of the DDPM model.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9152.html" style="color: #005fcc;">https://kexue.fm/archives/9152</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

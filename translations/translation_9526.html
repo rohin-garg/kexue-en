@@ -1,0 +1,246 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/9526">A Concise Solution to Mitigate Cross-Entropy Overconfidence</a></h1>
+    
+    <p>By 苏剑林 | March 14, 2023</p>
+
+    <p>
+        As is well known, the standard evaluation metric for classification problems is accuracy, while the standard loss function is cross-entropy. Cross-entropy has the advantage of fast convergence, but it is not a smooth approximation of accuracy, which leads to an inconsistency between training and prediction. On the other hand, when the predicted probability of a training sample is very low, cross-entropy yields a very large loss (tending towards $-\log 0^{+}=\infty$). This means that cross-entropy pays excessive attention to samples with low predicted probabilities—even if those samples might be "noisy data." Consequently, models trained with cross-entropy often exhibit an overconfidence phenomenon, where the model assigns high predicted probabilities to every sample. This brings two side effects: first, a decrease in performance due to overfitting on noisy data; and second, the inability to use predicted probabilities as reliable indicators of uncertainty.
+    </p>
+
+    <p>
+        Regarding improvements to cross-entropy, the academic community has continuously produced research, yet this field remains in a state of "various methods competing with one another" without a definitive standard answer. In this article, we will learn about another concise candidate solution provided by the paper <a href="https://papers.cool/arxiv/2302.13344">"Tailoring Language Generation Models under Total Variation Distance"</a>.
+    </p>
+
+    <h2>Brief Introduction to the Results <a href="https://kexue.fm/archives/9526#%E7%BB%93%E6%9E%9C%E7%AE%80%E4%BB%8B">#</a></h2>
+
+    <p>
+        As the name suggests, the modification in the original paper is aimed at text generation tasks, based on the theory of Total Variation distance (refer to <a href="https://kexue.fm/archives/7210#Total%20Variation">"Designing GANs: Another GAN Production Workshop"</a>). However, after a series of relaxations and simplifications in the original paper, the final result no longer has an obvious connection to Total Variation distance, and theoretically, it is not limited to text generation tasks. Therefore, this article treats it as a loss function for general classification tasks.
+    </p>
+
+    <p>
+        For a data pair $(x, y)$, the loss function given by cross-entropy is:
+        \begin{equation}-\log p_{\theta}(y|x)\end{equation}
+        The modification in the original paper is very simple, changing it to:
+        \begin{equation}-\frac{\log \big[\gamma + (1 - \gamma)p_{\theta}(y|x)\big]}{1-\gamma}\label{eq:gamma-ce}\end{equation}
+        where $\gamma \in [0, 1]$. When $\gamma=0$, it is ordinary cross-entropy; when $\gamma=1$, calculated by the limit, the result is $-p_{\theta}(y|x)$.
+    </p>
+
+    <p>
+        In the experiments of the original paper, the choice of $\gamma$ varied significantly across different tasks. For example, $\gamma=10^{-7}$ was used for language modeling tasks, $\gamma=0.1$ for machine translation, and $\gamma=0.8$ for text summarization. A referenceable pattern is: if training from scratch, choose a $\gamma$ close to 0; if fine-tuning, consider a relatively larger $\gamma$. Additionally, a more intuitive approach is to treat $\gamma$ as a dynamic parameter, starting from $\gamma=0$ and slowly transitioning to $\gamma=1$ as training progresses, though this adds another schedule to tune.
+    </p>
+
+    <p>
+        In terms of effectiveness, since there is an adjustable $\gamma$ parameter and the original cross-entropy is included as a special case, as long as one is willing to tune it, there is generally a good chance of achieving better results than standard cross-entropy.
+    </p>
+
+    <h2>Personal Derivation <a href="https://kexue.fm/archives/9526#%E4%B8%AA%E4%BA%BA%E6%8E%A8%E5%AF%BC">#</a></h2>
+
+    <p>
+        How should we understand Equation $\eqref{eq:gamma-ce}$? In the "Accuracy" section of <a href="https://kexue.fm/archives/6620#%E6%AD%A3%E7%A1%AE%E7%8E%87">"Random Talk on Function Smoothing: Differentiable Approximations of Non-differentiable Functions"</a>, we derived that a smooth approximation of accuracy is:
+        \begin{equation}\mathbb{E}_{(x,y)\sim \mathcal{D}}[p_{\theta}(y|x)]\end{equation}
+        So, if our evaluation metric is accuracy, intuitively, we should use $-p_{\theta}(y|x)$ as the loss function, because the changes in the loss function would then be more synchronized with accuracy. However, in reality, cross-entropy often performs better. But the starting point of cross-entropy is merely "better training," so it sometimes "over-trains," leading to overfitting. A natural thought is whether we can "interpolate" these two results to balance their advantages.
+    </p>
+
+    <p>
+        To this end, we consider the gradients of both (where "Accuracy" refers to its negative smooth approximation $-p_{\theta}(y|x)$):
+        \begin{equation}\begin{aligned}
+        \text{Accuracy:}&\,\quad-\nabla_{\theta} p_{\theta}(y|x) \\
+        \text{Cross-Entropy:}&\,\quad-\frac{1}{p_{\theta}(y|x)}\nabla_{\theta} p_{\theta}(y|x)
+        \end{aligned}\end{equation}
+        The difference between the two is just the factor $\frac{1}{p_{\theta}(y|x)}$. How can we transition $\frac{1}{p_{\theta}(y|x)}$ to 1? The original paper's solution is:
+        \begin{equation}\frac{1}{\gamma + (1 - \gamma)p_{\theta}(y|x)}\end{equation}
+        Of course, this construction is not unique. The method chosen by the original paper preserves the gradient characteristics of cross-entropy as much as possible, thereby maintaining its fast convergence property. Based on this construction, we want the gradient of the new loss function to be:
+        \begin{equation}-\frac{\nabla_{\theta}p_{\theta}(y|x)}{\gamma + (1 - \gamma)p_{\theta}(y|x)} = \nabla_{\theta}\left(-\frac{\log \big[\gamma + (1 - \gamma)p_{\theta}(y|x)\big]}{1-\gamma}\right)\label{eq:gamma-ce-g}\end{equation}
+        This identifies the loss function in Equation $\eqref{eq:gamma-ce}$. In this process, we first designed the new gradient and then found the corresponding loss function by integrating.
+    </p>
+
+    <h2>Additional Comments <a href="https://kexue.fm/archives/9526#%E5%A4%9A%E6%89%AF%E5%87%A0%E5%8F%A5">#</a></h2>
+
+    <p>
+        Why design the loss function from a gradient perspective? There are roughly two reasons.
+    </p>
+
+    <p>
+        First, many loss functions simplify significantly after taking gradients. Designing in gradient space often provides more inspiration and flexibility. For instance, in this example, designing the transition function $\frac{1}{\gamma + (1 - \gamma)p_{\theta}(y|x)}$ between $\frac{1}{p_{\theta}(y|x)}$ and $1$ in gradient space is not too complex, but designing a transition function between $p_{\theta}(y|x)$ and $\log p_{\theta}(y|x)$ directly in the loss function space like $\frac{\log [\gamma + (1 - \gamma)p_{\theta}(y|x)]}{1-\gamma}$ would be much more complicated.
+    </p>
+
+    <p>
+        Second, current optimizers are all gradient-based, so in many cases, we only need to design the gradient; we don't even necessarily need to find the antiderivative. The original result in the paper actually only provided the gradient:
+        \begin{equation}-\max\left(b, \frac{p_{\theta}(y|x)}{\gamma + (1 - \gamma)p_{\theta}(y|x)}\right)\nabla_{\theta}\log p_{\theta}(y|x)\end{equation}
+        When $b=0$, it is equivalent to Equation $\eqref{eq:gamma-ce}$. That is to say, the original paper also added a threshold when designing the gradient, at which point it becomes difficult to write a simple antiderivative. However, implementing the above is not difficult; one just needs to consider the loss function:
+        \begin{equation}-\max\left(b, \frac{p_{\theta}(y|x)}{\gamma + (1 - \gamma)p_{\theta}(y|x)}\right)_{\text{stop\_grad}}\log p_{\theta}(y|x)\end{equation}
+        The $\text{stop\_grad}$ here simply cuts off the gradient for that part of the result, corresponding to the <code>tf.stop_gradient</code> operator in TensorFlow.
+    </p>
+
+    <h2>Summary <a href="https://kexue.fm/archives/9526#%E6%96%87%E7%AB%A0%E5%B0%8F%E7%BB%93">#</a></h2>
+
+    <p>
+        This article primarily introduced a concise solution to mitigate cross-entropy overconfidence.
+    </p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9526.html" style="color: #005fcc;">https://kexue.fm/archives/9526</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

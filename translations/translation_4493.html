@@ -1,0 +1,243 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/4493">Customizing Complex Loss Functions in Keras</a></h1>
+
+    <p>By 苏剑林 | July 22, 2017</p>
+
+    <p>Keras is a building-block-style deep learning framework that makes it very convenient and intuitive to build common deep learning models. Before the emergence of TensorFlow, Keras was already arguably the most popular deep learning framework at the time, using Theano as its backend. Today, Keras supports four backends: Theano, TensorFlow, CNTK, and MXNet (the first three are officially supported, while MXNet integration is community-led), which speaks to the charm of Keras.</p>
+
+    <p>While Keras is convenient, this convenience comes at a price. One of its most criticized drawbacks is its lower flexibility, making it difficult to build complex models. Indeed, Keras is not the most suitable for building extremely complex models; however, it is not impossible. It's just that the amount of code required for very complex models is often comparable to writing them directly in TensorFlow. Nevertheless, Keras's friendly and convenient features (like that cute training progress bar) mean there are always scenarios where we want to use it. Thus, learning how to flexibly customize Keras models becomes a valuable subject. In this article, we focus on customizing loss functions.</p>
+
+    <h2 id="输入-输出设计">Input-Output Design</h2>
+
+    <p>Keras models are functional; that is, they have inputs and outputs, and the loss is defined as some error function between the predicted values and the true values. Keras itself comes with many built-in <a href="https://keras.io/losses/">loss functions</a>, such as MSE and cross-entropy, which can be called directly. To customize a loss function, the most natural method is to follow the pattern of Keras's built-in losses.</p>
+
+    <p>For example, when tackling classification problems, we frequently use Softmax output and cross-entropy as the loss. However, this approach has drawbacks, one of which is "overconfident" classification. Even with noisy input, the classification result is almost always either 1 or 0. This often leads to over-fitting and makes it difficult to determine confidence intervals or set thresholds in practical applications. Therefore, we often look for ways to prevent the classifier from being too confident, and modifying the loss function is one such method.</p>
+
+    <p>Without modifying the loss, we use cross-entropy to fit a one-hot distribution. The formula for cross-entropy is:</p>
+    $$S(q|p) = -\sum_i q_i \log p_i$$
+    <p>where $p_i$ is the predicted distribution and $q_i$ is the true distribution. For instance, if the output is $[z_1, z_2, z_3]$ and the target is $[1, 0, 0]$, then:</p>
+    $$loss = -\log(e^{z_1}/Z), \quad Z = e^{z_1} + e^{z_2} + e^{z_3}$$
+    <p>As long as $z_1$ is already the maximum of $[z_1, z_2, z_3]$, we can always "exacerbate" the situation—by increasing the number of training steps—to make the magnitude of the vector $[z_1, z_2, z_3]$ large enough so that $e^{z_1}/Z$ is sufficiently close to 1 (equivalently, the loss is sufficiently close to 0). This is the root of why Softmax is typically overconfident: the loss can be reduced simply by blindly increasing the magnitude of the logits. The optimizer is all too happy to do this as the cost is low. To make the classification less overconfident, one strategy is to not purely fit a one-hot distribution, but to also spend some effort fitting a uniform distribution. The new loss becomes:</p>
+    $$loss = -(1-\varepsilon) \log(e^{z_1}/Z) - \varepsilon \sum_{i=1}^n \frac{1}{3} \log(e^{z_i}/Z), \quad Z = e^{z_1} + e^{z_2} + e^{z_3}$$
+    <p>This way, blindly increasing the ratio to make $e^{z_1}/Z$ approach 1 is no longer the optimal solution, thereby alleviating overconfidence. In many cases, this strategy can also improve test accuracy (preventing over-fitting).</p>
+
+    <p>So, how do we write this in Keras? It's quite simple:</p>
+
+<pre><code class="language-python">
+# Example code for custom crossentropy would go here
+</code></pre>
+
+    <p>Essentially, you define a loss function that takes <code>y_true</code> and <code>y_pred</code> as inputs and pass it into the model's <code>compile</code> method. In this custom cross-entropy, the first term is standard cross-entropy, and the second term constructs a uniform distribution via <code>K.ones_like(y_pred)/nb_classes</code> and calculates the cross-entropy between <code>y_pred</code> and that uniform distribution. It’s that simple!</p>
+
+    <h2 id="并不仅仅是输入输出那么简单">Not Just Simple Input and Output</h2>
+
+    <p>As mentioned before, Keras models have fixed inputs and outputs, and the loss is generally a function of the predicted and true values. However, many models are not structured this way, such as Question-Answering (QA) models and Triplet Loss scenarios.</p>
+
+    <p>This specifically refers to FAQ-style QA models with a fixed answer database. A common method is to encode the question and the answer into vectors of the same length and then compare their cosine similarity—the larger the cosine, the better the match. This approach is easy to understand and serves as a versatile framework; the inputs don't even have to be text—images work too, as long as the encoding method yields a vector. But how do we train it? We naturally want the cosine value of the correct answer to be as large as possible and the incorrect answer's cosine to be as small as possible. However, this isn't strictly necessary. A more reasonable requirement is: the cosine of the correct answer should be larger than the cosine of any incorrect answer by a certain margin. This leads to the Triplet Loss:</p>
+    $$loss = \max(0, m + \cos(q, A_{wrong}) - \cos(q, A_{right}))$$
+    <p>where $m$ is a positive constant.</p>
+
+    <p>How do we understand this loss? Since we want to minimize the loss, consider the part $m + \cos(q, A_{wrong}) - \cos(q, A_{right})$. We know the goal is to widen the gap between the correct and incorrect answers. However, once $\cos(q, A_{right}) - \cos(q, A_{wrong}) > m$ (i.e., the gap is greater than $m$), the loss becomes 0 due to the <code>max</code> function. It automatically reaches the minimum, and the model stops optimizing that sample. Thus, the philosophy of Triplet Loss is: just make the difference between the correct and incorrect answers "large enough" (greater than $m$); once it exceeds $m$, stop worrying about it and focus on samples where the gap hasn't been established yet!</p>
+
+    <p>We already have the question and the correct answer; incorrect answers can be picked randomly, so training samples are easy to construct. But how do we implement Triplet Loss in Keras? It looks like a single-input, dual-output model, but it's not that simple. In Keras, dual-output models typically assign a separate loss to each output and take a weighted sum, but this cannot be easily expressed as a sum of two independent terms. So how should we build such a model? Here is an example:</p>
+
+<pre><code class="language-python">
+# Example code for Triplet Loss model implementation would go here
+</code></pre>
+
+    <p>If you don't understand it the first time, please read it several times. This code contains the logic for implementing the most general models in Keras: <strong>Treat the target as an input to form a multi-input model, write the loss as a layer that serves as the final output. When building the model, simply define the model's <code>output</code> as the loss. When compiling, set the loss directly to <code>y_pred</code> (since the model's output <i>is</i> the loss, <code>y_pred</code> is the loss) and ignore <code>y_true</code>. During training, just pass any dummy array that matches the shape of <code>y_true</code>.</strong> Finally, we obtain the encoders for the questions and answers. We only need the encoded vectors to compare cosines and select the best answer.</p>
+
+    <h2 id="Embedding层的妙用">The Clever Use of Embedding Layers</h2>
+
+    <p>Before reading this section, please ensure you have a clear understanding of what an Embedding layer is. If not, please refer to <a href="translation_4122.html">"What is the Deal with Word Vectors and Embeddings?"</a>. It must be emphasized: although word vectors are called Word Embeddings, an Embedding layer is not a word vector and has no direct relationship with them!!! Don't ask questions like "how does this relate to word vectors?" Embedding layers have never had an inherent link to word vectors (it's just that they can be used when training word vectors). You can understand an Embedding layer in two ways: 1. It is an accelerated version of a Dense layer with one-hot input—mathematically identical; 2. It is a matrix lookup operation that takes an integer as input and outputs the vector at the corresponding index, where the matrix is trainable. (See? Where is the connection to word vectors?)</p>
+
+    <p>In this part, we address Center Loss. As mentioned earlier, classification is usually done with Softmax + Cross-Entropy. In matrix form, Softmax is:</p>
+    $$\text{softmax}(Wx + b)$$
+    <p>where $x$ can be understood as the extracted features, and $W, b$ are the weights and biases of the final fully connected layer. The entire model is trained together. The question is: what kind of structure do the features $x$ trained this way actually have?</p>
+
+    <p>In some cases, we care more about the features $x$ than the final classification results. For example, in face recognition, suppose we have a database of 100,000 different people with several photos of each. We could train a 100,000-class classification model. Given a photo, we can determine which of the 100,000 identities it belongs to. But this is only the training phase. How do we apply it? In a real-world environment, such as a company, there might be only a few hundred people; in a public security detection scenario, there might be millions. Thus, the 100,000-class model is practically meaningless. However, the features before Softmax—the $x$ we mentioned—might still be very useful. If $x$ is basically the same for the same person (class), we can use the trained model as a feature extractor and perform recognition using KNN (K-Nearest Neighbors).</p>
+
+    <p>The vision is beautiful, but reality is harsh. Training Softmax directly doesn't guarantee that the resulting features will have <strong>clustering properties</strong>. On the contrary, they tend to spread out across the entire space. To make the results have clustering properties, Center Loss uses a simple yet effective solution: adding a clustering penalty term. The full formula is:</p>
+    $$loss = -\log \frac{e^{W_y^\top x + b_y}}{\sum_i e^{W_i^\top x + b_i}} + \lambda \|x - c_y\|^2$$
+    <p>where $y$ corresponds to the correct class. We can see the first term is the ordinary Softmax cross-entropy, and the second term is the additional penalty. it defines a trainable center $c$ for each class, requiring each class's features to stay close to its respective center. Essentially: <strong>the first term is responsible for widening the distance between different classes, and the second term is responsible for narrowing the distance within the same class.</strong></p>
+
+    <p>So, how do we implement this in Keras? The key is: where do we store the clustering centers? The answer is the Embedding layer! As stated at the beginning of this section, an Embedding is just a trainable matrix, perfect for storing clustering center parameters. Mimicking the approach from the second section, we get:</p>
+
+<pre><code class="language-python">
+# Example code for Center Loss implementation would go here
+</code></pre>
+
+    <p>Readers might wonder: why not write the overall loss as a single output like in the Triplet Loss example, rather than this dual-output approach?</p>
+
+    <p>In fact, Keras enthusiasts love Keras for its progress bar—it displays the training loss and accuracy in real-time. <strong>If we wrote it as in the second section, we couldn't use the <code>metrics</code> parameter, so training accuracy wouldn't be displayed during training, which would be a small regret. By writing it this way, we can still see the training accuracy, and we can specifically see the cross-entropy loss, the L2 loss, and the total loss respectively. It's much more comfortable.</strong></p>
+
+    <h2 id="Keras就是这么好玩">Keras is Just This Fun</h2>
+
+    <p>With these three examples, readers should have a good idea of the steps to build complex models in Keras. It should be noted that this approach is relatively simple and flexible. While Keras does have its inflexible sides, it is not as "incapable" as online comments suggest. Overall, Keras is capable of meeting the needs of most people for rapidly experimenting with deep learning models. If you are still hesitating about which deep learning framework to choose, choose Keras—by the time you truly feel Keras can no longer satisfy your needs, you will already have the ability to master any framework, and the dilemma will vanish.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_4493.html" style="color: #005fcc;">https://kexue.fm/archives/4493</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

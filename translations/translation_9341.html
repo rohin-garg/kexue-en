@@ -1,0 +1,330 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9341">CoSENT (3): As a Loss Function for Interactive Similarity Models</a></h1>
+
+<p>By 苏剑林 | November 09, 2022</p>
+
+<p>In <a href="translation_8847.html">"CoSENT (1): A More Effective Sentence Vector Scheme than Sentence-BERT"</a>, the author proposed a supervised sentence vector scheme named "CoSENT." Since it directly trains the cosine similarity, which is more relevant to the evaluation target, it usually achieves better performance and faster convergence than Sentence-BERT. In <a href="translation_8860.html">"CoSENT (2): How Big is the Gap Between Feature-based Matching and Interactive Matching?"</a>, we compared the differences between it and interactive similarity models, showing that its performance on certain tasks can even approach that of interactive similarity models.</p>
+
+<p>However, at that time, the author was focused on finding a Sentence-BERT replacement that was closer to the evaluation target, so the results were oriented towards supervised sentence vectors, i.e., feature-based similarity models. Recently, it occurred to me that CoSENT can actually also serve as a loss function for interactive similarity models. So, how does it compare to the standard choice of cross-entropy? This article supplements that part of the experiments.</p>
+
+<h2>Basic Review</h2>
+
+<p>When CoSENT was first proposed, it was used as a loss function for supervised sentence vectors:</p>
+
+\[ \log\left(1+\sum_{sim(i,j)>sim(k,l)}e^{\lambda(\cos(u_k,u_l)-\cos(u_i,u_j))}\right) \]
+
+<p>where $i,j,k,l$ are four training samples (e.g., four sentences), $u_i,u_j,u_k,u_l$ are the sentence vectors to be learned (e.g., their [CLS] vectors after BERT), $\cos(\cdot,\cdot)$ represents the cosine similarity between two vectors, and $sim(\cdot,\cdot)$ represents their similarity labels. Thus, the definition of this loss function is clear: if you believe the similarity of $(i,j)$ should be greater than the similarity of $(k,l)$, then an $e^{\lambda(\cos(u_k,u_l)-\cos(u_i,u_j))}$ term is added into the log sum.</p>
+
+<p>From this form, it's evident that CoSENT was originally intended for supervised training of cosine similarity in feature-based models; the name "CoSENT" even stands for "Cosine Sentence." However, moving past the cosine similarity aspect, CoSENT is essentially a loss function that relies only on the relative order of labels. It has no necessary connection to cosine similarity. We can generalize it as:</p>
+
+\[ \log\left(1+\sum_{sim(i,j)>sim(k,l)}e^{\lambda(f(k,l)-f(i,j))}\right) \]
+
+<p>where $f(\cdot,\cdot)$ is any function that outputs a scalar (generally no activation function is needed), representing the similarity model to be learned. This includes "interactive similarity" models where two inputs are concatenated into a single text input for BERT!</p>
+
+<h2>Experimental Comparison</h2>
+
+<p>The conventional way to train interactive similarity is to construct a two-node output at the end, followed by softmax, using cross-entropy (abbreviated as CE in the table below) as the loss function. This is equivalent to adding a sigmoid activation onto $f(\cdot,\cdot)$ and using binary cross-entropy. However, this approach is only suitable for binary labels. If the labels are continuous scores (e.g., STS-B is from 1 to 5), it is not very suitable, and the task is usually transformed into a regression problem. CoSENT does not have this limitation because it only requires the order information of labels, which is consistent with the commonly used evaluation metric, the Spearman correlation coefficient.</p>
+
+<p>For the comparative experiments between the two, refer to the following code:</p>
+
+<blockquote>
+<p><strong><a href="https://github.com/bojone/CoSENT/blob/main/accuracy/interact_cosent.py">https://github.com/bojone/CoSENT/blob/main/accuracy/interact_cosent.py</a></strong></p>
+</blockquote>
+
+<p>The experimental results are as follows:</p>
+
+<table border="1" style="width:100%; text-align:center;">
+    <caption>Spearman Correlation Coefficient Evaluation</caption>
+    <thead>
+        <tr>
+            <th>Model</th>
+            <th>ATEC</th>
+            <th>BQ</th>
+            <th>LCQMC</th>
+            <th>PAWSX</th>
+            <th>avg</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>BERT + CE</td>
+            <td>48.01</td>
+            <td>71.96</td>
+            <td>78.53</td>
+            <td>68.59</td>
+            <td>66.77</td>
+        </tr>
+        <tr>
+            <td>BERT + CoSENT</td>
+            <td>48.09</td>
+            <td>72.25</td>
+            <td>78.70</td>
+            <td>69.34</td>
+            <td>67.10</td>
+        </tr>
+        <tr>
+            <td>RoBERTa + CE</td>
+            <td>49.70</td>
+            <td>73.20</td>
+            <td>79.13</td>
+            <td>70.52</td>
+            <td>68.14</td>
+        </tr>
+        <tr>
+            <td>RoBERTa + CoSENT</td>
+            <td>49.82</td>
+            <td>73.09</td>
+            <td>78.78</td>
+            <td>70.54</td>
+            <td>68.06</td>
+        </tr>
+    </tbody>
+</table>
+
+<br>
+
+<table border="1" style="width:100%; text-align:center;">
+    <caption>Accuracy Evaluation</caption>
+    <thead>
+        <tr>
+            <th>Model</th>
+            <th>ATEC</th>
+            <th>BQ</th>
+            <th>LCQMC</th>
+            <th>PAWSX</th>
+            <th>avg</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>BERT + CE</td>
+            <td>85.38</td>
+            <td>83.57</td>
+            <td>88.10</td>
+            <td>81.45</td>
+            <td>84.63</td>
+        </tr>
+        <tr>
+            <td>BERT + CoSENT</td>
+            <td>85.55</td>
+            <td>83.73</td>
+            <td>87.92</td>
+            <td>81.85</td>
+            <td>84.76</td>
+        </tr>
+        <tr>
+            <td>RoBERTa + CE</td>
+            <td>85.97</td>
+            <td>84.67</td>
+            <td>88.14</td>
+            <td>82.85</td>
+            <td>85.41</td>
+        </tr>
+        <tr>
+            <td>RoBERTa + CoSENT</td>
+            <td>86.06</td>
+            <td>84.23</td>
+            <td>88.14</td>
+            <td>83.03</td>
+            <td>85.37</td>
+        </tr>
+    </tbody>
+</table>
+
+<p>As we can see, there are no surprises; the effects of CE and CoSENT are basically identical. If we have to dig for some subtle differences, it can be observed that in BERT, the performance of CoSENT is relatively better, while in RoBERTa there is essentially no difference. Additionally, on the PAWSX task, the improvement from CoSENT is more noticeable, whereas on other tasks it is mostly the same. Thus, we can "weakly" draw a conclusion:</p>
+
+<blockquote>
+<p>When the model is weaker (BERT is weaker than RoBERTa) or the task is harder (PAWSX is relatively harder than the other three tasks), CoSENT <b>might</b> achieve better results than CE.</p>
+</blockquote>
+
+<p>Note the word "might"; I cannot guarantee it. To be pragmatically honest, I don't believe the two constitute any significant difference. However, one can guess that because the forms of the two loss functions are distinctly different, even if the final metrics are similar, there should be some differences within the models. In that case, perhaps model ensemble could be considered?</p>
+
+<h2>Summary</h2>
+
+<p>This article mainly reflects on and experiments with the feasibility of CoSENT in interactive similarity models. The final conclusion is that it is "feasible, but provides no significant improvement in performance."</p>
+
+<hr />
+<p><strong>Original link:</strong> <a href="translation_9341.html">https://kexue.fm/archives/9341</a></p>
+
+<p><strong>Reference Format:</strong></p>
+<p>Su Jianlin. (Nov. 09, 2022). "CoSENT (3): As a Loss Function for Interactive Similarity Models" [Blog post]. Retrieved from <a href="translation_9341.html">https://kexue.fm/archives/9341</a></p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9341.html" style="color: #005fcc;">https://kexue.fm/archives/9341</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

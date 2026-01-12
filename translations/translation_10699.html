@@ -1,0 +1,256 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/10699">MoE Tour: 1. Starting from Geometric Meaning</a></h1>
+    <p>By 苏剑林 | February 8, 2025</p>
+
+    <p>Two years ago, in a moment of inspiration, I started the "<a href="https://kexue.fm/search/Transformer%E5%8D%87%E7%BA%A7%E4%B9%8B%E8%B7%AF/">Transformer Upgrade Road</a>" series, where I sequentially shared some improvements and personal insights on mainstream Transformer architectures, which was well-received by many readers. Starting with this article, we will follow the same style to introduce another currently mainstream architecture: MoE (Mixture of Experts).</p>
+
+    <p>The popularity of MoE needs no introduction. The recently viral <a href="https://papers.cool/arxiv/2412.19437">DeepSeek-V3</a> uses the MoE architecture, GPT-4 is rumored to be MoE-based, and many recent models in China have also adopted MoE. However, although research on MoE has a long history, its application remained lukewarm for a long time. It was roughly starting from last year's <a href="https://papers.cool/arxiv/2401.04088">《Mixtral of Experts》</a> that MoE gradually began to capture everyone's attention. Its significant advantage is having a large number of parameters while maintaining significantly lower training and inference costs.</p>
+
+    <p>At the same time, MoE also faces several challenges, such as training instability, load imbalance, and suboptimal performance, which were the primary reasons it did not gain widespread popularity in its early years. However, as interest has surged over the past two years, these problems have largely been solved. We will discuss these topics one by one in the following introductions.</p>
+
+    <h2 id="problem-definition">Problem Definition</h2>
+    <p>First, it should be noted that I will introduce MoE using my own conceptual framework. Corresponding references will be provided where necessary, but I will not perform a systematic historical trace of the MoE architecture; I hope readers will understand.</p>
+
+    <p>We know that Transformer models consist of Attention layers and MLP layers. MoE replaces the MLP layers in the model. MLP layers are further divided into FFN (FeedForward Network) and GLU (Gated Linear Unit) types. While GLU is mainstream, for the sake of simplicity, we will use FFN as an example:</p>
+
+    \begin{equation}\boldsymbol{y} = f(\boldsymbol{x}\boldsymbol{W}^{(A)})\boldsymbol{W}^{(B)}\end{equation}
+
+    <p>where $\boldsymbol{x}\in\mathbb{R}^{d}$ is the input vector (row vector), $\boldsymbol{W}^{(A)}\in\mathbb{R}^{d\times D}, \boldsymbol{W}^{(B)}\in\mathbb{R}^{D\times d}$ are two parameter matrices, and $f$ is an element-wise activation function. Suppose $n$ is an integer that can divide $D$. Then the above can be equivalently written using block matrices as:</p>
+
+    \begin{equation}\boldsymbol{y} = f\big(\boldsymbol{x}\begin{bmatrix}\boldsymbol{W}^{(A)}_1 & \boldsymbol{W}^{(A)}_2 & \cdots & \boldsymbol{W}^{(A)}_n\end{bmatrix}\big)\begin{bmatrix}\boldsymbol{W}^{(B)}_1 \\ \boldsymbol{W}^{(B)}_2 \\ \vdots \\ \boldsymbol{W}^{(B)}_n\end{bmatrix} = \sum_{i=1}^n \underbrace{f(\boldsymbol{x}\boldsymbol{W}^{(A)}_i)\boldsymbol{W}^{(B)}_i}_{\boldsymbol{v}_i}\end{equation}
+
+    <p>where $\boldsymbol{W}^{(A)}_i = \boldsymbol{W}^{(A)}_{[:,(i-1)c:ic]}, \boldsymbol{W}^{(B)}_i = \boldsymbol{W}^{(B)}_{[(i-1)c:ic,:]}, c= D/n$, and the slicing follows Python rules. Thus, an FFN can be equivalently represented as the sum of $n$ vectors $\boldsymbol{v}_1, \boldsymbol{v}_2, \cdots, \boldsymbol{v}_n$, where each vector represents the output of a small model $f(\boldsymbol{x}\boldsymbol{W}^{(A)}_i)\boldsymbol{W}^{(B)}_i$. Each small model has the same computational load, and these small models are the "Experts" in MoE.</p>
+
+    <p>The problem MoE poses is:</p>
+    <blockquote>
+        Can we pick only $k$ vectors and sum them to approximate the sum of $n$ vectors? This would reduce the computation to $k/n$.
+    </blockquote>
+
+    <h2 id="norm-ranking">Norm Ranking</h2>
+    <p>We have actually explored this problem in <a href="translation_10427.html">《The Road to Low-Rank Approximation (III): CR》</a>. Written as a mathematical formula, it is:</p>
+
+    \begin{equation}\mathop{\text{argmin}}_{\lambda_1,\lambda_2,\cdots,\lambda_n\in\{0,1\}}\left\Vert\sum_{i=1}^n \lambda_i \boldsymbol{v}_i - \sum_{i=1}^n\boldsymbol{v}_i\right\Vert^2\quad\text{s.t.}\quad \sum_{i=1}^n \lambda_i = k\end{equation}
+
+    <p>Letting $\gamma_i = 1 - \lambda_i$, it can be rewritten as:</p>
+
+    \begin{equation}\mathop{\text{argmin}}_{\gamma_1,\gamma_2,\cdots,\gamma_n\in\{0,1\}}\left\Vert\sum_{i=1}^n \gamma_i \boldsymbol{v}_i\right\Vert^2\quad\text{s.t.}\quad \sum_{i=1}^n \gamma_i = n - k\end{equation}
+
+    <p>Solving this exactly is quite difficult, but there is a simple approximate solution: when $\boldsymbol{v}_i$ are pairwise orthogonal, we have:</p>
+
+    \begin{equation}\left\Vert\sum_{i=1}^n \gamma_i \boldsymbol{v}_i\right\Vert^2 = \sum_{i=1}^n \gamma_i^2 \Vert\boldsymbol{v}_i\Vert^2 = \sum_{i=1}^n \gamma_i \Vert\boldsymbol{v}_i\Vert^2\end{equation}
+
+    <p>The optimal solution to the above is clearly to set $\gamma_i = 1$ for the $n-k$ vectors with the smallest norms $\Vert\boldsymbol{v}_i\Vert$, which is equivalent to picking the $k$ vectors with the largest norms to approximate the sum of $n$ vectors. Even when $\boldsymbol{v}_i$ do not satisfy the pairwise orthogonality condition, we still use this as an approximate solution. Its geometric meaning is very intuitive: vectors with larger norms are less likely to be canceled out during the summation process, thus playing a more prominent role.</p>
+
+    <p>Furthermore, in <a href="translation_10427.html">《The Road to Low-Rank Approximation (III): CR》</a>, we also discussed an approximation process based on probabilistic sampling. Under the assumption of minimum variance, the optimal sampling probability similarly has the characteristic of being proportional to the norm. Therefore, overall, ranking by vector norm is a simple yet effective strategy.</p>
+
+    <h2 id="moe-emergence">MoE Emergence</h2>
+    <p>Now we have the strategy—"pick the $k$ vectors with the largest norms"—but upon closer inspection, we find it is not practical. To pick the top $k$ vectors by norm, one would need to calculate the norms of all vectors, which means all $\boldsymbol{v}_i$ must be computed first. This defeats our original purpose of reducing the computation of $\boldsymbol{v}_i$!</p>
+
+    <p>To resolve this contradiction, we need to redesign each Expert model so that its norm can be calculated at a low cost. What does this mean? First, we normalize $\boldsymbol{v}_i$ to get $\boldsymbol{e}_i = \boldsymbol{v}_i/\Vert\boldsymbol{v}_i\Vert$, so that every $\boldsymbol{e}_i$ has the same norm. Next, we define:</p>
+
+    \begin{equation}\underbrace{[p_1,p_2,\cdots,p_n]}_{\boldsymbol{p}} = h(\boldsymbol{x}\cdot\boldsymbol{W}^{(R)})\quad\in\mathbb{R}_{\geq 0}^n\end{equation}
+
+    <p>where $\boldsymbol{W}^{(R)}\in\mathbb{R}^{d\times n}$ is a parameter matrix, and $h(\cdot)$ is an activation function from $\mathbb{R}\to\mathbb{R}_{\geq 0}$. Simply put, this is just a linear transformation from $d$ dimensions to $n$ dimensions plus an activation function, so the computational cost is relatively small. This part of the model is called the "Router" in MoE.</p>
+
+    <p>What is the role of $\boldsymbol{p}$? To predict the norm of each Expert! In other words, we treat $p_i$ as the norm of the $i$-th Expert. The complete Expert is $p_i \boldsymbol{e}_i$, which is decomposed into two parts: the norm $p_i$, which has a low computational cost, and the direction $\boldsymbol{e}_i$, which has a higher computational cost. To reduce computation, we first calculate $\boldsymbol{p}$, pick the top $k$, and only then calculate the corresponding $\boldsymbol{e}_i$, finally multiplying by $p_i$ and summing them up:</p>
+
+    \begin{equation}\boldsymbol{y} = \sum_{i\in \mathop{\text{argtop}}_k \boldsymbol{p}} p_i \boldsymbol{e}_i\end{equation}
+
+    <p>This is the basic formula for the MoE model. Since only the Top-$k$ part is retained in the calculation, it essentially belongs to a Sparse model, while the original FFN or the model when $k=n$ is usually called the corresponding Dense model.</p>
+
+    <h2 id="summary-of-ideas">Summary of Ideas</h2>
+    <p>Whether readers are familiar with MoE or not, they might find the above process slightly unfamiliar because it is a way of understanding MoE that I developed myself. However, because its geometric meaning is clearer, it should intrinsically be easier to understand.</p>
+
+    <p>Let's summarize the entire logic:</p>
+    <blockquote>
+        1. A conventional Dense model FFN can be equivalently rewritten as a sum of $n$ Expert vectors $\boldsymbol{v}_1, \boldsymbol{v}_2, \cdots, \boldsymbol{v}_n$;<br><br>
+        2. To save computation, we attempt to pick $k$ vectors to sum and approximate the original sum of $n$ vectors;<br><br>
+        3. After transforming this into a mathematical problem, we find that the selection rule is the $k$ vectors with the largest norms;<br><br>
+        4. Directly calculating the norms of $n$ Experts and then picking $k$ does not actually save computation, so we must redesign the Expert;<br><br>
+        5. Normalize $\boldsymbol{v}_i$ to get $\boldsymbol{e}_i$, and then use another small model (Router) to predict the norm $p_i$. The final Expert is $p_i \boldsymbol{e}_i$;<br><br>
+        6. At this point, we can first calculate all $p_i$, pick $k$, and only then calculate $\boldsymbol{e}_i$, achieving the goal of reducing computation.
+    </blockquote>
+
+    <h2 id="why-so">Why so?</h2>
+    <p>Some readers might wonder why we perform this seemingly complex process. Isn't regular MoE easy enough to understand? The general form of MoE is:</p>
+
+    \begin{equation}\boldsymbol{y} = \sum_{i\in \mathop{\text{argtop}}_k \boldsymbol{p}} p_i \boldsymbol{v}_i\end{equation}
+
+    <p>This is essentially missing the normalization of $\boldsymbol{v}_i$ before the summation. In this case, $p_i$ does not have the meaning of a norm; it is purely a scoring model (i.e., Router) used to rank Experts. But why would multiplying $p_i$ into the Expert allow the Router to learn how to correctly rank Experts? I found that only <a href="https://papers.cool/arxiv/2310.00811">《Sparse Backpropagation for MoE Training》</a> provides an explanation for this, though it is still somewhat less than intuitive.</p>
+
+    <p>In the geometric perspective of this article, we find that many issues become "crystal clear." After re-parameterizing the Expert as $p_i \boldsymbol{e}_i$, the Dense model corresponds to the summation of all $p_i \boldsymbol{e}_i$, and MoE corresponds to summing after selecting the Top-$k$ according to $p_i$. This is a theoretically guaranteed approximation of the Dense model. We don't need to consider how the Router chooses Experts; we simply make every step as close to the Dense model as possible. This is arguably the best choice for achieving **both** large parameter counts **and** low computational costs.</p>
+
+    <p>Now that the geometric meaning of $p_i$ is norm rather than probability, there is no requirement for the activation function $h(\cdot)$ to perform normalization. Besides Softmax, options like Sigmoid or ReLU can be considered, as well as the Top-$k$ smooth approximations introduced in <a href="translation_10373.html">《Softmax Sequel: Seeking Smooth Approximations for Top-K》</a>. Using a non-normalized activation function for the Router helps avoid vicious competition between Experts when $k > 1$, which sometimes yields better results.</p>
+
+    <p>Lastly, as a supplement: we previously defined $\boldsymbol{e}_i = \boldsymbol{v}_i/ \Vert\boldsymbol{v}_i\Vert$ with the goal of giving all $\boldsymbol{e}_i$ the same norm. In actual practice, it is not strictly necessary to use L2 Normalization; other equivalent operations can be used, such as RMS Norm with the gamma parameter fixed at 1, which better fits our output habits.</p>
+
+    <h2 id="summary">Conclusion</h2>
+    <p>This article derives and interprets MoE starting from the best approximation of a Dense model, resulting in a specific form of MoE. It adds a Normalize step compared to existing MoE, but makes the geometric meaning of MoE more apparent. Of course, whether normalized or not, the journey of MoE has only just begun, and many more difficulties lie ahead.</p>
+
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10699.html" style="color: #005fcc;">https://kexue.fm/archives/10699</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

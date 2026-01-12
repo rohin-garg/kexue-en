@@ -1,0 +1,379 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']],
+      tags: 'ams',
+      packages: {'[+]': ['ams']}
+    }
+  };
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/6016">Introduction to f-GAN: A Production Workshop for GAN Models</a></h1>
+    <p>By 苏剑林 | September 29, 2018</p>
+
+    <p>Today, I will introduce a classic piece of work titled <a href="https://papers.cool/arxiv/1606.00709">f-GAN</a>. In this paper, the authors provide a scheme for constructing general GANs using general $f$-divergences. It is no exaggeration to say that this paper is a "production workshop" for GAN models. It generalizes many GAN variants and can inspire us to quickly construct new ones (whether they are valuable is another matter, but theoretically, it is possible).</p>
+
+    <h2 id="局部变分">Local Variation</h2>
+    <p>The entire article's treatment of $f$-divergence is actually based on what is known in machine learning as the "local variational method." This is a very classic and useful estimation technique. In fact, most of this article will be spent introducing the results of applying this estimation technique to $f$-divergence. As for GANs, they are simply a basic application of these results.</p>
+
+    <h3 id="f散度">f-Divergence</h3>
+    <p>First, let's provide a basic introduction to $f$-divergence. The so-called $f$-divergence is a generalization of the KL divergence:</p>
+    \begin{equation}\mathcal{D}_f(P\Vert Q) = \int q(x) f\left(\frac{p(x)}{q(x)}\right)dx\label{eq:f-div}\end{equation}
+    <p>Note that according to general convention, the term inside the parentheses is $p/q$ rather than $q/p$. Do not naturally assume it is $q/p$ based on the form of the KL divergence.</p>
+    <p>It turns out that this form can cover many measures between probability distributions that we have seen. Here, I will directy bring in the table from the paper (partially):</p>
+    <table border="1" cellpadding="5" style="border-collapse: collapse; width: 100%; text-align: center;">
+        <thead>
+            <tr>
+                <th>Name of Divergence</th>
+                <th>Formula</th>
+                <th>Corresponding $f$</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Total Variation</td>
+                <td>$\frac{1}{2}\int | p(x) - q(x)| dx$</td>
+                <td>$\frac{1}{2}|u - 1|$</td>
+            </tr>
+            <tr>
+                <td>KL Divergence</td>
+                <td>$\int p(x)\log \frac{p(x)}{q(x)} dx$</td>
+                <td>$u \log u$</td>
+            </tr>
+            <tr>
+                <td>Reverse KL</td>
+                <td>$\int q(x)\log \frac{q(x)}{p(x)} dx$</td>
+                <td>$- \log u$</td>
+            </tr>
+            <tr>
+                <td>Pearson $\chi^2$</td>
+                <td>$\int \frac{(q(x) - p(x))^{2}}{p(x)} dx$</td>
+                <td>$\frac{(1 - u)^{2}}{u}$</td>
+            </tr>
+            <tr>
+                <td>Neyman $\chi^2$</td>
+                <td>$\int \frac{(p(x) - q(x))^{2}}{q(x)} dx$</td>
+                <td>$(u - 1)^{2}$</td>
+            </tr>
+            <tr>
+                <td>Hellinger Distance</td>
+                <td>$\int \left(\sqrt{p(x)} - \sqrt{q(x)}\right)^{2} dx$</td>
+                <td>$(\sqrt{u} - 1)^{2}$</td>
+            </tr>
+            <tr>
+                <td>Jeffrey Distance</td>
+                <td>$\int (p(x) - q(x))\log \left(\frac{p(x)}{q(x)}\right) dx$</td>
+                <td>$(u - 1)\log u$</td>
+            </tr>
+            <tr>
+                <td>JS Divergence</td>
+                <td>$\frac{1}{2}\int p(x)\log \frac{2 p(x)}{p(x) + q(x)} + q(x)\log \frac{2 q(x)}{p(x) + q(x)} dx$</td>
+                <td>$-\frac{u + 1}{2}\log \frac{1 + u}{2} + \frac{u}{2} \log u$</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3 id="凸函数">Convex Functions</h3>
+    <p>Having listed a bunch of distribution measures and their corresponding $f$, a natural question arises: what are the common characteristics of these $f$?</p>
+    <p>The answer is:</p>
+    <blockquote>
+        <p>1. They are all mappings from non-negative real numbers to real numbers ($\mathbb{R}^* \to \mathbb{R}$);</p>
+        <p>2. $f(1)=0$;</p>
+        <p>3. They are all convex functions.</p>
+    </blockquote>
+    <p>The first point is standard. The second point, $f(1)=0$, ensures that $\mathcal{D}_f(P\Vert P)=0$. How do we understand the third point about convexity? It is actually one of the most fundamental applications of convex function properties, specifically Jensen's Inequality:</p>
+    \begin{equation}\mathbb{E}\big[f(x)\big]\geq f\big(\mathbb{E}[x]\big)\label{eq:tuhanshu-xingzhi}\end{equation}
+    <p>That is, "the average of the function is greater than or equal to the function of the average." Some textbooks directly use this property as the definition of a convex function. If $f(u)$ is a smooth function, we generally determine if it is convex by checking if the second derivative $f''(u)$ is consistently greater than or equal to 0.</p>
+    <p>Using $\eqref{eq:tuhanshu-xingzhi}$, we have:</p>
+    \begin{equation}\begin{aligned}\int q(x) f\left(\frac{p(x)}{q(x)}\right)dx =& \mathbb{E}_{x\sim q(x)} \left[f\left(\frac{p(x)}{q(x)}\right)\right]\\
+    \geq& f\left(\mathbb{E}_{x\sim q(x)} \left[\frac{p(x)}{q(x)}\right]\right)\\
+    =& f\left(\int q(x) \frac{p(x)}{q(x)}dx\right)\\
+    =& f\left(\int p(x)dx\right)\\
+    =& f(1) = 0
+    \end{aligned}\end{equation}
+    <p>In other words, these three conditions guarantee that the $f$-divergence is non-negative, and it equals 0 when the two distributions are identical, making $\mathcal{D}_f$ a simple way to measure the difference between distributions. Of course, $f$-divergence does not strictly guarantee that $\mathcal{D}_f(P\Vert Q) \gt 0$ when $P \neq Q$. However, we typically choose strictly convex $f$ (i.e., $f''(u) \gt 0$ everywhere), which ensures that $\mathcal{D}_f(P\Vert Q) \gt 0$ when $P \neq Q$, meaning $\mathcal{D}_f(P\Vert Q)=0 \iff P=Q$. (Note: Even so, in general, $\mathcal{D}_f(P\Vert Q)$ is still not a "distance" satisfying the axiomatic definition, but that is irrelevant to the main topic here.)</p>
+
+    <h3 id="凸共轭">Convex Conjugate</h3>
+    <p>Now let's discuss convex functions from a more mathematical perspective. Generally, let the domain of a convex function be $\mathbb{D}$ (for this article, $\mathbb{D}=\mathbb{R}_+$). Choosing any point $\xi$, we find the tangent line of $y=f(u)$ at $u=\xi$, which results in:</p>
+    \begin{equation}y = f(\xi) + f'(\xi)(u - \xi)\end{equation}
+    <p>Consider the difference function:</p>
+    \begin{equation}h(u) = f(u) - f(\xi) - f'(\xi)(u - \xi)\end{equation}
+    <p>A convex function can be understood intuitively as its graph always lying above (any of) its tangent lines. Therefore, for a convex function, the following inequality always holds:</p>
+    \begin{equation}f(u) - f(\xi) - f'(\xi)(u - \xi)\geq 0\end{equation}
+    <p>Rearranging this:</p>
+    \begin{equation}f(u) \geq f(\xi) - f'(\xi) \xi + f'(\xi)u\end{equation}
+    <p>Since the inequality holds universally and the equality can be achieved, we can derive:</p>
+    \begin{equation}f(u) = \max_{\xi\in\mathbb{D}}\big\{f(\xi) - f'(\xi) \xi + f'(\xi)u\big\}\end{equation}
+    <p>Changing notation, let $t=f'(\xi)$, and solve for $\xi$ in terms of $t$ (for a convex function, this is always possible; the reader can try to prove this), then denote:</p>
+    \begin{equation}g(t) = - f(\xi) + f'(\xi) \xi\end{equation}
+    <p>Then we have:</p>
+    \begin{equation}f(u) = \max_{t\in f'(\mathbb{D})}\big\{t u - g(t)\big\}\end{equation}
+    <p>Here $g(t)$ is known as the conjugate function of $f(u)$. Note that the expression inside the braces is linear with respect to $u$, once $f$ is given, $g$ is also determined. So overall, we have done the following:</p>
+    <blockquote>
+        <p>Provided a linear approximation for a convex function, whereby the original value can be reached by maximizing with respect to the internal parameters.</p>
+    </blockquote>
+    <p>Note that for a given $u$, we must maximize over $t$ once to get as close as possible to $f(u)$; otherwise, substituting a random $t$ only guarantees a lower bound without ensuring the magnitude of the error. Hence, it is called a "local variational method" because maximization (variation) must be performed at every point (locally). In this way, we can understand $t$ as effectively being a function of $u$, i.e.:</p>
+    \begin{equation}f(u) = \max_{T\text{ is a function with range } f'(\mathbb{D})}\big\{T(u) u - g(T(u))\big\}\label{eq:max-conj}\end{equation}
+
+    <p>The above discussion actually provides a method for calculating the convex conjugate. Here, we directly provide the conjugate functions corresponding to the convex functions in the previous table.</p>
+    <table border="1" cellpadding="5" style="border-collapse: collapse; width: 100%; text-align: center;">
+        <thead>
+            <tr>
+                <th>$f(u)$</th>
+                <th>Corresponding Conjugate $g(t)$</th>
+                <th>$f'(\mathbb{D})$</th>
+                <th>Activation Function</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>$\frac{1}{2}|u - 1|$</td>
+                <td>$t$</td>
+                <td>$\left[-\frac{1}{2},\frac{1}{2}\right]$</td>
+                <td>$\frac{1}{2}\tanh(x)$</td>
+            </tr>
+            <tr>
+                <td>$u \log u$</td>
+                <td>$e^{t-1}$</td>
+                <td>$\mathbb{R}$</td>
+                <td>$x$</td>
+            </tr>
+            <tr>
+                <td>$- \log u$</td>
+                <td>$-1 - \log(-t)$</td>
+                <td>$\mathbb{R}_-$</td>
+                <td>$-e^{x}$</td>
+            </tr>
+            <tr>
+                <td>$\frac{(1 - u)^{2}}{u}$</td>
+                <td>$2 - 2\sqrt{1-t}$</td>
+                <td>$(-\infty, 1)$</td>
+                <td>$1-e^x$</td>
+            </tr>
+            <tr>
+                <td>$(u - 1)^{2}$</td>
+                <td>$\frac{1}{4}t^2+t$</td>
+                <td>$(-2,+\infty)$</td>
+                <td>$e^x-2$</td>
+            </tr>
+            <tr>
+                <td>$(\sqrt{u} - 1)^{2}$</td>
+                <td>$\frac{t}{1-t}$</td>
+                <td>$(-\infty, 1)$</td>
+                <td>$1-e^x$</td>
+            </tr>
+            <tr>
+                <td>$(u - 1)\log u$</td>
+                <td>$W(e^{1-t})+\frac{1}{W(e^{1-t})}+t-2$</td>
+                <td>$\mathbb{R}$</td>
+                <td>$x$</td>
+            </tr>
+            <tr>
+                <td>$-\frac{u + 1}{2}\log \frac{1 + u}{2} + \frac{u}{2} \log u$</td>
+                <td>$-\frac{1}{2}\log(2-e^{2t})$</td>
+                <td>$\left(-\infty,\frac{\log 2}{2}\right)$</td>
+                <td>$\frac{\log 2}{2}-\frac{1}{2}\log(1+e^{-x})$</td>
+            </tr>
+        </tbody>
+    </table>
+    <p>(Note: $W$ here is the <a href="https://en.wikipedia.org/wiki/Lambert_W_function">Lambert W function</a>.)</p>
+
+    <h2 id="f-GAN">f-GAN</h2>
+    <p>From the above derivation, we can provide the estimation formula for $f$-divergence and further provide a general framework for $f$-GAN.</p>
+
+    <h3 id="f散度估计">f-Divergence Estimation</h3>
+    <p>What is the difficulty in calculating $f$-divergence? According to the definition $\eqref{eq:f-div}$, we simultaneously need to know both probability distributions $P$ and $Q$ to calculate the $f$-divergence between them. But in reality, this is hard to achieve in machine learning. Sometimes we at most know the analytical form of one probability distribution, while for the other distribution, we only have sampled data. In many cases, we don't know either distribution and only have samples (meaning we want to compare the similarity between two sets of samples). Therefore, we cannot directly calculate $f$-divergence based on $\eqref{eq:f-div}$.</p>
+    <p>Combining $\eqref{eq:f-div}$ and $\eqref{eq:max-conj}$, we get:</p>
+    \begin{equation}\begin{aligned}\mathcal{D}_f(P\Vert Q) =& \max_{T}\int q(x) \left[\frac{p(x)}{q(x)}T\left(\frac{p(x)}{q(x)}\right)-g\left(T\left(\frac{p(x)}{q(x)}\right)\right)\right]dx\\
+    =& \max_{T}\int\left[p(x)\cdot T\left(\frac{p(x)}{q(x)}\right)-q(x)\cdot g\left(T\left(\frac{p(x)}{q(x)}\right)\right)\right]dx\end{aligned}\end{equation}
+    <p>Denoting $T\left(\frac{p(x)}{q(x)}\right)$ as the unified term $T(x)$, we have:</p>
+    \begin{equation}\mathcal{D}_f(P\Vert Q) = \max_{T}\Big(\mathbb{E}_{x\sim p(x)}[T(x)]-\mathbb{E}_{x\sim q(x)}[g(T(x))]\Big)\label{eq:f-div-e}\end{equation}
+    <p>Equation $\eqref{eq:f-div-e}$ is the basic formula for estimating $f$-divergence. It means that by sampling from two distributions, calculating the average values of $T(x)$ and $g(T(x))$, and optimizing $T$ to make their difference as large as possible, we arrive at an approximate value for the $f$-divergence. Clearly, $T(x)$ can be fitted by a sufficiently complex neural network; we just need to optimize its parameters.</p>
+    <p>Note that in our discussion of convex functions, while maximizing the objective, there are constraints on the range of $T$. Thus, in the final layer of $T$, we must design an appropriate activation function to ensure $T$ satisfies the required range. Of course, the choice of activation function is not unique. Reference activation functions have been listed in the previous table. Although theoretically any activation function of the right range will do, for ease of optimization, certain principles should be followed:</p>
+    <blockquote>
+        <p>1. The domain should be $\mathbb{R}$, and the range should be the required range (boundary points can be ignored);</p>
+        <p>2. It is best to choose a globally smooth function, rather than simple truncation. For example, if the required range is $\mathbb{R}_+$, do not use $relu(x)$ directly; consider $e^x$ or $\log(1+e^x)$ instead;</p>
+        <p>3. Note that the second term of formula $\eqref{eq:f-div-e}$ contains $g(T(x))$, which is the composite calculation of $g$ and $T$. Thus, the activation function should ideally make this composite calculation simple.</p>
+    </blockquote>
+
+    <h3 id="GAN批发">GAN Wholesale</h3>
+    <p>Well, having said all this, we are almost at the end of the article, and yet we haven't formally mentioned GANs. In fact, GANs can be considered a mere byproduct of this entire process.</p>
+    <p>A GAN aims to train a generator to map a Gaussian distribution to the distribution of our required dataset. This requires comparing the difference between the two distributions. After the previous process, it becomes quite simple: just pick any $f$-divergence. Then use formula $\eqref{eq:f-div-e}$ to estimate the $f$-divergence. Once estimated, you have a model for the $f$-divergence. Since the generator wants to minimize the difference in distributions, you just minimize the $f$-divergence. So writing it as a single expression:</p>
+    \begin{equation}\min_G\max_{T}\Big(\mathbb{E}_{x\sim p(x)}[T(x)]-\mathbb{E}_{x=G(z),z\sim q(z)}[g(T(x))]\Big)\label{eq:f-div-gan}\end{equation}
+    <p>Or vice versa:</p>
+    \begin{equation}\min_G\max_{T}\Big(\mathbb{E}_{x=G(z),z\sim q(z)}[T(x)]-\mathbb{E}_{x\sim p(x)}[g(T(x))]\Big)\label{eq:f-div-gan-2}\end{equation}
+    <p>And that's it~</p>
+    <p>Need some examples? Okay, let's look at JS divergence first. If you substitute all the formulas step by step, you will find the final result (omitting the $\log 2$ constant term) is:</p>
+    \begin{equation}\min_G\max_{D}\Big(\mathbb{E}_{x\sim p(x)}[\log D(x)] + \mathbb{E}_{x=G(z),z\sim q(z)}[\log(1-D(x))]\Big)\end{equation}
+    <p>Where $D$ is activated using $\sigma(x)=1/(1+e^{-x})$. This is the original version of GAN.</p>
+    <p>How about using Hellinger distance? The result is:</p>
+    \begin{equation}\min_G\max_{D}\Big(-\mathbb{E}_{x\sim p(x)}[e^{D(x)}] - \mathbb{E}_{x=G(z),z\sim q(z)}[e^{-D(x)}]\Big)\end{equation}
+    <p>Here $D(x)$ uses linear activation. This seemingly hasn't been named yet? But experiments on it have already been conducted in the paper.</p>
+    <p>What about KL divergence? Since KL divergence is asymmetric, there are two results:</p>
+    \begin{equation}\min_G\max_{D}\Big(\mathbb{E}_{x\sim p(x)}[D(x)] - \mathbb{E}_{x=G(z),z\sim q(z)}[e^{D(x)-1}]\Big)\end{equation}
+    <p>Or:</p>
+    \begin{equation}\min_G\max_{D}\Big(\mathbb{E}_{x=G(z),z\sim q(z)}[D(x)] - \mathbb{E}_{x\sim p(x)}[e^{D(x)-1}]\Big)\end{equation}
+    <p>Here $D(x)$ also uses linear activation.</p>
+    <p>Alright, no more examples. Actually, these $f$-divergences are essentially similar, and it is hard to see significant differences in performance. However, one can note that JS divergence and Hellinger distance are symmetric and bounded, which are very good properties that we will use later.</p>
+
+    <h2 id="总结">Conclusion</h2>
+    <p>To put it bluntly, the main purpose of this article is to introduce $f$-divergence and its estimation via local variation. Therefore, most of it consists of theoretical text, with GANs occupying only a small part.</p>
+    <p>Of course, after this effort, we indeed arrive at the result of a "GAN production workshop" (depending on how many $f$-divergences you have). These newly devised GANs may not look exactly like the GANs we imagine, but they are indeed optimizing $f$-divergence. However, the problems inherent in standard GANs (corresponding to JS divergence) will still exist in $f$-divergences. Therefore, the greater value of the f-GAN work lies in "unification"; from the perspective of generative models, it doesn't represent a major breakthrough.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6016.html" style="color: #005fcc;">https://kexue.fm/archives/6016</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

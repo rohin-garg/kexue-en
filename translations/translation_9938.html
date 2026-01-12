@@ -1,0 +1,414 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9938">Side Paths: How to Implement Retries More Elegantly in Python</a></h1>
+
+    <p>By 苏剑林 | January 14, 2024</p>
+
+
+<p>In this article, we discuss a programming topic: how to implement retries in Python more elegantly. In the post <a href="translation_9916.html">"Happy New Year! Recording the Development Experience of Cool Papers,"</a> I shared some experiences from developing Cool Papers, specifically mentioning the network communication steps required. Whenever network communication is involved, there is a risk of failure (no one can guarantee the network won't occasionally act up), so retrying is a fundamental operation in network communication. Furthermore, when dealing with multi-processing, databases, hardware interactions, etc., a retry mechanism is usually necessary.</p>
+
+<p>Implementing retries in Python is not difficult, but there are certain techniques to doing it more simply without losing readability. Next, I will share my own attempts.</p>
+
+<h3>Looping Retries</h3>
+
+<p>A complete retry process generally includes parts like loop iteration, exception handling, delay waiting, and follow-up operations. Its standard implementation uses a <code>for</code> loop with <code>try ... except ...</code> to catch exceptions. A reference code snippet is as follows:</p>
+
+<pre><code>import time
+from random import random
+
+allright = False # Success flag
+for i in range(5): # Retry up to 5 times
+    try:
+        # Code that might fail
+        x = random()
+        if x < 0.5:
+            yyyy # yyyy is undefined, so it will raise an error
+        allright = True
+        break
+    except Exception as e:
+        print(e) # Print error message
+        if i < 4:
+            time.sleep(2) # Delay for two seconds
+
+if allright:
+    # Perform some operations
+    print('Execution successful')
+else:
+    # Perform other operations
+    print('Execution failed')</code></pre>
+
+<p>Our goal is to simplify the code before <code>if allright:</code>. You can see that it has a relatively fixed format: a <code>for</code> loop combined with a <code>try ... break ... except ... sleep ...</code> template. It's easy to imagine there is significant room for simplification.</p>
+
+<h3>Function Decorators</h3>
+
+<p>The problem with <code>for</code> loops is that if you need to retry in many places and the exception handling logic is the same, rewriting the <code>except</code> code every time becomes tedious. In such cases, the standard recommended approach is to wrap the error-prone code into a function and write a decorator to handle the exceptions:</p>
+
+<pre><code>import time
+from random import random
+
+def retry(f):
+    """Retry decorator, adds retry functionality to a wrapped function
+    """
+    def new_f(*args, **kwargs):
+        for i in range(5): # Retry up to 5 times
+            try:
+                return True, f(*args, **kwargs)
+            except Exception as e:
+                print(e) # Print error message
+                if i < 4:
+                    time.sleep(2) # Delay for two seconds
+        return False, None
+    return new_f
+
+@retry
+def f():
+    # Code that might fail
+    x = random()
+    if x < 0.5:
+        yyyy # yyyy is undefined, so it will raise an error
+    return x
+
+allright, _ = f() # Returns execution status and result
+if allright:
+    # Perform some operations
+    print('Execution successful')
+else:
+    # Perform other operations
+    print('Execution failed')</code></pre>
+
+<p>When multiple different code blocks need retries, you only need to write them as functions and add the <code>@retry</code> decorator to implement the same retry logic. Thus, the decorator approach is indeed a concise solution and is quite intuitive, which explains why it has become the standard. Most mainstream retry libraries, such as <code>tenacity</code>, or the older <code>retry</code> and <code>retrying</code>, are based on the decorator principle.</p>
+
+<h3>The Ideal Syntax</h3>
+
+<p>However, while the decorator approach is standard, it isn't perfect. First, you have to encapsulate the retry code into a separate function, which in many cases can feel disruptive—like a sudden jerk in the flow of the code. Second, because the code is encapsulated in a function, intermediate variables in the local scope cannot be used directly; any variables needed must be explicitly passed or returned, which feels a bit circuitous. Overall, while decorators simplify retry code, they still feel like they're missing something.</p>
+
+<p>The perfect retry code I imagine would be based on a context manager syntax, similar to:</p>
+
+<pre><code>with Retry(max_tries=5) as retry:
+    # Code that might fail
+    x = random()
+    if x < 0.5:
+        yyyy # yyyy is undefined, so it will error
+if retry.allright:
+    # Perform some operations
+    print('Execution successful')
+else:
+    # Perform other operations
+    print('Execution failed')</code></pre>
+
+<p>However, after researching the principles of context managers, I realized that this ideal syntax is destined to be <strong>unachievable</strong>. This is because a context manager can only manage the "context"—it cannot manage the main block of code (the "potentially failing code" in this article). Specifically, a context manager is a class with <code>__enter__</code> and <code>__exit__</code> methods. it inserts <code>__enter__</code> before the code runs (setup) and <code>__exit__</code> after it runs (teardown), but it cannot control the code in the middle (e.g., making it run multiple times).</p>
+
+<p>So, the attempt to implement a one-liner retry based purely on a context manager failed.</p>
+
+<h3>A Bit of a Struggle</h3>
+
+<p>The good news, however, is that while a context manager cannot implement a loop, its <code>__exit__</code> method can handle exceptions. So it can at least replace <code>try ... except ...</code> for exception handling. Thus, we can write:</p>
+
+<pre><code>import time
+from random import random
+
+class Retry:
+    """Custom context manager to handle exceptions
+    """
+    def __enter__(self):
+        self.allright = False
+        return self
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            self.allright = True
+        else:
+            print(exc_val)
+            time.sleep(2)
+        return True
+
+for i in range(5): # Retry up to 5 times
+    with Retry() as retry:
+        # Code that might fail
+        x = random()
+        if x < 0.5:
+            yyyy # yyyy is undefined, so it will error
+        break
+
+if retry.allright:
+    # Perform some operations
+    print('Execution successful')
+else:
+    # Perform other operations
+    print('Execution failed')</code></pre>
+
+<p>This latest version is actually very close to the ideal syntax mentioned in the previous section. There are two differences: 1. You have to write an extra <code>for</code> loop, but this is unavoidable because, as stated earlier, a context manager cannot initiate a loop, so you must start it externally with <code>for</code> or <code>while</code>; 2. You need to explicitly add a <code>break</code>, which is something we can try to optimize away.</p>
+
+<p>Additionally, this version has a minor flaw: if all retries fail, then after the final attempt fails, it will still trigger a <code>sleep</code>, which is theoretically unnecessary. We should find a way to remove that.</p>
+
+<h3>Continued Optimization</h3>
+
+<p>To optimize away the <code>break</code>, the loop needs to "learn" to stop itself. There are two ways to do this: the first is to switch to a <code>while</code> loop and let the stop condition change based on the retry result, which leads to results similar to those in <a href="https://stackoverflow.com/questions/22417323/handling-exceptions-inside-context-managers">"Handling exceptions inside context managers"</a>; the second is to keep the <code>for</code> loop but replace <code>range(5)</code> with an iterator that changes according to the retry results. This article focuses on the latter.</p>
+
+<p>Upon analysis, I found that by using the built-in methods <code>__call__</code> and <code>__iter__</code>, the <code>retry</code> object can act as both a context manager and a dynamic iterator, also solving the unnecessary <code>sleep</code> problem after the final failure:</p>
+
+<pre><code>import time
+from random import random
+
+class Retry:
+    """Context manager + iterator for handling exceptions
+    """
+    def __call__(self, max_tries=5):
+        self.max_tries = max_tries
+        return self
+    def __iter__(self):
+        for i in range(self.max_tries):
+            yield i
+            if self.allright or i == self.max_tries - 1:
+                return
+            time.sleep(2)
+    def __enter__(self):
+        self.allright = False
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            self.allright = True
+        else:
+            print(exc_val)
+        return True
+
+retry = Retry()
+for i in retry(5): # Retry up to 5 times
+    with retry:
+        # Code that might fail
+        x = random()
+        if x < 0.5:
+            yyyy # yyyy is undefined, so it will error
+
+if retry.allright:
+    # Perform some operations
+    print('Execution successful')
+else:
+    # Perform other operations
+    print('Execution failed')</code></pre>
+
+<p>Attentive readers might wonder: you managed to delete one <code>break</code>, but added <code>retry = Retry()</code>—the total amount of code remains the same (and the context manager got more complex). Is it worth the effort? In fact, here <code>retry</code> is reusable. The user only needs to define <code>retry = Retry()</code> once, and then in subsequent retries, they only need:</p>
+
+<pre><code>for i in retry(max_tries):
+    with retry:
+        # Code that might fail</code></pre>
+
+<p>This is enough. Thus, although the context manager is slightly more complex, it is already infinitely close to the implementation of the ideal syntax.</p>
+
+<h3>The Ultimate Version</h3>
+
+<p>However, "defining <code>retry = Retry()</code> once and reusing <code>retry</code>" is only suitable for single-process environments. If multi-processing is involved, you still have to define <code>retry = Retry()</code> separately. Additionally, such reuse gives the feeling that "different retries are not completely isolated." Is it possible to remove that line entirely? I thought about it again and found it is possible! Here is the reference code:</p>
+
+<pre><code>import time
+from random import random
+
+class Retry:
+    """Context manager + iterator for handling exceptions
+    """
+    def __init__(self, max_tries=5):
+        self.max_tries = max_tries
+    def __iter__(self):
+        for i in range(self.max_tries):
+            yield self
+            if self.allright or i == self.max_tries - 1:
+                return
+            time.sleep(2)
+    def __enter__(self):
+        self.allright = False
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            self.allright = True
+        else:
+            print(exc_val)
+        return True
+
+for retry in Retry(5): # Retry up to 5 times
+    with retry:
+        # Code that might fail
+        x = random()
+        if x < 0.5:
+            yyyy # yyyy is undefined, so it will error
+
+if retry.allright:
+    # Perform some operations
+    print('Execution successful')
+else:
+    # Perform other operations
+    print('Execution failed')</code></pre>
+
+<p>This time, the change was to swap <code>__call__</code> for <code>__init__</code>, and then in <code>__iter__</code>, <code>yield i</code> was changed to <code>yield self</code>, returning the object itself. This way, there is no need to write a separate line for <code>retry = Retry(5)</code> to initialize. Instead, initialization and alias assignment happen simultaneously in <code>for retry in Retry(5):</code>. Furthermore, since a new instance is initialized for every retry loop, complete isolation between retries is achieved—killing two birds with one stone.</p>
+
+<h3>Summary</h3>
+
+<p>This article has relatively comprehensively explored how to write retry mechanisms in Python, attempting to reach what I consider the perfect implementation of retry code. The final result has more or less achieved what I had in mind.</p>
+
+<p>However, I must admit that the motivation for this article was essentially just a case of "OCD" (perfectionism). It doesn't provide any substantial improvement in algorithmic efficiency. Spending too much time on programming details is, to some extent, a "side path" or "not attending to one's proper business," and is not necessarily something worth emulating.</p>
+
+<p>
+    If you need to cite this article, please refer to: <br>
+    Su Jianlin. (Jan. 14, 2024). "Side Paths: How to Implement Retries More Elegantly in Python" [Blog post]. Retrieved from https://kexue.fm/archives/9938
+</p>
+
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9938.html" style="color: #005fcc;">https://kexue.fm/archives/9938</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

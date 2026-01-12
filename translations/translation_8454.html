@@ -1,0 +1,396 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/8454">SimBERTv2 Is Here! The RoFormer-Sim Model Integrating Retrieval and Generation</a></h1>
+
+<p>By 苏剑林 | June 11, 2021</p>
+
+<p>Last year, we released the <a href="translation_7427.html">SimBERT</a> model, which has been one of our most successful open-source models, earning recognition from many readers. Simply put, SimBERT is a model that integrates generation and retrieval. it can be used as a relatively high baseline for sentence vectors and can also be used to automatically generate similar questions, serving as an auxiliary tool for data augmentation—a feature that was quite pioneering.</p>
+
+<p>Recently, using <a href="translation_8265.html">RoFormer</a> as the foundation, we further integrated and optimized SimBERT-related technologies and finally released the upgraded RoFormer-Sim model.</p>
+
+<h2>Introduction <a href="https://kexue.fm/archives/8454#%E7%AE%80%E4%BB%8B">#</a></h2>
+
+<p>RoFormer-Sim is the upgraded version of SimBERT; we can also colloquially refer to it as "SimBERTv2," while "SimBERT" by default refers to the old version. Externally, aside from the base architecture switching to RoFormer, there is no obvious difference between RoFormer-Sim and SimBERT. In fact, their primary differences lie in the training details, which can be compared using two formulas:</p>
+
+<p>
+$$ \text{SimBERT} = \text{BERT} + \text{UniLM} + \text{Contrastive Learning} $$
+$$ \text{RoFormer-Sim} = \text{RoFormer} + \text{UniLM} + \text{Contrastive Learning} + \text{BART} + \text{Distillation} $$
+</p>
+
+<p>In addition, RoFormer-Sim utilizes more training data and has been extended to general sentence patterns. This means that unlike SimBERT, which was limited to interrogative sentences (questions), RoFormer-Sim can be used for similar sentence generation for general sentences, broadening its application scenarios. Other training details include the use of larger batch sizes and max lengths in RoFormer-Sim, which we will introduce further below.</p>
+
+<blockquote><p><strong>Open Source Address: <a href="https://github.com/ZhuiyiTechnology/roformer-sim">https://github.com/ZhuiyiTechnology/roformer-sim</a></strong></p></blockquote>
+
+<h2>Corpus <a href="https://kexue.fm/archives/8454#%E8%AF%AD%E6%96%99">#</a></h2>
+
+<p>The key for both SimBERT and RoFormer-Sim lies in the construction of the training corpus. The training corpus for RoFormer-Sim consists of two parts: 1. Interrogative-type similar sentences; 2. General-type similar sentences. For interrogative similar sentences, we followed the SimBERT approach, collecting similar questions from Baidu Zhidao and further cleaning them via rules; this process is very mature for us. For general similar sentences, we did not have a ready-made source, so we proposed two schemes to construct (pseudo) similar sentence pairs in an unsupervised manner to some extent.</p>
+
+<blockquote>
+<p><strong>The first scheme</strong> is based on the idea that "answers to the same question are similar." If we have existing QA corpora where one question has multiple answers, we can segment each answer into sentences. Then, using an existing similarity function to compare the similarity between answers, we select sentence pairs with similarity exceeding a certain threshold as similar sentence pairs.</p>
+<p><strong>The second scheme</strong> is based on the idea that "sentences within the same passage are similar." This is even more simple and direct: we segment each passage into sentences and then calculate the similarity between all pairs using an existing similarity function, picking pairs that exceed a threshold. Obviously, the rationale for this scheme is weaker, so the threshold used is higher.</p>
+</blockquote>
+
+<p>The "existing similarity function" mentioned here is a variant of the Jaccard similarity we used directly. In other words, we only needed a rule-based, character-level similarity. Semantic relevance is obtained through the internal associations within passages and the generalization capability of the pre-trained model itself. Through the first scheme, we constructed approximately 4.5 million (pseudo) similar sentence pairs from several reading comprehension datasets. Through the second scheme, we constructed approximately 4.7 million (pseudo) similar sentence pairs from over 30GB of parallel corpora. The crawled questions reached approximately 30 million similar question groups (one group can form multiple pairs). From this perspective, the number of questions far exceeds general sentences, so we sampled them at a 1:1 ratio to ensure a balanced sample for each sentence type.</p>
+
+<h2>Generation <a href="https://kexue.fm/archives/8454#%E7%94%9F%E6%88%90">#</a></h2>
+
+<p>The training method for RoFormer-Sim is basically the same as SimBERT, as shown in the figure below. A slight difference is that to enhance the model's generation capability, during the construction of training data, we also randomly replaced some tokens of the input sentence with [MASK]. This pre-training method was first proposed by <a href="https://papers.cool/arxiv/1910.13461">BART</a>. Our difference from BART is: BART "inputs a noisy sentence and outputs the original sentence," whereas we "input a noisy sentence and output a similar sentence to the original one." Theoretically, our task is even more difficult.</p>
+
+<p><a href="https://kexue.fm/usr/uploads/2020/05/2840550561.png"><img src="https://kexue.fm/usr/uploads/2020/05/2840550561.png" alt="Schematic diagram of SimBERT training method" title="Click to view original image" /></a></p>
+<p style="text-align:center">Schematic diagram of SimBERT training method</p>
+
+<p>There are no particularly good evaluation metrics for generation effects; we can just visually inspect some examples:</p>
+
+<pre><code></code></pre>
+
+<p>Overall, similar augmentation for arbitrary sentence structures has been preliminarily achieved, but the augmentation effect for questions is significantly better than for general sentence types. This is because the quality of the questions in the training corpus is significantly higher than that of general sentence types. Due to the BART-like training, in addition to direct similar sentence generation, we can also manually mask certain parts to let the model diverge and expand on its own, for example:</p>
+
+<pre><code></code></pre>
+
+<p>Please explore more ways to play with this on your own.</p>
+
+<h2>Retrieval <a href="https://kexue.fm/archives/8454#%E6%A3%80%E7%B4%A2">#</a></h2>
+
+<p>Adding general sentence corpora and introducing BART-like training are changes that relatively improved the performance of the generative model. However, we unexpectedly discovered that the performance of the retrieval model (i.e., the sentence encoding model) decreased. A likely reason is that while more corpora and greater noise increased the difficulty for the generative model, regarding contrastive learning, these diverse sentence structures or noisy samples acted as negative samples that were actually easier to distinguish. For example, if a batch contains both interrogative and declarative sentences, the model can easily identify many negative samples through sentence structure (rather than semantics), thereby reducing its ability to understand semantics.</p>
+
+<p>Of course, the core positioning of SimBERT and RoFormer-Sim is as similar sentence augmentation models; the retrieval model is just a "by-product." However, we still hope this "by-product" can be as good as possible. To this end, after RoFormer-Sim training was completed, we further transferred the retrieval performance of SimBERT to RoFormer-Sim through distillation, making the retrieval performance of RoFormer-Sim basically equal to or even better than SimBERT. The distillation method is very simple: assuming for the same batch of sentences, the sentence vectors from SimBERT are $u_1, u_2, \cdots, u_n$, and the sentence vectors from RoFormer-Sim are $v_1, v_2, \cdots, v_n$, we then learn using the loss:</p>
+
+<p>
+\begin{equation}
+L_{sim} = \frac{\lambda}{n^2} \sum_{i=1}^n \sum_{j=1}^n (\cos(u_i, u_j) - \cos(v_i, v_j))^2
+\end{equation}
+</p>
+
+<p>Here $\lambda=100$. Of course, to prevent the model from "forgetting" the generative model, the generation loss must be added during distillation, i.e., $L = L_{sim} + L_{gen}$. Distillation for the base version does not require many steps; it can be completed in roughly 5,000 steps.</p>
+
+<p>Similar to <a href="translation_8321.html">"Which Unsupervised Semantic Similarity is Strongest? We Did a Comprehensive Evaluation,"</a> we used the same tasks to compare the retrieval effects of SimBERT and RoFormer (where the three data points in each cell represent "no whitening," "with whitening," and "with whitening-256" effects, same as the previous evaluation):</p>
+
+<table border="1" style="width:100%; text-align:center;">
+  <thead>
+    <tr>
+      <th></th>
+      <th>ATEC</th>
+      <th>BQ</th>
+      <th>LCQMC</th>
+      <th>PAWSX</th>
+      <th>STS-B</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>V1-P1</td>
+      <td>38.50/23.64/30.79</td>
+      <td>48.54/31.78/40.01</td>
+      <td>76.23/75.05/74.50</td>
+      <td>15.10/18.49/15.64</td>
+      <td>74.14/73.37/75.29</td>
+    </tr>
+    <tr>
+      <td>V1-P2</td>
+      <td>38.93/27.06/30.79</td>
+      <td>49.93/35.38/40.14</td>
+      <td>75.56/73.45/74.39</td>
+      <td>14.52/18.51/15.74</td>
+      <td>73.18/73.43/75.12</td>
+    </tr>
+    <tr>
+      <td>V1-P3</td>
+      <td>36.50/31.32/31.24</td>
+      <td>45.78/29.17/40.98</td>
+      <td>74.42/73.79/73.43</td>
+      <td>15.33/18.39/15.87</td>
+      <td>67.31/70.70/72.00</td>
+    </tr>
+    <tr>
+      <td>V1-P4</td>
+      <td>33.53/29.04/28.78</td>
+      <td>45.28/34.70/39.00</td>
+      <td>73.20/71.22/72.09</td>
+      <td>14.16/17.32/14.39</td>
+      <td>66.98/70.55/71.43</td>
+    </tr>
+    <tr>
+      <td>V2-P1</td>
+      <td>39.52/25.31/31.10</td>
+      <td>50.26/33.47/40.16</td>
+      <td>76.02/74.92/74.58</td>
+      <td>14.37/19.31/14.81</td>
+      <td>74.46/71.00/76.29</td>
+    </tr>
+    <tr>
+      <td>V2-P2</td>
+      <td>39.71/32.60/30.89</td>
+      <td>50.80/37.62/40.12</td>
+      <td>75.83/73.45/74.52</td>
+      <td>13.87/19.50/14.88</td>
+      <td>73.47/74.56/76.40</td>
+    </tr>
+    <tr>
+      <td>V2-P3</td>
+      <td>39.55/24.61/31.82</td>
+      <td>50.25/29.59/41.43</td>
+      <td>74.90/73.95/74.06</td>
+      <td>14.57/18.85/15.26</td>
+      <td>68.89/71.40/73.36</td>
+    </tr>
+    <tr>
+      <td>V2-P4</td>
+      <td>36.02/29.71/29.61</td>
+      <td>48.22/35.02/39.52</td>
+      <td>73.76/71.19/72.68</td>
+      <td>13.60/16.67/13.86</td>
+      <td>68.39/71.04/72.43</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>As can be seen from the table, regardless of whether whitening is applied, RoFormer-Sim outperforms SimBERT on most tasks. This shows that RoFormer-Sim's retrieval performance can indeed be improved after distillation, making this "by-product" quite decent.</p>
+
+<p>Using the same method, we also created a "small" version of RoFormer-Sim. In this case, distillation used the base version of RoFormer-Sim as the teacher model, but the number of distillation steps needed was higher (around 500,000). The final results are as follows:</p>
+
+<table border="1" style="width:100%; text-align:center;">
+  <thead>
+    <tr>
+      <th></th>
+      <th>ATEC</th>
+      <th>BQ</th>
+      <th>LCQMC</th>
+      <th>PAWSX</th>
+      <th>STS-B</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>V1small-P1</td>
+      <td>30.68/27.56/29.07</td>
+      <td>43.41/30.89/39.78</td>
+      <td>74.73/73.21/73.50</td>
+      <td>15.89/17.96/16.75</td>
+      <td>70.54/71.39/72.14</td>
+    </tr>
+    <tr>
+      <td>V1small-P2</td>
+      <td>31.00/29.14/29.11</td>
+      <td>43.76/36.86/39.84</td>
+      <td>74.21/73.14/73.67</td>
+      <td>16.17/18.12/16.81</td>
+      <td>70.10/71.40/72.28</td>
+    </tr>
+    <tr>
+      <td>V1small-P3</td>
+      <td>30.03/21.24/29.30</td>
+      <td>43.72/31.69/40.81</td>
+      <td>72.12/70.27/70.52</td>
+      <td>16.93/21.68/18.75</td>
+      <td>66.55/66.11/69.19</td>
+    </tr>
+    <tr>
+      <td>V1small-P4</td>
+      <td>29.52/28.41/28.57</td>
+      <td>43.52/36.56/40.49</td>
+      <td>70.33/68.75/69.01</td>
+      <td>15.39/21.57/16.34</td>
+      <td>64.73/68.12/68.24</td>
+    </tr>
+    <tr>
+      <td>V2small-P1</td>
+      <td>37.33/23.59/31.31</td>
+      <td>47.90/29.21/42.07</td>
+      <td>74.72/74.94/74.69</td>
+      <td>13.41/15.30/13.61</td>
+      <td>71.48/69.01/75.10</td>
+    </tr>
+    <tr>
+      <td>V2small-P2</td>
+      <td>37.42/31.25/31.18</td>
+      <td>49.15/38.01/41.98</td>
+      <td>75.21/73.47/74.78</td>
+      <td>13.38/15.87/13.69</td>
+      <td>72.06/73.92/75.69</td>
+    </tr>
+    <tr>
+      <td>V2small-P3</td>
+      <td>36.71/30.33/31.25</td>
+      <td>49.73/31.03/42.74</td>
+      <td>74.25/72.72/74.19</td>
+      <td>14.58/18.68/14.40</td>
+      <td>69.12/71.07/72.68</td>
+    </tr>
+    <tr>
+      <td>V2small-P4</td>
+      <td>32.80/27.87/29.65</td>
+      <td>46.80/36.93/41.31</td>
+      <td>72.30/69.94/72.38</td>
+      <td>13.45/16.93/13.38</td>
+      <td>67.21/70.42/71.39</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Summary <a href="https://kexue.fm/archives/8454#%E6%80%BB%E7%BB%93">#</a></h2>
+
+<p>This article introduced and released our upgraded version of SimBERT—RoFormer-Sim (SimBERTv2). It can be used for both augmenting similar sentences and as a strong baseline for semantic similarity problems. Compared to SimBERT, its biggest feature is extending sentence patterns to general types, no longer limited to similar questions. We welcome readers to explore and share more ways to use it~</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8454.html" style="color: #005fcc;">https://kexue.fm/archives/8454</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,344 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/3956">[Chinese Word Segmentation Series] 5. Unsupervised Word Segmentation Based on Language Models</a></h1>
+    <p>By 苏剑林 | September 12, 2016</p>
+
+    <p>So far, the first four articles have introduced several ideas for word segmentation, including dictionary-based methods using maximum probability and character-tagging methods based on HMM or LSTM. These are established research methods; what I have done is simply summarize them. Dictionary-based methods and character-tagging each have their own pros and cons. I have been wondering: can we create an unsupervised word segmentation model that only needs a large-scale corpus for training? That is to say, how to segment should be determined by the corpus itself, independent of the language. Simply put, given enough data, the corpus should tell us how to segment words.</p>
+
+    <p>This sounds perfect, but how is it achieved? <a href="translation_3913.html">"2. New Word Discovery Based on Segmentation"</a> provided an initial thought, but it wasn't thorough enough. The new word discovery method there can indeed be seen as a type of unsupervised segmentation approach, as it uses simple "aggregation" (cohesion) to judge whether a cut should be made. However, from the perspective of a full segmentation system, it is far too crude. Therefore, I have been thinking about how to improve this accuracy. I obtained some meaningful results earlier, but hadn't formed a complete theory until recently. I have now completed that line of thought. Since I haven't found similar work elsewhere, this can be considered an original piece of work by me in the field of word segmentation.</p>
+
+    <h3>Language Models</h3>
+    <p>First, let's briefly discuss language models.</p>
+
+    <p>Many readers in data mining have heard of Word2Vec and know it's a tool that can generate word vectors, and many know to use word vectors as input features for models. However, I suspect many readers don't know why word vectors exist or why Word2Vec can generate them. The brilliance of Word2Vec itself (Google-produced, fast, effective, well-implemented in Python, etc.) has overshadowed similar products and their underlying principles. In fact, the original intention of word vectors was to better generate language models. The classic paper is likely "A Neural Probabilistic Language Model" by Bengio, one of the pioneers of deep learning. The point here is the language model, not the word vectors. For interested readers, you can refer to the following articles:</p>
+
+    <blockquote>
+        Deep Learning in NLP (I) Word Vectors and Language Models:<br>
+        <a href="http://licstar.net/archives/328">http://licstar.net/archives/328</a><br><br>
+        "How We Understand Language" series from Flickering:<br>
+        <a href="http://www.flickering.cn/?s=%E6%88%91%E4%BB%AC%E6%98%AF%E8%BF%99%E6%A0%B7%E7%90%86%E8%A7%A3%E8%AF%AD%E8%A8%80%E7%9A%84">http://www.flickering.cn/?s=我们是这样理解语言的</a>
+    </blockquote>
+
+    <p>A <strong>language model</strong> is a model that calculates the conditional probability:
+    $$p(w_n|w_1,w_2,\dots,w_{n-1})$$
+    where $w_1,w_2,\dots,w_{n-1}$ are the first $n-1$ words (or characters) in a sentence, and $w_n$ is the $n$-th word (or character). Language models are applied in many areas, such as word segmentation, speech recognition, and machine translation. There are many methods to obtain a language model; for example, the simplest is the "statistics + smoothing" method. There are also maximum entropy language models, CRF language models, etc. Currently, in the framework of deep learning, "neural language models" are heavily researched. The general idea is: $p(w_n|w_1,w_2,\dots,w_{n-1})$ is a function of $w_1,w_2,\dots,w_n$. Since the specific form of this function is unknown, a neural network is used to fit it. To fit it better and reduce model parameters, words are "embedded" into a real number space, represented by short vectors, and trained alongside the language model. From this perspective, word vectors are merely a byproduct of language models.</p>
+
+    <p>The fact that word vectors generated by language models can represent semantics is very interesting, yet it stands to reason. What is semantics? For humans, semantics is a process of reasoning and understanding. Our language model, which predicts the next character from the previous $n-1$ characters, is also a reasoning process. Since it contains a reasoning component, it has the potential to capture semantics.</p>
+
+    <h3>Unsupervised Word Segmentation</h3>
+    <p>I have perhaps spoken too much about language models, but the segmentation method introduced in this article is based on a "character-based language model."</p>
+
+    <p>We start from the maximum probability method. If a string $s_1, s_2, \dots, s_l$ of length $l$ has an optimal segmentation result $w_1, w_2, \dots, w_m$, it should be the one among all possible partitions that maximizes the product of probabilities:
+    $$p(w_1)p(w_2)\dots p(w_m)$$</p>
+
+    <p>If there is no dictionary, then the words $w_1, w_2, \dots, w_m$ do not exist. However, we can use the Bayesian formula to convert the probability of a word into the combined probability of its characters:
+    $$p(w)=p(c_1)p(c_2|c_1)p(c_3|c_1 c_2)\dots p(c_k|c_1 c_2 \dots c_{k-1})$$
+    where $w$ is a $k$-character word, and $c_1,c_2,\dots,c_k$ are the $1,2,\dots,k$-th characters of $w$ respectively. We can see that $p(c_k|c_1 c_2 \dots c_{k-1})$ is exactly the character-based language model mentioned earlier.</p>
+
+    <p>Of course, for a very large $k$, $p(c_k|c_1 c_2 \dots c_{k-1})$ is not easy to estimate. Fortunately, based on our experience, the average length of words is not very large. Therefore, an n-gram language model is sufficient, where $n=4$ usually yields good results.</p>
+
+    <p>How does the segmentation actually work? Suppose we have a string $s_1, s_2, s_3 \dots, s_l$. If it is not segmented at all, its path probability would be:
+    $$p(s_1)p(s_2)p(s_3)\dots p(s_l)$$
+    If $s_1, s_2$ should be combined into one word, its path probability is:
+    $$p(s_1 s_2)p(s_3)\dots p(s_l)=p(s_1)p(s_2|s_1)p(s_3)\dots p(s_l)$$
+    If $s_2, s_3$ should be combined into one word, its path probability is:
+    $$p(s_1)p(s_2 s_3)\dots p(s_l)=p(s_1)p(s_2)p(s_3|s_2)\dots p(s_l)$$
+    If $s_1, s_2, s_3$ should be combined into one word, its path probability is:
+    $$p(s_1 s_2 s_3)\dots p(s_l)=p(s_1)p(s_2|s_1)p(s_3|s_1 s_2)\dots p(s_l)$$
+    Do you see the pattern? Every segmentation method essentially corresponds to the multiplication of $l$ conditional probabilities. We find the multiplication pattern that yields the maximum result. Similarly, if we know the optimal multiplication pattern, we can write out the corresponding segmentation result.</p>
+
+    <p>Looking at it more systematically, this actually converts word segmentation into a tagging problem. If the character language model goes up to 4-gram, it is equivalent to the following character tagging:</p>
+
+    <blockquote>
+        b: single-character word or the first character of a multi-character word<br>
+        c: second character of a multi-character word<br>
+        d: third character of a multi-character word<br>
+        e: remaining part of a multi-character word
+    </blockquote>
+
+    <p>For a character $s_k$ in a sentence, we have:
+    \begin{aligned}&p(b)=p(s_k)\\
+    &p(c)=p(s_k|s_{k-1})\\
+    &p(d)=p(s_k|s_{k-2} s_{k-1})\\
+    &p(e)=p(s_k|s_{k-3} s_{k-2} s_{k-1})
+    \end{aligned}</p>
+
+    <p>This transforms word segmentation into a character tagging problem, where the probability of each tag is given by the language model. Moreover, obviously, 'b' can only be followed by 'b' or 'c'. Similarly, the only non-zero transition probabilities are:
+    $$p(b|b),\,p(c|b),\,p(b|c),\,p(d|c),\,p(b|d),\,p(e|d),\,p(b|e),\,p(e|e)$$
+    The values of these transition probabilities determine whether long or short words are partitioned. Finally, finding the optimal path is still completed by the Viterbi algorithm.</p>
+
+    <p>At this point, the problem becomes training the language model, which is unsupervised. We only need to focus on optimizing the language model, and both the theory and practice in this area are very mature, with many existing tools available. In simple terms, one could use a traditional "statistics + smoothing" model; if one wants to incorporate semantics, the latest neural language models can be used. In short, the segmentation effect depends on the quality of the language model.</p>
+
+    <h3>Practice: Training</h3>
+    <p>First, let's train the language model. The text data used here consists of 500,000 WeChat public account articles, about 2GB in size. The language model is trained using the traditional "statistics + smoothing" method, utilizing the <a href="https://github.com/kpu/kenlm">kenlm</a> tool.</p>
+
+    <p>Kenlm is a language model tool written in C++, characterized by its speed and small memory footprint; it also provides a Python interface. First, download and compile it:</p>
+
+<pre><code>wget -O - http://kheafield.com/code/kenlm.tar.gz |tar xz
+cd kenlm
+./bjam -j4
+python setup.py install
+</code></pre>
+
+    <p>Next, train the language model. Kenlm's input is very flexible; you don't need to pre-generate a text corpus, as it can be passed via pipes. For example, first write a <code>p.py</code>:</p>
+
+<pre><code>import pymongo
+db = pymongo.MongoClient().weixin.text_articles
+
+for text in db.find(no_cursor_timeout=True).limit(500000):
+ print ' '.join(text['text']).encode('utf-8')
+</code></pre>
+
+    <p>My articles are stored in MongoDB, so that is the format used above. If your data is elsewhere, please modify accordingly. It is simple: just separate the text you want to train (for a character-based model, separate every character with a space) and print them out one by one.</p>
+
+    <p>Then you can train the language model. Here, a 4-gram model is trained:</p>
+
+<pre><code>python p.py|./kenlm/bin/lmplz -o 4 > weixin.arpa
+./kenlm/bin/build_binary weixin.arpa weixin.klm
+</code></pre>
+
+    <p>The <code>.arpa</code> file is a common language model format, while <code>.klm</code> is a binary format defined by kenlm, which takes up less space. Finally, we can load it in Python:</p>
+
+<pre><code>import kenlm
+model = kenlm.Model('weixin.klm')
+model.score('微 信', bos=False, eos=False)
+'''
+The score function outputs log probability, i.e., log10(p('微 信')).
+The string can be gbk or utf-8.
+bos=False, eos=False means not to automatically add start-of-sentence and end-of-sentence markers.
+'''
+</code></pre>
+
+    <h3>Practice: Segmentation</h3>
+    <p>With the foundations above, we can now create a segmentation system.</p>
+
+<pre><code>import kenlm
+model = kenlm.Model('weixin.klm')
+
+from math import log10
+
+# These transition probabilities are manually summarized. 
+# Generally, they aim to reduce the likelihood of long words.
+trans = {'bb':1, 'bc':0.15, 'cb':1, 'cd':0.01, 'db':1, 'de':0.01, 'eb':1, 'ee':0.001}
+trans = {i:log10(j) for i,j in trans.iteritems()}
+
+def viterbi(nodes):
+ paths = nodes[0]
+ for l in range(1, len(nodes)):
+ paths_ = paths
+ paths = {}
+ for i in nodes[l]:
+ nows = {}
+ for j in paths_:
+ if j[-1]+i in trans:
+ nows[j+i]= paths_[j]+nodes[l][i]+trans[j[-1]+i]
+ k = nows.values().index(max(nows.values()))
+ paths[nows.keys()[k]] = nows.values()[k]
+ return paths.keys()[paths.values().index(max(paths.values()))]
+
+def cp(s):
+ return (model.score(' '.join(s), bos=False, eos=False) - model.score(' '.join(s[:-1]), bos=False, eos=False)) or -100.0
+
+def mycut(s):
+ nodes = [{'b':cp(s[i]), 'c':cp(s[i-1:i+1]), 'd':cp(s[i-2:i+1]), 'e':cp(s[i-3:i+1])} for i in range(len(s))]
+ tags = viterbi(nodes)
+ words = [s[0]]
+ for i in range(1, len(s)):
+ if tags[i] == 'b':
+ words.append(s[i])
+ else:
+ words[-1] += s[i]
+ return words
+</code></pre>
+
+    <h3>Practice: Results</h3>
+    <p>The language model file is nearly 3GB, so I won't upload it. Readers who need it can contact me. Below are some examples.</p>
+
+    <blockquote>
+        水 是 生命 的 源泉 ， 是 人类 赖以生存 且无 可 替代 的 营养 物质 。 为 使 队员们 更加 了解 水 对 生命 的 至关重要 性 ， 提高 队员们 对 水 更 科学 的 认识 与 理解 ， 倡导 节水 爱 水 的 环保 意识 ， 青少年 环境 知识 科普 课堂 走进 大 金 小学 ， 为 五、 六年级 近 300 余 名 队员 开展 了 一场 《 水 与 生命 》为主题 的 科普 知识 讲座 。 此次 活动 共分为三 场 进行 ， 宣讲 人 祝 老师 结合 PPT ， 图文并茂 、 生动 地 从 水 的 特性 、 水 与 生命 、 水 与 生活 以及 节水 技巧 四个 方面 与 队员们 进行 了 交流 。 祝 老师 告诉 队员们 水 对人体 的 重要 性 ， 详细 说明 了 水 的 营养 组成 ， 同 时 提醒 队员们 要 学会 健康 科学 的 饮水 方法 ， 并 分享 了 节水 小窍门， 希望 队员们 都能 以 自己 为 榜样 ， 努力 承担 “ 小 小 节水 宣传 员 ” Northern 职责 ， 积极 带动 身边的人 一起 参与 节约用水 。 PH 试纸 检测 水 的 酸碱度 ，队员们 都 表现 了 浓厚的兴趣 ， 纷纷 取了 试纸 回家 测试 水质 。 讲座 结束后， 队员们 都 领到 了 “ 小 小 节水 宣传 员 ” 培训 课 程 的 结业证书 。 从 队员们 兴奋 的 表情 中 能够 感受 到 队员们 节水 爱 水 的 决心 。 保护 水 环境 ， 珍惜 水 资源 ， 从点滴做起 ， 从 自己 做起 ， 只要 每个人都 做到 了 保护 生态 、 爱护 环境 ， 那么 碧水蓝天 就会 离我们 越来越 近 ！ 打赏小编 的 最好 方式 就是 —— 点赞 ↓↓ 长按二维码 ， 关注 我们 吧！ ↓↓
+    </blockquote>
+
+    <p>As you can see, the results are quite good; the recognition of long words is effective. However, some cases might not align with our usual habits. For example, "队员们" (team members/the team) is treated as a single word, and "且无可替代" (and irreplaceable) was incorrectly segmented as "且无 可 替代" because "且无" (and no) is too frequent.</p>
+
+    <blockquote>
+        区 志愿者 协会 在 前几日 得知 芦林街道 三官殿居 有 一 居民 家庭 特别 困难 的 情况 ， 12月 12 日 下午 ， 招募 了 7 名 志愿者 来到 芦林三官 殿周全禄 老人 家 ， 送去 了 一袋大米 和 一床棉被 。   此次 助 养 慰问 品 是 由 广丰区 志愿者 协会 公益 基金 提供 ， “ 暖冬行动 ” 作为 志愿者 协会 帮困 项目 的 其中 重要 一 项 ， 由 参与 暖冬行动 的 志愿者们 负责 执行 发 放到 走访 核实 的 困境 家庭 手中 。 志愿者 现场 和 周 全 禄 老人 交谈 ， 从 他 本人 和 周边 群众 了解 到 他的 基本 家庭 状况 ， 他 本人 今年 62 岁 ， 娶了一个 患有 精神 疾病 的 妻子 ， 生 了 2个 儿子 ， 小孩 大 的 14 岁 ， 小 的 12 岁 ， 妻子 在 十年 前 也 离家出走 ， 至今 未 回 ， 留下 他 和 2个 儿子 共同 生活 ， 由于 儿子 遗传 了 母 亲 的 精神 疾病 ， 大 儿子 的 种种 不 正常 表现 ， 不能 在 学校 正常 上 学 ， 只能 整天 跟着 小 儿子 两个 人 无所事事 ， 游手好闲 ， 什么 事 也 做 不 了。 周 老 本身就是 一个 老实巴交 的 农民 ， 今年 不慎 干农活 时 摔了一跤 ， 医药费 2万多 元 ， 都是 村里 和 亲戚 邻居 帮忙 筹集 的 。 他 住的 房子 也是 亲戚 筹集 盖的 一层 瓦房 。 凌乱的 客厅 ， 衣服 基本 上 就是 没有 什么 换洗 ， 湿了 就 随意 搭着 晾干 ， 然后 接着 穿 我们 在 他 家 看到 做的 饭菜 ， 这 就是 一 家人 赖以 生存 的 厨房 。 这 就是 卧室 ， 床铺被褥 都是 破旧不堪 ， 我们 带去 的 一 床 新 棉被 他的 外甥女 偶尔 帮他 整理 下 卫生 ， 做些家务 赠人玫瑰 ， 手有余香 ； 扶困助弱 ， 千古 美德 ； 能力 不 分 大 小 ， 善举 不 分 先后 ， 真情 重 在 付出 。 众人 拾柴火焰高 ， 我们 将 把所有 爱心 力量 汇集 在 一起 ， 传递 社会 大 家庭 的 温暖 ， 传递 社会 正能量 ， 放 飞 困境儿童 的 未来 梦想 ！ 伸出 您的 双手 ， 奉献 您的 爱心 ， 让我们 行动 起来 ， 共同 关爱 困境 家庭 ， 让 所 他们 同 在 蓝天 下 健康 快乐 成长 ！ 如果 您 或 您身边的 人 有 12 - 15 岁 男 孩子 的 衣物 ， 棉被 等 暖冬 物质 可以 捐赠 ， 请伸出您 充满 爱心 的 双手 ， 给 这个 特殊 家庭 一个 暖暖的 冬日 ！ ！！ 暖冬 物质 接收 地址： 广丰区 志愿者 协会 暖冬 物质 接收 联系人： 18 6 07 03 48 18 （ 段 先生 ） 13 8 70 32 70 03 （ 陈女士 ） 供稿： 段 建 波 图片 ： 段 建 波 编辑： 周 小 飞
+    </blockquote>
+
+    <p>It can be seen that even for long idioms like "拾柴火焰高" (Many hands make light work), there is good recognition. Of course, there are many incorrect examples, such as "把所有" (take all), "让我们" (let us), and "请伸出您" (please reach out your...) becoming single "words."</p>
+
+    <blockquote>
+        根据 业务 发展 需要 ， 现 将 我 公司 20 16 年 招聘 应届高校 毕业 生 公告 如下 : 一 、 招聘 岗位 20 16 年 我 公司 拟招聘 应届高校 毕业 生 20 名 。 招聘 岗位 和 学历 、 专业 要求 见下表 。 二、 报名 条件 1. 列入国家 招生 计划 、 具备 派遣 资格 、 处于 毕业 学 年 的 全日制 普通 高等院校 在 校 生 ， 以及 经 教育 部 留学 服务 中心 认证 并 具备 派遣 资 格 的 归国留学 生 ; 2. 遵守 国家 法律法规 和 学校 规章制度 ， 具有 良好 的 思想 品质 和 道德 素质 ， 无 刑事 犯罪 和 严重 违反 校纪校规 记录 ; 3. 专业 对 口 ， 符合 工作 岗位要求 ， 热爱 铁路 集装箱 事业 ; 4. 学习 成绩 优良 ， 取得 相应 的 大学 本科 及以上学历 和 学位证书 ; 应聘 在 京 单位 岗位 毕业 生 需 取得 国家 大学 外语 四级考试 合格 证书 ( 主 修其他语 种 除外 ); 5. 身心 健康 ， 近期 医院 健康 体检合格 ， 能够 适应 应聘 岗位 工作 要求 。 三、 报名 方法 应 聘者 需 登录 " 中国 铁路 人才 招聘 网 — 个人 中心 " 栏目 按照 流程 进行 报名 应聘 ( 首次 登录 须 进行 网上 注册 )。 报名 截止日期 为 20 16 年 1月 10 日 。 每人 限报一个 岗位 。 四、 招聘 流程 1. 资格 确认 。 根据 资格审查 和 初步 筛选 情况 ， 于201 6年 2月 28 日前 ， 择优 以 邮件 、 短信 或 电话 方式 通知 毕业 生 参加 招聘 考试 。 2. 招聘 考试 。 参加 招聘 考试 的 毕业 生 应 携带 在 中国 铁路 人才 招聘 网 打印 的 毕业 生 应聘 登记 表 ， 本人 身份证 、 学生 证、 所在 学校 盖章 的 就业 推荐 表 、 成绩 单 、 外语 证书 等 材料 的 原件及复印件 。 招聘 考试 在 20 16 年 4月 15 日前 完成 ， 具体 时间 、 地点 另行通知 。 3. 人员 公示 。 拟录用人 选 将 统一 在 中国 铁路 人才 招聘 网 和 公司 官网 进行 公示 。 招聘 过程中， 对 未 进入 下一 环节 的 毕业 生 不再 另行通知 。 五、 其他 事项 1. 公司 不 委托 第三 方 招聘 ， 也不 在 招聘 过程中 向 应聘者 收 任何 费用 。 2. 应聘者 的 报名 材料 概不退回 ， 在 招聘 过程中 公司 对 应聘者 的 相关 信息 予以 保密 。 毕业 生 应对 招聘 各环节 所提供的 材料 的 真实 性 负责 ， 凡 弄虚作假 的 ， 一 经 发现 ， 取消 聘用 资格 。 3. 单位 地址： 北京 市 西城区 鸭子 桥路 24 号 中 铁 商务大厦 邮政编码 ： 10 00 55 联系 电话：0 10 - 51 89 27 23
+    </blockquote>
+
+    <h3>To Summarize</h3>
+    <p>Overall, this unsupervised word segmentation method essentially summarizes our character usage habits and extracts common character usage patterns. Therefore, it has very good recognition effects for many long words, especially fixed idioms. At the same time, some frequent character combinations, such as the aforementioned "让我们" (let us), are also treated as single words. We might think this is unreasonable, but thinking about it another way: since we say "让我们" so frequently, why not treat "让我们" as a single "word"?</p>
+
+    <p>In other words, word segmentation is essentially about pre-extracting fixed linguistic patterns. These patterns are not necessarily "words" as we traditionally define them; they could also be habitual expressions. Of course, there is a trade-off: if the granularity of segmentation is too fine, the number of words in the vocabulary won't be too large, but the length of a single sentence will increase; if the granularity is too coarse, the number of words in the vocabulary might explode, but the benefit is that sentence length decreases. The segmentation method provided in this article allows for the adjustment of granularity by modifying transition probabilities to adapt to different tasks.</p>
+
+    <p>Also, as mentioned before, the effectiveness of the segmentation depends on the quality of the language model. This means we only need to focus on optimizing the language model, which can be trained unsupervised—a clear advantage. For example, if we hope to achieve a segmentation model with semantic understanding capabilities, we can train the language model using methods like neural networks. If we prioritize speed, traditional statistical methods work well (using kenlm to obtain a language model from 500,000 texts took less than 10 minutes). In short, it provides the maximum degree of freedom.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_3956.html" style="color: #005fcc;">https://kexue.fm/archives/3956</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

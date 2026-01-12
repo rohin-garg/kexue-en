@@ -1,0 +1,217 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/7148">"Non-Autoregressive" Isn't Bad Either: MLM-Based Reading Comprehension Question Answering</a></h1>
+    <p>By 苏剑林 | December 26, 2019</p>
+
+    <p>Some time ago, I wrote <a href="translation_7115.html">"The Universal seq2seq: Reading Comprehension QA Based on seq2seq"</a>, exploring how to perform reading comprehension question answering using the most general seq2seq approach, achieving quite good results (single model 0.77, exceeding the best fine-tuned model used during the competition). In this article, we continue with this task but change the approach to be directly based on the Masked Language Model (MLM). The final performance is basically consistent, but the prediction speed is significantly improved.</p>
+
+    <h2>Two Types of Generation</h2>
+    <p>Broadly speaking, the MLM generation method can also be considered a seq2seq model, but it belongs to "non-autoregressive" generation, whereas what we usually call (narrowly defined) seq2seq refers to autoregressive generation. This section provides a brief introduction to these two concepts.</p>
+
+    <h3>Autoregressive Generation</h3>
+    <p>As the name suggests, autoregressive generation refers to the decoding stage where tokens are generated recursively, character by character. It models the following probability distribution:</p>
+    \begin{equation}p(y_1,y_2,\dots,y_n|x)=p(y_1|x)p(y_2|x,y_1)\dots p(y_n|x,y_1,\dots,y_{n-1})\label{eq:at}\end{equation}
+    <p>For more detailed introductions, you can refer to <a href="translation_5861.html">"Playing with Keras: Automatic Title Generation via seq2seq"</a> and <a href="translation_6933.html">"From Language Models to Seq2Seq: Transformer is All About the Mask"</a>; I will not go into further detail about autoregressive generation here.</p>
+
+    <h3>Non-Autoregressive Generation</h3>
+    <p>Since autoregressive generation requires recursive decoding, it cannot be parallelized, leading to slower decoding speeds. Therefore, in recent years, many works have been researching non-autoregressive generation and have achieved significant results. Simply put, non-autoregressive generation aims to find ways to make the decoding of each character parallelizable. The simplest non-autoregressive model directly assumes that each character is independent:</p>
+    \begin{equation}p(y_1,y_2,\dots,y_n|x)=p(y_1|x)p(y_2|x)\dots p(y_n|x)\label{eq:nat}\end{equation}
+    <p>This is a very strong assumption and is only applicable in specific cases. If used directly for general text generation tasks like automatic summarization, the results would be quite poor. For more complex work related to non-autoregressive generation, one can find plenty of resources by searching for "non-autoregressive text generation" on Arxiv or Google.</p>
+    <p>As the title mentions, the reading comprehension method in this article is "based on MLM." Readers familiar with the BERT model know that MLM (Masked Language Model) is actually a special case of $\eqref{eq:nat}$, so generation models based on MLM fall under the category of non-autoregressive generation.</p>
+
+    <h2>Model Introduction</h2>
+    <p>The "introduction" is indeed brief because using MLM for reading comprehension is very simple.</p>
+
+    <h3>Model Diagram</h3>
+    <p>First, define a maximum length $l_{\max}$. Then, concatenate the question and the passage, and insert $l_{\max}$ [MASK] tokens within them. This is fed into BERT, and finally, the [MASK] parts are used to predict the answer (this applies to both the training and prediction stages), as shown in the following diagram:</p>
+
+    <p style="text-align:center;">
+        <img src="https://kexue.fm/usr/uploads/2019/12/3673418512.png" alt="Model Diagram for MLM Reading Comprehension" style="max-width:100%;"><br>
+        <em>Model diagram for reading comprehension using MLM (where [M] represents the [MASK] token)</em>
+    </p>
+
+    <h3>Code and Results</h3>
+    <p>Code link: <a href="https://github.com/bojone/bert4keras/blob/master/examples/task_reading_comprehension_by_mlm.py">task_reading_comprehension_by_mlm.py</a></p>
+    <p>Ultimately, using <a href="https://github.com/bojone/dgcnn_for_reading_comprehension">SogouQA's own evaluation script</a>, the valid set score is approximately 0.77 (Accuracy=0.7282149325820084, F1=0.8207266829447049, Final=0.7744708077633566). This is level with the previous <a href="translation_7115.html">"Universal seq2seq"</a> model, but the prediction speed is significantly improved. The previous seq2seq solution could only predict about 2 items per second, while the current method reaches 12 items per second—a 6x speedup without sacrificing performance.</p>
+
+    <h2>Which One to Choose?</h2>
+    <p>In principle, seq2seq is universal, and in principle, the modeling of $\eqref{eq:at}$ used by seq2seq is more reasonable than the $\eqref{eq:nat}$ used by MLM. Why can the MLM solution achieve performance level with seq2seq? When should one use MLM, and when should one use seq2seq?</p>
+
+    <h3>Training and Prediction</h3>
+    <p>First, the biggest problem with seq2seq is its slowness, especially for long text generation. Therefore, if high efficiency is required, one naturally has to abandon the seq2seq approach.</p>
+    <p>If efficiency isn't a concern, is seq2seq always the best? Not necessarily. Although $\eqref{eq:at}$ is more accurate from a modeling perspective, seq2seq training is done via teacher forcing, which leads to the "exposure bias" problem: during training, the input at each step comes from the ground truth text; during generation, the input at each step comes from the output of the previous step. Thus, if one character is poorly generated, the error may propagate, making subsequent generation worse and worse.</p>
+    <p>In short, there is an inconsistency between training and prediction, which can lead to error accumulation. In contrast, the MLM-based approach behaves identifyingly during training and prediction because it does not require ground truth labels as input (the answer position is filled with [MASK] during prediction). Thus, there is no error accumulation. Furthermore, because of this feature, decoding no longer requires recursion and can be parallelized, increasing decoding speed.</p>
+
+    <h3>Unique Correct Answer</h3>
+    <p>Additionally, non-autoregressive generation like MLM is relatively more suitable for short text generation because shorter texts better fit the independence assumption. At the same time, non-autoregressive generation is suitable for scenarios where "there is only one correct answer." The reading comprehension task in this article is primarily extractive, which corresponds exactly to this scenario, hence MLM performs well.</p>
+    <p>In fact, sequence labeling models like frame-by-frame Softmax or CRF can also be seen as non-autoregressive generation models. I believe the fundamental reason they are effective is that the "correct answer sequence is unique," rather than the intuitive belief that "input and output are aligned." That is to say, if the condition "there is only one correct answer" is met, then non-autoregressive generation can be considered.</p>
+    <p>Note that "unique answer" here does not mean each sample has only one human-annotated answer, but rather that the task is designed such that the answer is unique. For example, in word segmentation, once the labeling method is designed, each sentence corresponds to exactly one correct segmentation scheme. In contrast, for title generation, a single article can clearly have different titles; therefore, the answer to title generation is not unique (even if only one title is provided for each article in the training data).</p>
+
+    <h2>Summary</h2>
+    <p>This article experimented with non-autoregressive generation via MLM for reading comprehension QA and found that the final results were not bad, while the speed increased several times. Additionally, the article briefly compared autoregressive and non-autoregressive generation, analyzing when the non-autoregressive solution is applicable and the reasons why.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7148.html" style="color: #005fcc;">https://kexue.fm/archives/7148</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

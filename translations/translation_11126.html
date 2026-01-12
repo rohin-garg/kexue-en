@@ -1,0 +1,326 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']],
+      processEscapes: true,
+      tags: 'ams',
+      packages: {'[+]': ['ams']}
+    }
+  };
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/11126">QK-Clip: Taking Muon One Step Further on the Path to Scaling Up</a></h1>
+
+<p>By 苏剑林 | July 12, 2025</p>
+
+<p>Four months ago, we released <a href="translation_10739.html">Moonlight</a>, validating the effectiveness of the <a href="translation_10592.html">Muon</a> optimizer on a 16B MoE model. In Moonlight, we confirmed the necessity of adding Weight Decay to Muon and proposed the technique of migrating Adam hyperparameters through Update RMS alignment, which allowed Muon to be quickly applied to LLM training. However, as we attempted to further scale Muon to models with over 100 billion parameters, we encountered a new "stumbling block"—MaxLogit explosion.</p>
+
+<p>To solve this problem, we have proposed a simple yet extremely effective new method, which we call "QK-Clip." This method addresses the MaxLogit phenomenon from a very fundamental perspective without harming model performance. It has become one of the key training technologies for our latest trillion-parameter model, "<a href="https://moonshotai.github.io/Kimi-K2/">Kimi K2</a>."</p>
+
+<h2>Problem Description</h2>
+
+<p>Let's first briefly introduce the MaxLogit explosion phenomenon. Recalling the definition of Attention:
+\begin{equation}\boldsymbol{O} = softmax(\boldsymbol{Q}\boldsymbol{K}^{\top})\boldsymbol{V}\end{equation}
+The scaling factor $1/\sqrt{d}$ is omitted here because it can always be absorbed into the definitions of $\boldsymbol{Q}$ and $\boldsymbol{K}$. the "Logit" in "MaxLogit explosion" refers to the Attention matrix before Softmax, namely $\boldsymbol{Q}\boldsymbol{K}^{\top}$, while "MaxLogit" refers to the maximum value of its absolute elements, which we can write as:
+\begin{equation}S_{\max} = \Vert\boldsymbol{Q}\boldsymbol{K}^{\top}\Vert_{\infty} = \max_{i,j} |\boldsymbol{q}_i\cdot \boldsymbol{k}_j|\end{equation}
+The $\max$ here is actually also taken across the batch_size dimension, eventually resulting in a scalar. MaxLogit explosion refers to $S_{\max}$ continuing to rise as training progresses, with a growth rate that is linear or even super-linear, showing no signs of stabilization over a considerable period of time.</p>
+
+<p><strong>The MaxLogit explosion phenomenon</strong></p>
+
+<p>MaxLogit is essentially an indicator of outliers; its explosion signifies that outliers have exceeded controllable ranges. Specifically, we have:
+\begin{equation}\|\boldsymbol{q}_i\cdot \boldsymbol{k}_j\| \leq \Vert\boldsymbol{q}_i\Vert \Vert\boldsymbol{k}_j\Vert = \Vert\boldsymbol{x}_i\boldsymbol{W}_q\Vert \Vert\boldsymbol{x}_j\boldsymbol{W}_k\Vert \leq \Vert\boldsymbol{x}_i\Vert \Vert\boldsymbol{x}_j\Vert \Vert\boldsymbol{W}_q\Vert \Vert\boldsymbol{W}_k\Vert\label{eq:kexi}\end{equation}
+Since $\boldsymbol{x}$ usually has RMSNorm applied, $\Vert\boldsymbol{x}_i\Vert \Vert\boldsymbol{x}_j\Vert$ generally does not explode. Therefore, MaxLogit explosion implies that the spectral norms $\Vert\boldsymbol{W}_q\Vert, \Vert\boldsymbol{W}_k\Vert$ are at risk of heading towards infinity, which is clearly not good news.</p>
+
+<p>Because even large values become less than 1 after passing through Softmax, in lucky cases, this phenomenon might not lead to severe consequences beyond wasting an Attention Head. However, in worse cases, it may cause Grad Spikes or even training collapse. Therefore, to be safe, one should try to avoid the occurrence of MaxLogit explosion.</p>
+
+<h2>Existing Attempts</h2>
+
+<p>In <a href="translation_10739.html">"Muon Sequel: Why Did We Choose to Try Muon?"</a>, we briefly analyzed how Weight Decay can prevent MaxLogit explosion to some extent. This is why small models rarely experience MaxLogit explosion; even in a 16B model like Moonlight, MaxLogit rose to at most 120 before automatically decreasing.</p>
+
+<p><strong>Moonlight's MaxLogit automatically decreased</strong></p>
+
+<p>In other words, MaxLogit explosion appears more frequently in models with very large parameter counts. The larger the model, the more unstable factors there are in training, making it harder for Weight Decay to stabilize the process. While increasing Weight Decay could theoretically strengthen control, it also brings significant performance loss, making that path a dead end. Another direct idea is to add a $\text{softcap}$ to the Logit:
+\begin{equation}\boldsymbol{O} = softmax(\text{softcap}(\boldsymbol{Q}\boldsymbol{K}^{\top};\tau))\boldsymbol{V}\end{equation}
+where $\text{softcap}(x;\tau) = \tau\tanh(x/\tau)$, introduced by Google's <a href="https://papers.cool/arxiv/2408.00118">Gemma2</a>. Due to the boundedness of $\tanh$, $\text{softcap}$ naturally guarantees that the Logit after $\text{softcap}$ is bounded. However, it cannot guarantee that the Logit before $\text{softcap}$ is bounded (as personally tested), so $\text{softcap}$ merely converts one problem into another without actually solving it.</p>
+
+<p>Perhaps Google realized this themselves, so in the later <a href="https://papers.cool/arxiv/2503.19786">Gemma3</a>, they stopped using $\text{softcap}$ and switched to "QK-Norm":
+\begin{equation}\boldsymbol{O} = softmax(\tilde{\boldsymbol{Q}}\tilde{\boldsymbol{K}}{}^{\top})\boldsymbol{V},\quad \begin{aligned}
+\tilde{\boldsymbol{Q}}=&\, \text{RMSNorm}(\boldsymbol{Q}) \\
+\tilde{\boldsymbol{K}}=&\, \text{RMSNorm}(\boldsymbol{K})
+\end{aligned}\end{equation}</p>
+
+<p>QK-Norm is indeed an effective method for suppressing MaxLogit. However, it is only applicable to MHA, GQA, etc., and not to MLA. This is because QK-Norm requires $\boldsymbol{Q}$ and $\boldsymbol{K}$ to be materialized. For MLA, $\boldsymbol{Q}$ and $\boldsymbol{K}$ during the training phase are different from those during the Decoding phase (as shown in the formula below). In the Decoding phase, we cannot fully materialize the training-phase $\boldsymbol{K}$; in other words, QK-Norm cannot be performed during the Decoding phase.</p>
+
+$$\require{cancel}\begin{array}{c|c}
+\text{Training/Prefill} & \text{Decoding} \\
+\\
+\begin{gathered}
+\boldsymbol{o}_t = \left[\boldsymbol{o}_t^{(1)}, \boldsymbol{o}_t^{(2)}, \cdots, \boldsymbol{o}_t^{(h)}\right] \\[10pt]
+\boldsymbol{o}_t^{(s)} = \frac{\sum_{i\leq t}\exp\left(\boldsymbol{q}_t^{(s)} \boldsymbol{k}_i^{(s)}{}^{\top}\right)\boldsymbol{v}_i^{(s)}}{\sum_{i\leq t}\exp\left(\boldsymbol{q}_t^{(s)} \boldsymbol{k}_i^{(s)}{}^{\top}\right)} \\[15pt]
+\boldsymbol{q}_i^{(s)} = \left[\boldsymbol{x}_i\boldsymbol{W}_{qc}^{(s)},\boldsymbol{x}_i\boldsymbol{W}_{qr}^{(s)}\color{#3ce2f7}{\boldsymbol{\mathcal{R}}_i}\right]\in\mathbb{R}^{d_k + d_r}\\
+\boldsymbol{k}_i^{(s)} = \left[\boldsymbol{c}_i\boldsymbol{W}_{kc}^{(s)},\boldsymbol{x}_i\boldsymbol{W}_{kr}^{\color{#ccc}{\smash{\bcancel{(s)}}}}\color{#3ce2f7}{\boldsymbol{\mathcal{R}}_i}\right]\in\mathbb{R}^{d_k + d_r} \\
+\boldsymbol{v}_i^{(s)} = \boldsymbol{c}_i\boldsymbol{W}_v^{(s)}\in\mathbb{R}^{d_v},\quad\boldsymbol{c}_i = \boldsymbol{x}_i \boldsymbol{W}_c\in\mathbb{R}^{d_c}
+\end{gathered}
+&
+\begin{gathered}
+\boldsymbol{o}_t = \left[\boldsymbol{o}_t^{(1)}\boldsymbol{W}_v^{(1)}, \boldsymbol{o}_t^{(2)}\boldsymbol{W}_v^{(2)}, \cdots, \boldsymbol{o}_t^{(h)}\boldsymbol{W}_v^{(h)}\right] \\[10pt]
+\boldsymbol{o}_t^{(s)} = \frac{\sum_{i\leq t}\exp\left(\boldsymbol{q}_t^{(s)} \boldsymbol{k}_i^{\color{#ccc}{\smash{\bcancel{(s)}}}}{}^{\top}\right)\boldsymbol{v}_i^{\color{#ccc}{\smash{\bcancel{(s)}}}} }{\sum_{i\leq t}\exp\left(\boldsymbol{q}_t^{(s)} \boldsymbol{k}_i^{\color{#ccc}{\smash{\bcancel{(s)}}}}{}^{\top}\right)} \\[15pt]
+\boldsymbol{q}_i^{(s)} = \left[\boldsymbol{x}_i\boldsymbol{W}_{qc}^{(s)}\boldsymbol{W}_{kc}^{(s)}{}^{\top}, \boldsymbol{x}_i\boldsymbol{W}_{qr}^{(s)}\color{#3ce2f7}{\boldsymbol{\mathcal{R}}_i}\right]\in\mathbb{R}^{d_c + d_r}\\
+\boldsymbol{k}_i^{\color{#ccc}{\smash{\bcancel{(s)}}}} = \left[\boldsymbol{c}_i, \boldsymbol{x}_i\boldsymbol{W}_{kr}^{\color{#ccc}{\smash{\bcancel{(s)}}}}\color{#3ce2f7}{\boldsymbol{\mathcal{R}}_i}\right]\in\mathbb{R}^{d_c + d_r}\\
+\boldsymbol{v}_i^{\color{#ccc}{\smash{\bcancel{(s)}}}} = \boldsymbol{c}_i= \boldsymbol{x}_i \boldsymbol{W}_c\in\mathbb{R}^{d_c}
+\end{gathered} \\
+\end{array} $$
+
+Why use MLA? We have discussed this issue in two articles, <a href="translation_10907.html">"Transformer Path to Upgrade: 21, Why is MLA Good? (Part 1)"</a> and <a href="translation_11111.html">"Transformer Path to Upgrade: 21, Why is MLA Good? (Part 2)"</a>, so we won't repeat it here. In short, we hope MLA can also have a means similar to QK-Norm that guarantees the suppression of MaxLogit.</p>
+
+<h2>Hitting the Target</h2>
+
+<p>During our research, we also tried some indirect means, such as lowering the learning rates of $\boldsymbol{Q}$ and $\boldsymbol{K}$ separately or increasing their Weight Decay, but none were effective. The closest we came to success was Partial QK-Norm. For MLA, its $\boldsymbol{Q}$ and $\boldsymbol{K}$ are divided into four parts: qr, qc, kr, and kc. The first three parts can be materialized during Decoding, so we applied RMSNorm to these three parts. The result successfully suppressed MaxLogit, but the long-context performance was terrible.</p>
+
+<p>After many failures, we began to reflect: all our previous attempts were just "indirect means" to suppress MaxLogit. What is the direct means that can guarantee the resolution of MaxLogit explosion? From inequality $\eqref{eq:kexi}$, it's natural to think of performing <a href="translation_11006.html">singular value clipping</a> on $\boldsymbol{W}_q, \boldsymbol{W}_k$, but this is still essentially an indirect means, and the computational cost of singular value clipping is high.</p>
+
+<p>However, it is obvious that post-scaling $\boldsymbol{W}_q, \boldsymbol{W}_k$ is theoretically feasible; the question is when to scale and by how much. Finally, in a flash of inspiration one day, I realized: <strong>MaxLogit itself is the most direct signal to trigger scaling!</strong> Specifically, when MaxLogit exceeds a desired threshold $\tau$, we directly multiply $\boldsymbol{Q}\boldsymbol{K}^{\top}$ by $\gamma = \tau / S_{\max}$, then the new MaxLogit will certainly not exceed $\tau$. We can absorb the operation of multiplying by $\gamma$ into the weights of $\boldsymbol{Q}$ and $\boldsymbol{K}$ respectively. Thus, we arrive at the first version of QK-Clip:
+$$\begin{aligned}
+&\boldsymbol{W}_t = \text{Optimizer}(\boldsymbol{W}_{t-1}, \boldsymbol{G}_t) \\
+&\text{if }S_{\max}^{(l)} > \tau\text{ and }\boldsymbol{W} \in \{\boldsymbol{W}_q^{(l)}, \boldsymbol{W}_k^{(l)}\}: \\
+&\qquad\boldsymbol{W}_t \leftarrow \boldsymbol{W}_t \times \sqrt{\tau / S_{\max}^{(l)}}
+\end{aligned}$$</p>
+
+<p>Where $S_{\max}^{(l)}$ is the MaxLogit of the $l$-th layer's Attention, and $\boldsymbol{W}_q^{(l)}, \boldsymbol{W}_k^{(l)}$ are the weights for its $\boldsymbol{Q}$ and $\boldsymbol{K}$. In other words, after the optimizer update, we decide whether to clip the weights of $\boldsymbol{Q}$ and $\boldsymbol{K}$ based on the magnitude of $S_{\max}^{(l)}$. The clipping magnitude is directly determined by the ratio of $S_{\max}^{(l)}$ to the threshold $\tau$, ensuring that the clipped matrices no longer produce MaxLogit explosion. At the same time, because the operation is performed directly on the weights, it does not affect the inference mode and is naturally compatible with MLA.</p>
+
+<h2>Fine-tuning</h2>
+
+<p>The first version of QK-Clip successfully suppressed MLA's MaxLogit, but after carefully observing the model's "internal medicine," we found that it suffered from "over-clipping." Fixing this issue led to the final version of QK-Clip.</p>
+
+<p>We know that every Attention variant has multiple heads. Initially, we monitored only one MaxLogit metric per Attention layer, taking the Max over all heads' Logits together. This caused QK-Clip to clip all heads simultaneously. However, when we monitored the MaxLogit for each head separately, we found that in reality, only a few heads per layer experience MaxLogit explosion. If all heads are clipped by the same ratio, then most heads are "innocently affected"—this is the meaning of over-clipping.</p>
+
+<p>Therefore, to avoid "collateral damage," we should monitor MaxLogit and apply QK-Clip on a Per-Head basis. However, another hidden detail lies here: the first version of QK-Clip distributed the clipping factor equally across $\boldsymbol{Q}$ and $\boldsymbol{K}$. But for MLA, $\boldsymbol{Q}$ and $\boldsymbol{K}$ consist of qr, qc, kr, and kc parts, where kr is shared across all heads. If we clip kr, we again encounter the "innocent bystander" problem. Thus, for (qr, kr), we should only apply the clip to qr.</p>
+
+<p>With these adjustments, the final version of QK-Clip is:
+$$\begin{aligned}
+&\boldsymbol{W}_t = \text{Optimizer}(\boldsymbol{W}_{t-1}, \boldsymbol{G}_t) \\
+&\text{if }S_{\max}^{(l,h)} > \tau: \\
+&\qquad\text{if }\boldsymbol{W} \in \{\boldsymbol{W}_{qc}^{(l,h)}, \boldsymbol{W}_{kc}^{(l,h)}\}: \\
+&\qquad\qquad\boldsymbol{W}_t \leftarrow \boldsymbol{W}_t \times \sqrt{\tau / S_{\max}^{(l,h)}} \\
+&\qquad\text{elif }\boldsymbol{W} \in \{\boldsymbol{W}_{qr}^{(l,h)}\}: \\
+&\qquad\qquad\boldsymbol{W}_t \leftarrow \boldsymbol{W}_t \times \tau / S_{\max}^{(l,h)}
+\end{aligned}$$
+where the superscript ${}^{(l,h)}$ denotes the $h$-th Head of the $l$-th layer.</p>
+
+<h2>Path to Scaling Up</h2>
+
+<p>Up to this point, the operational details of QK-Clip have been explained. It uses our desired MaxLogit magnitude as a signal to make the smallest possible changes to the $\boldsymbol{Q}, \boldsymbol{K}$ weights, achieving the effect of controlling MaxLogit within specified thresholds. Simultaneously, because it is a weight-modification method, its compatibility is superior to QK-Norm and it can be used for MLA.</p>
+
+<p>In the training of Kimi K2, we set the threshold $\tau$ to 100. The total training steps were approximately 220k steps. Starting from roughly 7k steps, Heads appearing with MaxLogit exceeding $\tau$ emerged. Following this, for a long period, Muon Update and QK-Clip were in a "tug-of-war"—Muon wanted to increase MaxLogit while QK-Clip wanted to decrease it, maintaining a delicate balance. Interestingly, after 70k steps, the MaxLogit of all Heads voluntarily dropped below 100, and QK-Clip was no longer triggered.</p>
+
+<p><strong>After nearly 70k steps of tug-of-war between Muon and QK-Clip, MaxLogit voluntarily dropped</strong></p>
+
+<p>This suggests that, under the influence of Weight Decay, as long as we can stabilize the training, the model will likely eventually bring MaxLogit down on its own. The role of QK-Clip is specifically to help the model pass through the early stages of training more smoothly. Some readers might worry that QK-Clip harms performance, but we conducted comparative experiments on small models; even when using QK-Clip to suppress MaxLogit to very small values (e.g., 30), we observed no substantial difference in performance. Combined with the phenomenon of the model voluntarily lowering MaxLogit in the mid-to-late stages, we have reason to believe that QK-Clip is harmless to overall performance.</p>
+
+<p>We also observed in experiments that Muon is generally more prone to MaxLogit explosion than Adam. Therefore, in some sense, QK-Clip is an update rule specifically supplemented for Muon—it is one of Muon's "secret keys" for ultra-large-scale training, which is the meaning of this article's title. To this end, we combined the Muon changes proposed in Moonlight with QK-Clip and named it "MuonClip" ($\boldsymbol{W}\in\mathbb{R}^{n\times m}$):
+$$\text{MuonClip}\quad\left\{\quad\begin{aligned}
+&\boldsymbol{M}_t = \mu \boldsymbol{M}_{t−1} + \boldsymbol{G}_t \\[8pt]
+&\boldsymbol{O}_t = \newcommand{msign}{\mathop{\text{msign}}}\msign(\boldsymbol{M}_t) \underbrace{\times \sqrt{\max(n,m)}\times 0.2}_{\text{Match Adam Update RMS}} \\[8pt]
+&\boldsymbol{W}_t = \boldsymbol{W}_{t−1} − \eta_t (\boldsymbol{O}_t + \lambda \boldsymbol{W}_{t-1}) \\[8pt]
+&\left.\begin{aligned}
+&\text{if }S_{\max}^{(l,h)} > \tau: \\
+&\qquad\text{if }\boldsymbol{W} \in \{\boldsymbol{W}_{qc}^{(l,h)}, \boldsymbol{W}_{kc}^{(l,h)}\}: \\
+&\qquad\qquad\boldsymbol{W}_t \leftarrow \boldsymbol{W}_t \times \sqrt{\tau / S_{\max}^{(l,h)}} \\
+&\qquad\text{elif }\boldsymbol{W} \in \{\boldsymbol{W}_{qr}^{(l,h)}\}: \\
+&\qquad\qquad\boldsymbol{W}_t \leftarrow \boldsymbol{W}_t \times \tau / S_{\max}^{(l,h)}
+\end{aligned}\quad\right\} \text{QK-Clip}
+\end{aligned}\right.$$</p>
+
+<p>Note that saying "Muon is generally more prone to MaxLogit explosion than Adam" does not mean only Muon explodes. We know that <a href="https://papers.cool/arxiv/2412.19437">DeepSeek-V3</a> was trained with Adam, and we also observed MaxLogit explosion in the open-source DeepSeek-V3 models, and Gemma2 uses $\text{softcap}$ to prevent MaxLogit explosion while also being trained with Adam. Therefore, while we emphasize the value of QK-Clip for Muon, if readers insist on using Adam, it can also be combined into AdamClip.</p>
+
+<h2>Theoretical Reflection</h2>
+
+<p>Why is Muon more likely to lead to MaxLogit explosion? In this section, I will try to provide a theoretical explanation for your reference.</p>
+
+<p>From inequality $\eqref{eq:kexi}$, we can see that MaxLogit explosion often implies that the spectral norm of $\boldsymbol{W}_q$ or $\boldsymbol{W}_k$ is showing signs of explosion. In fact, the definition of the spectral norm also involves a $\max$ operation; the two are fundamentally connected. Thus, the question can be translated to "Why is Muon more likely to lead to spectral norm explosion?" We know the spectral norm equals the largest singular value, so we can further think about "Why does Muon tend to increase singular values?"</p>
+
+<p>What is the difference between Muon and Adam? The update amount provided by Muon is processed by $\msign$, meaning all singular values are equal. That is, its <a href="translation_10847.html">effective rank</a> is <strong>full rank</strong>. In contrast, for general matrices, singular values are usually varied in size, dominated by the first few. From the perspective of <a href="translation_10847.html">effective rank</a>, they are <strong>low rank</strong>. Our assumption for Adam's update amount is the same. This assumption is not new; for instance, <a href="translation_10795.html">higher-order muP</a> also assumes the low-rank nature of Adam's updates.</p>
+
+<p>In formulas, let the SVD of the parameters $\boldsymbol{W}_{t-1}$ be $\sum_i \sigma_i \boldsymbol{u}_i \boldsymbol{v}_i^{\top}$, the SVD of the Muon update be $\sum_j \bar{\sigma}\bar{\boldsymbol{u}}_j \bar{\boldsymbol{v}}_j^{\top}$, and the SVD of the Adam update be $\sum_j \tilde{\sigma}_j\tilde{\boldsymbol{u}}_j \tilde{\boldsymbol{v}}_j^{\top}$. Then:
+\begin{gather}
+\boldsymbol{W}_t = \sum_i \sigma_i \boldsymbol{u}_i \boldsymbol{v}_i^{\top} + \sum_j \bar{\sigma}\bar{\boldsymbol{u}}_j \bar{\boldsymbol{v}}_j^{\top}\qquad (\text{Muon}) \\
+\boldsymbol{W}_t = \sum_i \sigma_i \boldsymbol{u}_i \boldsymbol{v}_i^{\top} + \sum_j \tilde{\sigma}_j\tilde{\boldsymbol{u}}_j \tilde{\boldsymbol{v}}_j^{\top}\qquad (\text{Adam}) \\
+\end{gather}</p>
+
+<p>Clearly, if a singular vector pair $\boldsymbol{u}_i \boldsymbol{v}_i^{\top}$ is very close to some $\bar{\boldsymbol{u}}_j \bar{\boldsymbol{v}}_j^{\top}$ or $\tilde{\boldsymbol{u}}_j \tilde{\boldsymbol{v}}_j^{\top}$, they will superimpose directly, thereby increasing the singular values of $\boldsymbol{W}_t$. Since Muon's update is full-rank, its "collision probability" with $\boldsymbol{W}_{t-1}$ is much higher than Adam's, making Muon more prone to increasing parameter singular values.</p>
+
+<p>Of course, the above analysis is general and not limited to $\boldsymbol{Q}, \boldsymbol{K}$ weights. In Moonlight, we already verified that model weights trained with Muon generally have higher singular value entropy, which corroborates the above guess. The special thing about Attention Logit is its bilinear form $\boldsymbol{q}_i\cdot \boldsymbol{k}_j = (\boldsymbol{x}_i \boldsymbol{W}_q)\cdot(\boldsymbol{x}_j \boldsymbol{W}_k)$. The multiplication of $\boldsymbol{W}_q$ and $\boldsymbol{W}_k$ makes the risk of explosion greater and easily leads to a vicious cycle of "bad getting worse," ultimately resulting in MaxLogit explosion.</p>
+
+<p><strong>Comparison of singular value entropy (equivalent to effective rank) of model weights trained with Muon vs Adam</strong></p>
+
+<p>Finally, "Muon's collision probability is much larger than Adam's" is relative. In reality, singular vector collisions are still rare events, which explains why only a small portion of Attention Heads experience MaxLogit explosion.</p>
+
+<h2>Extensions</h2>
+
+<p>By now, the important calculation and experimental details regarding QK-Clip should be clear. One more thing to remind is that while the idea of QK-Clip is simple, implementing it on a Per-Head basis during distributed training can be slightly difficult. This is because parameter matrices are often "fragmented" across devices (modifying it based on Muon isn't hard, but doing it on Adam is a bit more complex).</p>
+
+<p>For myself and my team, QK-Clip is not just a specific method for solving MaxLogit explosion; it marks a "sudden realization" after repeated failed attempts to solve problems through indirect means: <strong>When there is a clear metric, we should seek a direct approach that guarantees the problem is solved, rather than wasting time on lower LRs, larger Weight Decay, Partial QK-Norm, and other strategies that might but don't necessarily solve the problem.</strong></p>
+
+<p>From a methodological standpoint, the idea of QK-Clip is not limited to solving MaxLogit explosion. It can be seen as an "antibiotic" for many training instability issues. By antibiotic, I mean it might not be the most elegant solution, but it is often one of the most direct and effective. QK-Clip has precisely this characteristic, and it can be generalized as "Clip wherever it's unstable."</p>
+
+<p>For example, in some cases, a model might experience "MaxOutput explosion." We could then consider clipping the weight $\boldsymbol{W}_o$ based on the MaxOutput value. Analagous to the Per-Head operation in QK-Clip, we would need to consider Per-Dim operations here, though the cost of Per-Dim clipping might be too high and might require a compromise. In short, "Clip wherever it's unstable" provides a unified thinking framework; the specific details depend on your creativity.</p>
+
+<h2>Summary</h2>
+
+<p>This article proposes QK-Clip, a new approach to the MaxLogit explosion problem. Unlike QK-Norm, it is a post-adjustment scheme for Q and K weights that does not change the model's forward computation, making it more widely applicable. It is an important stabilization strategy for the "Muon + MLA" combination in ultra-large-scale training, and a key technology behind our newly released trillion-parameter model, Kimi K2.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_11126.html" style="color: #005fcc;">https://kexue.fm/archives/11126</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

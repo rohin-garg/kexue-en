@@ -1,0 +1,365 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/7302">Analysis of the AdaFactor Optimizer (with Open Source Implementation)</a></h1>
+    <p>By 苏剑林 | March 23, 2020</p>
+
+    <p>Since pre-trained models like GPT and BERT became popular, one obvious trend is that models are getting larger, because larger models combined with more thorough pre-training usually tend to top the leaderboards more effectively. However, while ideals can be infinitely far-reaching, reality is often quite constrained. Sometimes the model is so large that even if you have GPUs or even TPUs with huge memory, you still feel a sense of despair. For example, the largest version of GPT-2 has 1.5 billion parameters, and the largest version of the T5 model even reached 11 billion parameters. Models of this scale can hardly run with a large batch size even on TPU clusters.</p>
+
+    <p>At this point, one usually needs to focus on the optimization process—for example, using mixed-precision training (on TensorFlow, you can also use a new floating-point format called bfloat16), which saves memory and accelerates training; or using more memory-efficient optimizers, such as RMSProp, which is more memory-efficient than Adam. This article introduces <strong>AdaFactor</strong>, a new optimizer proposed by Google, first appearing in the paper <a href="https://papers.cool/arxiv/1804.04235">"Adafactor: Adaptive Learning Rates with Sublinear Memory Cost"</a>. AdaFactor has the characteristics of an adaptive learning rate but is even more memory-efficient than RMSProp, and it specifically addresses some of Adam's shortcomings.</p>
+
+    <h2 id="Adam">Adam</h2>
+
+    <p>First, let's review the update process of the commonly used Adam optimizer. Let $t$ be the iteration step, $\alpha_t$ be the current learning rate, $L(\theta)$ be the loss function, $\theta$ be the parameters to be optimized, and $\epsilon$ be a small positive number to prevent overflow. Then the update process for Adam is:</p>
+
+    \begin{equation}\left\{\begin{aligned}&g_t = \nabla_{\theta} L(\theta_{t-1})\\
+    &m_t = \beta_1 m_{t-1} + \left(1 - \beta_1\right) g_t\\
+    &v_t = \beta_2 v_{t-1} + \left(1 - \beta_2\right) g_t^2\\
+    &\hat{m}_t = m_t\left/\left(1 - \beta_1^t\right)\right.\\
+    &\hat{v}_t = v_t\left/\left(1 - \beta_2^t\right)\right.\\
+    &\theta_t = \theta_{t-1} - \alpha_t \hat{m}_t\left/\left(\sqrt{\hat{v}_t} + \epsilon\right)\right.
+    \end{aligned}\right.\end{equation}
+
+    <p>To save memory, one must first know where the memory is being spent. First, the bulk of both computation and memory is definitely $\nabla_{\theta} L(\theta_{t-1})$. That is to say, calculating the gradient is very resource-intensive, which is also why "even though ALBERT has much fewer parameters than BERT, the training speed is not significantly faster." Besides that, the memory consumption mainly comes from $m$ and $v$. We need to maintain two sets of buffer variables to calculate the moving averages of the first and second moments of the gradients (i.e., $m$ and $v$). Each of these two sets of variables is as large as the training parameters themselves. Therefore, for models with many parameters, the memory consumed by these two sets of buffer variables is also substantial.</p>
+
+    <h2 id="AdaFactor">AdaFactor</h2>
+
+    <p>In this section, we will introduce the AdaFactor optimizer in relatively more detail. The introduction will involve several formulas and derivations. Readers who only seek a general understanding can skip some of the mathematical content.</p>
+
+    <h3 id="抛弃动量">1. Abandoning Momentum</h3>
+
+    <p>We know that CV models often rely on "SGD + Momentum" to achieve optimal results, as adaptive learning rate optimizers usually don't train to the best effect. However, for NLP models, the situation is somewhat reversed: adaptive learning rates are more important, and it is rare to hear of cases where an NLP model is trained purely on SGD. Therefore, as the first step to save memory, we can discard the momentum in Adam, which eliminates one set of buffer parameters and naturally saves memory:</p>
+
+    \begin{equation}\left\{\begin{aligned}&g_t = \nabla_{\theta} L(\theta_{t-1})\\
+    &v_t = \beta_2 v_{t-1} + \left(1 - \beta_2\right) g_t^2\\
+    &\hat{v}_t = v_t\left/\left(1 - \beta_2^t\right)\right.\\
+    &\theta_t = \theta_{t-1} - \alpha_t g_t\left/\sqrt{\hat{v}_t + \epsilon}\right.
+    \end{aligned}\right.\end{equation}
+
+    <p>This is actually a variant of RMSProp, with the added step of $\hat{v}_t = v_t\left/\left(1 - \beta_2^t\right)\right.$.</p>
+
+    <h3 id="低秩分解">2. Low-Rank Decomposition</h3>
+
+    <p>After removing $m$, the buffer variables are directly halved, but AdaFactor is not satisfied. It hopes to retain the adaptive learning rate function while further compressing the parameter size of the buffer variable $v$. This time, it uses low-rank matrix decomposition.</p>
+
+    <h4>Generalized KL Divergence</h4>
+
+    <p>In SGD, all parameters share a single scalar learning rate; in Adam, every parameter has its own learning rate $\alpha_t/\left(\sqrt{\hat{v}_t} + \epsilon\right)$. We know that by fine-tuning the learning rate, SGD can also have good results. This suggests that the fact "every parameter has its own learning rate" is not particularly critical, or to put it another way, "fine-tuning every single parameter's own learning rate" is not particularly critical.</p>
+
+    <p>This inspires us to replace $\hat{v}_t$ with an approximation that has fewer parameters. And when it comes to "approximations with fewer parameters," low-rank decomposition naturally comes to mind. For an $m \times n$ matrix $C$, we want to find an $m \times k$ matrix $A$ and a $k \times n$ matrix $B$ such that</p>
+
+    \begin{equation}AB \approx C\end{equation}
+
+    <p>When $k$ is small enough, the total number of parameters in $A$ and $B$ is less than the number of parameters in $C$. To be "efficient" to the extreme, AdaFactor sets $k=1$ directly, seeking $\{a_i\}_{i=1}^m$ and $\{b_j\}_{j=1}^n$ such that</p>
+
+    \begin{equation}a_i b_j \approx c_{i,j}\end{equation}
+
+    <p>Since we are approximating, we need a measurement standard. An easily conceived standard is the Euclidean distance, namely</p>
+
+    \begin{equation}\sum_{i,j} (a_i b_j - c_{i,j})^2\end{equation}
+
+    <p>However, under this distance, $a_i, b_j$ do not have an analytical solution. Furthermore, during the optimization process, $c_{i,j}$ (i.e., $\hat{v}_t$) is non-negative, while the $a_i b_j$ optimized through the above objective cannot be guaranteed to be non-negative, which might disturb the optimization process.</p>
+
+    <p>The authors were very clever in changing the measurement standard so that $a_i, b_j$ have analytical solutions. Specifically, it uses the "Generalized KL Divergence," also known as "<a href="https://arxiv.org/abs/math/0412070">I-Divergence</a>," which takes the form:</p>
+
+    \begin{equation}l = \sum_{i,j} c_{i,j}\log \frac{c_{i,j}}{a_i b_j} - c_{i,j} + a_i b_j \label{eq:i-div}\end{equation}
+
+    <p>This metric originates from the inequality $x\log x \geq x - 1 (\forall x > 0)$, where equality holds if and only if $x=1$. So, substituting $x = p / q\,(p,q > 0)$ and multiplying both sides by $q$, we have</p>
+
+    \begin{equation}p\log \frac{p}{q} - p + q \geq 0\end{equation}
+
+    <p>Equality holds if and only if $p=q$. If $p, q$ have multiple components, summing the results of the multiple components yields the metric $\eqref{eq:i-div}$.</p>
+
+    <p>Obviously, generalized KL divergence is a natural extension of probabilistic KL divergence, but it does not require $c_{i,j}$ and $a_i b_j$ to satisfy normalization, only that they be non-negative, which exactly corresponds to the AdaFactor scenario. Cleverly, under this scenario and objective, there happens to be an analytical solution:</p>
+
+    \begin{equation}a_i = \sum\limits_{j}c_{i,j},\quad b_j = \frac{\sum\limits_{i}c_{i,j}}{\sum\limits_{i,j}c_{i,j}}\label{eq:aibj}\end{equation}
+
+    <p>In fact, this analytical solution is also very intuitive: it's the sum of rows and the sum of columns respectively, then multiplied together, and then divided by the total sum.</p>
+
+    <h4>Derivation Process</h4>
+
+    <p>Directly taking the partial derivatives of $\eqref{eq:i-div}$ and setting them to 0, we get:</p>
+
+    \begin{equation}\left\{\begin{aligned}
+    &\frac{\partial l}{\partial a_i}=\sum_j -\frac{c_{i,j}}{a_i} + b_j = 0\\
+    &\frac{\partial l}{\partial b_j}=\sum_i -\frac{c_{i,j}}{b_j} + a_i = 0
+    \end{aligned}\right.\end{equation}
+
+    <p>Rearranging gives:</p>
+
+    \begin{equation}\left\{\begin{aligned}
+    &a_i \sum_{j} b_j = \sum_j c_{i,j}\\
+    &b_j \sum_{i} a_i = \sum_i c_{i,j}
+    \end{aligned}\right.\end{equation}
+
+    <p>Note that if $(a_i, b_j)$ is an optimal solution, then $(\lambda a_i, b_j/\lambda)$ is also one. Simply put, if all $a_i$ are multiplied by a constant and all $b_j$ are divided by that same constant, $a_i b_j$ remains unchanged. Then we can freely specify $\sum_{i} a_i$ or $\sum_{j} b_j$, as they are just scaling scalars. Without loss of generality, we specify $\sum_{j} b_j=1$, which results in the solution $\eqref{eq:aibj}$.</p>
+
+    <h4>Intuitive Understanding</h4>
+
+    <p>We can also understand the result $\eqref{eq:aibj}$ from another perspective. Since $c_{i,j}$ is non-negative, we can normalize it so that it possesses the characteristics of a probability distribution, i.e., $\hat{c}_{i,j}=\frac{c_{i,j}}{\sum_{i,j}c_{i,j}}$. Then we attempt to complete the decomposition $\hat{c}_{i,j} \approx \hat{a}_i \hat{b}_j$. Since $\hat{c}_{i,j}$ now corresponds to a bivariate joint probability distribution, $\hat{a}_i, \hat{b}_j$ correspond to their marginal distributions, namely:</p>
+
+    \begin{equation}\hat{a}_i = \sum_j \hat{c}_{i,j} = \frac{\sum\limits_{j}c_{i,j}}{\sum\limits_{i,j} c_{i,j}},\quad \hat{b}_j = \sum_i \hat{c}_{i,j} = \frac{\sum\limits_{i}c_{i,j}}{\sum\limits_{i,j}c_{i,j}}\end{equation}
+
+    <p>To go from $\hat{c}_{i,j}$ back to $c_{i,j}$ we still need to multiply by $\sum_{i,j}c_{i,j}$. We can multiply this into either $\hat{a}_i$ or $\hat{b}_j$. Without loss of generality, if we multiply it into $\hat{a}_i$, we obtain $\eqref{eq:aibj}$.</p>
+
+    <h4>The Prototype of AdaFactor</h4>
+
+    <p>With the result $\eqref{eq:aibj}$, we can use it to construct a more memory-efficient optimizer, which is the prototype of AdaFactor. Briefly, when the parameter $\theta$ is a normal one-dimensional vector, the optimization process remains unchanged; but when $\theta$ is an $m \times n$ matrix, the calculated gradient $g_t$ is also a matrix, so $g_t^2$ is also a matrix. At this point, we perform a low-rank decomposition on $g_t^2$, maintain two sets of buffer variables $v^{(r)}_t \in \mathbb{R}^m, v^{(c)}_t \in \mathbb{R}^n$, calculate the moving averages of the low-rank decomposed results, and finally use $v^{(r)}_t, v^{(c)}_t$ together to adjust the learning rate:</p>
+
+    \begin{equation}\left\{\begin{aligned}&g_{i,j;t} = \nabla_{\theta} L(\theta_{i,j;t-1})\\
+    &v^{(r)}_{i;t} = \beta_2 v^{(r)}_{t-1;i} + \left(1 - \beta_2\right) \sum\limits_{j}\left(g_{i,j;t}^2+\epsilon_1\right)\\
+    &v^{(c)}_{j;t} = \beta_2 v^{(c)}_{t-1;j} + \left(1 - \beta_2\right) \sum\limits_{i}\left(g_{i,j;t}^2+\epsilon_1\right)\\
+    &v_{i,j;t} = v^{(r)}_{i;t} v^{(c)}_{j;t}\left/\sum\limits_{j}v^{(c)}_{j;t}\right.\\
+    &\hat{v}_t = v_t\left/\left(1 - \beta_2^t\right)\right.\\
+    &\theta_t = \theta_{t-1} - \alpha_t g_t\left/\sqrt{\hat{v}_t}\right.
+    \end{aligned}\right.\end{equation}
+
+    <p>(Adding $\epsilon$ to $g_t^2$ instead of $\hat{v}_t$ is the form AdaFactor used, not the author's mistake!)</p>
+
+    <h3 id="滑动权重">3. Moving Weights</h3>
+
+    <p>In Adam and the AdaFactor prototype mentioned above, the moving average weight $\beta_2$ is always constant. AdaFactor points out that this is unscientific and proposes a new strategy.</p>
+
+    <h4>Equivalent Form</h4>
+
+    <p>To realize this, let's rewrite the update process of $\hat{v}_t$ in Adam:</p>
+
+    \begin{equation}\begin{aligned}
+    \hat{v}_t =& v_t\left/\left(1 - \beta_2^t\right)\right.\\
+    =&\frac{\beta_2 v_{t-1} + (1-\beta_2) g_t^2}{1 - \beta_2^t}\\
+    =&\frac{\beta_2 \hat{v}_{t-1}\left(1 - \beta_2^{t-1}\right) + (1-\beta_2) g_t^2}{1 - \beta_2^t}\\
+    =&\beta_2\frac{1 - \beta_2^{t-1}}{1 - \beta_2^t}\hat{v}_{t-1} + \left(1 - \beta_2\frac{1 - \beta_2^{t-1}}{1 - \beta_2^t}\right)g_t^2
+    \end{aligned}\end{equation}
+
+    <p>So if we set $\hat{\beta}_{2,t}=\beta_2\frac{1 - \beta_2^{t-1}}{1 - \beta_2^t}$, the update formula is:</p>
+
+    \begin{equation}\hat{v}_t =\hat{\beta}_{2,t}\hat{v}_{t-1} + \left(1 - \hat{\beta}_{2,t}\right)g_t^2\end{equation}
+
+    <p>The question is, is this $\hat{\beta}_{2,t}$ reasonable? The answer is: probably not enough. When $t=1$, $\hat{\beta}_{2,t}=0$, and $\hat{v}_t$ is simply $g_t^2$, meaning the real-time gradient is used to correct the learning rate, which is when the correction strength is maximal. When $t \to \infty$, $\hat{\beta}_{2,t} \to \beta_2$; at this point, $v_t$ is a weighted average of the accumulated squared gradients and the current squared gradient. Since $\beta_2 < 1$, the weight of the current gradient $1 - \beta_2$ is not zero, which might lead to training instability. As training progresses and gradients become smaller, the training itself tends to stabilize, and the significance of correcting the learning rate diminishes. Therefore, the correction strength of the learning rate should decrease; as $t \to \infty$, it's better for the learning rate to remain constant (at which point it degenerates into SGD). This requires $\hat{\beta}_{2,t} \to 1$ as $t \to \infty$.</p>
+
+    <h4>New Decay Strategy</h4>
+
+    <p>To achieve this goal, AdaFactor adopts the following decay strategy:</p>
+
+    \begin{equation}\hat{\beta}_{2,t} =1 - \frac{1}{t^c}\label{eq:beta2}\end{equation}
+
+    <p>It satisfies $\hat{\beta}_{2,1}=0$ and $\lim_{t \to \infty} \hat{\beta}_{2,t}=1$. However, even so, not just any $c$ is suitable; we must have $0 < c < 1$. $c > 0$ is easy to understand, but why $c < 1$? The original paper includes an analysis of this, which everyone can read, but since the author finds the paper's derivation too obscure, I will provide my own understanding here.</p>
+
+    <p>First, for $\hat{v}_t$, a very natural scheme is the average of all squared gradients, namely:</p>
+
+    \begin{equation}\hat{v}_t = \frac{1}{t}\sum_{i=1}^t g_i^2 = \frac{t-1}{t}\hat{v}_{t-1} + \frac{1}{t}g_t^2\end{equation}
+
+    <p>So this is equivalent to letting $\hat{\beta}_{2,t} = 1 - \frac{1}{t}$. One shortcoming of this scheme is that every gradient step is weighted equally, which is counter-intuitive; normally, older gradients should be less important. Thus, the weight of historical parts should be appropriately reduced. When $c < 1$, $1 - \frac{1}{t^c} < 1 - \frac{1}{t}$; therefore, a concise solution is to take $c < 1$ in equation $\eqref{eq:beta2}$. The default $c$ in AdaFactor is $0.8$.</p>
+
+    <h3 id="层自适应">4. Layer Adaptation</h3>
+
+    <p>Finally, we can further correct the update amount based on the norm of the parameters. This idea comes from the <a href="https://papers.cool/arxiv/1904.00962">LAMB optimizer</a>, which was also introduced in the previous article <a href="https://kexue.fm/archives/7094#层自适应">"Simple Introduction to 6 Derived Optimizers and Their Implementation"</a>. Simply put, it normalizes the final update volume and then multiplies it by the norm of the parameters. Essentially, no matter how you tweak it, for the final update amount, I only want your direction, and the size is determined by the parameter's own norm and a pre-set learning rate, ensuring that the relative changes of all parameters in all layers remain consistent.</p>
+
+    <h3 id="AdaFactor完整版">AdaFactor Full Version</h3>
+
+    <p>At this point, we can finally write the update process for the full version of AdaFactor:</p>
+
+    \begin{equation}\left\{\begin{aligned}&g_{i,j;t} = \nabla_{\theta} L(\theta_{i,j;t-1})\\
+    &\hat{\beta}_{2,t} =1 - t^{-c}\\
+    &v^{(r)}_{i;t} = \hat{\beta}_{2,t} v^{(r)}_{t-1;i} + \left(1 - \hat{\beta}_{2,t}\right) \sum\limits_{j}\left(g_{i,j;t}^2+\epsilon_1\right)\\
+    &v^{(c)}_{j;t} = \hat{\beta}_{2,t} v^{(c)}_{t-1;j} + \left(1 - \hat{\beta}_{2,t}\right) \sum\limits_{i}\left(g_{i,j;t}^2+\epsilon_1\right)\\
+    &\hat{v}_{i,j;t} = v^{(r)}_{i;t} v^{(c)}_{j;t}\left/\sum\limits_{j}v^{(c)}_{j;t}\right.\\
+    &u_t = g_t\left/\sqrt{\hat{v}_t}\right.\\
+    &\hat{u}_t = u_t \left/\max\left(1, R S M(u_t)\left/\right.d\right)\right.\times \max\left(\epsilon_2, R S M(\theta_{t-1})\right)\\
+    &\theta_t = \theta_{t-1} - \alpha_t \hat{u}_t
+    \end{aligned}\right.\end{equation}
+
+    <p>Where $RMS(x)=\sqrt{\frac{1}{n}\sum_{i=1}^n x_i^2}$ is a variant of the norm. The step $\max(1, RMS(u_t)/d)$ acts as a truncation, i.e., normalization is only performed when $RMS(u_t) > d$. The default parameters in the original paper are:</p>
+
+    <table align="center" border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse;">
+        <tr><td align="center">$\epsilon_1$</td><td align="center">$10^{-30}$</td></tr>
+        <tr><td align="center">$\epsilon_2$</td><td align="center">$10^{-3}$</td></tr>
+        <tr><td align="center">$d$</td><td align="center">$1$</td></tr>
+        <tr><td align="center">$\hat{\beta}_{2,t}$</td><td align="center">$1 - t^{-0.8}$</td></tr>
+    </table>
+
+    <p>If the parameter is a 1D vector rather than a matrix, then $\hat{v}_t$ just uses the normal update formula $\hat{v}_t = \hat{\beta}_{2,t} v_{t-1} + (1 - \hat{\beta}_{2,t})(g_t^2 + \epsilon_1)$. Additionally, the paper suggests that if no learning rate is passed, one can use $a_t = \min(10^{-2}, 1/\sqrt{t})$ as the default learning rate, but when I looked at the source code, this default is rarely used; basically, you still need to pass in a learning rate yourself.</p>
+
+    <h2 id="开源实现">Open Source Implementation</h2>
+
+    <p>For convenience, I have open-sourced my implementation of AdaFactor:</p>
+
+    <p><strong>GitHub Address: <a href="https://github.com/bojone/adafactor">https://github.com/bojone/adafactor</a></strong></p>
+
+    <p>The open-source code includes a pure Keras version and a tf.keras version. The usage is the same as common Keras optimizers; the tf.keras version can also be used as a standard TensorFlow optimizer. The implementation refers to the <a href="https://github.com/tensorflow/mesh/blob/63754cf4524cb96282ac0dfe453a15076a76589f/mesh_tensorflow/optimize.py#L204">mesh_tensorflow source code</a>, for which I express my gratitude. This optimizer has also been built into <a href="https://github.com/bojone/bert4keras/blob/master/bert4keras/optimizers.py">bert4keras</a> for easy invocation.</p>
+
+    <p>I should remind you that when using AdaFactor, it's best to have a larger batch_size, because low-rank decomposition itself introduces errors. If the batch_size is too small, the gradient estimation itself also brings large errors, and the superposition of the two might prevent the optimization process from converging. For pre-trained models, the batch_size is usually very large, so many pre-trained models have started using the AdaFactor optimizer. For ordinary downstream tasks, AdaFactor can be tried, but it may require more "alchemy" (fine-tuning) to achieve results superior to standard Adam. Oh, and one more thing: when using AdaFactor, the learning rate should be set a bit higher, around the $10^{-3}$ level, even during the fine-tuning phase.</p>
+
+    <h2 id="文章小结">Summary</h2>
+
+    <p>This article introduced the AdaFactor optimizer proposed by Google, an optimizer aimed at reducing memory footprint, and specifically analyzed and solved some of Adam's shortcomings. I believe the analysis provided by AdaFactor regarding Adam is quite classic and worth serious study; for readers interested in optimization problems, it is a rare and valuable analysis case.</p>
+
+    <p>Of course, there is no absolutely effective method; there is only:</p>
+
+    <blockquote>"Although the method is good, if you want it to be actually effective, you still need to train your model with care."</blockquote>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7302.html" style="color: #005fcc;">https://kexue.fm/archives/7302</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

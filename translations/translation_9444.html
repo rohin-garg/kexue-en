@@ -1,0 +1,304 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9444">Transformer Upgrade Journey: 8. Length Extrapolation and Positional Robustness</a></h1>
+
+    <p>By 苏剑林 | January 31, 2023</p>
+
+
+<p>In the previous article <a href="translation_9431.html">"Transformer Upgrade Journey: 7. Length Extrapolation and Local Attention,"</a> we discussed the length extrapolation of Transformers. We concluded that length extrapolation is an issue of inconsistency between training and prediction, and the main idea to solve this inconsistency is to localize attention. Many improvements with good extrapolation performance are, in a sense, variants of local attention. Admittedly, while many current indicators in language models suggest that local attention can indeed solve the length extrapolation problem, this "forced truncation" approach might not satisfy some readers' aesthetic preferences because the traces of manual craftsmanship are too strong, lacking a sense of naturalness. It also raises questions about their effectiveness in non-language modeling tasks.</p>
+
+<p>In this article, we revisit the problem of length extrapolation from the perspective of the model's robustness to positional encodings. This approach can improve the length extrapolation effect of Transformers without modifying the attention mechanism itself, and it is applicable to various positional encodings. Overall, the method is more elegant and natural, and it is also suitable for non-language modeling tasks.</p>
+
+<h2>Problem Analysis</h2>
+
+<p>In previous articles, we analyzed the reasons for length extrapolation and positioned it as "a problem of length inconsistency between training and prediction." Specifically, there are two points of inconsistency:</p>
+
+<ol>
+    <li>Prediction uses positional encodings that were never seen during training (regardless of whether they are absolute or relative);</li>
+    <li>During prediction, the number of tokens processed by the attention mechanism far exceeds the number during training.</li>
+</ol>
+
+<p>The second point refers to the fact that more tokens lead to more dispersed attention (or increased entropy of attention), which causes inconsistency between training and prediction. We have already discussed and addressed this in <a href="translation_8823.html">"Looking at Attention Scaling from the Perspective of Entropy Invariance,"</a> where the answer was to modify the Attention from:</p>
+
+\begin{equation}Attention(Q,K,V) = \text{softmax}\left(\frac{QK^{\top}}{\sqrt{d}}\right)V\end{equation}
+
+<p>to:</p>
+
+\begin{equation}Attention(Q,K,V) = \text{softmax}\left(\frac{\log_{m} n}{\sqrt{d}}QK^{\top}\right)V\end{equation}
+
+<p>where $m$ is the training length and $n$ is the prediction length. With this modification (referred to below as "$\log n$ scaled attention"), the entropy of attention changes more smoothly with length, mitigating this inconsistency. Personal experimental results show that, at least in MLM tasks, the length extrapolation performance of "$\log n$ scaled attention" is better.</p>
+
+<p>Therefore, we can consider the second point of inconsistency to be initially resolved, so we should next concentrate on solving the first point of inconsistency.</p>
+
+<h2>Random Positions</h2>
+
+<p>The first point of inconsistency is "predicting with positional encodings that were not trained." To solve this, one should "train the positional encodings used in prediction during the training phase." An ACL 22 paper (published during anonymous review), <a href="https://arxiv.org/abs/2203.00830">"Randomized Positional Encodings Boost Length Generalization of Transformers,"</a> first considered this issue from this angle and proposed a solution.</p>
+
+<p>The logic of the paper is simple: <strong>Random Position Training</strong>. Let $N$ be the training length (the paper uses $N=40$) and $M$ be the prediction length (the paper uses $M=500$). Select a large $L > M$ (this is a hyperparameter; the paper uses $L=2048$). During the training phase, the position sequence for a sequence of length $N$ was originally $[0,1,\cdots,N-2,N-1]$. Now, it is changed to randomly selecting $N$ non-repeating integers from $\{0,1,\cdots,L-2,L-1\}$ and sorting them from smallest to largest as the position sequence for the current sequence.</p>
+
+<p>Reference code based on numpy is:</p>
+
+<pre><code>def random_position_ids(N, L=2048):
+    """Randomly pick N non-repeating integers from [0, L) and sort them.
+    """
+    return np.sort(np.random.permutation(L)[:N])
+</code></pre>
+
+<p>During the prediction phase, one can either sample the position sequence randomly in the same way or directly pick points uniformly within the interval (personal experiments show uniform picking usually works better). This solves the problem of positional encodings not being trained during the prediction stage. It’s easy to understand that this is a simple training trick (referred to below as "Random Position Training"), aimed at making the Transformer more robust to position selection. However, as we will see, it achieves a significant improvement in length extrapolation. I have also conducted experiments on MLM tasks, and the results show it is effective for MLM as well, especially when combined with "$\log n$ scaled attention," where the improvement is even more pronounced (the original paper did not include the "$\log n$ scaled attention" step).</p>
+
+<h2>A New Benchmark</h2>
+
+<p>Many related works, including the various Local Attention and variant schemes mentioned in the previous article, use language modeling tasks to build evaluation metrics. However, whether it is unidirectional GPT or bidirectional MLM, they rely heavily on local information (locality). Therefore, previous solutions might have good extrapolation performance simply because of the locality of language models; if switched to a non-local task, the effect might deteriorate. Perhaps for this reason, the evaluation in this paper is not a conventional language modeling task, but rather a length generalization benchmark specifically proposed by Google last year in the paper <a href="https://arxiv.org/abs/2207.02098">"Neural Networks and the Chomsky Hierarchy"</a> (referred to below as the "CHE benchmark"). This provides a new perspective for understanding length extrapolation.</p>
+
+<p>This benchmark includes several tasks categorized into three levels: R (Regular), DCF (Deterministic Context-Free), and CS (Context-Sensitive), with difficulty increasing at each level. A brief introduction to each task is as follows:</p>
+
+<ul>
+    <li><strong>Even Pairs</strong>, difficulty <strong>R</strong>: Given a binary sequence, such as "aabba", determine if the total count of 2-grams "ab" and "ba" is even. In this example, the 2-grams are "aa", "ab", "bb", "ba", where "ab" and "ba" appear twice in total, so it outputs "Yes". This problem is also equivalent to determining if the first and last characters of a binary sequence are the same.</li>
+    <li><strong>Modular Arithmetic (Simple)</strong>, difficulty <strong>R</strong>: Calculate numerical values composed of five numbers $\{0, 1, 2, 3, 4\}$ and three operators $\{+,-,\times\}$, and output the result modulo 5. For example, input $1 + 2 − 4$ equals $-1$, which is $4$ modulo 5, so output $4$.</li>
+    <li><strong>Parity Check</strong>, difficulty <strong>R</strong>: Given a binary sequence, such as "aaabba", determine if the number of "b"s is even. In this example, the number of "b"s is 2, so output "Yes".</li>
+    <li><strong>Cycle Navigation</strong>, difficulty <strong>R</strong>: Given a ternary sequence where each element represents one of $\{+0, +1, -1\}$, output the final result of the operation starting from 0 modulo 5. For example, if $0, 1, 2$ represent $+0, +1, -1$, then $010211$ represents $0 + 0 + 1 + 0 − 1 + 1 + 1 = 2$, which outputs $2$ modulo 5.</li>
+    <li><strong>Modular Arithmetic</strong>, difficulty <strong>DCF</strong>: Calculate numerical values composed of five numbers $\{0, 1, 2, 3, 4\}$, parentheses $(,)$, and three operators $\{+,-,\times\}$, outputting the result modulo 5. For example, input $-(1-2)\times(4-3\times(-2))$ yields 10, which is $0$ modulo 5, so output $0$. Compared to the Simple version, this task adds "parentheses," making the calculation more complex.</li>
+    <li><strong>Reverse String</strong>, difficulty <strong>DCF</strong>: Given a binary sequence, such as "aabba", output its reversed sequence "abbaa".</li>
+    <li><strong>Solve Equation</strong>, difficulty <strong>DCF</strong>: Given an equation composed of five numbers $\{0, 1, 2, 3, 4\}$, parentheses $(,)$, three operators $\{+,-,\times\}$, and an unknown $z$, solve for $z$ such that it holds modulo 5. For example, $-(1-2)\times(4-z\times(-2))=0$ means $z=3$. Although solving equations seems harder, since the equation is constructed by replacing a number in a Modular Arithmetic expression with $z$, a solution in $\{0, 1, 2, 3, 4\}$ is guaranteed. Thus, it can theoretically be solved by enumeration combined with Modular Arithmetic, making its difficulty similar to Modular Arithmetic.</li>
+    <li><strong>Stack Manipulation</strong>, difficulty <strong>DCF</strong>: Given a binary sequence, such as "abbaa", and a sequence of stack operations consisting of "POP", "PUSH a", and "PUSH b" (e.g., "POP / PUSH a / POP"), output the final stack result.</li>
+    <li><strong>Binary Addition</strong>, difficulty <strong>CS</strong>: Given two binary numbers, output their sum in binary representation. For example, input $10010$ and $101$, output $10111$. Note that this must be input into the model at the character level rather than the numerical level for training and prediction, and the two numbers are provided serially rather than being aligned in parallel (like a string $10010+101$).</li>
+    <li><strong>Binary Multiplication</strong>, difficulty <strong>CS</strong>: Given two binary numbers, output their product in binary representation. For example, input $100$ and $10110$, output $1011000$. Like Binary Addition, this is input at the character level and provided serially.</li>
+    <li><strong>Compute Sqrt</strong>, difficulty <strong>CS</strong>: Given a binary number, output the binary representation of the floor of its square root. For example, input $101001$, the output is $\lfloor\sqrt{101001}\rfloor=101$. The difficulty is similar to Binary Multiplication since one could theoretically enumerate results from 0 using Binary Multiplication.</li>
+    <li><strong>Duplicate String</strong>, difficulty <strong>CS</strong>: Given a binary sequence, such as "abaab", output the sequence repeated once, "abaababaab". This simple-looking task might seem to be difficulty **R**, but it is actually **CS**; you can think about why.</li>
+    <li><strong>Missing Duplicate</strong>, difficulty <strong>CS</strong>: Given a binary sequence with a missing value, such as "ab_aba", where the original complete sequence is known to be a duplicate sequence (from the previous task), predict the missing value. The answer in this case is "a".</li>
+    <li><strong>Odds First</strong>, difficulty <strong>CS</strong>: Given a binary sequence $t_1 t_2 t_3 \cdots t_n$, output $t_1 t_3 t_5 \cdots t_2 t_4 t_6 \cdots$. For example, input "aaabaa" results in "aaaaba".</li>
+    <li><strong>Bucket Sort</strong>, difficulty <strong>CS</strong>: Given an $n$-element numerical sequence (where each number is one of $n$ given values), return the sequence sorted from smallest to largest. For example, input $421302214$ should output $011222344$.</li>
+</ul>
+
+<p>As we can see, these tasks all share a common feature: their operations have fixed simple rules, and theoretically, the inputs are of unlimited length. Thus, we can train on short sequences and test whether the training results on short sequences can generalize to long sequences. In other words, it serves as a very strong testing benchmark for length extrapolation.</p>
+
+<h2>Experimental Results</h2>
+
+<p>First, let's introduce the experimental results of the original paper "Neural Networks and the Chomsky Hierarchy," which compared several RNN models and Transformer models (the evaluation metric is the average accuracy of each character, not the total correct rate of the entire sequence):</p>
+
+<p style="text-align:center;"><img src="https://files.mdnice.com/user/23981/8110901e-9cb6-419b-ab9e-a810ea359392.png" alt="Comparison of several models on several length extrapolation test tasks" /></p>
+<p style="text-align:center;"><em>Comparison of several models on several length extrapolation test tasks</em></p>
+
+<p>The results might be surprising: the currently "booming" Transformer has the worst length extrapolation effect (the Transformer here was tested with different positional encodings and the best value for each task was taken), while the best is Tape-RNN. The paper gave them the following ratings:</p>
+
+$$ \underbrace{\text{Transformer}}_{\text{R}^-} < \underbrace{\text{RNN}}_{\text{R}} < \underbrace{\text{LSTM}}_{\text{R}^+} < \underbrace{\text{Stack-RNN}}_{\text{DCF}} < \underbrace{\text{Tape-RNN}}_{\text{CS}} $$
+
+<p>The "Random Position Training" method proposed in "Randomized Positional Encodings Boost Length Generalization of Transformers" recovered some ground for the Transformer:</p>
+
+<p style="text-align:center;"><img src="https://files.mdnice.com/user/23981/96f63459-00f7-41e9-9134-97216a605f63.png" alt="Comparison of length extrapolation effects with and without random position training for Transformers with different positional encodings" /></p>
+<p style="text-align:center;"><em>Comparison of length extrapolation effects with and without random position training for Transformers with different positional encodings</em></p>
+
+<p>It can be seen that under Random Position Training, the length extrapolation of Transformers with any kind of positional encoding improved significantly. This further verifies the conclusion of the previous article: length extrapolation has little to do with the design of the positional encoding itself. Notably, Random Position Training achieved a 100% correct rate for the first time on the Bucket Sort task. Although the overall performance is still lacking, this is a significant step forward compared to previous results (I wonder if it could be improved further by combining it with "$\log n$ scaled attention"?). Also noteworthy is that the table shows ALiBi, which performs well in language modeling tasks, shows no advantage on the CHE benchmark. Especially after adding Random Position Training, its average metric is worse than RoPE. This initially confirms the previous suspicion that the good performance of various Local Attention variants is likely due to the serious locality of language model evaluation tasks themselves; these methods have no advantage for the non-local CHE benchmark.</p>
+
+<h2>Reflections on the Principle</h2>
+
+<p>Looking closer, "Random Position Training" is somewhat confusing. For simplicity, let's set $L=2048, N=64, M=512$. In this case, the average position sequence used in the training phase is roughly $[0, 32, 64, \cdots, 2016]$, while the average position sequence used in the prediction phase is $[0, 4, 8, \cdots, 2044]$. The difference between adjacent positions is different between training and prediction, which is also a kind of inconsistency, yet it still performs well. Why?</p>
+
+<p>We can understand it from the perspective of "Order." Since the position IDs are randomly sampled during the training phase, the difference between adjacent positions is also random. Consequently, whether it is relative or absolute position, it is unlikely the model can acquire position information through precise position IDs. Instead, it gets a fuzzy position signal—or more accurately, it encodes position through the "order" of the position sequence rather than the position ID itself. For example, position sequence $[1,3,5]$ is equivalent to $[2,4,8]$ because they are both sequences arranged from smallest to largest. Random Position Training "forces" the model to learn an equivalence class: all position sequences arranged from smallest to largest are equivalent and interchangeable. This is the true meaning of positional robustness.</p>
+
+<p>However, my own experimental results on MLM show that learning this "equivalence class" is still somewhat difficult for the model. A more ideal method would still use random positions during training so that the positional encodings used in prediction are also trained, but the early part of the position sequence in prediction should be consistent with the average result of the random positions. In the previous example, if the position sequence used in prediction is $[0, 4, 8, \cdots, 2044]$, we would want the average result of the random positions in training to be $[0, 4, 8, \cdots, 252]$ (i.e., the first $N$ elements of the sequence $[0, 4, 8, \cdots, 2044]$) rather than $[0, 32, 64, \cdots, 2016]$. This way, the consistency between training and prediction is tighter.</p>
+
+<h2>Extensions and Generalizations</h2>
+
+<p>Therefore, I considered the following approach:</p>
+
+<p><strong>Equal-Mean Random Position Training</strong>: Suppose $n$ follows a distribution with a mean of $N$ and a sampling space of $[0, \infty)$. During training, randomly sample an $n$, then uniformly pick $N$ points from $[0, n]$ as the position sequence.</p>
+
+<p>Reference code:</p>
+
+<pre><code>def random_position_ids(N):
+    """Sample n randomly, then pick N points uniformly from [0, n].
+    """
+    n = sample_from_xxx()
+    return np.linspace(0, 1, N) * n
+</code></pre>
+
+<p>Note that the position sequence sampled this way consists of floating-point numbers. Therefore, it is not suitable for discrete trainable positional encodings and only applies to functional positional encodings like Sinusoidal or RoPE. Below, assume we only consider functional positional encodings.</p>
+
+<p>The main problem with this idea is how to choose a suitable sampling distribution. My first reaction was the Poisson distribution, but considering its mean and variance are both $n$, then according to the "3$\sigma$ rule," it can only extrapolate to a length of $n+3\sqrt{n}$, which is clearly too short. After selection and testing, I found two distributions that are quite suitable: one is the <strong>Exponential distribution</strong>, whose mean and standard deviation are both $n$. Even according to the "3$\sigma$ rule," it can extrapolate to a length of $4n$, which is a more ideal range (and in practice, it's even longer). The other is the <strong>Beta distribution</strong>, which is defined on $[0,1]$. We can take the test length as 1, so the training length is $N/M \in (0,1)$. The Beta distribution has two parameters $\alpha, \beta$. After ensuring the mean $\frac{\alpha}{\alpha+\beta}$ is equal to $N/M$, we still have an extra degree of freedom to control the probability near 1, which is suitable for scenarios where we want to further expand the extrapolation range.</p>
+
+<p>My experimental results show that "Equal-Mean Random Position Training" combined with "$\log n$ scaled attention" achieves the best extrapolation results on the MLM task (training length 64, test length 512, sampling distribution is exponential). Since I haven't done the CHE benchmark before, I haven't had the chance to test its effect on the CHE benchmark yet, which will have to wait for a future opportunity.</p>
+
+<h2>Conclusion</h2>
+
+<p>This article looks at the length extrapolation of Transformers from the perspective of positional robustness, yielding new schemes like "Random Position Training" to enhance length extrapolation. At the same time, we introduced the new "CHE benchmark." Compared to conventional language modeling tasks, it possesses stronger non-locality and can more effectively evaluate work related to length extrapolation. Under this benchmark, previous attention localization methods did not show particularly outstanding performance, whereas "Random Position Training" was more effective. This reminds us to evaluate the effectiveness of related methods on a more comprehensive range of tasks, rather than being limited to language modeling tasks.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9444.html" style="color: #005fcc;">https://kexue.fm/archives/9444</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

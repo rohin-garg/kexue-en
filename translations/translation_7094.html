@@ -1,0 +1,329 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']},
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/7094">A Brief Introduction and Implementation of 6 Derived Optimizers</a></h1>
+    <p>By 苏剑林 | Nov 25, 2019</p>
+
+    <p>Optimizers might be one of the most "metaphysical" modules in deep learning: sometimes switching an optimizer brings a significant improvement, while other times an optimizer that others claim is great does absolutely nothing for your own task. Optimizers with good theoretical properties don't necessarily work well, and those born purely from a stroke of inspiration aren't necessarily bad. Regardless, optimizers provide another choice for those who love "deep learning alchemy."</p>
+
+    <p>In recent years, work regarding optimizers seems to be slowly increasing. Many papers have proposed various improvements to commonly used optimizers (especially <a href="https://papers.cool/arxiv/1412.6980">Adam</a>). This article summarizes several optimizer works or techniques and provides a unified code implementation for readers to use as needed.</p>
+
+    <h2>Basic Form</h2>
+
+    <p>The term "derived" refers to the fact that these techniques are built upon existing optimizers. Any existing optimizer can utilize these techniques to transform into a new optimizer.</p>
+
+    <p>The basic form of an existing optimizer is:</p>
+    \begin{equation}
+    \begin{aligned}
+    \boldsymbol{g}_t =&\, \nabla_{\boldsymbol{\theta}} L\\
+    \boldsymbol{h}_t =&\, f(\boldsymbol{g}_{\leq t})\\
+    \boldsymbol{\theta}_{t+1} =&\, \boldsymbol{\theta}_t - \gamma \boldsymbol{h}_t
+    \end{aligned}
+    \end{equation}
+    <p>Where $\boldsymbol{g}_t$ is the gradient, and $\boldsymbol{g}_{\leq t}$ refers to all gradient information up to the current step. After some operation $f$ (such as accumulated momentum, accumulated second-order moment corrected learning rate, etc.), we obtain $\boldsymbol{h}_t$, which is then used to update the parameters. Here $\gamma$ denotes the learning rate.</p>
+
+    <h2>Assorted Variants</h2>
+
+    <p>Below are introductions to 6 variants of optimizers, which can also be understood as techniques for using optimizers. These techniques are sometimes very effective, while other times they may be ineffective or even counterproductive; they cannot be generalized, but rather understood as "more choices provide more possibilities."</p>
+
+    <h3>Weight Decay</h3>
+
+    <p>Weight decay refers to directly adding a decay term after each update step of the optimizer:</p>
+    \begin{equation}
+    \begin{aligned}
+    \boldsymbol{g}_t =&\, \nabla_{\boldsymbol{\theta}} L\\
+    \boldsymbol{h}_t =&\, f(\boldsymbol{g}_{\leq t})\\
+    \boldsymbol{\theta}_{t+1} =&\, \boldsymbol{\theta}_t - \gamma \boldsymbol{h}_t - \gamma \lambda \boldsymbol{\theta}_t
+    \end{aligned}
+    \end{equation}
+    <p>Where $\lambda$ is called the "decay rate." In SGD, weight decay is equivalent to adding an $l_2$ regularization term $\frac{1}{2}\lambda \Vert \boldsymbol{\theta}\Vert_2^2$ to the loss. However, in optimizers with adaptive learning rates like Adagrad and Adam, $f$ becomes non-linear, so the two are no longer equivalent. The paper <a href="https://papers.cool/arxiv/1711.05101">"Decoupled Weight Decay Regularization"</a> specifically points out that the anti-overfitting ability of weight decay is superior to its corresponding $l_2$ regularization, recommending the use of weight decay instead of $l_2$ regularization.</p>
+
+    <h3>Layer Adaptation</h3>
+
+    <p>In an optimizer, the final update amount is determined by $\boldsymbol{h}_t$ and the learning rate $\gamma$. Sometimes the magnitude of $\boldsymbol{h}_t$ can be greater than the magnitude of the parameters $\boldsymbol{\theta}_t$, which may lead to unstable updates. Therefore, a direct idea is: the update magnitude of parameters in each layer should be regulated by the magnitude of $\Vert\boldsymbol{\theta}_t\Vert_2$. This direct idea leads to the following optimizer variant:</p>
+    \begin{equation}
+    \begin{aligned}
+    \boldsymbol{g}_t =&\, \nabla_{\boldsymbol{\theta}} L\\
+    \boldsymbol{h}_t =&\, f(\boldsymbol{g}_{\leq t})\\
+    \boldsymbol{\theta}_{t+1} =&\, \boldsymbol{\theta}_t - \gamma \boldsymbol{h}_t \times \frac{\Vert\boldsymbol{\theta}_t\Vert_2}{\Vert\boldsymbol{h}_t\Vert_2}
+    \end{aligned}
+    \end{equation}
+    <p>If the base optimizer is Adam, the above optimizer is LAMB. The paper <a href="https://papers.cool/arxiv/1904.00962">"Large Batch Optimization for Deep Learning: Training BERT in 76 minutes"</a> points out that LAMB is more effective than Adam when the batch size is large (thousands or more).</p>
+
+    <h3>Piecewise Linear Learning Rate</h3>
+
+    <p>The learning rate is also a mysterious existence in optimizers. Generally speaking, fine-tuning the learning rate strategy can yield improvements, while an inappropriate learning rate might even prevent the model from converging. Common learning rate strategies include warmup, exponential decay, step-wise decay (e.g., dropping to 1/10 after a certain epoch), as well as more exotic strategies like cosine or polynomial decay.</p>
+
+    <p>Considering that common functions can be approximated with piecewise linear functions, I have introduced a piecewise linear learning rate strategy for everyone to experiment with. The form is as follows:</p>
+    \begin{equation}
+    \begin{aligned}
+    \boldsymbol{g}_t =&\, \nabla_{\boldsymbol{\theta}} L\\
+    \boldsymbol{h}_t =&\, f(\boldsymbol{g}_{\leq t})\\
+    \boldsymbol{\theta}_{t+1} =&\, \boldsymbol{\theta}_t - \gamma \rho_t\boldsymbol{h}_t
+    \end{aligned}
+    \end{equation}
+    <p>Where $\rho_t$ is some piecewise linear function with step count $t$ as its independent variable.</p>
+
+    <h3>Gradient Accumulation</h3>
+
+    <p>Gradient accumulation was introduced earlier in <a href="translation_6794.html">"Trading Time for Results: Keras Gradient Accumulation Optimizer."</a> It isn't strictly an optimizer variant, but it can be written into the optimizer to achieve the effect of a large batch size using small batch sizes, realizing a trade-off between time and space. Larger batch sizes can sometimes improve results, especially when the baseline batch size is too small (below 8?).</p>
+
+    <p>To restate the description of gradient descent from that article:</p>
+    <blockquote>
+        Gradient accumulation is quite simple. The gradient used for gradient descent is actually the average of gradients calculated from multiple samples. Taking batch_size=128 as an example, you could calculate the gradient for 128 samples at once and average them, or you could calculate the average gradient for 16 samples each time, cache and accumulate them, and after doing this 8 times, divide the total gradient by 8 and execute the parameter update. Of course, you must accumulate 8 times and use the average gradient of those 8 times to update parameters; you cannot update every time you calculate 16 samples, or else your batch_size would just be 16.
+    </blockquote>
+
+    <h3>Lookahead</h3>
+
+    <p>The Lookahead optimizer comes from the paper <a href="https://papers.cool/arxiv/1907.08610">"Lookahead Optimizer: k steps forward, 1 step back,"</a> and was also introduced in a previous article <a href="translation_6869.html">"Implementing Two Optimizers in Keras: Lookahead and LazyOptimizer."</a> The logic of Lookahead is to use a common optimizer to explore several steps forward and then update based on the exploration results. The process is as follows:</p>
+    \begin{equation}
+    \begin{aligned}
+    &\boldsymbol{g}_t = \nabla_{\boldsymbol{\theta}} L\\
+    &\boldsymbol{h}_t = f(\boldsymbol{g}_{\leq t})\\
+    &\boldsymbol{\theta}_{t+1} = \boldsymbol{\theta}_t - \gamma\boldsymbol{h}_t\\
+    &\text{If } t \pmod k = 0:\\
+    &\qquad\boldsymbol{\Theta}_{t+1} = \boldsymbol{\Theta}_t + \alpha (\boldsymbol{\theta}_{t+1}- \boldsymbol{\Theta}_t)\\
+    &\qquad\boldsymbol{\theta}_{t+1} = \boldsymbol{\Theta}_{t+1} \,(\text{i.e., overwrite the original } \boldsymbol{\theta}_{t+1})
+    \end{aligned}
+    \end{equation}
+
+    <p>Actually, calling this optimizer "Lookback" would also be fine, as it looks back every few steps and performs an interpolation with the weights from a few steps ago.</p>
+
+    <h3>Lazy Optimizer</h3>
+
+    <p>The Lazy Optimizer was also introduced in the article <a href="translation_6869.html">"Implementing Two Optimizers in Keras: Lookahead and LazyOptimizer."</a> Its original intent is that updates for Embedding layers should be more sparse, which helps prevent overfitting (Reference <a href="https://www.zhihu.com/question/265357659/answer/580469438">Zhihu discussion</a>).</p>
+
+    <h2>Reference Implementation</h2>
+
+    <p>The preceding introductions were quite simple; in fact, these variants are not difficult to understand. The key lies in the code implementation. From the descriptions above, one can see that these 6 variants are not contradictory. Therefore, a good implementation should allow us to use them like building blocks, combining one or more variants together. Additionally, Keras currently has two branches: pure Keras and tf.keras. A good implementation should be compatible with both (or provide implementations for both simultaneously).</p>
+
+    <h3>The Ultimate Grafting Trick</h3>
+
+    <p>Although some variants have been implemented before, I have re-implemented them here using a new method. This implementation method stems from a "grafting" trick I accidentally discovered.</p>
+
+    <p>Suppose we have a class like this:</p>
+<pre><code>import numpy as np
+
+class A(object):
+    def __init__(self):
+        self.a = np.ones(1)
+        self.b = np.ones(2)
+        self.c = np.ones(3)
+</code></pre>
+
+    <p>Then suppose we want to inherit class A to get class B, and class B needs to replace all <code>np.ones</code> in the <code>__init__</code> method with <code>np.zeros</code>, while everything else remains the same. Since <code>__init__</code> might be a very complex process, it would be too redundant to copy it in its entirety and rewrite it.</p>
+
+    <p>Is there a way to replace everything with just a few lines of code? There actually is!</p>
+<pre><code>class B(A):
+    def __init__(self):
+        _ = np.ones
+        np.ones = np.zeros
+        super(B, self).__init__()
+        np.ones = _
+</code></pre>
+
+    <p>With this demo, we can "mod" existing optimizers. In Keras, parameter updates are all implemented through <code>K.update</code> (refer to <a href="https://github.com/keras-team/keras/blob/master/keras/optimizers.py">Keras optimizers.py</a>). We only need to redefine <code>K.update</code> using the method above.</p>
+
+    <p>What about tf.keras? Unfortunately, this method doesn't work because the iteration processes of common optimizers in tf.keras are written in C++ (refer to <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/optimizer_v2/adam.py">tf.keras adam.py</a>). We cannot see the code, so we cannot modify it this way. A solution is to re-implement an optimizer like Adam ourselves, exposing the iteration process so we can use the grafting method to mod it.</p>
+
+    <h3>Usage Examples</h3>
+
+    <p>The 6 optimizer variants implemented uniformly based on the above ideas are placed in my bert4keras project: <a href="https://github.com/bojone/bert4keras/blob/master/bert4keras/optimizers.py"><strong>bert4keras.optimizers</strong></a>.</p>
+
+    <p>All functions will perform the correct imports based on whether you are using Keras or tf.keras, achieving the same usage method for both. It comes with its own Adam implementation, which is specifically written for tf.keras. <strong>For tf.keras, if you want to implement the above variants, you can only use the optimizers provided by bert4keras (currently only Adam), not the built-in tf.keras optimizers.</strong></p>
+
+    <p>Example Code:</p>
+<pre><code>from bert4keras.optimizers import *
+
+# Transform into Adam with weight decay
+AdamW = extend_with_weight_decay(Adam, 'AdamW')
+optimizer = AdamW(learning_rate=0.001, weight_decay_rate=0.01)
+
+# Transform into Adam with piecewise linear learning rate
+AdamLR = extend_with_piecewise_linear_lr(Adam, 'AdamLR')
+# Implement warmup: learning rate increases from 0 to 0.001 over the first 1000 steps
+optimizer = AdamLR(learning_rate=0.001, lr_schedule={1000: 1.})
+
+# Transform into Adam with gradient accumulation
+AdamGA = extend_with_gradient_accumulation(Adam, 'AdamGA')
+optimizer = AdamGA(learning_rate=0.001, grad_accum_steps=10)
+
+# Combination usage
+AdamWLR = extend_with_piecewise_linear_lr(AdamW, 'AdamWLR')
+# Optimizer with both weight decay and warmup
+optimizer = AdamWLR(learning_rate=0.001,
+                    weight_decay_rate=0.01,
+                    lr_schedule={1000: 1.})
+</code></pre>
+
+    <p><strong>(Note: Implementing so many optimizers while trying to remain compatible with both Keras and tf.keras means there may inevitably be errors or omissions. If any are found, I would greatly appreciate your corrections.)</strong></p>
+
+    <h2>Closing Remarks</h2>
+
+    <p>Alchemy is not easy; cherish it as you go.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7094.html" style="color: #005fcc;">https://kexue.fm/archives/7094</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

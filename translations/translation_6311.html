@@ -1,0 +1,333 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+
+<h1><a href="https://kexue.fm/archives/6311">Making Keras Even Cooler: Custom Losses, Metrics, and More</a></h1>
+
+    <p>By 苏剑林 | January 27, 2019</p>
+
+<p>Continuing the "Making Keras Cooler!" series, let's make Keras even more interesting. This time, we will focus on Keras losses, metrics, weights, and progress bars.</p>
+
+<p>This kind of model is a standard input-output structure, where the loss is a calculation based on the output. However, for more complex models such as Autoencoders, GANs, and Seq2Seq, this approach is sometimes inconvenient, as the loss is not always just a function of the final output. Fortunately, newer versions of Keras already support more flexible loss definitions. For example, we can write an Autoencoder like this:</p>
+
+<pre><code>x_in = Input(shape=(784,))
+x = x_in
+x = Dense(100, activation='relu')(x)
+x = Dense(784, activation='sigmoid')(x)
+model = Model(x_in, x)
+
+loss = K.mean((x - x_in)**2)
+model.add_loss(loss)
+model.compile(optimizer='adam')
+model.fit(x_train, None, epochs=5)</code></pre>
+
+<p>The characteristics of the above approach are:</p>
+<p>1. When calling <code>compile</code>, no loss is passed. Instead, the loss is defined in another way before <code>compile</code> and added to the model via <code>add_loss</code>. This allows for writing sufficiently flexible losses—for instance, the loss can depend on the output of intermediate layers, the inputs, and so on.<br>
+2. During <code>fit</code>, the original target data is now <code>None</code>, because all inputs and outputs have already been passed through <code>Input</code>. Readers can also refer to my previous article on Seq2Seq: <a href="translation_5867.html">"Playing with Keras: Seq2Seq for Automatic Title Generation"</a>. In that example, readers can more fully appreciate the convenience of this approach.</p>
+
+<h3>More Arbitrary Metrics</h3>
+<p>Another type of output is the metric used to observe the training process. Metrics here refer to indicators used to measure model performance, such as accuracy, F1 score, etc. Keras has built-in <a href="https://keras.io/metrics/">common metrics</a>. Like the <code>accuracy</code> in the opening example, adding these metric names to <code>model.compile</code> allows them to be dynamically displayed during the training process.</p>
+
+<p>Of course, you can also define new metrics by referring to Keras's built-in metric definitions. However, the problem is that in the standard metric definition method, a metric is the result of an operation between the "output layer" and the "target values." Yet, we often need to observe the changes of certain special quantities during training. For example, if I want to observe the change in the output of a specific intermediate layer, the standard metric definition will not work.</p>
+
+<p>What can be done? We can look at the Keras source code and trace its metric-related methods. Ultimately, I discovered that metrics are actually defined within two lists. By modifying these two lists, we can flexibly display the metrics we need to observe. For example:</p>
+
+<pre><code>x_in = Input(shape=(784,))
+x = x_in
+x = Dense(100, activation='relu')(x)
+x_h = x
+x = Dense(10, activation='softmax')(x)
+model = Model(x_in, x)
+
+model.compile(loss='categorical_crossentropy',
+              optimizer='adam',
+              metrics=['accuracy'])
+
+# The key part starts here
+model.metrics_names.append('x_h_norm')
+model.metrics_tensors.append(K.mean(K.sum(x_h**2, 1)))
+
+model.fit(x_train, y_train, epochs=5)</code></pre>
+
+<p>The code above demonstrates how to observe the change in the average norm of an intermediate layer during the training process. As can be seen, this mainly involves two lists: <code>model.metrics_names</code> is a list of strings representing the names of the metrics, and <code>model.metrics_tensors</code> is a list of tensors for the metrics. As long as you add the desired quantity here, it can be displayed during training. Note, however, that you can only add one scalar at a time.</p>
+
+<h3>Flexible Weight Normalization</h3>
+<p>Sometimes we need to apply constraints to weights. Common examples include normalization, such as L2-norm normalization, Spectral Normalization, etc., though it could be other constraints as well.</p>
+
+<p>There are generally two ways to implement weight constraints. The first is post-processing, where the weights are directly handled after each gradient descent step:</p>
+
+\begin{equation}
+\begin{aligned}
+&\boldsymbol{\theta} \leftarrow \boldsymbol{\theta} - \varepsilon\nabla_{\boldsymbol{\theta}}L(\boldsymbol{\theta})\\ 
+&\boldsymbol{\theta}\leftarrow constraint(\boldsymbol{\theta})
+\end{aligned}
+\end{equation}
+
+<p>Clearly, this processing method must be written into the implementation of the optimizer. In fact, Keras's built-in approach is exactly this. It is simple to use; you only need to set the <code>kernel_constraint</code> or <code>bias_constraint</code> parameters when adding a layer. For details, please refer to: <a href="https://keras.io/constraints/">https://keras.io/constraints/</a>.</p>
+
+<p>The second method is pre-processing. We hope to process the weights before they are substituted into subsequent layer calculations. In other words, the constraint is part of the model rather than part of the optimizer. Keras itself does not provide native support for this scheme, but we can implement this requirement ourselves.</p>
+
+<p>This is where the elegance of Keras's design is fully reflected. When creating a layer object, Keras divides it into two steps: <code>build</code> and <code>call</code>. The former is responsible for establishing weights, while the latter is responsible for the computation. By default, these two parts are executed simultaneously, but we can perform a "grafting" maneuver and execute them manually in steps.</p>
+
+<p>Below is an implementation of <b>Spectral Normalization</b> using this idea:</p>
+
+<pre><code>class SpectralNormalization:
+    """A wrapper for layers to add Spectral Normalization.
+    """
+    def __init__(self, layer):
+        self.layer = layer
+
+    def spectral_norm(self, w, r=5):
+        w_shape = K.int_shape(w)
+        in_dim = np.prod(w_shape[:-1]).astype(int)
+        out_dim = w_shape[-1]
+        w = K.reshape(w, (in_dim, out_dim))
+        u = K.ones((1, in_dim))
+        for i in range(r):
+            v = K.l2_normalize(K.dot(u, w))
+            u = K.l2_normalize(K.dot(v, K.transpose(w)))
+        return K.sum(K.dot(K.dot(u, w), K.transpose(v)))
+
+    def spectral_normalization(self, w):
+        return w / self.spectral_norm(w)
+
+    def __call__(self, inputs):
+        with K.name_scope(self.layer.name):
+            if not self.layer.built:
+                input_shape = K.int_shape(inputs)
+                self.layer.build(input_shape)
+                self.layer.built = True
+                if self.layer._initial_weights is not None:
+                    self.layer.set_weights(self.layer._initial_weights)
+
+            if not hasattr(self.layer, 'spectral_normalization'):
+                if hasattr(self.layer, 'kernel'):
+                    self.layer.kernel = self.spectral_normalization(self.layer.kernel)
+                if hasattr(self.layer, 'gamma'):
+                    self.layer.gamma = self.spectral_normalization(self.layer.gamma)
+                self.layer.spectral_normalization = True
+
+            return self.layer(inputs)</code></pre>
+
+<p>The usage method is:</p>
+<pre><code>x = SpectralNormalization(Dense(100, activation='relu'))(x)</code></pre>
+<p>Essentially, you define the layer and then wrap it with <code>SpectralNormalization</code> to modify it. As for the principle, we only need to observe the <code>__call__</code> section. First, a newly created layer has <code>built=False</code>. We then manually execute the <code>build</code> method, normalize the original weights, and overwrite the original weights, as seen in the line <code>self.layer.kernel = self.spectral_normalization(self.layer.kernel)</code>.</p>
+
+<h3>Calling Keras's Progress Bar</h3>
+<p>Finally, I'll mention a more interesting gadget: Keras's built-in progress bar. In the early days, this built-in progress bar was one of the features that attracted many new users. Of course, progress bars are no longer a novelty; there is a very useful progress bar tool in Python called <code>tqdm</code>, which I introduced a long time ago: <a href="translation_3831.html">"Two Stunning Python Libraries: tqdm and retry"</a>.</p>
+
+<p>However, if you prefer the style of the Keras progress bar or don't want to install <code>tqdm</code> separately, you can call the Keras progress bar in your own designs:</p>
+
+<pre><code>import time
+from keras.utils import Progbar
+
+pbar = Progbar(100)
+for i in range(100):
+    pbar.update(i + 1)
+    time.sleep(0.1)</code></pre>
+
+<p>It displays progress and the remaining time. If you want to include more content in the progress bar, you can add the <code>values</code> parameter during <code>update</code>, for example:</p>
+
+<pre><code>import time
+from keras.utils import Progbar
+
+pbar = Progbar(100)
+for i in range(100):
+    pbar.update(i + 1, values=[('something', i - 10)])
+    time.sleep(0.1)</code></pre>
+
+<p>Note, however, that the values here use a moving average because this progress bar was primarily designed by Keras for metrics. If you do not want it to update with a moving average, use:</p>
+
+<pre><code>import time
+from keras.utils import Progbar
+
+pbar = Progbar(100, stateful_metrics=['something'])
+for i in range(100):
+    pbar.update(i + 1, values=[('something', i - 10)])
+    time.sleep(0.1)</code></pre>
+
+<p>More usage parameters can be found <a href="https://keras.io/utils/#progbar">here</a>, or you can refer to the <a href="https://github.com/keras-team/keras/blob/master/keras/utils/generic_utils.py">source code</a>. Overall, its functionality is far less powerful than <code>tqdm</code>, but as a refined tool, it remains a nice choice for occasional use.</p>
+
+<h3>Never-ending Tinkering with Keras</h3>
+<p>I have shared some more fancy Keras tricks, and I hope they are helpful to everyone. Using Keras flexibly is a quite interesting endeavor. Keras might not be the "best" deep learning framework, but it is certainly the most elegant framework (wrapper), and quite possibly without equal.</p>
+
+<p>Deep Learning is short, I use Keras~</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6311.html" style="color: #005fcc;">https://kexue.fm/archives/6311</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

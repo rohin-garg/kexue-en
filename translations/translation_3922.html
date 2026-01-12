@@ -1,0 +1,291 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['base', 'ams', 'noerrors', 'noundefined']}
+  },
+  options: {
+    ignoreHtmlClass: 'tex2jax_ignore',
+    processHtmlClass: 'tex2jax_process'
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script type="text/javascript" id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
+
+<article>
+<h1><a href="https://kexue.fm/archives/3922">[Chinese Word Segmentation Series] 3. Character Tagging and the HMM Model</a></h1>
+
+    <p>By 苏剑林 | August 19, 2016</p>
+
+
+<p>In this article, we pause our introduction of dictionary-based methods and turn instead to character tagging methods. As previously mentioned, character tagging approaches word segmentation by assigning a label to each character in a sentence. For instance, as noted earlier, using a 4-tag set (<b>single</b>, a single character as a word; <b>begin</b>, the start of a multi-character word; <b>middle</b>, the middle part of a word with three or more characters; <b>end</b>, the end of a multi-character word. All abbreviated by their first letters.), the phrase "为人民服务" (serve the people) could be tagged as "sbebe".</p>
+
+<p>The 4-tag set is not the only way to label; similarly, there is a 6-tag set. Theoretically, more tags allow for finer precision and better results, but too many tags might lead to the problem of insufficient samples. Generally, the 4-tag and 6-tag sets are the most commonly used. It is worth mentioning that transforming a problem into sequence-to-sequence learning by tagging each character is not just a word segmentation method, but a way of thinking for solving a wide range of natural language problems, such as Named Entity Recognition (NER) and other tasks. Returning to segmentation, models that utilize character tagging include the Hidden Markov Model (HMM), Maximum Entropy Model (ME), and Conditional Random Field (CRF) model. Their accuracy generally increases in that order; it is said that the best performance in open evaluations is currently achieved by 4-tag CRFs. However, in this article, we will explain the least precise one: HMM. In my view, it is not just a specific model, but a general philosophy for solving a large class of problems—a discipline of simplifying complexity. All of this begins with probabilistic models.</p>
+
+<h3>HMM Model</h3>
+
+<p>A "model" refers to something that can process our input data and provide the optimal output. For the character tagging method of segmentation, the input is $n$ characters, and the output is $n$ labels. We use $\lambda=\lambda_1 \lambda_2 \dots \lambda_n$ to represent the input sentence, and $o=o_1 o_2 \dots o_n$ to represent the output. So, what is the optimal output? From a probabilistic perspective, we naturally want to maximize the following conditional probability:</p>
+
+$$\max P(o|\lambda) =\max P(o_1 o_2 \dots o_n|\lambda_1 \lambda_2 \dots \lambda_n)$$
+
+<p>In other words, there are many possibilities for $o$, and the optimal $o$ should be the one with the highest probability. Note that $P(o|\lambda)$ is a conditional probability involving $2n$ variables, and $n$ is variable. In this case, it is nearly impossible to model $P(o|\lambda)$ precisely. Nevertheless, we can make some simplifications. For example, if we assume that <b>the output of each character depends only on the current character itself</b>, then we have:</p>
+
+$$P(o_1 o_2 \dots o_n|\lambda_1 \lambda_2 \dots \lambda_n) = P(o_1|\lambda_1)P(o_2|\lambda_2)\dots P(o_n|\lambda_n)$$
+
+<p>Estimating $P(o_k|\lambda_k)$ is much easier. The problem is also greatly simplified because to maximize $P(o|\lambda)$, one only needs to maximize each $P(o_k|\lambda_k)$. This assumption is called the <b>independence assumption</b>.</p>
+
+<p>The above simplification is one approach, but it completely ignores the context and can lead to illogical situations (for example, in our 4-tag system, 'b' can only be followed by 'm' or 'e', but using this maximization method, we might get an output like "bbb", which is invalid). Thus, we turn the problem around and propose a hidden model (Hidden Markov Model), much like the relationship between a function and its inverse in mathematics. By Bayes' theorem, we get:</p>
+
+$$P(o|\lambda)=\frac{P(o,\lambda)}{P(\lambda)}=\frac{P(\lambda|o)P(o)}{P(\lambda)}$$
+
+<p>Since $\lambda$ is the given input, $P(\lambda)$ is a constant and can be ignored. Therefore, maximizing $P(o|\lambda)$ is equivalent to maximizing:</p>
+
+$$P(\lambda|o)P(o)$$
+
+<p>Now, we can apply the independence assumption to $P(\lambda|o)$, obtaining:</p>
+
+$$P(\lambda|o)=P(\lambda_1|o_1)P(\lambda_2|o_2)\dots P(\lambda_n|o_n)$$
+
+<p>Meanwhile, for $P(o)$, we have:</p>
+
+$$P(o)=P(o_1)P(o_2|o_1)P(o_3|o_1,o_2)\dots P(o_n|o_1,o_2,\dots,o_{n-1})$$
+
+<p>At this point, we can make a <b>Markov assumption</b>: <b>each output depends only on the previous output</b>. Thus:</p>
+
+$$P(o)=P(o_1)P(o_2|o_1)P(o_3|o_2)\dots P(o_n|o_{n-1})\sim P(o_2|o_1)P(o_3|o_2)\dots P(o_n|o_{n-1})$$
+
+<p>Consequently:</p>
+
+$$P(\lambda|o)P(o)\sim P(\lambda_1|o_1) P(o_2|o_1) P(\lambda_2|o_2) P(o_3|o_2) \dots P(o_n|o_{n-1}) P(\lambda_n|o_n)$$
+
+<p>We call $P(\lambda_k|o_k)$ the <b>emission probability</b> and $P(o_k|o_{k-1})$ the <b>transition probability</b>. By setting certain $P(o_k|o_{k-1})=0$, we can exclude invalid combinations such as "bb" or "bs".</p>
+
+<h3>Python Implementation</h3>
+
+<p>The above is a basic introduction to HMM. If the reader has some foundation in probability theory, it should not be difficult to understand. As we can see, HMM makes a vast number of simplifications—so many that it cannot be perfectly accurate. Therefore, HMM models are generally used to solve "parts that cannot be resolved during the dictionary-lookup process" (much like what Jieba segmentation does). Of course, you could strengthen the Markov assumption—for example, by assuming each state depends on the previous two states—which would certainly result in a more accurate model, but the model's parameters would be much harder to estimate.</p>
+
+<p>How do you train an HMM segmentation model? It mainly involves estimating the two sets of probabilities: $P(\lambda_k|o_k)$ and $P(o_k|o_{k-1})$. If you have a batch of tagged corpora, estimating these two probabilities is not hard. But what if you don't? Even just having a dictionary will do. We can convert a dictionary with frequencies into an HMM model. The Python implementation is as follows:</p>
+
+<pre><code>from collections import Counter
+from math import log
+hmm_model = {i:Counter() for i in 'sbme'}
+with open('dict.txt') as f:
+    for line in f:
+        lines = line.decode('utf-8').split(' ')
+        if len(lines[0]) == 1:
+            hmm_model['s'][lines[0]] += int(lines[1])
+        else:
+            hmm_model['b'][lines[0][0]] += int(lines[1])
+            hmm_model['e'][lines[0][-1]] += int(lines[1])
+            for m in lines[0][1:-1]:
+                hmm_model['m'][m] += int(lines[1])
+
+log_total = {i:log(sum(hmm_model[i].values())) for i in 'sbme'}
+trans = {'ss':0.3,
+         'sb':0.7,
+         'bm':0.3,
+         'be':0.7, 
+         'mm':0.3,
+         'me':0.7,
+         'es':0.3,
+         'eb':0.7
+        }
+trans = {i:log(j) for i,j in trans.iteritems()}
+
+def viterbi(nodes):
+    paths = nodes[0]
+    for l in range(1, len(nodes)):
+        paths_ = paths
+        paths = {}
+        for i in nodes[l]:
+            nows = {}
+            for j in paths_:
+                if j[-1]+i in trans:
+                    nows[j+i]= paths_[j]+nodes[l][i]+trans[j[-1]+i]
+            k = nows.values().index(max(nows.values()))
+            paths[nows.keys()[k]] = nows.values()[k]
+    return paths.keys()[paths.values().index(max(paths.values()))]
+
+def hmm_cut(s):
+    nodes = [{i:log(j[t]+1)-log_total[i] for i,j in hmm_model.iteritems()} for t in s]
+    tags = viterbi(nodes)
+    words = [s[0]]
+    for i in range(1, len(s)):
+        if tags[i] in ['b', 's']:
+            words.append(s[i])
+        else:
+            words[-1] += s[i]
+    return words</code></pre>
+
+<p>The first part of the code uses a dictionary to represent $P(\lambda_k|o_k)$. The calculation of $P(\lambda_k|o_k)$ is obtained via the dictionary; for example, all single-character words in the dictionary are counted under the 's' tag, the first character of multi-character words is counted under the 'b' tag, and so on. Logarithms are used during the calculation to prevent underflow. The second part, defining the transition probabilities, is estimated directly based on intuition. The third part uses the Viterbi algorithm (dynamic programming) to find the path with the maximum probability. For the probability estimation, a simple Plus-1 smoothing method is adopted, where unseen characters are counted as 1.</p>
+
+<p>The entire code is quite simple and implemented in pure Python. Of course, the efficiency is not necessarily high and is for reference only. Here are some tests:</p>
+
+<pre><code>&gt;&gt;print ' '.join(hmm_cut(u'今天天气不错')) 
+今天 天气 不错 
+&gt;&gt;print ' '.join(hmm_cut(u'李想是一个好孩子')) 
+李想 是 一个 好 孩子 
+&gt;&gt;print ' '.join(hmm_cut(u'小明硕士毕业于中国科学院计算所')) 
+小明 硕士 毕业 于 中 国科 学院 计算 所</code></pre>
+
+<p>As can be seen, HMM tends to bind two characters together, so the results are not perfect. However, as a supplement to the dictionary-lookup method for segments that cannot form words, it is quite excellent. For example, in "李想是一个好孩子", it automatically discovered the name "李想" (Li Xiang), which is difficult to solve using a dictionary approach alone.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_3922.html" style="color: #005fcc;">https://kexue.fm/archives/3922</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

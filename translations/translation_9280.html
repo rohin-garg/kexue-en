@@ -1,0 +1,261 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9280">Let's Talk About Generative Diffusion Models (12): "Hard-core" Diffusion ODE</a></h1>
+
+<p>By 苏剑林 | September 28, 2022</p>
+
+<p>In <a href="translation_9209.html">"Let's Talk About Generative Diffusion Models (5): SDE in General Framework"</a>, we understood the generative diffusion model from the perspective of SDEs. Then, in <a href="translation_9228.html">"Let's Talk About Generative Diffusion Models (6): ODE in General Framework"</a>, we learned that an ODE model is actually implicit within the diffusion model corresponding to the SDE. Coincidentally, in <a href="translation_9181.html">"Let's Talk About Generative Diffusion Models (4): DDIM = High-level Perspective of DDPM"</a>, we also saw that the original stochastic sampling DDPM model implies a deterministic sampling process, DDIM, whose continuous limit is also an ODE.</p>
+
+<p>Thinking carefully about the above processes, we can find that whether it is "DDPM → DDIM" or "SDE → ODE", it is a transition from a stochastic sampling model to a deterministic one. If our initial goal was an ODE, this process might seem a bit "roundabout." In this article, the author attempts to provide a direct derivation of the ODE diffusion model and reveals its connections with the Jacobian determinant, the heat equation, and other related concepts.</p>
+
+<h2>Differential Equations</h2>
+
+<p>Generative models like GANs essentially hope to find a deterministic transformation that can transform random variables sampled from a simple distribution (such as a standard normal distribution) into samples of a specific data distribution. Flow models are also a type of generative model; their approach is to do the opposite—first find an invertible transformation that can transform the data distribution into a simple distribution, and then solve the corresponding inverse transformation to obtain a generative model.</p>
+
+<p>Traditional flow models achieve this invertible transformation by designing sophisticated coupling layers (refer to the <a href="https://kexue.fm/search/%E7%BB%86%E6%B0%B4%E9%95%BFflow">"Detailed Flow"</a> series). However, people later realized that this transformation could also be achieved through differential equations, which is theoretically quite elegant. Research focused on building generative models based on "neural networks + differential equations" constitutes a subfield known as "Neural ODEs."</p>
+
+<p>Consider a first-order (ordinary) differential equation (system) on $\boldsymbol{x}_t\in\mathbb{R}^d$:
+\begin{equation}\frac{d\boldsymbol{x}_t}{dt}=\boldsymbol{f}_t(\boldsymbol{x}_t)\label{eq:ode}\end{equation}
+Assuming $t\in[0, T]$, then given $\boldsymbol{x}_0$, we can deterministically solve for $\boldsymbol{x}_T$ (under conditions that are relatively easy to satisfy). In other words, this differential equation describes a transformation from $\boldsymbol{x}_0$ to $\boldsymbol{x}_T$. Notably, this transformation is invertible, meaning the differential equation can be solved in reverse to obtain the transformation from $\boldsymbol{x}_T$ to $\boldsymbol{x}_0$. Therefore, differential equations themselves are a theoretically elegant solution for constructing invertible transformations.</p>
+
+<h2>Jacobian Determinant</h2>
+
+<p>As with previous diffusion models, in this article, we treat $\boldsymbol{x}_0$ as a data sample and $\boldsymbol{x}_T$ as a sample from a simple distribution. We hope to achieve the transformation from the data distribution to the simple distribution through a differential equation.</p>
+
+<p>First, we understand the differential equation $\eqref{eq:ode}$ from a discretized perspective:
+\begin{equation}\boldsymbol{x}_{t+\Delta t} - \boldsymbol{x}_t = \boldsymbol{f}_t(\boldsymbol{x}_t)\Delta t\label{eq:ode-diff}\end{equation}
+Since it is a deterministic transformation, we have:
+\begin{equation}p_t(\boldsymbol{x}_t) d\boldsymbol{x}_t = p_{t+\Delta t}(\boldsymbol{x}_{t+\Delta t}) d\boldsymbol{x}_{t+\Delta t} = p_{t+\Delta t}(\boldsymbol{x}_{t+\Delta t}) \left\| \frac{\partial \boldsymbol{x}_{t+\Delta t}}{\partial \boldsymbol{x}_t} \right\| d\boldsymbol{x}_t\end{equation}
+Here, $\frac{\partial \boldsymbol{x}_{t+\Delta t}}{\partial \boldsymbol{x}_t}$ represents the Jacobian matrix of the transformation, and $\|\cdot\|$ represents the absolute value of the determinant. By directly taking the partial derivative on both sides of equation $\eqref{eq:ode-diff}$, we get:
+\begin{equation}\frac{\partial \boldsymbol{x}_{t+\Delta t}}{\partial \boldsymbol{x}_t} = \boldsymbol{I} + \frac{\partial \boldsymbol{f}_t(\boldsymbol{x}_t)}{\partial \boldsymbol{x}_t}\Delta t\end{equation}
+According to the article <a href="translation_2383.html">"Derivatives of Determinants"</a>, we have:
+\begin{equation}\left\|\frac{\partial \boldsymbol{x}_{t+\Delta t}}{\partial \boldsymbol{x}_t}\right\| \approx 1 + \text{Tr}\,\frac{\partial \boldsymbol{f}_t(\boldsymbol{x}_t)}{\partial \boldsymbol{x}_t}\Delta t = 1 + \nabla_{\boldsymbol{x}_t}\cdot \boldsymbol{f}_t(\boldsymbol{x}_t) \Delta t\approx e^{\nabla_{\boldsymbol{x}_t}\cdot \boldsymbol{f}_t(\boldsymbol{x}_t) \Delta t}\end{equation}
+Thus, we can write:
+\begin{equation}\log p_{t+\Delta t}(\boldsymbol{x}_{t+\Delta t}) - \log p_t(\boldsymbol{x}_t) \approx -\nabla_{\boldsymbol{x}_t}\cdot \boldsymbol{f}_t(\boldsymbol{x}_t) \Delta t\label{eq:approx-ode}\end{equation}
+
+<h2>Taylor Approximation</h2>
+
+<p>Assume $p_t(\boldsymbol{x}_t)$ is a family of probability density functions that change continuously with the parameter $t$, where $p_0(\boldsymbol{x}_0)$ is the data distribution and $p_T(\boldsymbol{x}_T)$ is the simple distribution. When $\Delta t$ and $\boldsymbol{x}_{t+\Delta t} - \boldsymbol{x}_t$ are both small, we have the first-order Taylor approximation:
+\begin{equation}\log p_{t+\Delta t}(\boldsymbol{x}_{t+\Delta t}) - \log p_t(\boldsymbol{x}_t) \approx (\boldsymbol{x}_{t+\Delta t} - \boldsymbol{x}_t)\cdot \nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t) + \Delta t\frac{\partial}{\partial t}\log p_t(\boldsymbol{x}_t)\end{equation}
+Substituting $\boldsymbol{x}_{t+\Delta t} - \boldsymbol{x}_t$ from equation $\eqref{eq:ode-diff}$ and comparing it with equation $\eqref{eq:approx-ode}$, we obtain the equation satisfied by $\boldsymbol{f}_t(\boldsymbol{x}_t)$:
+\begin{equation}-\nabla_{\boldsymbol{x}_t}\cdot \boldsymbol{f}_t(\boldsymbol{x}_t) = \boldsymbol{f}_t(\boldsymbol{x}_t)\cdot \nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t) + \frac{\partial}{\partial t}\log p_t(\boldsymbol{x}_t)\label{eq:ode-f-eq}\end{equation}
+In other words, any $\boldsymbol{f}_t(\boldsymbol{x}_t)$ satisfying this equation can be used to construct a differential equation $\eqref{eq:ode}$ to achieve transformations between the data distribution and the simple distribution. We can also rearrange it as:
+\begin{equation}\frac{\partial}{\partial t} p_t(\boldsymbol{x}_t) = - \nabla_{\boldsymbol{x}_t}\cdot\Big(\boldsymbol{f}_t(\boldsymbol{x}_t) p_t(\boldsymbol{x}_t)\Big)\label{eq:ode-f-eq-fp}\end{equation}
+This is actually a special case of the "Fokker-Planck Equation" introduced in <a href="https://kexue.fm/archives/9228#F-P%E6%96%B9%E7%A8%8B">"Let's Talk About Generative Diffusion Models (6): ODE in General Framework"</a> when $g_t=0$.</p>
+
+<h2>Heat Equation</h2>
+
+<p>We consider a solution in the following format:
+\begin{equation}\boldsymbol{f}_t(\boldsymbol{x}_t) = - \boldsymbol{D}_t(\boldsymbol{x}_t)\,\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t)\label{eq:ode-f-grad}\end{equation}
+where $\boldsymbol{D}_t(\boldsymbol{x}_t)$ can be a matrix or a scalar, depending on the complexity considered. Why consider a solution of this form? To be honest, the author initially aimed to match the DDIM format, and later found that after generalization, it could be connected to the diffusion equation below, so it was set directly to equation $\eqref{eq:ode-f-grad}$. In retrospect, if we assume $\boldsymbol{D}_t(\boldsymbol{x}_t)$ is a non-negative scalar function, then substituting it into equation $\eqref{eq:ode-diff}$ reveals that its format is somewhat similar to gradient descent. That is, from $\boldsymbol{x}_0$ to $\boldsymbol{x}_T$, it gradually finds low-probability regions, and conversely, from $\boldsymbol{x}_T$ to $\boldsymbol{x}_0$, it gradually finds high-probability regions, which aligns with intuition. This can be considered a heuristic guide for equation $\eqref{eq:ode-f-grad}$.</p>
+
+<p>Substituting equation $\eqref{eq:ode-f-grad}$ into equation $\eqref{eq:ode-f-eq-fp}$, we obtain:
+\begin{equation}\frac{\partial}{\partial t}p_t(\boldsymbol{x}_t) = \nabla_{\boldsymbol{x}_t}\cdot\Big(\boldsymbol{D}_t(\boldsymbol{x}_t)\,\nabla_{\boldsymbol{x}_t} p_t(\boldsymbol{x}_t)\Big)\end{equation}
+This is the "<a href="https://en.wikipedia.org/wiki/Diffusion_equation">diffusion equation</a>" from partial differential equations. Here, we only consider a very simple case—$\boldsymbol{D}_t(\boldsymbol{x}_t)$ is a scalar function $D_t$ independent of $\boldsymbol{x}_t$. In this case, the diffusion equation simplifies to:
+\begin{equation}\frac{\partial}{\partial t}p_t(\boldsymbol{x}_t) = D_t \nabla_{\boldsymbol{x}_t}^2 p_t(\boldsymbol{x}_t)\label{eq:heat}\end{equation}
+This is the "<a href="https://en.wikipedia.org/wiki/Heat_equation">heat equation</a>," which is the primary object we will solve and analyze next.</p>
+
+<h2>Solving the Distribution</h2>
+
+<p>Using the Fourier transform, the heat equation can be converted into an ordinary differential equation, and subsequently, the distribution $p_t(\boldsymbol{x}_t)$ can be solved. The result is:
+\begin{equation}\begin{aligned}
+p_t(\boldsymbol{x}_t) =&\, \int \frac{1}{(2\pi\sigma_t^2)^{d/2}}\exp\left(-\frac{\Vert \boldsymbol{x}_t - \boldsymbol{x}_0\Vert^2}{2\sigma_t^2}\right)p_0(\boldsymbol{x}_0) d \boldsymbol{x}_0 \\
+=&\, \int \mathcal{N}(\boldsymbol{x}_t; \boldsymbol{x}_0, \sigma_t^2 \boldsymbol{I})\, p_0(\boldsymbol{x}_0) d \boldsymbol{x}_0
+\end{aligned}\label{eq:heat-sol}\end{equation}
+where $\sigma_t^2 = 2\int_0^t D_s ds$, or $D_t = \dot{\sigma}_t \sigma_t$ (with $\sigma_0=0$). It can be seen that the solution to the heat equation is exactly a Gaussian mixture model with $p_0(\boldsymbol{x}_0)$ as the initial distribution.</p>
+
+<blockquote><strong>Process:</strong> Here is a brief introduction to the approach for solving the heat equation. Readers who are not interested in the solution process or who are already familiar with the heat equation can skip this part.
+<br><br>
+Solving the heat equation $\eqref{eq:heat}$ using the Fourier transform is quite simple. Take the Fourier transform with respect to the variable $\boldsymbol{x}_t$ on both sides. According to the principle of $\nabla_{\boldsymbol{x}_t}\to i\boldsymbol{\omega}$, the result is:
+\begin{equation}\frac{\partial}{\partial t}\mathcal{F}_t(\boldsymbol{\omega}) = -D_t \boldsymbol{\omega}^2 \mathcal{F}_t(\boldsymbol{\omega})\end{equation}
+This is just an ordinary differential equation regarding $t$, which can be solved as:
+\begin{equation}\mathcal{F}_t(\boldsymbol{\omega}) = \mathcal{F}_0(\boldsymbol{\omega}) \exp\left(-\frac{1}{2}\sigma_t^2 \boldsymbol{\omega}^2\right)\end{equation}
+where $\sigma_t^2 = 2\int_0^t D_s ds$, and $\mathcal{F}_0(\boldsymbol{\omega})$ is the Fourier transform of $p_0(\boldsymbol{x}_0)$. Now, taking the inverse Fourier transform on both sides, $\mathcal{F}_t(\boldsymbol{\omega})$ naturally changes back to $p_t(\boldsymbol{x}_t)$, $\mathcal{F}_0(\boldsymbol{\omega})$ changes back to $p_0(\boldsymbol{x}_0)$, and $\exp\left(-\frac{1}{2}\sigma_t^2 \boldsymbol{\omega}^2\right)$ corresponds to the normal distribution $\mathcal{N}(\boldsymbol{x}_t; \boldsymbol{0}, \sigma_t^2 \boldsymbol{I})$. Finally, using the convolution property of the Fourier transform, we obtain the solution $\eqref{eq:heat-sol}$.</blockquote>
+
+<h2>Completing the Design</h2>
+
+<p>Now we summarize our results: by solving the heat equation, we have determined:
+\begin{equation}p_t(\boldsymbol{x}_t) = \int \mathcal{N}(\boldsymbol{x}_t; \boldsymbol{x}_0, \sigma_t^2 \boldsymbol{I})\, p_0(\boldsymbol{x}_0) d \boldsymbol{x}_0 \label{eq:heat-sol-2}\end{equation}
+The corresponding differential equation at this point:
+\begin{equation}\frac{d\boldsymbol{x}_t}{dt}=-\dot{\sigma}_t \sigma_t \nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t)\end{equation}
+provides a deterministic transformation from $p_0(\boldsymbol{x}_0)$ to $p_T(\boldsymbol{x}_T)$. If $p_T(\boldsymbol{x}_T)$ is easy to sample and $\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t)$ is known, we can randomly sample $\boldsymbol{x}_T\sim p_T(\boldsymbol{x}_T)$ and then solve the differential equation in reverse to generate samples of $\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0)$.</p>
+
+<p>The first question: when is $p_T(\boldsymbol{x}_T)$ easy to sample? According to the result $\eqref{eq:heat-sol-2}$, we know:
+\begin{equation}\boldsymbol{x}_T\sim p_T(\boldsymbol{x}_T) \quad\Leftrightarrow\quad \boldsymbol{x}_T = \boldsymbol{x}_0 + \sigma_T \boldsymbol{\varepsilon},\,\,\, \boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0),\,\boldsymbol{\varepsilon}\sim \mathcal{N}(\boldsymbol{0},\boldsymbol{I})\end{equation}
+When $\sigma_T$ is large enough, the influence of $\boldsymbol{x}_0$ on $\boldsymbol{x}_T$ becomes very weak. At this point, it can be considered that:
+\begin{equation}\boldsymbol{x}_T\sim p_T(\boldsymbol{x}_T) \quad\Leftrightarrow\quad \boldsymbol{x}_T = \sigma_T \boldsymbol{\varepsilon},\,\,\,\boldsymbol{\varepsilon}\sim \mathcal{N}(\boldsymbol{0},\boldsymbol{I})\end{equation}
+This achieves the goal of making $p_T(\boldsymbol{x}_T)$ easy to sample. Therefore, the general requirement for choosing $\sigma_t$ is: a smooth monotonically increasing function satisfying $\sigma_0 = 0$ and $\sigma_T \gg 1$.</p>
+
+<p>The second question is how to calculate $\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t)$? This is actually the same as the "Score Matching" section in <a href="https://kexue.fm/archives/9209#%E5%BE%97%E5%88%86%E5%8C%B9%E9%85%8D">"Let's Talk About Generative Diffusion Models (5): SDE in General Framework"</a>. We use a neural network $\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t)$ to fit it, and the training objective is:
+\begin{equation}\mathbb{E}_{\boldsymbol{x}_0,\boldsymbol{x}_t \sim \mathcal{N}(\boldsymbol{x}_t; \boldsymbol{x}_0, \sigma_t^2 \boldsymbol{I})p_0(\boldsymbol{x}_0)}\left[\left\Vert \boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t, t) - \nabla_{\boldsymbol{x}_t} \log \mathcal{N}(\boldsymbol{x}_t; \boldsymbol{x}_0, \sigma_t^2 \boldsymbol{I})\right\Vert^2\right]
+\end{equation}
+This is called "conditional score matching," and we already provided its derivation in the SDE article, so it will not be repeated here.</p>
+
+<h2>Article Summary</h2>
+
+<p>In this article, we presented a "top-down" derivation for the ODE-style diffusion model: first starting from the ODE, we combined the Jacobian determinant to obtain a first-order approximation of the probability change, then compared it with the first-order approximation from a direct Taylor expansion to obtain the equation the ODE should satisfy, which was then transformed into diffusion and heat equations for solving. Relatively speaking, the entire process is quite direct and does not require using SDE, FP equations, and other results as a transition.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9280.html" style="color: #005fcc;">https://kexue.fm/archives/9280</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

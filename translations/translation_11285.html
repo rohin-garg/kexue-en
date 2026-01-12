@@ -1,0 +1,260 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    macros: {
+      tr: '{\\mathop{\\text{tr}}}',
+      msign: '{\\mathop{\\text{msign}}}',
+      sign: '{\\mathop{\\text{sign}}}'
+    },
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    ignoreHtmlClass: 'tex2jax_ignore',
+    processHtmlClass: 'tex2jax_process'
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<div class="tex2jax_process">
+  <h1><a href="https://kexue.fm/archives/11285">Rethinking Learning Rate and Batch Size (Part 3): Muon</a></h1>
+  <p>By 苏剑林 | September 15, 2025</p>
+
+  <p>In the previous two articles, <a href="translation_11252.html">"Rethinking Learning Rate and Batch Size (Part 1): Status Quo"</a> and <a href="translation_11271.html">"Rethinking Learning Rate and Batch Size (Part 2): Mean Field"</a>, we primarily proposed the mean-field method to simplify the calculations related to learning rate and batch size. At that time, we analyzed the SGD, SignSGD, and SoftSignSGD optimizers, and the primary goal was simplification, with no essentially new conclusions. However, in today's feast of optimizers, how could we miss a place for Muon? Therefore, in this article, we will attempt to calculate the relevant conclusions for Muon to see if the relationship between its learning rate and batch size exhibits any new patterns.</p>
+
+  <h2>Basic Notation</h2>
+  <p>As is well known, the primary characteristic of Muon is its non-element-wise update rule. Therefore, the element-wise calculation methods used in <a href="translation_10398.html">"How Should the Learning Rate Change as Batch Size Increases?"</a> and <a href="translation_10419.html">"How Does Adam's epsilon Affect the Learning Rate Scaling Law?"</a> will be completely inapplicable. Fortunately, the mean-field method introduced in the previous article remains effective, requiring only a slight adjustment in detail.</p>
+
+  <p>First, we introduce some notations. Let the loss function be $\mathcal{L}(\boldsymbol{W})$, where $\boldsymbol{W}\in\mathbb{R}^{n\times m}$ is a weight matrix (assume $n\geq m$). Let $\boldsymbol{G}$ be its gradient, and the gradient of a single sample be denoted as $\tilde{\boldsymbol{G}}$. Its mean is $\boldsymbol{G}$, and its variance is $\sigma^2$. When the batch size is $B$, the gradient is denoted as $\tilde{\boldsymbol{G}}_B$. Its mean is still $\boldsymbol{G}$, but its variance becomes $\sigma^2/B$. Note that the variance here is simply a scalar $\sigma^2$, unlike before where we considered the full covariance matrix.</p>
+
+  <p>The core reason for this simplification is that the random variable here is already a matrix, so its corresponding covariance matrix would actually be a 4th-order tensor, which is cumbersome to discuss. Will simplifying it to a single scalar severely compromise accuracy? Actually, no. In the previous two articles, although we considered the complete covariance matrix $\boldsymbol{\Sigma}$, a closer look revealed that the final results only depended on $\newcommand{tr}{\mathop{\text{tr}}}\tr(\boldsymbol{\Sigma})$, which is equivalent to simplifying it to a scalar from the beginning.</p>
+
+  <h2>Hessian Matrix</h2>
+  <p>Similarly, let the update amount be $-\eta\tilde{\boldsymbol{\Phi}}_B$. Consider the second-order expansion of the loss function:</p>
+
+\begin{equation}\mathcal{L}(\boldsymbol{W} - \eta\tilde{\boldsymbol{\Phi}}_B) \approx \mathcal{L}(\boldsymbol{W}) - \eta \tr(\tilde{\boldsymbol{\Phi}}{}_B^{\top}\boldsymbol{G}) + \frac{1}{2}\eta^2\newcommand{tr}{\mathop{\text{tr}}}\tr(\tilde{\boldsymbol{\Phi}}{}_B^{\top}\boldsymbol{H}\tilde{\boldsymbol{\Phi}}_B)\label{eq:loss-2}\end{equation}
+
+  <p>The first two terms should be straightforward; the more difficult to understand is the third term. Similar to the covariance matrix, the Hessian matrix $\boldsymbol{H}$ here is a 4th-order tensor, which is complex to grasp. The simplest entry point here should be the linear operator perspective—treating $\boldsymbol{H}$ as a linear operator whose input and output are both matrices. We don't need to know what $\boldsymbol{H}$ looks like, nor how $\boldsymbol{H}$ operates on $\tilde{\boldsymbol{\Phi}}_B$; we only need to know that $\boldsymbol{H}\tilde{\boldsymbol{\Phi}}_B$ is linear with respect to $\tilde{\boldsymbol{\Phi}}_B$. In this way, the objects we deal with remain matrices, without increasing the mental burden. Any linear operator that satisfies the conditions can serve as an approximation of the Hessian matrix, without needing to write out specific high-order tensor forms.</p>
+
+  <p>The protagonist of this article is Muon. We take $\tilde{\boldsymbol{\Phi}}_B=\newcommand{msign}{\mathop{\text{msign}}}\msign(\tilde{\boldsymbol{G}}_B)$ as its approximation for calculation. By definition, we write $\msign(\tilde{\boldsymbol{G}}_B)=\tilde{\boldsymbol{G}}_B(\tilde{\boldsymbol{G}}{}_B^{\top}\tilde{\boldsymbol{G}}_B)^{-1/2}$. From a Newton method perspective, this is equivalent to assuming $\boldsymbol{H}^{-1}\boldsymbol{X} = \eta_{\max}\boldsymbol{X}(\boldsymbol{G}^{\top}\boldsymbol{G})^{-1/2}$, hence $\boldsymbol{H}\boldsymbol{X} = \eta_{\max}^{-1}\boldsymbol{X}(\boldsymbol{G}^{\top}\boldsymbol{G})^{1/2}$, which will be used in subsequent calculations.</p>
+
+  <h2>Calculating Expectation</h2>
+  <p>Taking the expectation of both sides of Eq. $\eqref{eq:loss-2}$, we get:</p>
+
+\begin{equation}\mathbb{E}[\mathcal{L}(\boldsymbol{W} - \eta\tilde{\boldsymbol{\Phi}}_B)] \approx \mathcal{L}(\boldsymbol{W}) - \eta \tr(\mathbb{E}[\tilde{\boldsymbol{\Phi}}_B]^{\top}\boldsymbol{G}) + \frac{1}{2}\eta^2\mathbb{E}[\tr(\tilde{\boldsymbol{\Phi}}{}_B^{\top}\boldsymbol{H}\tilde{\boldsymbol{\Phi}}_B)]\end{equation}
+
+  <p>First, determine $\mathbb{E}[\tilde{\boldsymbol{\Phi}}_B]$:</p>
+
+\begin{equation}\mathbb{E}[\tilde{\boldsymbol{\Phi}}_B]=\mathbb{E}[\tilde{\boldsymbol{G}}_B(\tilde{\boldsymbol{G}}{}_B^{\top}\tilde{\boldsymbol{G}}_B)^{-1/2}]\approx\mathbb{E}[\tilde{\boldsymbol{G}}_B](\mathbb{E}[\tilde{\boldsymbol{G}}{}_B^{\top}\tilde{\boldsymbol{G}}_B])^{-1/2} = \boldsymbol{G}(\mathbb{E}[\tilde{\boldsymbol{G}}{}_B^{\top}\tilde{\boldsymbol{G}}_B])^{-1/2}\end{equation}
+
+  <p>We write out $\mathbb{E}[\tilde{\boldsymbol{G}}{}_B^{\top}\tilde{\boldsymbol{G}}_B]$ component-wise and assume independence between different components:</p>
+
+\begin{equation}\mathbb{E}[\tilde{\boldsymbol{G}}{}_B^{\top}\tilde{\boldsymbol{G}}_B]_{i,j} = \mathbb{E}\left[\sum_{k=1}^n (\tilde{G}_B)_{k,i}(\tilde{G}_B)_{k,j}\right] = \left\{\begin{aligned} 
+\mathbb{E}\left[\sum_{k=1}^n (\tilde{G}_B)_{k,i}^2\right] = \left(\sum_{k=1}^n G_{k,i}^2\right) + n\sigma^2/B,\quad (i=j) \\[6pt] 
+\sum_{k=1}^n \mathbb{E}[(\tilde{G}_B)_{k,i}] \mathbb{E}[(\tilde{G}_B)_{k,j}] = \sum_{k=1}^n G_{k,i}G_{k,j},\quad (i\neq j) 
+\end{aligned}\right.\end{equation}
+
+  <p>Combining these gives $\mathbb{E}[\tilde{\boldsymbol{G}}{}_B^{\top}\tilde{\boldsymbol{G}}_B]=\boldsymbol{G}^{\top}\boldsymbol{G} + (n\sigma^2/B) \boldsymbol{I}$, thus:</p>
+
+\begin{equation}\mathbb{E}[\tilde{\boldsymbol{\Phi}}_B]\approx \boldsymbol{G}(\boldsymbol{G}^{\top}\boldsymbol{G} + (n\sigma^2/B) \boldsymbol{I})^{-1/2} = \msign(\boldsymbol{G})(\boldsymbol{I} + (n\sigma^2/B) (\boldsymbol{G}^{\top}\boldsymbol{G})^{-1})^{-1/2}\end{equation}
+
+  <p>To further simplify the dependency on $B$, we approximate $\boldsymbol{G}^{\top}\boldsymbol{G}$ using $\tr(\boldsymbol{G}^{\top}\boldsymbol{G})\boldsymbol{I}/m$. That is, we only keep the diagonal part of $\boldsymbol{G}^{\top}\boldsymbol{G}$ and then replace those diagonal elements with their average. In this way, we obtain:</p>
+
+\begin{equation}\mathbb{E}[\tilde{\boldsymbol{\Phi}}_B]\approx \msign(\boldsymbol{G})(1 + \mathcal{B}_{\text{simple}}/B)^{-1/2}\end{equation}
+
+  <p>where $\mathcal{B}_{\text{simple}} = mn\sigma^2/\tr(\boldsymbol{G}^{\top}\boldsymbol{G})= mn\sigma^2/\Vert\boldsymbol{G}\Vert_F^2$. This is actually identical to treating $\boldsymbol{G}$ as a vector and calculating $\mathcal{B}_{\text{simple}}$ as in the previous two articles. The form of the above equation is exactly the same as for SignSGD. From this, we can guess that Muon will not exhibit many new results regarding the relationship between learning rate and batch size.</p>
+
+  <h2>The Same Laws</h2>
+  <p>As for $\mathbb{E}[\tr(\tilde{\boldsymbol{\Phi}}{}_B^{\top}\boldsymbol{H}\tilde{\boldsymbol{\Phi}}_B)]$, we only calculate the hypothesis corresponding to Muon derived earlier, namely $\boldsymbol{H}\boldsymbol{X} = \eta_{\max}^{-1}\boldsymbol{X}(\boldsymbol{G}^{\top}\boldsymbol{G})^{1/2}$. Then:</p>
+
+\begin{equation}\tr(\tilde{\boldsymbol{\Phi}}{}_B^{\top}\boldsymbol{H}\tilde{\boldsymbol{\Phi}}_B) = \eta_{\max}^{-1}\tr(\tilde{\boldsymbol{\Phi}}{}_B^{\top}\tilde{\boldsymbol{\Phi}}_B(\boldsymbol{G}^{\top}\boldsymbol{G})^{1/2})\end{equation}
+
+  <p>Notice that $\tilde{\boldsymbol{\Phi}}_B$ is the result of $\msign$, so it must be an orthogonal matrix (of full rank when $n \ge m$), thus $\tilde{\boldsymbol{\Phi}}{}_B^{\top}\tilde{\boldsymbol{\Phi}}_B=\boldsymbol{I}$. Therefore, in this case, $\tr(\tilde{\boldsymbol{\Phi}}{}_B^{\top}\boldsymbol{H}\tilde{\boldsymbol{\Phi}}_B)$ is a fixed constant $\eta_{\max}^{-1}\tr((\boldsymbol{G}^{\top}\boldsymbol{G})^{1/2})=\eta_{\max}^{-1}\tr(\msign(\boldsymbol{G})^{\top}\boldsymbol{G})$. Thus we get:</p>
+
+\begin{equation}\eta^* \approx \frac{\tr(\mathbb{E}[\tilde{\boldsymbol{\Phi}}_B]^{\top}\boldsymbol{G})}{\mathbb{E}[\tr(\tilde{\boldsymbol{\Phi}}{}_B^{\top}\boldsymbol{H}\tilde{\boldsymbol{\Phi}}_B)]}\approx \frac{\eta_{\max}}{\sqrt{1 + \mathcal{B}_{\text{simple}}/B}}\end{equation}
+
+  <p>As expected, the result is identical in form to the SignSGD result, with no new patterns discovered.</p>
+
+  <p>Actually, if you think about it carefully, this is within reason. This is because SignSGD directly applies $\newcommand{sign}{\mathop{\text{sign}}}\sign$ to the gradient, whereas Muon's $\msign$ applies $\sign$ to the singular values. Intuitively, this is equivalent to applying $\sign$ in a different coordinate system. What it brings are new matrix update rules, while the learning rate $\eta^*$ and the batch size $B$ are merely scalars. Given that both are based on the core premise of $\sign$, it is highly likely that the asymptotic relationship between these scalars will not undergo significant changes.</p>
+
+  <p>Of course, we have only calculated for one special $\boldsymbol{H}$. If a more general $\boldsymbol{H}$ is considered, the "Surge" phenomenon might appear as it does with SignSGD, where "as batch size increases, the learning rate should instead decrease." But as we discussed in the "Reflections on Causes" section of the previous article, if a Surge phenomenon is truly observed, it might suggest that the optimizer should be changed rather than adjusting the relationship between $\eta^*$ and $B$.</p>
+
+  <h2>Summary</h2>
+  <p>In this article, we attempted to analyze Muon using a simple mean-field approximation. The conclusion is that the relationship between its learning rate and batch size is consistent with SignSGD, with no new patterns found.</p>
+
+  <hr />
+  <p>Reprinted from: <a href="translation_11285.html">https://kexue.fm/archives/11285</a></p>
+  <p>For more details on reprinting, please refer to: <a href="https://kexue.fm/faq">"Scientific Space FAQ"</a></p>
+  <p>If you have any doubts or suggestions, please continue the discussion in the comments section below.</p>
+
+  <p>If you need to cite this article, please refer to:</p>
+  <p>苏剑林. (Sep. 15, 2025). 《重新思考学习率与Batch Size（三）：Muon 》[Blog post]. Retrieved from https://kexue.fm/archives/11285</p>
+
+<pre>
+@online{kexuefm-11285, 
+        title={Rethinking Learning Rate and Batch Size (Part 3): Muon}, 
+        author={Jianlin Su}, 
+        year={2025}, 
+        month={Sep}, 
+        url={\url{https://kexue.fm/archives/11285}}, 
+}
+</pre>
+</div>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_11285.html" style="color: #005fcc;">https://kexue.fm/archives/11285</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

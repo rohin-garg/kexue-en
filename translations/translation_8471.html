@@ -1,0 +1,248 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/8471">Can Contrastive Learning Use Gradient Accumulation?</a></h1>
+
+    <p>By 苏剑林 | June 17, 2021</p>
+
+
+<p>In the previous article, <a href="translation_8451.html">"Trading Time for Performance: Keras Gradient Accumulation Optimizer,"</a> we introduced "gradient accumulation," a technique for achieving the effect of a large batch size under limited GPU memory. Generally speaking, gradient accumulation is suitable for scenarios where the loss is independent and identically distributed (i.i.d.). In other words, the loss for each sample is calculated independently, and the total loss is the average or sum of all individual losses. However, not all tasks satisfy this condition. For instance, in the recently popular contrastive learning, the loss for each sample also depends on other samples. So, in the context of contrastive learning, can we still use gradient accumulation to achieve the effect of a large batch size? This article analyzes this question.</p>
+
+<h2>Introduction</h2>
+
+<p>In general, the loss for contrastive learning can be written as:</p>
+
+\begin{equation}\mathcal{L}=-\sum_{i,j=1}^b t_{i,j}\log p_{i,j} = -\sum_{i,j=1}^b t_{i,j}\log \frac{e^{s_{i,j}}}{\sum\limits_j e^{s_{i,j}}}=-\sum_{i,j=1}^b t_{i,j}s_{i,j} + \sum_{i=1}^b \log\sum_{j=1}^b e^{s_{i,j}}\label{eq:loss}\end{equation}
+
+<p>Here $b$ is the batch size; $t_{i,j}$ is a pre-given label satisfying $t_{i,j}=t_{j,i}$. It is a one-hot matrix where each column (and row) has only one 1, and the rest are 0. $s_{i,j}$ is the similarity between sample $i$ and sample $j$, satisfying $s_{i,j}=s_{j,i}$. Usually, there is a temperature parameter, but here we assume the temperature parameter has been integrated into $s_{i,j}$ to simplify notation. The model parameters exist within $s_{i,j}$ and are denoted as $\theta$.</p>
+
+<p>It can be verified that, in general:</p>
+
+\begin{equation}-\sum_{i,j=1}^{2b} t_{i,j}\log p_{i,j} \neq -\sum_{i,j=1}^{b} t_{i,j}\log p_{i,j}-\sum_{i,j=b+1}^{2b} t_{i,j}\log p_{i,j}\end{equation}
+
+<p>Therefore, simply accumulating the gradients of contrastive learning with a small batch size is not equivalent to contrastive learning with a large batch size. Similar problems exist in models with Batch Normalization (BN).</p>
+
+<h2>Gradients</h2>
+
+<p>Note that we just said conventional simple gradient accumulation is not equivalent, but it is possible that a slightly more complex accumulation scheme exists. To find out, let's analyze the gradient of Equation $\eqref{eq:loss}$:</p>
+
+\begin{equation}\begin{aligned} 
+\nabla_{\theta}\mathcal{L} =&\, -\sum_{i,j=1}^b t_{i,j}\nabla_{\theta}s_{i,j} + \sum_{i=1}^b \nabla_{\theta}\log\sum_{j=1}^b e^{s_{i,j}} \\ 
+=&\, -\sum_{i,j=1}^b t_{i,j}\nabla_{\theta}s_{i,j} + \sum_{i,j=1}^b p_{i,j}\nabla_{\theta} s_{i,j} \\ 
+=&\,\nabla_{\theta}\sum_{i,j=1}^b \left(p_{i,j}^{(sg)} - t_{i,j}\right)s_{i,j} 
+\end{aligned}\end{equation}
+
+<p>Where $p_{i,j}^{(sg)}$ indicates that the gradient with respect to $\theta$ for $p_{i,j}$ is not required—this is the <code>stop_gradient</code> operator in deep learning frameworks. The equation above shows that if we use a gradient-based optimizer, using Equation $\eqref{eq:loss}$ as the loss is completely equivalent to using $\sum\limits_{i,j=1}^b \left(p_{i,j}^{(sg)} - t_{i,j}\right)s_{i,j}$ as the loss (because the resulting gradients are exactly the same).</p>
+
+<h2>Inner Product</h2>
+
+<p>Next, consider the calculation of $\nabla_{\theta}s_{i,j}$. Generally, it takes the form of a vector inner product, i.e., $s_{i,j}=\langle h_i, h_j\rangle$, where the parameter $\theta$ is contained within $h_i$ and $h_j$. In this case:</p>
+
+\begin{equation}\nabla_{\theta}s_{i,j}=\langle \nabla_{\theta}h_i, h_j\rangle + \langle h_i, \nabla_{\theta}h_j\rangle = \nabla_{\theta}\left(\langle h_i, h_j^{(sg)}\rangle + \langle h_i^{(sg)}, h_j\rangle\right)\end{equation}
+
+<p>Therefore, $s_{i,j}$ in the loss can be replaced by $\langle h_i, h_j^{(sg)}\rangle + \langle h_i^{(sg)}, h_j\rangle$ without changing the outcome:</p>
+
+\begin{equation}\begin{aligned} 
+\nabla_{\theta}\sum_{i,j=1}^b \left(p_{i,j}^{(sg)} - t_{i,j}\right)s_{i,j} =&\, \nabla_{\theta}\sum_{i,j=1}^b \left(p_{i,j}^{(sg)} - t_{i,j}\right)\left(\langle h_i, h_j^{(sg)}\rangle + \langle h_i^{(sg)}, h_j\rangle\right)\\ 
+=&\, 2\nabla_{\theta}\sum_{i,j=1}^b \left(\overline{p_{i,j}^{(sg)}} - t_{i,j}\right)\langle h_i, h_j^{(sg)}\rangle\\ 
+=&\,\nabla_{\theta}\sum_{i=1}^b \left\langle h_i, 2\sum_{j=1}^b\left(\overline{p_{i,j}^{(sg)}} - t_{i,j}\right)h_j^{(sg)}\right\rangle 
+\end{aligned}\label{eq:g}\end{equation}
+
+<p>Where $2\overline{p_{i,j}^{(sg)}}=p_{i,j}^{(sg)} + p_{j,i}^{(sg)}$. The second equal sign comes from swapping the summation indices $i,j$ for the $\langle h_i^{(sg)}, h_j\rangle$ term, which does not change the summation result.</p>
+
+<h2>Workflow</h2>
+
+<p>Equation $\eqref{eq:g}$ actually provides the final solution, which can be divided into two steps. The first step is the calculation of the vector:</p>
+
+\begin{equation}\tilde{h}_i = 2\sum_{j=1}^b\left(\overline{p_{i,j}^{(sg)}} - t_{i,j}\right)h_j^{(sg)}\label{eq:h}\end{equation}
+
+<p>This step does not require gradient calculation; it is a purely predictive process, so the batch size can be relatively large. The second step is to pass $\tilde{h}_i$ into the model as a "label" and optimize the model using $\langle h_i, \tilde{h}_i\rangle$ as the loss for a single sample. This step requires gradient calculation, but it has been transformed into a form of the sum of gradients for each sample, so conventional gradient accumulation can be used at this point.</p>
+
+<p>Suppose the maximum batch size for backpropagation is $b$, and the maximum batch size for forward propagation is $nb$. To achieve the effect of a batch size of $nb$ for contrastive learning through gradient accumulation, the formalized workflow is as follows:</p>
+
+<ol>
+    <li>Sample a batch of data $\{x_i\}_{i=1}^{nb}$ and the corresponding label matrix $\{t_{i,j}\}_{i,j=1}^{nb}$. Initialize the accumulated gradient $g=0$;</li>
+    <li>Perform a forward pass to obtain the encoding vectors $\{h_i\}_{i=1}^{nb}$ and the corresponding probability matrix $\{p_{i,j}\}_{i,j=1}^{nb}$;</li>
+    <li>Calculate the label vectors $\{\tilde{h}_i\}_{i=1}^{nb}$ according to Equation $\eqref{eq:h}$;</li>
+    <li>For $k=1,2,\dots,n$, execute:
+        <br>&emsp;&emsp;&emsp;&emsp;$g \leftarrow g + \nabla_{\theta}\sum\limits_{i=(k-1)b+1}^{kb} \langle h_i, \tilde{h}_i\rangle$
+    </li>
+    <li>Use $g$ as the final gradient to update the model, then repeat from Step 1.</li>
+</ol>
+
+<p>Overall, in terms of computation, this requires one extra forward pass compared to conventional gradient accumulation. Of course, if the maximum batch size for a single forward pass still doesn't meet our needs, the forward pass can also be calculated in batches, since we only need to compute and store each $\{h_i\}_{i=1}^{nb}$, and $\{p_{i,j}\}_{i,j=1}^{nb}$ can be calculated based on $\{h_i\}_{i=1}^{nb}$.</p>
+
+<p>Finally, it is important to remind that the above workflow is only equivalent to a large batch size model during optimization—that is, the gradient of $\langle h_i, \tilde{h}_i\rangle$ is equivalent to the gradient of the original loss. However, its value is not equal to the value of the original loss. Therefore, $\langle h_i, \tilde{h}_i\rangle$ cannot be used as a loss to evaluate the model; it is not necessarily monotonic, nor necessarily non-negative, and it may not even have a strict correlation with the original loss.</p>
+
+<h2>Problems</h2>
+
+<p>The above workflow shares the same problem as the "recomputation" technique introduced in <a href="translation_8374.html">"A Keras Version of Memory-Saving Recomputation Techniques,"</a> which is that it is incompatible with Dropout. This is because each update involves multiple forward passes, and each forward pass has a different Dropout mask. This means the $h_i$ used when calculating the label vector $\tilde{h}_i$ is not the same as the $h_i$ used when calculating the gradient, resulting in the calculation of a gradient that is not the most reasonable one.</p>
+
+<p>There is no good solution for this; the simplest and most effective method is to remove Dropout from the model. This is generally not a problem for CV (Computer Vision), as CV models have largely moved away from Dropout. For NLP, the first thing that comes to mind is that SimCSE cannot use gradient accumulation, because Dropout is the foundation of SimCSE~</p>
+
+<h2>Summary</h2>
+
+<p>This article analyzed the gradient accumulation method for contrastive learning. The results show that contrastive learning can use gradient accumulation, but it requires an additional forward pass and the removal of Dropout from the model. The same approach in this article can also be used to analyze how BN can use gradient accumulation; interested readers may wish to try it out.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8471.html" style="color: #005fcc;">https://kexue.fm/archives/8471</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,325 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/4256">[Chinese Word Segmentation Series] 8. A Better New Word Discovery Algorithm</a></h1>
+
+<p>By 苏剑林 | March 11, 2017</p>
+
+<p>Readers who have followed this series in order will find that we have provided two unsupervised word segmentation schemes from scratch. The first is <a href="translation_3913.html">"[Chinese Word Segmentation Series] 2. New Word Discovery Based on Segmentation,"</a> which uses the coagulation degree (mutual information) of adjacent characters to build a vocabulary (once you have a vocabulary, you can segment using dictionary-based methods). The second is <a href="translation_3956.html">"[Chinese Word Segmentation Series] 5. Unsupervised Segmentation Based on Language Models,"</a> which essentially provides a complete unsupervised segmentation method independent of other literature. However, looking at them overall, the former feels fast and convenient but somewhat crude, while the latter is powerful but perhaps overly complex (Viterbi being one of the bottlenecks). Is it possible to find a compromise between the two? This led to the results of this article, achieving a balance between speed and effectiveness. As for why I call it "better"? I have been researching vocabulary construction for a while, and the vocabularies I built in the past were never quite satisfactory (even to myself). Looking at those generated vocabularies, one could easily spot many unreasonable entries, requiring significant manual filtering to be truly usable. This time, however, the vocabulary generated in one go has far fewer unreasonable entries at first glance; if you don't look closely, you might not even notice them.</p>
+
+<h3>The Purpose of Segmentation</h3>
+
+<p>Word segmentation is generally the first step in text mining, which seems natural, but we should ask: why segment? Humans write and understand character by character, don't they?</p>
+
+<p>When a model's memory and fitting capabilities are strong enough (or simply put, intelligent enough), we could dispense with segmentation entirely and work directly with character-based models. For example, character-based text classification and question-answering systems have been studied for some time. However, even if these models succeed, they often lead to decreased efficiency due to model complexity. Therefore, in many cases (especially in production environments), we seek simpler and more efficient solutions.</p>
+
+<p>Which solution is most efficient? Taking text classification as an example, the simplest and most efficient solution is likely the "Naive Bayes classifier." Similarly, a more modern version is FastText, which can be seen as a "neural network version" of Naive Bayes. Note that Naive Bayes is based on a "naive" assumption: that features are independent of each other. The more this assumption holds, the better the Naive Bayes results. However, for text, where the context is obviously closely linked, does this assumption still hold?</p>
+
+<p>Note that when features are clearly not independent, one can consider combining features until the correlation between them weakens, then use Naive Bayes. For example, in text, if we use characters as features, the naive assumption clearly fails—in "我喜欢数学" (I like mathematics), "喜" [like-left] and "欢" [like-right], and "数" [math-left] and "学" [math-right] are obviously highly correlated. In this case, we can combine features to get "我 / 喜欢 / 数学" (I / like / mathematics). The correlation between these three segments is no longer as strong, so we can use the results. This process is very much like word segmentation, or conversely, one of the main purposes of segmentation is to divide a sentence into several weakly correlated parts to facilitate further processing. From this perspective, what is segmented might not necessarily be "words," but could also be phrases or common collocations.</p>
+
+<p>Simply put, segmentation is done to weaken correlation and reduce dependence on word order. This is quite important even in deep learning models. Some models do not segment but use CNNs, which treat combinations of several characters as features—this is also a manifestation of combining characters to weaken feature correlation.</p>
+
+<h3>Algorithm Concept</h3>
+
+<p>Since segmentation is meant to weaken correlation, we segment by cutting at points where correlation is weak. The article <a href="translation_3913.html">"[Chinese Word Segmentation Series] 2. New Word Discovery Based on Segmentation"</a> followed this logic, but it assumed that text correlation is determined only by adjacent characters (2-grams). This is often unreasonable. For example, in "林心如" (Ruby Lin), the coagulation degree (correlation) of "心如" is not very strong, and in "共和国" (Republic), "和国" is not strong either, making them prone to being mis-cut. Therefore, this article improves upon the previous one. While the previous one only considered the coagulation of adjacent characters, this one simultaneously considers the internal coagulation of multiple characters (n-grams). For instance, we define the internal coagulation degree of a three-character string $abc$ as:</p>
+
+$$\min\left\{\frac{P(abc)}{P(ab)P(c)},\frac{P(abc)}{P(a)P(bc)}\right\}$$
+
+<p>This definition essentially means enumerating all possible cut positions, because a word should be "solid" at every point. The coagulation degree for strings of 4 characters or more is defined similarly. Generally, we only need to consider up to 4-grams (but note that we can still segment words longer than 4 characters).</p>
+
+<p>After considering multiple characters, we can set a relatively high coagulation threshold to prevent words like "共和国" (Republic) from being cut incorrectly. Because when considering 3-gram coagulation, "共和国" appears quite solid. Thus, this step follows the principle of "rather let it pass than cut it wrong."</p>
+
+<p>However, for words like "各项" (each item) and "项目" (project), their internal coagulation is very high. Since the previous step follows the "rather let it pass" principle, this leads to "各项目" (each project) also being treated as a word. Similar examples include "支撑着" (supporting), "球队员" (team member), "珠海港" (Zhuhai port), etc. But these cases have very low coagulation when viewed as 3-grams. Therefore, we need a "backtracking" process. After obtaining the word list from the previous steps, we filter it again. The rule is: if an $n$-character word within it is not in the original high-coagulation $n$-grams, it must be "out."</p>
+
+<p>So, the benefit of considering $n$-grams is that we can avoid mis-cutting words while using a large mutual information threshold, while also excluding ambiguous words. For example, with "共和国" (Republic), the 3-gram mutual information is strong, while the 2-gram is weak (mainly because "和国" is not solid enough). At the same time, we ensure that phrases like "的情况" (the situation of) won't be segmented as a single word, because if the threshold is high enough, neither "的情" nor "的情况" will be solid.</p>
+
+<h3>Detailed Algorithm</h3>
+
+<p>The complete algorithm steps are as follows:</p>
+
+<p><strong>Step 1: Statistics.</strong> Select a fixed $n$ and count 2-grams, 3-grams, ..., $n$-grams. Calculate their internal coagulation and keep only those segments above a certain threshold, forming a set $G$. In this step, you can set different thresholds for 2-grams, 3-grams, ..., $n$-grams; they don't have to be the same because generally, the more characters, the less sufficient the statistics, making values more likely to be skewed high. Thus, the threshold should usually increase with the number of characters.</p>
+
+<p><strong>Step 2: Segmentation.</strong> Use the aforementioned grams to segment the corpus (a rough segmentation) and count frequencies. The rule is: as long as a segment appears in the set $G$ obtained in the previous step, it is not split. For example, for "各项目" (each project), as long as "各项" and "项目" are both in $G$, then even if "各项目" is not in $G$, "各项目" stays un-split and is preserved.</p>
+
+<p><strong>Step 3: Backtracking.</strong> After the second step, "各项目" will be extracted (because the second step ensures "rather let it pass than cut it wrong"). Backtracking means checking: if it is a word of length $\le n$, check if it is in $G$; if not, it's out. If it is a word longer than $n$ characters, check if every $n$-character sub-segment within it is in $G$; if any segment is missing, it's out. Taking "各项目" as an example, backtracking checks if "各项目" is in the 3-grams; if not, it is removed.</p>
+
+<p><strong>Supplementary notes for each step:</strong></p>
+
+<ol>
+    <li>Using high coagulation while considering multiple characters is for accuracy. For example, the 2-gram "共和" won't appear in the high coagulation set, so it might be split (e.g., in "我一共和三个人去玩" [I went to play with three people in total], "共和" is split), but the 3-gram "共和国" appears in the high coagulation set, so the "共和" in "中华人民共和国" will not be split.</li>
+    <li>Step 2 segments the sentences based on the set filtered in Step 1 (you can think of this as coarse segmentation) and then calculates statistics on the "coarse segmentation results." Note that we are now counting frequencies of the segmentation results, which is separate from the coagulation filtering in Step 1. We believe that while this segmentation is rough, the high-frequency parts are reliable, so we filter for high-frequency results.</li>
+    <li>Step 3: For instance, because "各项" and "项目" both appear in the high coagulation segments, Step 2 will not split "各项目." However, we do not want "各项目" to become a word because the coagulation between "各" and "项目" is not high (the fact that "各" and "项" have high coagulation does not mean "各" and "项目" do). Therefore, through backtracking, "各项目" is removed (you only need to check if "各项目" was in the originally counted high-coagulation set; this step is computationally very light).</li>
+</ol>
+
+<h3>Code Implementation</h3>
+
+<p>Below is a reference implementation. First, to save memory, we write an iterator to output articles one by one:</p>
+
+<pre><code>import re
+import pymongo
+from tqdm import tqdm
+import hashlib
+
+db = pymongo.MongoClient().weixin.text_articles
+md5 = lambda s: hashlib.md5(s).hexdigest()
+
+def texts():
+    texts_set = set()
+    for a in tqdm(db.find(no_cursor_timeout=True).limit(3000000)):
+        if md5(a['text'].encode('utf-8')) in texts_set:
+            continue
+        else:
+            texts_set.add(md5(a['text'].encode('utf-8')))
+            for t in re.split(u'[^\u4e00-\u9fa50-9a-zA-Z]+', a['text']):
+                if t:
+                    yield t
+    print u'Finally calculated %s articles' % len(texts_set)
+</code></pre>
+
+<p>Notes: My articles are stored in MongoDB, so I use pymongo to read them. If your articles are in files, the approach is similar. Of course, if you have enough memory and not too many articles, loading them directly into a list is fine. Hashlib is used for deduplication; the regular expression <code>re</code> is used to pre-remove meaningless characters (non-Chinese, non-English, non-numeric); <code>tqdm</code> is used to show progress.</p>
+
+<p>Next, we simply count:</p>
+
+<pre><code>from collections import defaultdict
+import numpy as np
+
+n = 4
+min_count = 128
+ngrams = defaultdict(int)
+
+for t in texts():
+    for i in range(len(t)):
+        for j in range(1, n+1):
+            if i+j &lt;= len(t):
+                ngrams[t[i:i+j]] += 1
+
+ngrams = {i:j for i,j in ngrams.iteritems() if j &gt;= min_count}
+total = 1.*sum([j for i,j in ngrams.iteritems() if len(i) == 1])
+</code></pre>
+
+<p>Here, $n$ is the maximum segment length to consider (the n-grams mentioned earlier), suggested to be at least 3. <code>min_count</code> is set according to your needs. Next is the coagulation filtering:</p>
+
+<pre><code>min_proba = {2:5, 3:25, 4:125}
+
+def is_keep(s, min_proba):
+    if len(s) &gt;= 2:
+        score = min([total*ngrams[s]/(ngrams[s[:i+1]]*ngrams[s[i+1:]]) for i in range(len(s)-1)])
+        if score &gt; min_proba[len(s)]:
+            return True
+        else:
+            return False
+    else:
+        return False
+
+ngrams_ = set(i for i,j in ngrams.iteritems() if is_keep(i, min_proba))
+</code></pre>
+
+<p>As mentioned, you can set different thresholds for different gram lengths, so a dictionary is used. Personally, I find that thresholds in a geometric progression of 5 work well, though this also depends on your data size. Next, define the segmentation function and perform segmentation statistics:</p>
+
+<pre><code>def cut(s):
+    r = np.array([0]*(len(s)-1))
+    for i in range(len(s)-1):
+        for j in range(2, n+1):
+            if s[i:i+j] in ngrams_:
+                r[i:i+j-1] += 1
+    w = [s[0]]
+    for i in range(1, len(s)):
+        if r[i-1] &gt; 0:
+            w[-1] += s[i]
+        else:
+            w.append(s[i])
+    return w
+
+words = defaultdict(int)
+for t in texts():
+    for i in cut(t):
+        words[i] += 1
+
+words = {i:j for i,j in words.iteritems() if j &gt;= min_count}
+</code></pre>
+
+<p>Finally, backtracking:</p>
+
+<pre><code>def is_real(s):
+    if len(s) &gt;= 3:
+        for i in range(3, n+1):
+            for j in range(len(s)-i+1):
+                if s[j:j+i] not in ngrams_:
+                    return False
+        return True
+    else:
+        return True
+
+w = {i:j for i,j in words.iteritems() if is_real(i)}
+</code></pre>
+
+<p>The main time for the algorithm is spent on $n$-gram statistics and the final text segmentation.</p>
+
+<h3>Dictionary Sharing</h3>
+
+<p>Finally, I'm sharing the vocabulary built from 3 million WeChat articles using the above algorithm. It has not undergone any manual post-processing. I'm sharing it for general use (it contains many WeChat-related terms that many popular segmentation tools lack, which is quite valuable) and for readers to verify the results.</p>
+
+<p>Resource Download: <a href="http://p8svv0pje.bkt.clouddn.com/300w_weixin_new_words.zip">300w_weixin_articles_new_word_discovery_vocabulary.zip</a></p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_4256.html" style="color: #005fcc;">https://kexue.fm/archives/4256</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,285 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/3802">A Brief Exploration of OCR Technology: 3. Feature Extraction (2)</a></h1>
+    <p>By 苏剑林 | June 18, 2016</p>
+
+    <h3 id="逐层识别">Layer-by-layer Recognition</h3>
+    <p>Once the image is effectively layered, we can further design corresponding models based on our previous assumptions to identify text regions in the image through layer-by-layer processing.</p>
+
+    <p><strong>Connectivity</strong></p>
+    <p>
+        <a href="https://kexue.fm/usr/uploads/2016/06/3116440344.png" title="Click to view original image">
+            <img src="https://kexue.fm/usr/uploads/2016/06/3116440344.png" alt="8-connectivity" />
+        </a>
+        <br />
+        8-connectivity
+    </p>
+    <p>As can be seen, each layer of the image consists of several connected components. Since text itself is composed of relatively dense strokes, it often forms a connected region. The "connected" property here is defined as 8-connectivity, meaning the 8 pixels surrounding a specific pixel are defined as adjacent pixels, and adjacent pixels are defined as belonging to the same connected region.</p>
+    <p>After defining connected regions, each layer is segmented into several connected components. In other words, we gradually decompose the original image, as shown in Figure 9.</p>
+    <p>
+        <a href="https://kexue.fm/usr/uploads/2016/06/4135962663.png" title="Click to view original image">
+            <img src="https://kexue.fm/usr/uploads/2016/06/4135962663.png" alt="Figure 9 Image Decomposition Structure Diagram" />
+        </a>
+        <br />
+        Figure 9: Image Decomposition Structure Diagram
+    </p>
+
+    <p><strong>Erosion Resistance</strong></p>
+    <p>Once the image is decomposed to the level of connected regions, we stop further subdivision and start identifying which regions are potential text areas. Here we <strong>require the text to have a certain degree of erosion resistance</strong>. Therefore, we first define erosion.</p>
+    <p>Erosion is a morphological transformation on images, generally targetted at binary images. For non-zero pixels (pixels with a value of 1) in a binary image, if all its adjacent pixels are 1, it remains unchanged; otherwise, it becomes 0. Here we also use the 8-connectivity definition. It can be observed that if the boundary of a connected region is longer, the "damage" caused by the erosion operation is greater; conversely, if the boundary is shorter, the "damage" is smaller.</p>
+    <p>Based on the definition of erosion above, we can state a requirement for text regions:</p>
+    <blockquote>
+        <strong>Erosion Resistance Requirement:</strong> The connected region where the text is located should possess a certain degree of erosion resistance.
+    </blockquote>
+    <p>Here, "certain degree" refers to a continuous range—it cannot be too large or too small. For example, a square region with a large area has very strong erosion resistance because its boundary line is very short, but such regions are clearly not text regions; the rice cooker in Layer 5 of the previous article's decomposition belongs to this type. Additionally, erosion resistance cannot be too weak; for instance, thin lines might disappear after erosion. These are not considered candidate text regions either; the text boundaries in Layer 4 of the previous article's decomposition belong to this type.</p>
+    <p>We can define an indicator for erosion resistance:</p>
+    \begin{equation}
+    \text{Erosion Resistance of Connected Region} = \frac{\text{Total Area After Erosion}}{\text{Total Area Before Erosion}} \tag{7}
+    \end{equation}
+    <p>After testing, the erosion resistance of text regions is roughly in the range of $[0.1, 0.9]$.</p>
+    <p>After filtering the 5 decomposed layers based on erosion resistance, we obtain the following feature layers.</p>
+    <p>
+        <a href="https://kexue.fm/usr/uploads/2016/06/4124750549.png"><img src="https://kexue.fm/usr/uploads/2016/06/4124750549.png" alt="Feature Layer 1" /></a>
+        <br />Feature Layer 1
+    </p>
+    <p>
+        <a href="https://kexue.fm/usr/uploads/2016/06/2554983325.png"><img src="https://kexue.fm/usr/uploads/2016/06/2554983325.png" alt="Feature Layer 2" /></a>
+        <br />Feature Layer 2
+    </p>
+    <p>
+        <a href="https://kexue.fm/usr/uploads/2016/06/2255983669.png"><img src="https://kexue.fm/usr/uploads/2016/06/2255983669.png" alt="Feature Layer 3" /></a>
+        <br />Feature Layer 3
+    </p>
+    <p>
+        <a href="https://kexue.fm/usr/uploads/2016/06/1061458597.png"><img src="https://kexue.fm/usr/uploads/2016/06/1061458597.png" alt="Feature Layer 4" /></a>
+        <br />Feature Layer 4
+    </p>
+    <p>
+        <a href="https://kexue.fm/usr/uploads/2016/06/3875269463.png"><img src="https://kexue.fm/usr/uploads/2016/06/3875269463.png" alt="Retain only connected regions with erosion resistance in the [0.1, 0.9] range" /></a>
+        <br />Retain only connected regions with erosion resistance in the $[0.1, 0.9]$ range
+    </p>
+
+    <p><strong>Pooling Operation</strong></p>
+    <p>Up to this point, we have obtained 5 feature layers. Although it is visible to the naked eye that the text is mainly concentrated in the 5th feature layer, for general images, text may be distributed across multiple feature layers. Therefore, feature integration is required. Our method for integrating features here is similar to "pooling" in convolutional neural networks, which is why we borrowed the name.</p>
+    <p>First, we superimpose the 5 feature layers to obtain an overall image feature (called the superimposed feature). Such a feature can be used as the final output, but it is not the best approach. We believe that the main text features within a certain area should already be concentrated in a specific feature layer rather than scattered across all layers. Therefore, after obtaining the superimposed feature, we use a method similar to "Max Pooling" to integrate the features, as follows:</p>
+    <blockquote>
+        1. Directly superimpose the features, then determine the connected regions of the superimposed features;<br />
+        2. Detect which feature layer contributes the most to each connected region; the region then only retains the source from that specific feature layer.
+    </blockquote>
+    <p>After this pooling operation, the final feature result is shown in Figure 11.</p>
+    <p>
+        <a href="https://kexue.fm/usr/uploads/2016/06/1671159549.png" title="Click to view original image">
+            <img src="https://kexue.fm/usr/uploads/2016/06/1671159549.png" alt="Figure 11 Features After Pooling" />
+        </a>
+        <br />
+        Figure 11: Features After Pooling
+    </p>
+
+    <h3 id="后期处理">Post-processing</h3>
+    <p>For the image we are demonstrating, the feature map in Figure 11 obtained after the above operations requires no further processing. However, for general images, some poorly handled regions may remain, which need to be further excluded. The exclusion process mainly consists of two steps: Low/High-density area exclusion and Isolated area exclusion.</p>
+
+    <p><strong>Density Exclusion</strong></p>
+    <p>One type of connected region that is clearly not text is a low-density region. A typical example is a connected region formed by table lines; such a region has a large extent but contains very few pixels, meaning it has low density. Such regions can be excluded. First, we define connected region density and low-density regions:</p>
+    <blockquote>
+        <strong>Connected Region Density:</strong> Starting from a connected region, we can find its horizontal bounding box. The density of this region is defined as:
+        \begin{equation}
+        \text{Connected Region Density} = \frac{\text{Area of Connected Region}}{\text{Area of Bounding Box}} \times \frac{\text{Total Area of Original Image}}{\text{Area of Bounding Box}} \tag{8}
+        \end{equation}
+    </blockquote>
+    <blockquote>
+        <strong>Low-Density Region:</strong> If the density of a connected region is less than 16, then this connected region is defined as a low-density region.
+    </blockquote>
+    <p>Intuitively, the definition should be $\frac{\text{Area of Connected Region}}{\text{Area of Bounding Box}}$, but an extra factor $\frac{\text{Total Area of Original Image}}{\text{Area of Bounding Box}}$ is included here to incorporate the influence of the region's size. Because text typically has clear boundaries and is easily segmented, generally, the larger the area a region occupies, the less likely it is to be a text region. The parameter 16 is an empirical value.</p>
+    <p>Low-density exclusion is an effective method for removing non-text areas with many lines, such as tables. Similarly, large High-density areas are also a category of regions that need exclusion. Once low-density regions are defined, it becomes easy to define high-density regions:</p>
+    <blockquote>
+        <strong>High-Density Region Definition (v1):</strong> If the region formed by inverting a connected region within its horizontal bounding box is a low-density region, then the connected region is defined as a high-density region.
+    </blockquote>
+    <p>While this definition is natural, it has some irrationalities. For example, the character "一" (one) is a horizontal rectangle, so the density after inversion is 0, leading to the character "一" being excluded, which is incorrect. A solution to this problem is:</p>
+    <blockquote>
+        <strong>High-Density Region Definition:</strong> A region is defined as a high-density region if and only if the following condition is met:
+        \begin{equation}
+        \frac{1 + \text{Area of Bounding Box} - \text{Area of Connected Region}}{\text{Area of Bounding Box}} \times \frac{\text{Total Area of Original Image}}{\text{Area of Bounding Box}} < 16 \tag{9}
+        \end{equation}
+    </blockquote>
+    <p>This adds 1 to the original definition, preventing the case where the density becomes 0 after inversion.</p>
+    <p><strong>There is another case where this fails: if the input image is a single character. In this case, there is only one connected region, and $\frac{\text{Total Area of Original Image}}{\text{Area of Bounding Box}}$ is close to 1, thus it might be judged as a low-density region and wrongly excluded. This situation is indeed difficult to balance. A feasible solution is to manually specify whether the mode is single character, single line, or full image; Google's Tesseract OCR also provides such options.</strong></p>
+
+    <p><strong>Isolated Region Exclusion</strong></p>
+    <p>
+        <a href="https://kexue.fm/usr/uploads/2016/06/751404802.png" title="Click to view original image">
+            <img src="https://kexue.fm/usr/uploads/2016/06/751404802.png" alt="Isolated Region Demo" />
+        </a>
+        <br />
+        Figure: Isolated Region Demo
+    </p>
+    <p>The premise of isolated region exclusion is that text characters and strokes should be relatively compact. If a region is clearly isolated from other regions, it is likely not a text region. In other words, isolated regions can be excluded. First, we define the concept of an isolated region:</p>
+    <p><strong>Isolated Region:</strong> Starting from a connected region, find its horizontal bounding box. Expand this rectangle center-symmetrically so that its area becomes 9 times the original (length and width become 3 times the original, as shown in the left figure). If the expanded region does not contain any other connected regions, then the original connected region is called an isolated region.</p>
+    <p>In most cases, isolated region exclusion is a very simple and effective denoising method because many noise points are isolated. However, isolated region exclusion carries certain risks. If an image contains only one character, forming a single connected region, then this region will be isolated and thus excluded. Therefore, additional constraints should be added to isolated region exclusion. One optional extra constraint is that the ratio $\frac{\text{Area of Connected Region}}{\text{Area of Bounding Box}}$ for the excluded isolated region must be greater than 0.75 (this value originates from the area ratio of a circle to its circumscribed square, $\pi/4$).</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_3802.html" style="color: #005fcc;">https://kexue.fm/archives/3802</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,278 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['base', 'ams', 'noerrors', 'noundefined']}
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9431">Road to Transformer Upgrade: 7. Length Extrapolation and Local Attention</a></h1>
+
+<p>By 苏剑林 | January 12, 2023</p>
+
+<p>For Transformer models, length extrapolation is a desirable property we have been pursuing. It refers to the ability of a model trained on short sequences to be applied to long sequences without fine-tuning while maintaining good performance. The pursuit of length extrapolation stems from two sides: on one hand, theoretical completeness, as it is felt to be a property an ideal model should possess; on the other hand, training practicality, as it allows us to train a model usable for long sequences at a lower cost (on shorter sequences).</p>
+
+<p>Below, we analyze the key ideas for strengthening the length extrapolation of Transformers, propose a "super baseline" solution, and then use this "super baseline" to evaluate some related research work.</p>
+
+<h3 id="misconceptions">Misconceptions</h3>
+
+<p>The first work to explicitly study the length extrapolation of Transformers was likely <a href="https://papers.cool/arxiv/2108.12409">ALIBI</a>, published in mid-2021, which isn't very long ago. Why did it take so long (compared to the Transformer's first implementation in 2017) for someone to specialize in this topic? It's likely because we long assumed that length extrapolation was simply a matter of position encoding, and that finding a better position encoding would solve it.</p>
+
+<p>In fact, by comparing the extrapolation effects of existing position encodings, arguments can indeed be found to support this view. For example, several experimental results shared later show that relative position encodings generally have better length extrapolation than absolute ones; functional relative position encodings like <a href="translation_8265.html">RoPE</a> perform better than trained relative position encodings. Thus, it seems that as long as we continue to optimize position encoding forms, we can eventually provide Transformers with better length extrapolation. However, the situation is not that optimistic. Even RoPE, which has relatively good extrapolation capabilities, can only extrapolate about 10% to 20% of the training length before performance drops significantly. This ratio is far from expectations—one would ideally expect extrapolation by several multiples of the length for it to be considered valuable. Therefore, it is hard to imagine how long it would take to achieve significantly longer effects by improving position encoding alone.</p>
+
+<p>Intuitively, many readers might feel that functional position encodings like <a href="translation_8231.html">Sinusoidal</a> or <a href="translation_8265.html">RoPE</a>, which have no training parameters, should have very good length extrapolation. But in reality, this is not the case. This type of position encoding does not show any advantage in length extrapolation. Why is this? It's because when assuming the extrapolation of functional position encodings, people forget its basic premise—"smoothness."</p>
+
+<p>In essence, extrapolation is about inferring the whole from the parts, which is a familiar concept; Taylor series approximation is a classic example. It only needs to know the values of several orders of derivatives at a certain point to make effective estimates in a neighborhood, relying on the high-order smoothness (existence and boundedness of high-order derivatives) of the given function. But are <a href="translation_8231.html">Sinusoidal</a> or <a href="translation_8265.html">RoPE</a> such functions? Not really. They are combinations of sine and cosine functions whose phase functions are $k/10000^{2i/d}$. When $2i/d \approx 0$, the function is approximately $\sin k, \cos k$. These are high-frequency oscillatory functions regarding the position $k$, rather than straight lines or functions that asymptotically approach straight lines. Thus, the extrapolation behavior of models based on them is often difficult to predict. Can we design non-oscillatory position encodings? It's difficult. If position encoding functions do not oscillate, they often lack sufficient capacity to encode enough position information. In a sense, the complexity of the position encoding function itself is a requirement for encoding positions.</p>
+
+<h3 id="super-baseline">Super Baseline</h3>
+
+<p>A more accurate positioning would be:</p>
+<blockquote>
+<p>Length extrapolation is a problem of inconsistency between training and prediction lengths.</p>
+</blockquote>
+
+<p>Specifically, there are two points of inconsistency:</p>
+<blockquote>
+<p>1. Prediction uses unseen position encodings (whether absolute or relative);<br>
+2. During prediction, the number of tokens processed by the attention mechanism far exceeds the number during training.</p>
+</blockquote>
+
+<p>The first point is easy to understand: if it hasn't been trained, there's no guarantee it can be handled properly—this is a very realistic phenomenon in Deep Learning, even for functional encodings like <a href="translation_8231.html">Sinusoidal</a> or <a href="translation_8265.html">RoPE</a>. Regarding the second point, readers might be confused: theoretically, can't Attention handle sequences of any length? What difference does the inconsistency in length make? The answer is <strong>entropy</strong>. In <a href="translation_8823.html">"Analyzing Scale Operations in Attention from Entropy Invariance"</a>, we analyzed this: more tokens averaging the attention mean that the final distribution is relatively "flatter" (higher entropy), i.e., attention is more dispersed. Conversely, a shorter training length means the attention's entropy is lower and attention is more concentrated. This difference between training and prediction also affects performance.</p>
+
+<p>In fact, for Transformer models with relative position encoding, a very simple Attention Mask can solve both of the above problems at once and achieve near-SOTA performance:</p>
+
+<div style="display: flex; justify-content: space-around; text-align: center;">
+  <div>
+    <img src="https://pub-855799988582457c9197c369fc87803a.r2.dev/baseline_bi.png" width="300"/><br>
+    Super Baseline Model (Bidirectional)
+  </div>
+  <div>
+    <img src="https://pub-855799988582457c9197c369fc87803a.r2.dev/baseline_uni.png" width="300"/><br>
+    Super Baseline Model (Unidirectional)
+  </div>
+</div>
+
+<p>Understandably, this changes the Attention during prediction into a local Attention, where each token can only see a training-length number of tokens. In this way, the number of tokens each token can see is consistent with training, solving the second problem. Meanwhile, because it uses relative position encoding and positions are counted from the current token as the origin, such local Attention doesn't use more unknown position encodings than were used in training, solving the first problem. Thus, this simple Attention Mask solves the two major difficulties of length extrapolation without retraining the model. Even more surprisingly, various experimental results show that if this is used as a baseline, the relative improvement of various similar works becomes tragically weak—that is, the baseline itself is already very close to SOTA. It truly is a "super baseline" that is both fast and effective.</p>
+
+<h3 id="paper-study">Paper Study</h3>
+
+<p>Since ALIBI, many works have been dedicated to research on Transformer length extrapolation. In this section, I have studied and organized some representative works. From these, we can see that they essentially have many similarities with the baseline model, and in some ways, they can even be considered variants of the baseline model. We will further realize the profound link between length extrapolation and the locality of attention.</p>
+
+<h4 id="alibi">ALIBI</h4>
+
+<p>As the "founding work," ALIBI cannot be ignored. It comes from the paper <a href="https://papers.cool/arxiv/2108.12409">"Train Short, Test Long: Attention with Linear Biases Enables Input Length Extrapolation"</a>. In hindsight, the change made by ALIBI is very simple; it merely changes the Attention calculation from $\boldsymbol{q}_m^{\top}\boldsymbol{k}_n$ to
+\begin{equation}\boldsymbol{q}_m^{\top}\boldsymbol{k}_n - \lambda|m - n|\label{eq:alibi}\end{equation}
+before the Softmax, where $\lambda > 0$ is a hyperparameter set differently for each head. From this definition, one can see the similarity between ALIBI and the baseline model: both subtract a non-negative matrix before high Softmax, but the matrices being subtracted are different. ALIBI can be viewed as a "smooth version" of the baseline model:</p>
+
+<div style="display: flex; justify-content: space-around; text-align: center;">
+  <div>
+    <img src="https://pub-855799988582457c9197c369fc87803a.r2.dev/baseline_matrix.png" width="250"/><br>
+    Matrix subtracted by the baseline
+  </div>
+  <div>
+    <img src="https://pub-855799988582457c9197c369fc87803a.r2.dev/alibi_matrix.png" width="250"/><br>
+    Matrix subtracted by ALIBI
+  </div>
+</div>
+
+<p>ALIBI is a very simple (and effective) smooth local attention trick, but if it is interpreted as "position encoding," it might be inappropriate. If one were to extend Eq. $\eqref{eq:alibi}$ to bidirectional attention, since $|m - n|=|n - m|$, the model would theoretically be unable to distinguish "left" from "right" and could only recognize relative distance, which is clearly insufficient for accurately identifying position information. Its good performance on unidirectional language models is because language models can achieve non-trivial results (significantly higher than random) even without any position encoding. The local attention imposed by ALIBI acts to enhance locality, fitting the characteristics of the language modeling task itself.</p>
+
+<h4 id="kerple">KERPLE</h4>
+
+<p>KERPLE comes from the paper <a href="https://papers.cool/arxiv/2205.09921">"KERPLE: Kernelized Relative Positional Embedding for Length Extrapolation"</a>. It is essentially a simple generalization of ALIBI, introducing two training parameters $r_1, r_2$ to generalize Eq. $\eqref{eq:alibi}$:
+\begin{equation}\left\{\begin{aligned}&\boldsymbol{q}_m^{\top}\boldsymbol{k}_n - r_1|m - n|^{r_2} ,& r_1 >0, 0 < r_2 \leq 2\\
+&\boldsymbol{q}_m^{\top}\boldsymbol{k}_n - r_1\log(1+r_2|m - n|),& r_1, r_2 > 0
+\end{aligned}\right.\label{eq:kerple}\end{equation}
+With generalization and trainable parameters, it is not surprising that KERPLE achieves better results than ALIBI. However, a severe criticism must be made of KERPLE's "mystification." By the layout, the third section of the original paper is the theoretical support, but it is clear that it was added solely to artificially increase the mathematical depth of the article; it provides no help in understanding KERPLE and might even diminish the reader's interest (to put it bluntly, it serves the reviewers, not the readers).</p>
+
+<h4 id="sandwich">Sandwich</h4>
+
+<p>Sandwich was also created by the authors of KERPLE in the paper <a href="https://papers.cool/arxiv/2212.10356">"Receptive Field Alignment Enables Transformer Length Extrapolation"</a>, which appeared on Arxiv last month. It replaces Eq. $\eqref{eq:alibi}$ with
+\begin{equation}\boldsymbol{q}_m^{\top}\boldsymbol{k}_n + \lambda\boldsymbol{p}_m^{\top}\boldsymbol{p}_n\label{eq:sandwich}\end{equation}
+where $\boldsymbol{p}_m, \boldsymbol{p}_n$ are <a href="translation_8231.html">Sinusoidal</a> position encodings, and $\lambda > 0$ is a hyperparameter. From <a href="translation_8231.html">"Road to Transformer Upgrade: 1. Sinusoidal Position Encoding"</a>, we know that $\boldsymbol{p}_m^{\top}\boldsymbol{p}_n$ is a scalar function of $m-n$, and on average, it is a monotonic decreasing function of $|m-n|$, so its role is similar to $-\lambda|m-n|$. The emphasis on "on average" is because $\boldsymbol{p}_m^{\top}\boldsymbol{p}_n$ as a whole is not strictly monotonic; it oscillates downwards, as shown in the figure:</p>
+
+<p style="text-align: center;"><img src="https://pub-855799988582457c9197c369fc87803a.r2.dev/p_dot_p.png" width="400" /><br>Plot of dot(p_m, p_n) (with d/2 subtracted)</p>
+
+<p>If necessary, we can also convert Sandwich into a form like <a href="translation_8265.html">RoPE</a>, where "absolute position encodings implement relative ones." This only requires noting that:
+\begin{equation}\boldsymbol{q}_m^{\top}\boldsymbol{k}_n + \lambda\boldsymbol{p}_m^{\top}\boldsymbol{p}_n = \left[\boldsymbol{q}_m, \sqrt{\lambda}\boldsymbol{p}_m\right]^{\top}\left[\boldsymbol{k}_n, \sqrt{\lambda}\boldsymbol{p}_n\right]\end{equation}
+In other words, Sandwich supplements absolute position information through concatenation, and the Attention result corresponds to relative position encoding. However, it seems this conversion currently has only theoretical value because concatenation increases vector dimensions, which in turn increases the computational load of Attention.</p>
+
+<h4 id="xpos">XPOS</h4>
+
+<p>XPOS comes from the paper <a href="https://papers.cool/arxiv/2212.10554">"A Length-Extrapolatable Transformer"</a>, which appeared on Arxiv on the same day as Sandwich. it is a direct generalization of <a href="translation_8265.html">RoPE</a>. We know the basic solution for RoPE is:
+\begin{equation}\boldsymbol{q}_m\to \boldsymbol{\mathcal{R}}_m\boldsymbol{q}_m,\quad \boldsymbol{k}_n\to \boldsymbol{\mathcal{R}}_n\boldsymbol{k}_n\end{equation}
+where $\boldsymbol{\mathcal{R}}_n=\begin{pmatrix}\cos n\theta & -\sin n\theta\\ \sin n\theta & \cos n\theta\end{pmatrix}$. When I derived RoPE, I assumed "$Q$ and $K$ undergo the same transformation." In fact, from the perspective of "absolute implementation of relative position," it isn't strictly necessary for the transformation formats to be identical. For example, XPOS considers:
+\begin{equation}\boldsymbol{q}_m\to \boldsymbol{\mathcal{R}}_m\boldsymbol{q}_m \xi^m,\quad \boldsymbol{k}_n\to \boldsymbol{\mathcal{R}}_n\boldsymbol{k}_n \xi^{-n}\end{equation}
+where $\xi$ is a scalar hyperparameter. In this way:
+\begin{equation}(\boldsymbol{\mathcal{R}}_m\boldsymbol{q}_m \xi^m)^{\top}(\boldsymbol{\mathcal{R}}_n\boldsymbol{k}_n \xi^{-n}) = \boldsymbol{q}_m^{\top}\boldsymbol{\mathcal{R}}_{n-m}\boldsymbol{k}_n \xi^{m-n}\end{equation}
+The total result still only depends on the relative position $m-n$. However, the problem now is that the exponential part is $m-n$ instead of $|m-n|$. As long as $\xi\neq 1$, one side will always diverge. XPOS cleverly selects the scenario—just like many related works—focusing only on unidirectional language models. This way, we only use the $m \geq n$ part of attention! At this point, simply choosing $\xi\in(0,1)$ achieves the effect of decay as the relative distance increases.</p>
+
+<p>In fact, the introduction of the exponential decay term $\xi^m$ is not a first for XPOS. In the literature I've read, the same term appeared earliest in <a href="https://papers.cool/arxiv/2109.02377">PermuteFormer</a>, though PermuteFormer was mainly concerned with linear attention scenarios. In terms of detail, XPOS assigns different $\xi$ to each block, but in private communication with the author, they mentioned they performed an experiment sharing the same $\xi$ and found the improvement from different $\xi$ was almost negligible. Additionally, one must carefully control the value of $\xi$ to prevent $\xi^{-n}$ from overflowing when $n$ is large.</p>
+
+<p>It is worth noting that the decay here is applied directly to the Attention Score before Softmax. The result is that Scores with larger relative distances become very close to 0, rather than tending towards negative infinity as in the previous designs. $e^0$ does not have a zeroing effect, so this design is not a variant of local attention, and thus its effect does not reach SOTA. To make up for this gap, XPOS designed a special local attention (called Blockwise Causal Attention, or BCA), which fills the gap. During discussion, the author indicated that BCA was used for implementation advantages, but in reality, the baseline model's local attention works better. So, when it comes to extrapolation, you have to look at local attention.</p>
+
+<p>The original paper has very rich and valuable experiment results; I suggest everyone read it carefully~</p>
+
+<h3 id="conclusion">Summary</h3>
+
+<p>This article summarizes the relevant work for enhancing the length extrapolation capability of Transformers. It includes a simple but powerful baseline solution and several papers focused on length extrapolation. From these, we can discover that these works are essentially variants of the baseline solution—local attention—which is one of the key links for length extrapolation.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9431.html" style="color: #005fcc;">https://kexue.fm/archives/9431</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

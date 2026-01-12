@@ -1,0 +1,268 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/7180">Understanding Model Parameter Initialization Strategies from a Geometric Perspective</a></h1>
+
+<p>By 苏剑林 | January 16, 2020</p>
+
+<p>For complex models, parameter initialization is particularly important. A poor initialization often isn't just a matter of the model's performance suffering; it is more likely that the model will simply fail to train or converge entirely. A common adaptive initialization strategy in deep learning is Xavier initialization, which consists of weights randomly sampled from a normal distribution $\mathcal{N}\left(0, \frac{2}{fan_{in} + fan_{out}}\right)$, where $fan_{in}$ is the input dimension and $fan_{out}$ is the output dimension. Other initialization strategies are generally similar, albeit with different assumptions, leading to slight variations in their final forms.</p>
+
+<p>The derivation of standard initialization strategies is based on probability and statistics. The general idea is to assume that the input data has a mean of 0 and a variance of 1, and then expect the output data to also maintain a mean of 0 and a variance of 1, thereby deriving the conditions for the mean and variance that the initial transformation should satisfy. Theoretically, there is nothing wrong with this process, but in the author's view, it is still not intuitive enough, and the derivation process involves quite a few assumptions. This article hopes to understand model initialization methods from a <strong>geometric perspective</strong>, offering a more direct derivation process.</p>
+
+<h2 id="Handy-Orthogonality">Orthogonality at Your Fingertips</h2>
+
+<p>Some time ago, the author wrote <a href="translation_7076.html">"Distribution of the Angle Between Two Random Vectors in n-Dimensional Space"</a>. One of the corollaries is:</p>
+
+<blockquote>
+  <strong>Corollary 1</strong>: Any two random vectors in high-dimensional space are almost always perpendicular.
+</blockquote>
+
+<p>In fact, Corollary 1 is the starting point for the entire geometric perspective of this article! A further corollary of it is:</p>
+
+<blockquote>
+  <strong>Corollary 2</strong>: If we randomly select $n^2$ numbers from $\mathcal{N}(0, 1/n)$ to form an $n \times n$ matrix, this matrix is approximately an orthogonal matrix, and the larger $n$ is, the better the approximation.
+</blockquote>
+
+<p>Readers who find this hard to believe can verify it numerically:</p>
+
+<pre><code>import numpy as np
+
+n = 100
+W = np.random.randn(n, n) / np.sqrt(n)
+X = np.dot(W.T, W) # Multiply the matrix by its own transpose
+print(X) # Check if it is close to the identity matrix
+print(np.square(X - np.eye(n)).mean()) # Calculate the MSE with the identity matrix
+</code></pre>
+
+<p>I believe that for most readers, seeing Corollary 2 for the first time will be somewhat surprising. An orthogonal matrix is a matrix that satisfies $\boldsymbol{W}^{\top}\boldsymbol{W}=\boldsymbol{I}$, meaning its inverse is equal to its transpose. Solving for the inverse of a general matrix is significantly more difficult than finding its transpose, so we tend to feel that the condition "inverse = transpose" should be very stringent. However, Corollary 2 tells us that a matrix sampled randomly is already close to being an orthogonal matrix, which is admittedly a bit counter-intuitive. When the author first realized this, it was also quite a surprise.</p>
+
+<h2 id="Actually-Not-That-Hard-to-Understand">Actually, It's Not That Hard to Understand</h2>
+
+<p>However, once we get used to the fact in Corollary 1 that "any two random vectors in high-dimensional space are almost always perpendicular," we can quickly understand and derive this result. During a quick derivation, we can first consider the standard normal distribution $\mathcal{N}(0,1)$. Note that Corollary 1 requires the sampling direction to be uniform, and the standard normal distribution satisfies this requirements exactly. If we sample an $n \times n$ matrix from $\mathcal{N}(0,1)$, we can view it as $n$ vectors of dimension $n$. Since these $n$ vectors are all random, they are naturally close to being pairwise orthogonal.</p>
+
+<p>Of course, being pairwise orthogonal is not yet an orthogonal matrix, because an orthogonal matrix also requires each vector to have a length (norm) of 1. Since we have $\mathbb{E}_{x\sim \mathcal{N}(0,1)}\left[x^2\right]=1$, this means an $n$-dimensional vector sampled from $\mathcal{N}(0,1)$ has a length approximately equal to $\sqrt{n}$. To approach orthogonality, we need to divide each element by $\sqrt{n}$, which is equivalent to changing the sampling variance from 1 to $1/n$.</p>
+
+<p>Furthermore, the sampling distribution does not necessarily have to be a normal distribution; for instance, a uniform distribution $U\left[-\sqrt{3/n}, \sqrt{3/n}\right]$ also works. In fact, we have:</p>
+
+<blockquote>
+  <strong>Corollary 3</strong>: An $n \times n$ matrix independently and repeatedly sampled from any distribution $p(x)$ with a mean of 0 and a variance of $1/n$ will approach an orthogonal matrix.
+</blockquote>
+
+<p>We can understand Corollary 3 from a more mathematical perspective: suppose $\boldsymbol{x}=(x_1,x_2,\dots,x_n)$ and $\boldsymbol{y}=(y_1,y_2,\dots,y_n)$ are both sampled from $p(x)$. Thus, we have:</p>
+
+\begin{equation}
+\begin{aligned}
+\langle \boldsymbol{x}, \boldsymbol{y}\rangle =&\, n\times \frac{1}{n}\sum_{k=1}^n x_k y_k\\
+\approx&\, n\times \mathbb{E}_{x\sim p(x),y\sim p(x)}[xy]\\
+=&\, n\times \mathbb{E}_{x\sim p(x)}[x]\times \mathbb{E}_{y\sim p(x)}[y]\\
+=&\,0
+\end{aligned}
+\end{equation}
+
+<p>and</p>
+
+\begin{equation}
+\begin{aligned}
+\Vert\boldsymbol{x}\Vert^2 =&\, n\times \frac{1}{n}\sum_{k=1}^n x_k^2\\
+\approx&\, n\times \mathbb{E}_{x\sim p(x)}\left[x^2\right]\\
+=&\, n\times \left(\mu^2 + \sigma^2\right)\\
+=&\,1
+\end{aligned}
+\end{equation}
+
+<p>Therefore, any two vectors are approximately orthonormal, and consequently, the sampled matrix is also close to an orthogonal matrix.</p>
+
+<h2 id="Now-We-Can-Discuss-Initialization">Now We Can Discuss Initialization</h2>
+
+<p>After discussing orthogonal matrices at length, the essence is to lay the groundwork for understanding the geometric significance of initialization methods. If readers still remember linear algebra, they should recall that the critical significance of an orthogonal matrix is that it preserves the norm of a vector during the transformation process. Expressed mathematically, if $\boldsymbol{W}\in \mathbb{R}^{n\times n}$ is an orthogonal matrix and $\boldsymbol{x}\in\mathbb{R}^n$ is any vector, then the norm of $\boldsymbol{x}$ is equal to the norm of $\boldsymbol{W}\boldsymbol{x}$:</p>
+
+\begin{equation}\Vert\boldsymbol{W}\boldsymbol{x}\Vert^2 = \boldsymbol{x}^{\top}\boldsymbol{W}^{\top}\boldsymbol{W}\boldsymbol{x}=\boldsymbol{x}^{\top}\boldsymbol{x}=\Vert\boldsymbol{x}\Vert^2\end{equation}
+
+<p>Consider a fully connected layer:</p>
+
+\begin{equation}\boldsymbol{y}=\boldsymbol{W}\boldsymbol{x} + \boldsymbol{b}\end{equation}
+
+<p>A deep learning model is essentially a nesting of fully connected layers. Therefore, to prevent the final output of the model from "exploding" or "vanishing" during the initialization phase, one idea is to let the model maintain the norm during initialization.</p>
+
+<p>The natural initialization strategy derived from this idea is: "initialize $\boldsymbol{b}$ as all zeros, and initialize $\boldsymbol{W}$ with a random orthogonal matrix." Corollary 2 has already told us that an $n \times n$ matrix sampled from $\mathcal{N}(0, 1/n)$ is already close to being an orthogonal matrix, so we can sample from $\mathcal{N}(0, 1/n)$ to initialize $\boldsymbol{W}$. This is the Xavier initialization strategy, also called Glorot initialization in some frameworks because the author is Xavier Glorot. Additionally, the sampling distribution does not strictly have to be $\mathcal{N}(0, 1/n)$; as mentioned in Corollary 3, you can sample from any distribution with a mean of 0 and a variance of $1/n$.</p>
+
+<p>The above discussion pertains to cases where both the input and output dimensions are $n$. What if the input is $n$-dimensional and the output is $m$-dimensional? In this case, $\boldsymbol{W}\in\mathbb{R}^{m\times n}$, and the condition for maintaining the norm of $\boldsymbol{W}\boldsymbol{x}$ is still $\boldsymbol{W}^{\top}\boldsymbol{W}=\boldsymbol{I}$. However, when $m < n$, this is impossible; when $m \geq n$, it is possible, and following a similar derivation as before, we can obtain:</p>
+
+<blockquote>
+  <strong>Corollary 4</strong>: When $m \geq n$, an $m \times n$ matrix sampled independently and repeatedly from any distribution $p(x)$ with a mean of 0 and a variance of $1/m$ approximately satisfies $\boldsymbol{W}^{\top}\boldsymbol{W}=\boldsymbol{I}$.
+</blockquote>
+
+<p>Thus, if $m > n$, one simply needs to change the sampling distribution variance to $1/m$. As for the case when $m < n$, although there is no direct derivation, this practice can still be followed, as a reasonable strategy should be universal. Note that this modification is slightly different from the original design of Xavier initialization; it is the dual version of "LeCun initialization" (where the LeCun initialization variance is $1/n$), while the variance for Xavier initialization is $2/(m+n)$, which is an intuitive approach that averages forward and backward propagation. Here, we mainly consider forward propagation.</p>
+
+<p>Some readers might still wonder: you have only considered scenarios without activation functions; even if the norm of $\boldsymbol{y}$ is the same as $\boldsymbol{x}$, it will change after passing through an activation function. This is indeed the case, and such situations must be analyzed on a case-by-case basis. For example, since $\tanh(x) \approx x$ when $x$ is small, Xavier initialization can be considered directly applicable to $\tanh$ activation. For $\text{relu}$, we can assume that approximately half of the elements in $\text{relu}(\boldsymbol{y})$ will be set to zero, so the norm will be approximately $1/\sqrt{2}$ of the original. To keep the norm unchanged, $\boldsymbol{W}$ can be multiplied by $\sqrt{2}$, meaning the initialization variance changes from $1/m$ to $2/m$. This is the initialization strategy proposed by the great Kaiming He specifically for $\text{relu}$.</p>
+
+<p>Of course, it is practically difficult to adjust the variance perfectly for every single activation function. A more general approach is to add an operation similar to Layer Normalization directly after the activation function to explicitly restore the norm. This is where various Normalization techniques come into play (readers are welcome to continue with the previous work <a href="translation_6992.html">"What Exactly Does BN Do? A Behind-the-Scenes Analysis"</a>).</p>
+
+<h2 id="Final-Summary">A Final Summary</h2>
+
+<p>This article primarily derives the conclusion that "any $n \times n$ matrix with a mean of 0 and variance of $1/n$ is close to being an orthogonal matrix" from the premise that "any two random vectors in high-dimensional space are almost always perpendicular," thereby providing a geometric perspective for related initialization strategies. I believe that this geometric perspective is more intuitive and easier to understand than a purely statistical one.</p>
+
+<p><em><strong>For more detailed reprinting matters, please refer to:</strong></em> <a href="https://kexue.fm/archives/6508#%E6%96%87%E7%AB%A0%E5%A6%82%E4%BD%95%E8%BD%AC%E8%BD%BD/%E5%BC%95%E7%94%A8">"Scientific Spaces FAQ"</a></p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7180.html" style="color: #005fcc;">https://kexue.fm/archives/7180</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

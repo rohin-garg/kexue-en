@@ -1,0 +1,426 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9948">Transformer Upgrade Path: 16. "Reviewing" Length Extrapolation Techniques</a></h1>
+
+    <p>By 苏剑林 | January 26, 2024</p>
+
+
+<p>Looking back, I realized that starting from the 7th post, <a href="translation_9431.html">"Transformer Upgrade Path: 7. Length Extrapolation and Local Attention,"</a> this series has been "stuck" on length extrapolation, with nine consecutive articles (excluding this one) revolving around it. Today, exactly one year and a bit has passed since that 7th article. During this year, the open-source community has made significant progress in length extrapolation research, and I have gradually developed some of my own understandings. For instance, the problem is far less simple than initially imagined, and many previous works based on local attention are not always effective. This suggests that several older analyses failed to touch the core of the issue.</p>
+
+<p>In this article, I attempt to combine my findings and insights to "review" mainstream length extrapolation results and try to discover the key to training-free length extrapolation.</p>
+
+<h2>Problem Definition</h2>
+
+<p>As the name suggests, training-free length extrapolation means that there is no need to perform additional training on long sequence data. By training the model only on short sequence corpora, one obtains a model capable of processing and predicting long sequences—i.e., "Train Short, Test Long." How do we judge if a model can be used for long sequences? The most basic indicator is that the model's long-sequence Loss or PPL (Perplexity) does not explode. A more practical evaluation involves inputting a sufficiently long context, letting the model predict an answer, and then comparing it with the ground truth to calculate BLEU, ROUGE, etc. <a href="https://papers.cool/arxiv/2308.14508">LongBench</a> belongs to this type of benchmark.</p>
+
+<p>However, it should be noted that length extrapolation should not come at the cost of sacrificing long-range dependencies—otherwise, considering length extrapolation becomes meaningless; one might as well just truncate the text. This means that solutions relying on explicitly truncating long-range dependencies must be chosen carefully, such as ALIBI and most of the solutions listed in <a href="translation_9431.html">"Transformer Upgrade Path: 7. Length Extrapolation and Local Attention,"</a> as well as <a href="translation_9554.html">Linear RNNs</a> with explicit decay. These schemes behave as local attention when the sequence length is large enough. Even if they achieve length extrapolation, there is a risk of insufficient long-range dependency, which needs to be weighed according to specific scenarios.</p>
+
+<p>How do we judge whether long-range dependencies are preserved during length extrapolation? A more rigorous approach is the evaluation scheme proposed at the end of <a href="translation_9708.html">"Transformer Upgrade Path: 12. ReRoPE for Infinite Extrapolation?"</a>. Prepare a sufficiently long text, but calculate the metrics for each model only on the last segment of each sample, as shown in the figure below:</p>
+
+<p style="text-align:center"><img src="https://kexue.fm/usr/uploads/2023/07/3516641249.png" alt="An evaluation method focused on long-range dependency" /><br />
+<em>An evaluation method focused on long-range dependency</em></p>
+
+<p>For example, if the model training length is 4K and we want to see the effect of extrapolating to 16K, we prepare a 16K token test set. The 4K model calculates metrics using the last 4K tokens of each sample; the 8K model inputs the last 8K tokens but calculates metrics only for the final 4K; the 12K model inputs the last 12K but calculates only for the final 4K, and so on. In this way, different length models are calculating metrics for the same segment of tokens; the only difference is the length of the input context. If long-range dependencies are effectively preserved, the metrics should improve as the context length increases.</p>
+
+<h2>Rotary Position</h2>
+
+<p>Having discussed evaluation, let's return to methods. At the beginning of the article, I mentioned "old analysis work." A major characteristic of "new" vs. "old" is that most "old" work tried to design new architectures or position encodings to achieve length extrapolation, while "new" work over the past year has mainly studied length extrapolation for Decoder-Only Transformer models using <a href="translation_8265.html">Rotary Positional Encoding (RoPE)</a>.</p>
+
+<p>As a side note, why have most current LLMs chosen RoPE for position encoding? I believe there are several reasons:</p>
+
+<blockquote>
+1. RoPE does not have explicit long-range decay, which is crucial for models aimed at Long Context;<br />
+2. RoPE is a true positional encoding. Through trigonometric functions of different frequencies, it effectively distinguishes between long-range and short-range, achieving an effect similar to hierarchical positional encoding, which is a key part of Long Context;<br />
+3. RoPE acts directly on Q and K and does not change the form of Attention, making it more compatible with Flash Attention and easier to Scale Up.
+</blockquote>
+
+<p>In contrast, methods like ALIBI and KERPLE, though sometimes called positional encodings, are actually just Attention Biases. They don't contain much positional information and are not suitable for Encoders; they work for Decoders largely because the Decoder's own lower-triangular mask already provides sufficient positional bias, making additional Attention Bias merely the icing on the cake. Furthermore, they cannot effectively distinguish between long-range and short-range within a single head; instead, they set different decay factors across different heads. This means their effectiveness for single-head attention (such as <a href="translation_8934.html">GAU</a>) is poor.</p>
+
+<p>This comparison of pros and cons might seem like "the merchant praising their own goods," but it isn't. It's just to exchange viewpoints with readers who have asked similar questions. As the proposer of RoPE, my understanding of RoPE isn't necessarily deeper than anyone else's, because the original intention of proposing RoPE was purely for fun. At the time, I thought being effective was good enough, and being able to match learnable absolute positional encoding was great news. So, since it was "unexpected," the fact that "the author himself didn't have a very thorough understanding" is also "within reason."</p>
+
+<h2>Window Truncation</h2>
+
+<p>I seem to have strayed from the topic again. Simply put, the content of the previous two sections mainly aimed to express the view that: currently, RoPE appears sufficient for Long Context, so studying length extrapolation for RoPE is valuable, and when choosing an extrapolation scheme, we should not sacrifice long-range dependency capabilities.</p>
+
+<p>In the earliest discussion of length extrapolation on this site, <a href="translation_9431.html">"Transformer Upgrade Path: 7. Length Extrapolation and Local Attention,"</a> we judged length extrapolation to be an OOD (Out Of Distribution) problem during the prediction stage. Although some comments in that article seem a bit dated from today's perspective, this fundamental judgment remains correct. Specifically for RoPE, it means that unseen relative distances appear during the inference stage. To address this, a seemingly feasible solution is to introduce a Sliding Window Attention Mask, as shown in the left figure below:</p>
+
+<div style="display: flex; justify-content: center; align-items: center; gap: 20px;">
+    <div style="text-align: center;">
+        <img src="https://kexue.fm/usr/uploads/2024/01/1814674061.png" alt="Sliding Window Mask" style="max-width: 100%;" />
+        <p>Sliding Window Mask</p>
+    </div>
+    <div style="text-align: center;">
+        <img src="https://kexue.fm/usr/uploads/2024/01/3095360057.png" alt="Λ-shape Window Mask" style="max-width: 100%;" />
+        <p>Λ-shape Window Mask</p>
+    </div>
+</div>
+
+<p>Of course, because the attention outside the window is forcibly truncated, this scheme does not satisfy the principle of "not sacrificing long-range dependency," but we can treat it as a baseline. Unfortunately, even with such a sacrifice, this scheme DOES NOT work—it cannot even prevent PPL from exploding! In-depth analysis of this phenomenon led to two papers: <a href="https://papers.cool/arxiv/2308.16137">"LM-Infinite: Simple On-the-Fly Length Generalization for Large Language Models"</a> and <a href="https://papers.cool/arxiv/2309.17453">"Efficient Streaming Language Models with Attention Sinks."</a> Both gave almost the same answer. In fact, a few months earlier, an "outsider" discovered the same conclusion and published it in a Zhihu column article: <a href="https://zhuanlan.zhihu.com/p/619703849">"Perpetual Sampling Technical Report."</a></p>
+
+<p>The answer might be surprising: <b>The first few tokens are very important and cannot be discarded.</b> Thus, the final usable window mask should look like the right figure above (the LM-Infinite paper calls it the "$\Lambda$-Mask").</p>
+
+<p>Why do the initial tokens occupy such a vital position? There are currently two different perspectives for understanding this:</p>
+
+<blockquote>
+1. <b>Initial tokens are "anchors" for absolute position</b>: By definition, relative position encoding can only identify relative positions. However, some tasks may rely on absolute positions. Using the first few tokens (whose absolute positions are approximately 0) as "reference points," every other token can measure its own absolute position. Removing the initial tokens breaks this link, causing the attention pattern to become disorganized and PPL to explode.<br />
+2. <b>Initial tokens are attention "sinks"</b>: Since attention scores must sum to 1, attention must be allocated somewhere. In some cases, the model might find "no tokens worth attending to." In such cases, it chooses to dump a portion of attention into the first few tokens (which may lack information), acting as a way to "not pay attention." Removing them forces the model to allocate attention to other irrelevant tokens, thereby disrupting the attention pattern.
+</blockquote>
+
+<p>Simply put, empirical observations show that in most cases, the attention weight on the first few tokens is very heavy, so they cannot be removed; otherwise, the attention goes haywire. As for why they are heavy, that depends on your imagination.</p>
+
+<h2>Position Interpolation</h2>
+
+<p>While window truncation can serve as a decent baseline for length extrapolation, and the results regarding "anchors" or "sinks" further our understanding of how attention mechanisms work, it remains an incomplete solution as it sacrifices long-range dependency. </p>
+
+<p>The OOD nature of relative positions manifests as the relative distance during prediction exceeding the range seen during training. Since it was never trained, the behavior of the "out-of-bounds" part is unpredictable. To this end, a netizen named "kaiokendev" proposed a very simple solution in his blog <a href="https://kaiokendev.github.io/til#extending-context-to-8k">"Extending context to 8k"</a>: "Position Interpolation." This involves multiplying the position indices of the long text by a factor $\frac{L_{train}}{L_{test}}$ to scale them back into the training length range, as shown in the formula below (where positions are relative):</p>
+
+\begin{equation}\begin{aligned}&\text{Training Stage}:\,(1,2,\cdots,n-1,n)\\[5pt]
+&\text{Prediction Stage}:\,(1,2,\cdots,n,\underbrace{n+1,\cdots,4n-1,4n}_{\text{distant out-of-bounds}})\xrightarrow{\quad\text{Interpolate}\quad}
+\big(\underbrace{\frac{1}{4},\frac{2}{4},\frac{3}{4}}_{\text{local distortion}},\cdots,n-\frac{1}{4},n\big)\end{aligned}\end{equation}
+
+<p>However, Position Interpolation (PI) is not exactly a length extrapolation scheme—at least not a training-free one—because after interpolation, PPL still explodes. The reason is not hard to understand: while PI avoids the distant out-of-bounds problem, it simultaneously compresses the distance between neighboring tokens, severely disrupting the model's local resolution. As is well known, language modeling is a task heavily dependent on local relationships; disrupting the local structure naturally makes accurate prediction impossible.</p>
+
+<p>However, this is not to say PI is valueless. We know that readers who need length extrapolation generally fall into two categories: one lacks the resources for long-text fine-tuning and hopes to get a usable long-text model directly from a short-text model. PI is not suitable for them due to its high requirement for initial extrapolation quality. The other category has resources for long-text fine-tuning and studies extrapolation to get a better initialization. This group can tolerate the initial loss caused by model modification as long as it can be quickly recovered through fine-tuning. Meta's paper shows that after PI, only about 1000 steps of long-text training are needed to obtain an effective long-text model, which is much more efficient than fine-tuning without any modifications.</p>
+
+<h2>Preserving Near, Compressing Far</h2>
+
+<p>Direct extrapolation suffers from distant out-of-bounds, and PI suffers from local distortion. It seems the two are complementary. Can we combine their strengths? This is the motivation behind "Leaky ReRoPE" proposed in <a href="translation_9708.html">"Transformer Upgrade Path: 12. ReRoPE for Infinite Extrapolation?"</a> and its limit version, ReRoPE.</p>
+
+<p>Based on the previous analysis, it is easy to infer that the key to training-free length extrapolation is "preserving the near while compressing the far"—that is, "ensuring local distortion-free" and "compressing the far to avoid out-of-bounds." Leaky ReRoPE accomplishes this through a direct idea: it sets a window size $w$. Within this window, the relative positions are unchanged to ensure "no local distortion." Outside the window, it use position interpolation to ensure "no far out-of-bounds," as shown in the following matrix:</p>
+
+\begin{equation}\begin{pmatrix}
+\color{red}{0} & \\
+\color{red}{1} & \color{red}{0} & \\
+\color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{red}{\small{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{w} & \color{red}{\small{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\small{w + \frac{1}{k}}} & \color{green}{w} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\small{w + \frac{2}{k}}} & \color{green}{\small{w + \frac{1}{k}}} & \color{green}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\ddots} & \color{green}{\small{w + \frac{2}{k}}} & \color{green}{\ddots} & \color{green}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \\
+\color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\small{w + \frac{2}{k}}} & \color{green}{\small{w + \frac{1}{k}}} & \color{green}{w} & \color{red}{\small{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\small{w + \frac{L-1-w}{k}}} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\small{w + \frac{2}{k}}} & \color{green}{\small{w + \frac{1}{k}}} & \color{green}{w} & \color{red}{\small{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\end{pmatrix}\end{equation}
+
+<p>If the interpolation factor $k$ is taken to infinity, we get the minimalist ReRoPE. In ReRoPE, any position outside the window becomes $w$, meaning the position encoding will never go out of bounds for any sequence length, thus theoretically possessing infinite extrapolation potential! In fact, the performance of both Leaky ReRoPE and ReRoPE is excellent. From a loss perspective, they achieve almost zero loss in performance within the training length while enabling length extrapolation. Furthermore, as the context grows longer, the loss decreases, indicating that they indeed guarantee long-range dependency while extrapolating.</p>
+
+<p>The main problem with Leaky ReRoPE and ReRoPE is that their code implementation is slightly cumbersome. Unlike position encodings of the Attention Bias type, RoPE cannot be implemented by constructing a relative position matrix and then calculating the encoding (that would be too inefficient). It must be implemented through absolute position encodings to achieve relative position encoding, which means it can only achieve linearly increasing relative positions. Since the relative positions in Leaky ReRoPE and ReRoPE are piecewise linear, a naive implementation would require calculating the attention matrix twice (for two different linear segments) and then stitching them together, which undoubtedly reduces efficiency significantly.</p>
+
+<p>Fortunately, mainstream Attention acceleration methods like Flash Attention calculate attention in blocks (e.g., blocks of length 128). When the sequence is long enough, the proportion of blocks spanning the piecewise boundary is very small (only near the window boundaries), as shown in the matrix below. Only the red-green mixed blocks require repeated attention calculations, while the single-colored blocks only need to be calculated once. Therefore, when combined with block-wise attention calculation, the added computational cost of Leaky ReRoPE and ReRoPE is almost negligible. Previously, reader @chu-tianxiang also shared a Triton-based implementation in the <a href="https://kexue.fm/archives/9708/comment-page-2#comment-22614">comments section</a>, which you can refer to if interested.</p>
+
+\begin{equation}\left(\begin{array}{cccc:cccc:cccc}
+\color{red}{0} & \\
+\color{red}{1} & \color{red}{0} & \\
+\color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\hdashline
+\color{red}{\small{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{w} & \color{red}{\small{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\small{w + \frac{1}{k}}} & \color{green}{w} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\small{w + \frac{2}{k}}} & \color{green}{\small{w + \frac{1}{k}}} & \color{green}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\hdashline
+\color{green}{\ddots} & \color{green}{\small{w + \frac{2}{k}}} & \color{green}{\ddots} & \color{green}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \\
+\color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\small{w + \frac{2}{k}}} & \color{green}{\small{w + \frac{1}{k}}} & \color{green}{w} & \color{red}{\small{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\small{w + \frac{L-1-w}{k}}} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\small{w + \frac{2}{k}}} & \color{green}{\small{w + \frac{1}{k}}} & \color{green}{w} & \color{red}{\small{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\end{array}\right)\end{equation}
+
+<p>Coincidentally, a paper titled <a href="https://papers.cool/arxiv/2401.01325">"LLM Maybe LongLM: Self-Extend LLM Context Window Without Tuning"</a> was submitted to Arxiv early this month. It proposes a training-free extrapolation method called "Self-Extend," which is essentially Leaky ReRoPE with an added Rounding operation (four-five rounding), making every relative position an integer again, further alleviating the OOD problem. The results reported in the paper are also very good, further confirming the effectiveness of Leaky ReRoPE.</p>
+
+<h2>Spinning Perspective</h2>
+
+<p>Although Leaky ReRoPE and ReRoPE perform quite well in practice (at least in terms of Loss), like Position Interpolation, they directly manipulate position IDs. This gives a sense of "treating the symptoms, not the disease," lacking a deep analysis of underlying patterns. For the model, the position ID itself is not important; the position embeddings are what interact directly with the model. Therefore, to "reach the root of the disease," one should start with position embeddings.</p>
+
+<p>Some readers might ask: Isn't there a one-to-one correspondence between position IDs and position embeddings? Isn't manipulating one equivalent to manipulating the other? While that's true in a sense, their actual behavior is different. For example, position IDs are unbounded, but position embeddings can be bounded (RoPE is composed of trigonometric functions, which are bounded). Since the model interacts with the embeddings, analyzing from that perspective reveals exactly what the OOD behavior caused by extrapolation looks like, allowing for a more "targeted remedy."</p>
+
+<p>In <a href="translation_8265.html">"Transformer Upgrade Path: 2. Rotary Positional Encoding (RoPE), the Best of All Worlds,"</a> when we derived RoPE, we first used complex numbers to derive a 2D solution and then concatenated multiple 2D solutions into a high-dimensional one. Thus, the inner product of $\boldsymbol{q}, \boldsymbol{k}$ with RoPE can be expressed in complex form as:</p>
+
+\begin{equation}
+(\boldsymbol{\mathcal{R}}_m \boldsymbol{q})^{\top}(\boldsymbol{\mathcal{R}}_n \boldsymbol{k}) = \text{Re}\left[\sum_{i=0}^{d/2-1}\boldsymbol{q}_{[2i:2i+1]}\boldsymbol{k}_{[2i:2i+1]}^* e^{\text{i}(m-n)\theta_i}\right]\end{equation}
+
+<p>where $\theta_i$ is by default $10000^{-2i/d}$, a function that tapers from 1 to nearly 0. From Euler's formula $e^{\text{i}t}=\cos t + \text{i}\sin t$, we know that $e^{\text{i}(m-n)\theta_i}$ is actually a point on the unit circle. As $m-n$ increases, this point spins on the unit circle (true rotation). Larger $\theta_i$ values mean faster rotation, while smaller values mean slower rotation.</p>
+
+<div style="display: flex; justify-content: center; align-items: center; gap: 20px;">
+    <div style="text-align: center;">
+        <img src="https://kexue.fm/usr/uploads/2024/01/2491515785.png" alt="Spinning more than one full circle" style="max-width: 100%;" />
+        <p>Spinning more than one full circle</p>
+    </div>
+    <div style="text-align: center;">
+        <img src="https://kexue.fm/usr/uploads/2024/01/1654848520.png" alt="Spinning less than one full circle" style="max-width: 100%;" />
+        <p>Spinning less than one full circle</p>
+    </div>
+</div>
+
+<p>Assume the training length is $L_{train}$, then $m-n \in [0, L_{train}-1]$. Let's fully use our imagination: a larger $\theta_i$ means a faster rotation speed and a shorter period. Thus, during the interval where $m-n$ goes from $0$ to $L_{train}-1$, it has already spun many times. This means almost every point on the circle has been trained, so those $\theta_i$ values have almost no OOD issues. Conversely, for smaller $\theta_i$, when $m-n$ goes from $0$ to $L_{train}-1$, it might not have completed even one circle. In this case, the trained points are at most an arc on the circle. If a larger $L_{test}$ is encountered during testing, the point will move outside the trained arc, leading to unpredictable behavior. This is when interpolation is needed to compress it back into the original arc. Simply put, whether the position ID $m-n$ is OOD is not important; what matters is whether the point on the unit circle has been sufficiently trained. If it has, no change is needed (direct extrapolation); if not, one must find a way to compress it onto the arc that has been sufficiently trained (position interpolation).</p>
+
+<p>Specifically, for $\theta_i$, we can calculate the period $T_i=2\pi/\theta_i$, and then calculate the "number of turns" it spins during training as $r_i = \frac{L_{train}}{T_i} = \frac{\theta_i L_{train}}{2\pi}$. We can set a turn threshold $\tau$. If the number of turns exceeds $\tau$, we consider it sufficiently trained and leave it unchanged. If the number of turns is less than 1, we change $\theta_i$ to $\theta_i \frac{L_{train}}{L_{test}}$, meaning we scale everything that exceeds the arc range back into the arc. The remaining part is linearly interpolated between the two. Expressed as a formula:</p>
+
+\begin{equation}\theta_i^{new} = \left[\gamma_i + (1 - \gamma_i)\frac{L_{train}}{L_{test}}\right]\theta_i,\quad \gamma_i = \left\{\begin{aligned}&1,&r_i > \tau \\
+&0,&r_i < 1 \\
+&\frac{r_i - 1}{\\tau - 1},&\text{others}
+\end{aligned}\right.\end{equation}
+
+<p>This is the training-free length extrapolation scheme "YaRN" proposed in <a href="https://papers.cool/arxiv/2309.00071">"YaRN: Efficient Context Window Extension of Large Language Models."</a> In my tests, its extrapolation effect is very good, only slightly inferior to Leaky ReRoPE and ReRoPE. However, it should be noted that YaRN only changes the value of $\theta_i$ without changing the form of Attention or RoPE. Therefore, it incurs no additional implementation or inference costs. Under the condition that it can be directly plugged into existing implementations, YaRN is the best-performing length extrapolation method I have tested.</p>
+
+<h2>Some Interludes</h2>
+
+<p>Actually, the story of YaRN doesn't end there, but the previous section was already quite long, so it's better to start a new one. In addition to modifying $\theta_i$, YaRN also multiplies the Attention logits by an extra Scale factor:</p>
+
+\begin{equation}\lambda = \left(1 + 0.1 \log \frac{L_{test}}{L_{train}}\right)^2\label{eq:scale-yarn}\approx 1 + 0.2 \log \frac{L_{test}}{L_{train}}\end{equation}
+
+<p>The derivation of this Scale might be somewhat humorous—the answer is that there isn't one. The author stated that he couldn't derive it theoretically; it was purely an experimental discovery that adding this scale resulted in a lower PPL, and the form above was fitted through experiments.</p>
+
+<p>Actually, this logarithmic result is clearly very similar to the $\log n$ Scale derived in <a href="translation_8823.html">"From Entropy Invariance to the Scale Operation of Attention,"</a> except the latter is related to specific positions, whereas the former is a constant once $L_{test}$ is fixed. Given that the $\log n$ function changes very slowly when $n$ is large, treating it as a constant within a certain range is understandable. Thus, we can guess that YaRN's Scale factor shares an origin with the $\log n$ Scale of entropy invariance. I have also performed a comparison: replacing the constant $\lambda$ with the following factor related to the absolute position $n$ yields a similar effect:</p>
+
+\begin{equation}\lambda_n = \max\left(1, \frac{\log n}{\log L_{train}}\right)\label{eq:clip-logn}\end{equation}
+
+<p>Note that:</p>
+
+\begin{equation}\frac{\log L_{test} }{\log L_{train}} = 1 + \frac{1}{\log L_{train}} \log\left(\frac{L_{test}}{L_{train}}\right)\end{equation}
+
+<p>YaRN's experiments were based on LLAMA and LLAMA2. The former's training length is 2K, and the latter is 4K. We have $\frac{1}{\log 2048}\approx 0.13$ and $\frac{1}{\log 4096}\approx 0.12$. The coefficient is roughly half of that in Eq. $\eqref{eq:scale-yarn}$. The difference isn't huge. In fact, the precision of this coefficient might not be that important because I have also found datasets where Eq. $\eqref{eq:clip-logn}$ performs better. Thus, we have essentially "derived" Eq. $\eqref{eq:scale-yarn}$ approximately.</p>
+
+<p>Compared to YaRN itself, the story of YaRN's author, Bowen Peng, is perhaps even more "fascinating." The <a href="https://www.reddit.com/r/LocalLLaMA/comments/14lz7j5/ntkaware_scaled_rope_allows_llama_models_to_have/">NTK-RoPE</a> he proposed earlier was the first training-free length extrapolation scheme for RoPE. Two blog posts in this series, <a href="translation_9675.html">"Transformer Upgrade Path: 10. RoPE is a Base-β Encoding"</a> and <a href="translation_9706.html">"Transformer Upgrade Path: 11. Taking Base-β Position to the End,"</a> were both directly inspired by it. Although from today's perspective, the effect of NTK-RoPE isn't necessarily that good (compared to YaRN, ReRoPE, etc.), it was the first to demonstrate the possibility of training-free extrapolation, holding milestone significance. It could even be said that all subsequent extrapolation research has directly or indirectly benefited from the "imagination" opened up by NTK-RoPE.</p>
+
+<p>The idea behind NTK-RoPE is simple: just change the base of RoPE. That is, what was originally $\theta_i = 10000^{-2i/d}$ is now changed to $\theta_i = (10000\kappa)^{-2i/d}$. How is $\kappa$ chosen? Based on his experience with Neural Tangent Kernel (NTK) results, Bowen Peng judged that high frequencies ($i \to 0$) learn relative distances and thus shouldn't be changed, while low frequencies ($i \to d/2-1$) learn absolute distances and should thus be interpolated. In short: "Extrapolate high frequencies, Interpolate low frequencies." So, by making the Scale at $i = d/2-1$ equal to the interpolation scale $\frac{L_{train}}{L_{test}}$, he set up the equation:</p>
+
+\begin{equation}(10000\kappa)^{-2i/d}|_{i=d/2-1} = \left.\frac{L_{train}}{L_{test}}10000^{-2i/d}\right|_{i=d/2-1}\end{equation}
+
+<p>Solving for $\kappa$ gives:</p>
+
+\begin{equation}\kappa = \left(\frac{L_{test}}{L_{train}}\right)^{d/(d-2)}\label{eq:kappa}\end{equation}
+
+<p>It was this simple yet ingenious derivation that opened the "Pandora's box" of training-free length extrapolation.</p>
+
+<p>From YaRN's perspective, it's not only the $\theta_i$ at $i = d/2-1$ that spins less than a full turn. Therefore, NTK-RoPE's approach of letting only the final $i = d/2-1$ perform full interpolation is insufficient. This is indeed the case: setting $\kappa$ according to Eq. $\eqref{eq:kappa}$ actually only allows the model to extrapolate to about $L_{test}/2$ without the PPL exploding; if it goes any longer, PPL rises significantly. It was because of this issue that the author went on to propose the upgraded YaRN.</p>
+
+<p>However, despite NTK-RoPE being inferior to YaRN in effect, for the second category of readers who have resources for long-text fine-tuning, they might prefer NTK-RoPE. Since they are going to fine-tune anyway, they don't care much about the initial performance difference between NTK-RoPE and YaRN. Instead, they prefer NTK-RoPE for its simpler implementation. For example, <a href="https://papers.cool/arxiv/2308.12950">CodeLLAMA</a> was trained on top of LLAMA2 by changing the base to $10^6$ and continuing training. Additionally, in Meta's paper <a href="https://papers.cool/arxiv/2309.16039">"Effective Long-Context Scaling of Foundation Models,"</a> they renamed NTK-RoPE to RoPE-ABF (Adjusted Base Frequency). Compared to the mysterious NTK, ABF reflects its meaning more intuitively.</p>
+
+<h2>Refusing to Pay Taxes</h2>
+
+<p>I'm not sure if you noticed, but the training-free length extrapolation methods mentioned above all fail to keep the model's performance identical within the training length $L_{train}$. Specifically, let the original model be $f(x)$ and the model modified for extrapolation be $f^+(x)$. When the length of $x$ does not exceed $L_{train}$, we cannot guarantee $f(x) \equiv f^+(x)$. Since $f(x)$ was trained specifically on $L_{train}$, we can reasonably assume it is optimal for samples within that length. Thus, $f^+(x) \neq f(x)$ implies that while extrapolation makes longer samples better, the original performance within $L_{train}$ degrades. We can figuratively call this loss the "<b>extrapolation tax</b>."</p>
+
+<p>Early on when NTK-RoPE was proposed, the open-source community became aware of the "extrapolation tax" and proposed a corresponding solution: dynamically adjusting the scale factors of various extrapolation methods as the sequence length changes. This is "Dynamic Scaling," first proposed in a Reddit post: <a href="https://www.reddit.com/r/LocalLLaMA/comments/14mrgpr/dynamically_scaled_rope_further_increases/">"Dynamically Scaled RoPE further increases performance of long context LLaMA with zero fine-tuning."</a> Using YaRN as an example, where the length-related scaling factor is $s=\frac{L_{test}}{L_{train}}$, Dynamic Scaling replaces it with a dynamic $s(pos)=\frac{\max(L_{train}, pos+1)}{L_{train}}$, where $pos$ is the current token's position ID (starting from zero). This change means Dynamic Scaling tries to find the smallest scale factor for each position that theoretically minimizes the impact on the model (or equivalently, each position gets a different $\theta_i(pos)$), thereby achieving the effect of refusing to pay the tax.</p>
+
+<p>However, truly implementing a different $\theta_i(pos)$ for every position is very difficult. For the same reason as Leaky ReRoPE and ReRoPE needing repeated Attention calculations, because RoPE achieves relative position via absolute position, it means a single calculation can only achieve one fixed $\theta_i$. To achieve different $\theta_i$ for different positions, the K in the KV Cache can only store values before RoPE is applied, and different positions must be calculated multiple times. This turns into a recursive process similar to an RNN. As we know, LLM dialogue involves a prefill stage (calculating the input) and a generation stage (token-by-token generation). Prefill is originally parallelizable. If it were changed to recursion like generation, the calculation speed would undoubtedly be significantly throttled when the input is very long (like inputting a whole paper), making it impractical.</p>
+
+<p>Thus, a compromise method is "local static": during the prefill stage, we know exactly how many tokens are in the input, and during generation, we set a `max_gen_tokens`. We add these two numbers together and use them as the $L_{test}$ to calculate the corresponding $\theta_i$ for this entire turn of dialogue. Once done, we update $L_{test}$ and $\theta_i$ in the same way for the next turn. This way, we don't introduce complex implementations or sacrifice efficiency. It acts as a practical solution, especially since `max_gen_tokens` is often much smaller than the prefill tokens when input is long, so the Scale is approximately constant during a single session.</p>
+
+<p>The idea of Dynamic Scaling was pushed to the extreme by the CLEX method proposed in <a href="https://papers.cool/arxiv/2310.16450">"CLEX: Continuous Length Extrapolation for Large Language Models."</a> CLEX also assigns a unique $\theta_i(pos)$ to each position, assuming $\theta_i(pos)$ is a continuous function of $pos$, modeled by a neural ODE. By fine-tuning the ODE parameters, it achieved better results than YaRN, and experimental results showed that continuous Dynamic Scaling yields nearly infinite extrapolation capability.</p>
+
+<h2>Starting Anew</h2>
+
+<p>Besides Dynamic Scaling, another approach to "refusing to pay taxes" is "starting anew"—re-designing the model architecture used during pre-training so that it has the potential for length extrapolation without any modification after training. In this series, I have two relevant explorations: the HWFA (Hybrid Window-Full Attention) mentioned in <a href="translation_9603.html">"Transformer Upgrade Path: 9. A New Idea for Global Length Extrapolation"</a> and Key Norm, verified in <a href="translation_9859.html">"Transformer Upgrade Path: 15. Key Normalization for Length Extrapolation."</a></p>
+
+<p>In HWFA, the Attention in all the first $L-1$ layers of the model is replaced with Window Attention using RoPE with a small window, while the final layer's Attention is replaced with Full Attention using NoPE (No Positional Encoding). A model trained with these modifications has a degree of length extrapolation capability without any changes. A similar idea is found in <a href="https://papers.cool/arxiv/2307.03170">"Focused Transformer: Contrastive Training for Context Scaling,"</a> though that paper wasn't about extrapolation specifically, but about extending context via simple fine-tuning. The issue with HWFA is that its training performance is inferior to standard Attention models. To address this, I later proposed the improved HWFA2 (HWFA + ReRoPE) in <a href="translation_9731.html">"Transformer Upgrade Path: 14. When HWFA meets ReRoPE."</a></p>
+
+<p>Compared to HWFA, HWFA2 uses a larger window size, restores RoPE for Full Attention, and allows multiple layers of Full Attention to be interspersed among Window Attention (rather than just one at the end). These modifications allow it to match the training performance of standard Attention (sometimes even surpassing it), but the downside is that it no longer achieves extrapolation without modification (RoPE needs to be swapped for ReRoPE). It's a trade-off. Of course, one can also ignore the extrapolation effect and treat HWFA2 purely as an acceleration scheme that significantly reduces model complexity without losing performance. By the way, an Arxiv paper from last month titled <a href="https://papers.cool/arxiv/2312.08618">"Zebra: Extending Context Window with Layerwise Grouped Local-Global Attention"</a> proposed a method called Zebra, which uses a combination of several Full Attention layers interspersed among Window Attention layers, just like HWFA2.</p>
+
+<p>As for Key Norm, it originated from the "accidental discovery" that normalizing Attention's Keys using L2 normalization significantly improved the model's length extrapolation capability. Further thought on this deepened my understanding of length extrapolation. For standard Attention based on the inner product of Q and K, we can express it as:</p>
+
+\begin{equation}s(n|m) = \boldsymbol{q}_m\cdot \boldsymbol{k}_n = \Vert\boldsymbol{q}_m\Vert \Vert\boldsymbol{k}_n\Vert \cos(\boldsymbol{q}_m,\boldsymbol{k}_n),\quad p(n|m) = \frac{\exp\left(\frac{s(n|m)}{\sqrt{d}}\right)}{\sum\limits_{j=1}^i \exp\left(\frac{s(j|m)}{\sqrt{d}}\right)}\end{equation}
+
+<p>Clearly, to increase the relative attention of $n$ for a specific $m$, the model has two choices: increase $\Vert\boldsymbol{k}_n\Vert$, or increase $\cos(\boldsymbol{q}_m,\boldsymbol{k}_n)$. Due to the curse of dimensionality, increasing $\Vert\boldsymbol{k}_n\Vert$ is easier than increasing $\cos(\boldsymbol{q}_m,\boldsymbol{k}_n)$. So, if possible, the model will choose to increase $\Vert\boldsymbol{k}_n\Vert$. Since $\Vert\boldsymbol{k}_n\Vert$ is independent of sequence index $i$, it describes absolute importance. This might be one of the causes of the attention distribution characteristics described in <a href="https://papers.cool/arxiv/2305.17118">Scissorhands</a>. On the other hand, because the model prefers to increase $\Vert\boldsymbol{k}_n\Vert$, the training for $\cos(\boldsymbol{q}_m,\boldsymbol{k}_n)$ might be insufficient, which is likely the more fundamental reason why Attention cannot extrapolate.</p>
+
+<p>Thus, the reason why Key Norm improves extrapolation becomes clear. Key Norm normalizes all $\Vert\boldsymbol{k}_n\Vert$ to 1, stripping the model of the "increase $\Vert\boldsymbol{k}_n\Vert$" option. Consequently, it must focus on adjusting $\cos(\boldsymbol{q}_m,\boldsymbol{k}_n)$, making the training of the cosine term more thorough. Simultaneously, I have performed comparison experiments showing that Key Norm only shows extrapolation capabilities when combined with RoPE; Key Norm + NoPE or NoPE alone shows no such effect. This is likely because RoPE's own rotation action enriches the diversity of angles between $\boldsymbol{q}_m, \boldsymbol{k}_n$ (acting like data augmentation), thereby making the training of $\cos(\boldsymbol{q}_m,\boldsymbol{k}_n)$ more robust.</p>
+
+<p>There is also a paper titled <a href="https://papers.cool/arxiv/2309.08646">"CoCA: Fusing position embedding with Collinear Constrained Attention for fine-tuning free context window extending,"</a> which proposes a solution from a different angle: it modifies the implementation of attention so that for each group of $\boldsymbol{q}_m^{(i)}, \boldsymbol{k}_m^{(i)}$, it ensures $\cos(\boldsymbol{q}_m^{(i)}, \boldsymbol{k}_m^{(i)})=1$ (where group $i$ refers to the paired components of $\boldsymbol{q}, \boldsymbol{k}$ in RoPE). This design ensures that larger values of $\cos(\boldsymbol{q}_m, \boldsymbol{q}_n)$ are mostly trained (since the maximum cosine is 1), while insufficiently trained parts are only the small portions (which will have low Softmax probability and won't disrupt the distribution), thereby gaining some extrapolation ability. However, CoCA's modification risks lowering the capacity ceiling of each attention head—i.e., for the same parameters, it might only have half the fitting power of standard attention heads.</p>
+
+<h2>Other Ideas</h2>
+
+<p>Having reached this point, the introduction to length extrapolation is drawing to a close. Despite the length of this post, it is still difficult to introduce all related work in detail. Here are some other relevant works I can recall.</p>
+
+<p>Initially, we believed Attention cannot extrapolate because of "out-of-bounds" positions during prediction. A simple solution is to disturb the position indices during training, effectively using data augmentation so the model adapts to position indices used during prediction. <a href="translation_9444.html">"Transformer Upgrade Path: 8. Length Extrapolation and Positional Robustness"</a> and <a href="translation_9728.html">"Transformer Upgrade Path: 13. Inverse Leaky ReRoPE"</a> fall into this category, along with <a href="https://papers.cool/arxiv/2309.10400">"PoSE: Efficient Context Window Extension of LLMs via Positional Skip-wise Training"</a> from a few months ago. These methods were not very stable in my experiments and added extra complexity or randomness, making it hard to ensure they wouldn't affect the model's original Scaling Law.</p>
+
+<p>Some readers have asked: if YaRN says low frequencies need interpolation, what happens if we just discard them? Or similarly, what if we decrease the base to increase the proportion of high frequencies? I did try decreasing RoPE's base during pre-training; the result was that final performance was worse and it showed no extrapolation capability. However, <a href="https://papers.cool/arxiv/2310.05209">"Scaling Laws of RoPE-based Extrapolation"</a> (there is a Chinese version on Zhihu: <a href="https://zhuanlan.zhihu.com/p/660073229">"Scaling Laws of RoPE Extrapolation — Attempting to Extrapolate RoPE to 1M Context"</a>) tried another path: decreasing the base only during the fine-tuning stage. Combined with short-text fine-tuning, it demonstrates long-text extrapolation capabilities.</p>
+
+<p>From my perspective, decreasing the Base or removing low frequencies isn't very scientific. Even if it might have extrapolation effects in some cases, it likely sacrifices the model's inherent capacity. As Bowen Peng once observed, high frequencies learn local relative distance and low frequencies learn long-range absolute distance; both are important and act like a hierarchical relationship. From the perspective of <a href="translation_9675.html">"Transformer Upgrade Path: 10. RoPE is a Base-β Encoding,"</a> low frequencies correspond to high-order digits. If you only keep the low-order digits and remove high-order ones, the result is equivalent to a modulo operation, making it impossible to accurately express position. Moreover, high and low frequencies are relative; a frequency might be low for 10K text but high for 100K text.</p>
+
+<p>Recently, there was also an interesting paper <a href="https://papers.cool/arxiv/2312.04455">"Fortify the Shortest Stave in Attention: Enhancing Context Awareness of Large Language Models for Effective Tool Use."</a> It found that for a single model, using different bases and averaging the outputs can enhance overall performance. This suggests that bases of different sizes have their own merits, and one shouldn't simply decrease the base for the sake of extrapolation.</p>
+
+<p>In general, although length extrapolation technology has made great strides, it remains a mysterious matter. For example, swapping RoPE for ReRoPE during the inference stage shows some extrapolation effects. So, would using ReRoPE during the pre-training stage lead to better extrapolation? Quite the opposite. I conducted experiments using ReRoPE from the start of training; the resulting model showed zero length extrapolation capability. This probably relates to the analysis under Key Norm: using ReRoPE during training reduces the diversity of angles between $\boldsymbol{q}_n, \boldsymbol{k}_m$, making the training of $\cos(\boldsymbol{q}_n, \boldsymbol{k}_m)$ less thorough, thus reducing extrapolation capability. Many extrapolation techniques might also be tied to specific architectures. Some early positional encodings said to have extrapolation capabilities, like ALIBI, KERPLE, and XPOS, were tested using Multi-Head Attention + Pre Norm. However, in my tests with Single Head GAU + Post Norm, I never found them to possess extrapolation capabilities. This indicates that the analysis of length extrapolation is likely still missing the link related to architecture.</p>
+
+<h2>Summary</h2>
+
+<p>In this article, I have combined my learning experiences to summarize the progress in length extrapolation over the past year. I have briefly introduced the characteristics and underlying ideas of relevant methods and tried to connect them together, hoping to help everyone understand the subject of length extrapolation more deeply and systematically. If there are any errors or omissions, please feel free to point them out.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9948.html" style="color: #005fcc;">https://kexue.fm/archives/9948</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

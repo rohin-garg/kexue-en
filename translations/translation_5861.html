@@ -1,0 +1,274 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/5861">Playing with Keras: Automatic Title Generation via seq2seq</a></h1>
+    <p>By 苏剑林 | September 01, 2018</p>
+
+    <p>Although I have claimed to be working in NLP for quite a while now, I had never truly run the classic masterpiece of NLP combined with Deep Learning—seq2seq. Recently, my interest was sparked, and I decided to learn and practice seq2seq, naturally ending with a Keras implementation.</p>
+
+    <p>There are many things seq2seq can do. I have chosen a relatively simple task: generating titles (in Chinese) based on article content, which can also be understood as a form of automatic summarization. I selected this task primarily because "article-title" corpus pairs are relatively easy to find, allowing for quick experimentation.</p>
+
+    <h2 id="seq2seq-intro">Introduction to seq2seq</h2>
+    <p>The so-called seq2seq refers to general sequence-to-sequence transformation tasks, such as machine translation, automatic summarization, etc. The characteristic of such tasks is that the input sequence and the output sequence are not aligned. If they were aligned, we would call it sequence labeling, which is much simpler than seq2seq. Therefore, although sequence labeling tasks can also be understood as sequence-to-sequence transformations, we generally do not include sequence labeling when discussing seq2seq.</p>
+    <p>The key to implementing seq2seq yourself is understanding its principles and architecture. Once those are clear, implementation is not complicated regardless of the framework. Early on, there was a <a href="https://github.com/farizrahman4u/seq2seq">third-party Keras seq2seq library</a>, but the author has since abandoned updates, perhaps feeling that such a simple thing no longer needed a dedicated library. Another useful reference is the article <a href="https://blog.keras.io/a-ten-minute-introduction-to-sequence-to-sequence-learning-in-keras.html">"A ten-minute introduction to sequence-to-sequence learning in Keras"</a> written on the official Keras blog last year.</p>
+
+    <h3 id="basic-structure">Basic Structure</h3>
+    <p>Suppose the source sentence is $X=(a,b,c,d,e,f)$ and the target output is $Y=(P,Q,R,S,T)$. A basic seq2seq structure is shown in the figure below.</p>
+    
+    <p align="center"><strong>Basic seq2seq Architecture</strong></p>
+
+    <p>Although the diagram has many lines and might look confusing, the structure is actually quite simple. The left side is the <strong>encoder</strong> for the input. It is responsible for encoding the input (which may be of variable length) into a fixed-size vector. Many models can be chosen for this, such as RNN structures like GRU or LSTM, or CNN+Pooling, or Google's pure Attention. Theoretically, this fixed-size vector contains all the information of the input sentence.</p>
+    <p>The <strong>decoder</strong> is responsible for decoding the vector we just encoded into our desired output. Unlike the encoder, we emphasize that the decoder is "unidirectionally recursive" because the decoding process is carried out recursively. The specific process is:</p>
+    <blockquote>
+        <p>1. All output sequences start with a universal <code>&lt;start&gt;</code> token and end with an <code>&lt;end&gt;</code> token. These two tokens are also treated as words/characters;</p>
+        <p>2. Input <code>&lt;start&gt;</code> into the decoder to get a hidden layer vector. Mix this vector with the output of the encoder, then feed it into a classifier. The output of the classifier should be $P$;</p>
+        <p>3. Input $P$ into the decoder to get a new hidden layer vector. Mix it again with the encoder output and feed it into the classifier. The classifier should output $Q$;</p>
+        <p>4. Continue this recursion until the classifier outputs the <code>&lt;end&gt;</code> token.</p>
+    </blockquote>
+    <p>This is the decoding process of a basic seq2seq model. During decoding, the result of each step is fed into the next step until the <code>&lt;end&gt;</code> token is output.</p>
+
+    <h3 id="training-process">Training Process</h3>
+    <p>In fact, the diagram above also illustrates the general training process of seq2seq. Since we have labeled data pairs during training, we can preconfigure the input and output for each step of the decoder. Thus, the process actually involves "inputting $X$ and $Y[:-1]$ to predict $Y[1:]$," essentially shifting the target $Y$ by one position for training. This training method is called <strong>Teacher-Forcing</strong>.</p>
+    <p>The decoder can also use GRU, LSTM, or CNN structures. However, it is crucial to emphasize that this "predicting the future" characteristic only exists during training. It does not exist during the inference (prediction) phase. Therefore, when the decoder executes each step, it cannot use inputs from future steps. Consequently, if using an RNN structure, generally only unidirectional RNNs are used; if using CNNs or pure Attention, the subsequent parts must be <strong>masked</strong> (for convolution, this means multiplying the kernel by a $0/1$ matrix so the convolution can only read the current and "leftward" inputs; for Attention, a similar mask is applied to the query sequence).</p>
+    <blockquote>
+        <p>Sensitive readers might notice that this training scheme is "local" and not truly end-to-end. For example, when predicting $R$, we assume $Q$ is already known—meaning $Q$ was successfully predicted in the previous step, but this is not guaranteed during inference. If an error occurs in an earlier step, it may cause a chain reaction, rendering subsequent training or prediction steps meaningless.</p>
+        <p>Some scholars have considered this issue. For instance, the paper <a href="https://papers.cool/arxiv/1606.02960">"Sequence-to-Sequence Learning as Beam-Search Optimization"</a> incorporates the entire decoding search process into the training process, and uses pure gradient descent (without reinforcement learning). This is a very worthy reference. However, the computational cost of local training is lower, and in most cases, we only use local training for seq2seq.</p>
+    </blockquote>
+
+    <h3 id="beam-search">Beam Search</h3>
+    <p>We have mentioned the decoding process several times, but it is not yet complete. In fact, for seq2seq, we are modeling:
+    $$p(Y|X)=p(Y_1|X)p(Y_2|X,Y_1)p(Y_3|X,Y_1,Y_2)p(Y_4|X,Y_1,Y_2,Y_3)p(Y_5|X,Y_1,Y_2,Y_3,Y_4)$$
+    Clearly, during decoding, we hope to find the $Y$ with the maximum probability. How do we do that?</p>
+    <p>If at the first step $p(Y_1|X)$, we directly choose the one with the highest probability (which we expect to be target $P$), then substitute it into the second step $p(Y_2|X,Y_1)$, and again choose the highest probability $Y_2$, and so on—selecting the current maximum probability output at each step—this is called <strong>greedy search</strong>. It is the lowest-cost decoding scheme. However, note that this scheme may not yield the optimal result. Suppose we didn't choose the $Y_1$ with the highest probability in the first step; substituting a different $Y_1$ into the second step might yield a very large conditional probability $p(Y_2|X,Y_1)$, such that the product of the two exceeds the result of the greedy algorithm.</p>
+    <p>However, if we were to enumerate all paths to find the optimum, the computational load would be unacceptably large (this is not a Markov process, so dynamic programming cannot be used). Therefore, seq2seq uses a compromise method: <strong>beam search</strong>.</p>
+    <p>This algorithm is similar to dynamic programming, but it is simpler even in cases where dynamic programming is applicable. Its idea is: at each calculation step, only keep the <code>topk</code> candidate results with the highest current probabilities. For example, if <code>topk=3</code>, in the first step, we only keep the three $Y_1$ values that maximize $p(Y_1|X)$. Then we substitute them respectively into $p(Y_2|X,Y_1)$ and take the top three $Y_2$ for each. This gives us $3^2=9$ combinations. At this point, we calculate the total probability for each combination and again only keep the top three. This repeats recursively until the first <code>&lt;end&gt;</code> token appears. Essentially, it still falls within the scope of greedy search, but it preserves more possibilities during the greedy process. Ordinary greedy search is equivalent to <code>topk=1</code>.</p>
+
+    <h2 id="seq2seq-improvement">Improving seq2seq</h2>
+    <p>The seq2seq model shown earlier is standard, but it encodes the entire input into a fixed-size vector and then decodes using that vector. This means the vector must theoretically contain all the information from the original input, placing extremely high demands on the encoder and decoder, especially in tasks like machine translation where information must remain invariant. This model is equivalent to asking us to "write the corresponding English translation immediately after reading a Chinese passage once," requiring powerful memory and decoding capabilities. In reality, humans don't have to do it this way; we repeatedly flip back to refer to the original text. This leads to the following two techniques.</p>
+
+    <h3 id="Attention">Attention</h3>
+    <p>Attention is now basically a "standard" module for seq2seq models. Its idea is: at each decoding step, don't just combine the fixed-size vector encoded by the encoder (reading the whole text); also look back at every individual character or word from the original source (detailed local reading). The two work together to determine the output of the current step.</p>
+    
+    <p align="center"><strong>seq2seq with Attention</strong></p>
+
+    <p>As for the specific implementation of Attention, I have previously written an article introducing it; please refer to <a href="translation_4765.html">"A Shallow Reading of 'Attention is All You Need' (Introduction + Code)"</a>. Attention is generally divided into multiplicative and additive. I introduced the multiplicative Attention systematically presented by Google. Interested readers can look up additive Attention. As long as you grasp the three elements—query, key, and value—Attention is not difficult to understand.</p>
+
+    <h3 id="prior-knowledge">Prior Knowledge</h3>
+    <p>Returning to the task of generating article titles with seq2seq, the model can be simplified, and some prior knowledge can be introduced. For example, since both the input and output languages are Chinese, the Embedding layers of the encoder and decoder can share parameters (i.e., using the same set of word vectors). This significantly reduces the number of model parameters.</p>
+    <p>Furthermore, there is a very useful piece of prior knowledge: most words in a title appear in the article (Note: they just appear; they are not necessarily continuous, and we cannot say the title is contained within the article, otherwise it would become a standard sequence labeling problem). Thus, we can use the set of words in the article as a prior distribution and add it to the classification model during decoding, making the model more inclined to select words already present in the article during decoding.</p>
+    <p>Specifically, at each prediction step, we obtain a total vector $x$ (as mentioned before, this should be a concatenation of the decoder's current hidden state, the encoder's encoding vector, and the Attention encoding between the current decoder and encoder). This is then connected to a fully connected layer to finally obtain a vector $y=(y_1, y_2, \dots, y_{|V|})$ of size $|V|$, where $|V|$ is the number of words in the vocabulary. After $y$ passes through softmax, we get the original probability:
+    $$p_i = \frac{e^{y_i}}{\sum_i e^{y_i}}$$
+    This is the original classification scheme. The scheme for introducing a prior distribution is: for each article, we obtain a $0/1$ vector $\chi=(\chi_1, \chi_2, \dots, \chi_{|V|})$ of size $|V|$, where $\chi_i=1$ means the word appeared in the article, otherwise $\chi_i=0$. Such a $0/1$ vector is passed through a scaling and translation layer to get:
+    $$\hat{y}=s \otimes \chi+t=(s_1\chi_1+t_1, s_2\chi_2+t_2,\dots,s_{|V|}\chi_{|V|}+t_{|V|})$$
+    where $s, t$ are trainable parameters. Then, this vector is averaged with the original $y$ before being passed into the softmax:
+    $$y \leftarrow \frac{y + \hat{y}}{2}, \quad p_i = \frac{e^{y_i}}{\sum_i e^{y_i}}$$
+    Experiments showed that introducing this prior distribution helps speed up convergence and generates titles of higher and more stable quality.</p>
+
+    <h2 id="keras-reference">Keras Reference</h2>
+    <p>It's time for the happy Hour of Open Source~</p>
+
+    <h3 id="basic-implementation">Basic Implementation</h3>
+    <p>Based on the descriptions above, I collected a corpus of over 800,000 news articles to attempt training an automatic title generation model. For simplicity, I chose characters as the basic unit and introduced four additional markers representing <code>mask</code>, <code>unk</code>, <code>start</code>, and <code>end</code>. For the encoder, I used a dual-layer bidirectional LSTM, and for the decoder, a dual-layer unidirectional LSTM. Specific details can be found in the source code (Python 2.7 + Keras 2.2.4 + Tensorflow 1.8):</p>
+    <blockquote>
+        <p><a href="https://github.com/bojone/seq2seq/blob/master/seq2seq.py">https://github.com/bojone/seq2seq/blob/master/seq2seq.py</a></p>
+    </blockquote>
+    <p>Using 64,000 articles as one epoch, after training for 50 epochs (over an hour), the model could generate titles that looked decent:</p>
+    <blockquote>
+        <p><strong>Article Content:</strong> On August 28, online reports claimed that user data from chain hotels under the Huazhu Group were suspected of being leaked. From the content posted by the seller, the data includes guest information from more than 10 hotel brands under Huazhu, such as Hanting, Joyue, Orange, and Ibis. The leaked information includes Huazhu official website registration profiles, identity information from hotel check-in registration, and hotel room records, as well as guest names, mobile numbers, emails, ID numbers, login account passwords, etc. The seller is selling this package of about 500 million records. Threat Hunter, a third-party security platform, verified the 30,000 pieces of data provided by the seller and believes the authenticity is very high. On the same afternoon, Huazhu Group issued a statement saying it had quickly launched an internal verification and reported it to the police immediately. That evening, Shanghai police announced that they had received a report from Huazhu Group and had intervened in the investigation.<br>
+        <strong>Generated Title: 《Hotel User Data Suspected of Leakage》</strong></p>
+        <p><strong>Article Content:</strong> Sina Sports News: On October 16 Beijing time, the NBA China Games Guangzhou stop kicked off as scheduled, and the Rockets won again, defeating the Nets 95-85. Yao Ming gradually found his rhythm, playing 18 minutes and 39 seconds, shooting 5-of-8, scoring 10 points and 5 rebounds, and recording 1 block. The Rockets concluded their China trip successfully with a two-game winning streak.<br>
+        <strong>Generated Title: 《Live: Rockets Win Two in a Row, Rockets Win Again, Yao Ming 10 Points 5 Rebounds in Guangzhou Stop》</strong></p>
+    </blockquote>
+    <p>Of course, these are just two better examples. There are many bad ones, so it's certainly not enough for direct engineering use; many "black tech" optimizations would be required.</p>
+
+    <h3 id="mask">Masking</h3>
+    <p>In seq2seq, proper masking is vital. Masking means hiding information that should not be read or is useless, usually by multiplying it with a $0/1$ vector. Keras's built-in masking mechanism is very unfriendly—some layers do not support masking, and ordinary LSTMs see their speed drop by almost half when masking is enabled. Therefore, I now directly use 0 as the mask marker and write my own Lambda layer for conversion. This way, speed is essentially unaffected, and it supports embedding into any layer. Refer to the code above for details.</p>
+    <p>Note that in the past, we usually did not distinguish between <code>mask</code> and <code>unk</code> (unknown words). However, if adopting my scheme, it is better to distinguish them, because although we don't know the specific meaning of an unknown word, it is still a real word and has at least a placeholder role, whereas <code>mask</code> is information we wish to erase completely.</p>
+
+    <h3 id="decoder-side">Decoding Side</h3>
+    <p>Beam search decoding is implemented in the code. Readers can test the impact of different <code>topk</code> values on the decoding results.</p>
+    <p>One thing to mention is that the implementation of decoding in the reference code is quite "lazy," which significantly slows down the decoding speed. Theoretically, after obtaining the output of the current time step, we only need to pass it into the next iteration of the LSTM to get the output for the next time step. However, this requires rewriting the LSTM on the decoder side (distinguishing between the training phase and the testing phase while sharing weights), which is relatively complex and not very beginner-friendly. Therefore, I used a very crude solution: re-running the entire model for every single step of prediction. As a result, the code is minimal, but it gets slower as the sequence grows, changing the computational complexity from $O(n)$ to $O(n^2)$.</p>
+
+    <h2 id="final-words">Final Words</h2>
+    <p>Ran another example with Keras. Not bad, not bad. I will firmly continue to hold the banner of Keras high~</p>
+    <p>Corpus for automatic title tasks is easy to find, and it is a task with relatively low difficulty within seq2seq, making it suitable for everyone to practice. Friends who want to get into this field, hurry up and join in!</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_5861.html" style="color: #005fcc;">https://kexue.fm/archives/5861</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

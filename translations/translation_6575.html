@@ -1,0 +1,433 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']},
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="MathJax-script" async></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/6575">“Make Keras a Bit Cooler!”: Intermediate Variables, Weight Averaging, and Safe Generators</a></h1>
+
+    <p>By 苏剑林 | April 28, 2019</p>
+
+
+    <p>By <strong>Su Jianlin</strong> | 2019-04-28</p>
+
+    <p>Continuing our journey to <a href="https://kexue.fm/search/%E8%AE%A9Keras%E6%9B%B4%E9%85%B7%E4%B8%80%E4%BA%9B/">“Make Keras a Bit Cooler.”</a></p>
+
+    <p>Today, we will implement the flexible output of arbitrary intermediate variables using Keras, perform seamless weight moving averaging, and finally, introduce the process-safe way to write generators.</p>
+
+    <p>First is <strong>outputting intermediate variables</strong>. When customizing layers, we may want to inspect intermediate variables. Some of these requirements are relatively easy to implement, such as viewing the output of a specific layer—one simply needs to save the part of the model up to that layer as a new model. However, some requirements are more difficult, such as when using an Attention layer, where we might want to view the values of the Attention matrix; using the method of building a new model would be very cumbersome. This article provides a simple method to satisfy this requirement completely.</p>
+
+    <p>Next is <strong>weight moving average</strong>. Weight moving average is an effective method for stabilizing and accelerating model training and even improving model performance. Many large-scale models (especially GANs) almost always use weight moving average. Generally, weight moving average is part of the optimizer, so it usually requires rewriting the optimizer to implement it. This article introduces an implementation of weight moving average that can be seamlessly inserted into any Keras model without customizing the optimizer.</p>
+
+    <p>As for the <strong>process-safe way of writing generators</strong>, it is because Keras uses multi-processing when reading from generators. If the generator itself contains multi-processing operations, it might lead to exceptions, so this issue needs to be addressed.</p>
+
+    <h2 id="outputting-intermediate-variables">Outputting Intermediate Variables</h2>
+
+    <p>This section uses a basic model as an example:</p>
+
+<pre><code>x_in = Input(shape=(784,))
+x = x_in
+
+x = Dense(512, activation='relu')(x)
+x = Dropout(0.2)(x)
+x = Dense(256, activation='relu')(x)
+x = Dropout(0.2)(x)
+x = Dense(num_classes, activation='softmax')(x)
+
+model = Model(x_in, x)
+</code></pre>
+
+    <p>We will progressively introduce how to obtain Keras intermediate variables.</p>
+
+    <h3 id="as-a-new-model">As a New Model</h3>
+
+    <p>Suppose that after the model is trained, I want to obtain the output corresponding to <code>x = Dense(256, activation='relu')(x)</code>. In that case, when defining the model, I can save the corresponding variable first and then redefine a model:</p>
+
+<pre><code>x_in = Input(shape=(784,))
+x = x_in
+
+x = Dense(512, activation='relu')(x)
+x = Dropout(0.2)(x)
+x = Dense(256, activation='relu')(x)
+y = x
+x = Dropout(0.2)(x)
+x = Dense(num_classes, activation='softmax')(x)
+
+model = Model(x_in, x)
+model2 = Model(x_in, y)
+</code></pre>
+
+    <p>After completing the training of <code>model</code>, you can directly use <code>model2.predict</code> to view the corresponding 256-dimensional output. The prerequisite for this approach is that <code>y</code> must be the output of a certain layer; it cannot be an arbitrary tensor.</p>
+
+    <h3 id="k-function">K.function!</h3>
+
+    <p>Sometimes we categorize a more complex custom layer, a typical example being an <a href="https://github.com/bojone/attention/blob/master/attention_keras.py">Attention layer</a>. We want to inspect some intermediate variables of the layer, such as the corresponding Attention matrix. This becomes quite troublesome. If we wanted to use the previous method, we would have to define the original Attention layer as two separate layers because, as mentioned before, when defining a new Keras model, the inputs and outputs must be inputs and outputs of Keras layers; they cannot be arbitrary tensors. Consequently, if you want to inspect multiple intermediate variables of a layer, you would have to constantly split the layer into multiple layers, which is clearly not user-friendly.</p>
+
+    <p>In fact, Keras provides an ultimate solution: <code>K.function</code>!</p>
+
+    <p>Before introducing <code>K.function</code>, let's write a simple example:</p>
+
+<pre><code>class Normal(Layer):
+    def __init__(self, **kwargs):
+        super(Normal, self).__init__(**kwargs)
+    def build(self, input_shape):
+        self.kernel = self.add_weight(name='kernel',
+                                      shape=(1,),
+                                      initializer='zeros',
+                                      trainable=True)
+        self.built = True
+    def call(self, x):
+        self.x_normalized = K.l2_normalize(x, -1)
+        return self.x_normalized * self.kernel
+
+x_in = Input(shape=(784,))
+x = x_in
+
+x = Dense(512, activation='relu')(x)
+x = Dropout(0.2)(x)
+x = Dense(256, activation='relu')(x)
+x = Dropout(0.2)(x)
+normal = Normal()
+x = normal(x)
+x = Dense(num_classes, activation='softmax')(x)
+
+model = Model(x_in, x)
+</code></pre>
+
+    <p>In the above example, <code>Normal</code> defines a layer where the output is <code>self.x_normalized * self.kernel</code>. However, I want to obtain the value of <code>self.x_normalized</code> after training is complete. It is related to the input and is not the output of a layer. Thus, the previous method cannot be used, but with <code>K.function</code>, it is just one line of code:</p>
+
+<pre><code>fn = K.function([x_in], [normal.x_normalized])
+</code></pre>
+
+    <p>The usage of <code>K.function</code> is similar to defining a new model. You need to pass in all input tensors related to <code>normal.x_normalized</code>, but it does not require the output to be the output of a layer—it allows any tensor! The returned <code>fn</code> is an object that functions like a function, so you only need to call:</p>
+
+<pre><code>fn([x_test])
+</code></pre>
+
+    <p>To obtain the <code>x_normalized</code> corresponding to <code>x_test</code>! This is much simpler and more universal than defining a new model.</p>
+
+    <p>In fact, <code>K.function</code> is one of the foundation functions of the Keras backend. It directly encapsulates the input and output operations of the backend. In other words, when using TensorFlow as the backend, <code>fn([x_test])</code> is equivalent to:</p>
+
+<pre><code>sess.run(normal.x_normalized, feed_dict={x_in: x_test})
+</code></pre>
+
+    <p>Therefore, the output of <code>K.function</code> allows for any tensor because it is essentially operating directly on the backend.</p>
+
+    <h2 id="weight-moving-average">Weight Moving Average</h2>
+
+    <p>Weight moving average is an effective method for providing training stability. Performance can be improved with almost zero additional cost through moving average. Weight moving average generally refers to "Exponential Moving Average," or EMA for short, because exponential decay is usually used as the proportion of weight in moving averages. It has been accepted by mainstream models, especially GANs. In many GAN papers, we typically see descriptions like:</p>
+
+    <blockquote>we use an exponential moving average with decay 0.999 over the weight ...</blockquote>
+
+    <p>This means the GAN model uses EMA. Furthermore, ordinary models use it too; for example, <a href="https://papers.cool/arxiv/1804.09541">"QANet: Combining Local Convolution with Global Self-Attention for Reading Comprehension"</a> used EMA during the training process with a decay rate of 0.9999.</p>
+
+    <h3 id="format-of-moving-average">Format of Moving Average</h3>
+
+    <p>The format of weight moving average is actually very simple: assume each update of the optimizer is:
+    \begin{equation}\boldsymbol{\theta}_{n+1} = \boldsymbol{\theta}_n - \Delta \boldsymbol{\theta}_n \end{equation}
+    where $\Delta \boldsymbol{\theta}_n$ is the update brought by the optimizer, which can be any kind like SGD or Adam. Weight moving average, on the other hand, maintains a new set of variables $\boldsymbol{\Theta}$:
+    \begin{equation}\boldsymbol{\Theta}_{n+1} = \alpha \boldsymbol{\Theta}_n + (1-\alpha) \boldsymbol{\theta}_{n+1}\end{equation}
+    where $\alpha$ is a positive constant close to 1, called the "decay rate."</p>
+
+    <p>Weight moving average is also called Polyak averaging. Note that although it is somewhat similar in form, it is not the same as momentum acceleration: EMA does not change the trajectory of the original optimizer. Wherever the original optimizer went, it still goes the same way, but it maintains a set of new variables that average the trajectory of the original optimizer; momentum acceleration, however, changes the trajectory of the original optimizer.</p>
+
+    <p>To re-emphasize, <strong>weight moving average does not change the direction of the optimizer; it simply takes the points on the optimization trajectory, averages them, and uses that as the final model weights.</strong></p>
+
+    <p>Regarding the principle and effectiveness of weight moving average, you can further refer to the article <a href="https://kexue.fm/archives/6583#%E6%9D%83%E9%87%8D%E6%BB%91%E5%8A%A8%E5%B9%B3%E5%9D%87">"Optimization Algorithms from a Dynamical Perspective (IV): The Third Stage of GANs"</a>.</p>
+
+    <h3 id="clever-injection-implementation">Clever Injection Implementation</h3>
+
+    <p>The key to implementing EMA is how to introduce a set of average variables based on the original optimizer and execute the update of average variables after each parameter update. This requires a certain understanding of the Keras source code and its implementation logic.</p>
+
+    <p>The reference implementation provided here is as follows:</p>
+
+<pre><code>class ExponentialMovingAverage:
+    """Perform exponential moving average on model weights.
+    Usage: After model.compile and before the first training;
+    First initialize the object, then execute the inject method.
+    """
+    def __init__(self, model, momentum=0.9999):
+        self.momentum = momentum
+        self.model = model
+        self.ema_weights = [K.zeros(K.shape(w)) for w in model.weights]
+    def inject(self):
+        """Add update operators to model.metrics_updates.
+        """
+        self.initialize()
+        for w1, w2 in zip(self.ema_weights, self.model.weights):
+            op = K.moving_average_update(w1, w2, self.momentum)
+            self.model.metrics_updates.append(op)
+    def initialize(self):
+        """EMA weights initialization is consistent with the original model initialization.
+        """
+        self.old_weights = K.batch_get_value(self.model.weights)
+        K.batch_set_value(zip(self.ema_weights, self.old_weights))
+    def apply_ema_weights(self):
+        """Back up the original model weights, then apply average weights to the model.
+        """
+        self.old_weights = K.batch_get_value(self.model.weights)
+        ema_weights = K.batch_get_value(self.ema_weights)
+        K.batch_set_value(zip(self.model.weights, ema_weights))
+    def reset_old_weights(self):
+        """Restore the model to legacy weights.
+        """
+        K.batch_set_value(zip(self.model.weights, self.old_weights))
+</code></pre>
+
+    <p>Usage is very simple:</p>
+
+<pre><code>EMAer = ExponentialMovingAverage(model) # Execute after model.compile
+EMAer.inject() # Execute after model.compile
+
+model.fit(x_train, y_train) # Train the model
+</code></pre>
+
+    <p>After training is complete:</p>
+
+<pre><code>EMAer.apply_ema_weights() # Apply EMA weights to the model
+model.predict(x_test) # Perform prediction, verification, saving, etc.
+
+EMAer.reset_old_weights() # Before continuing training, restore the model's old weights. Again, EMA does not affect the model's optimization trajectory.
+model.fit(x_train, y_train) # Continue training
+</code></pre>
+
+    <p>Reviewing the implementation process, the main point is the introduction of the <code>K.moving_average_update</code> operation and its insertion into <code>model.metrics_updates</code>. During the training process, the model reads and executes all operators in <code>model.metrics_updates</code>, thereby completing the moving average.</p>
+
+    <h2 id="process-safe-generators">Process-Safe Generators</h2>
+
+    <p>Generally, when training data cannot be fully loaded into memory or needs to be generated dynamically, a <code>generator</code> is used. Typically, the way to write a Keras model <code>generator</code> is:</p>
+
+<pre><code>def data_generator():
+    while True:
+        x_train = something
+        y_train = otherthing
+        yield x_train, y_train
+</code></pre>
+
+    <p>But if <code>something</code> or <code>otherthing</code> contains multi-processing operations, problems may arise. In such cases, there are two solutions. One is to set the parameters <code>use_multiprocessing=False, worker=0</code> during <code>fit_generator</code>; the other method is to write the generator by inheriting from the <code>keras.utils.Sequence</code> class.</p>
+
+    <h3 id="official-reference-example">Official Reference Example</h3>
+
+    <p>The official introduction to the <code>keras.utils.Sequence</code> class is <a href="https://keras.io/utils/#sequence">here</a>. The official emphasis is:</p>
+
+    <blockquote><code>Sequence</code> are a safer way to do multiprocessing. This structure guarantees that the network will only train once on each sample per epoch which is not the case with generators.</blockquote>
+
+    <p>In short, it is safe for multi-processing and can be used with confidence. The example provided by the official documentation is as follows:</p>
+
+<pre><code>from skimage.io import imread
+from skimage.transform import resize
+import numpy as np
+
+# Here, `x_set` is list of path to the images
+# and `y_set` are the associated classes.
+
+class CIFAR10Sequence(Sequence):
+
+    def __init__(self, x_set, y_set, batch_size):
+        self.x, self.y = x_set, y_set
+        self.batch_size = batch_size
+
+    def __len__(self):
+        return int(np.ceil(len(self.x) / float(self.batch_size)))
+
+    def __getitem__(self, idx):
+        batch_x = self.x[idx * self.batch_size:(idx + 1) * self.batch_size]
+        batch_y = self.y[idx * self.batch_size:(idx + 1) * self.batch_size]
+
+        return np.array([
+            resize(imread(file_name), (200, 200))
+            for file_name in batch_x]), np.array(batch_y)
+</code></pre>
+
+    <p>Simply define the <code>__len__</code> and <code>__getitem__</code> methods according to the format. The <code>__getitem__</code> method directly returns one batch of data.</p>
+
+    <h3 id="bert-as-service-example">bert as service Example</h3>
+
+    <p>I first discovered the necessity of <code>Sequence</code> while experimenting with <a href="https://github.com/hanxiao/bert-as-service">bert as service</a>. <a href="https://github.com/hanxiao/bert-as-service">bert as service</a> is a service component developed by Xiao Han for quickly obtaining BERT encoding vectors. I once tried to use it to get character vectors and then pass them into Keras for training, but I found that it would always get stuck during training.</p>
+
+    <p>After searching, it was confirmed to be a conflict between the multi-processing of Keras's <code>fit_generator</code> and the built-in multi-processing of bert-as-service. The specifics of the conflict are somewhat vague to me, so I won't delve into it. However, a reference solution provided <a href="https://github.com/hanxiao/bert-as-service/issues/29#issuecomment-442362241">here</a> uses a generator written by inheriting from the <code>Sequence</code> class.</p>
+
+    <p>(P.S.: For calling bert as service, later Xiao Han provided a coroutine version <code>ConcurrentBertClient</code>, which can replace the original <code>BertClient</code>, so there will be no problems even with the original generator.)</p>
+
+    <h2 id="keras-as-a-breath-of-fresh-air">Keras as a Breath of Fresh Air</h2>
+
+    <p>In my eyes, Keras is a breath of fresh air among deep learning frameworks, much like Python is a breath of fresh air among all programming languages. Implementing what you need with Keras is like an enjoyable experience every single time.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6575.html" style="color: #005fcc;">https://kexue.fm/archives/6575</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,230 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/8757">A New WGAN Scheme: Implementing Lipschitz Constraints through Gradient Normalization</a></h1>
+    <p>By 苏剑林 | November 15, 2021</p>
+
+    <p>Currently, the mainstream methods for implementing WGAN include Weight Clipping, Spectral Normalization, and Gradient Penalty. This article introduces a new implementation scheme: Gradient Normalization (GN). This scheme originates from two interesting papers, namely <a href="https://papers.cool/arxiv/2109.02235">"Gradient Normalization for Generative Adversarial Networks"</a> and <a href="https://papers.cool/arxiv/2111.03162">"GraN-GAN: Piecewise Gradient Normalization for Generative Adversarial Networks"</a>.</p>
+
+    <p>What makes them interesting? As you can see from the titles, these two papers should be highly overlapping, perhaps even by the same authors. However, they are actually papers from two different teams at roughly the same time—one published in ICCV and the other in WACV. They derived nearly identical solutions based on the same assumptions. The degree of overlap in content is so high that I kept thinking they were the same paper. Truly, coincidences are everywhere~</p>
+
+    <h2>Basic Review</h2>
+    <p>We have introduced WGAN many times before, such as in <a href="translation_4439.html">"The Art of Mutual Confrontation: From Zero to WGAN-GP"</a> and <a href="translation_6280.html">"From Wasserstein Distance and Duality Theory to WGAN"</a>, so we will not repeat the details here. Briefly, the iterative form of WGAN is:</p>
+
+    \begin{equation}\min_G \max_{\Vert D\Vert_{L}\leq 1} \mathbb{E}_{x\sim p(x)}\left[D(x)\right] - \mathbb{E}_{z\sim q(z)}\left[D(G(z))\right]\end{equation}
+
+    <p>The key here is that the discriminator $D$ is a constrained optimization problem that must satisfy the Lipschitz constraint $\Vert D\Vert_{L}\leq 1$ during the optimization process. Therefore, the implementation difficulty of WGAN lies in how to introduce this constraint into $D$.</p>
+
+    <p>To recap, if there exists some constant $C$ such that for any $x, y$ in the domain, $\Vert f(x)-f(y)\Vert \leq C\Vert x - y\Vert$, then we say $f(x)$ satisfies a <a href="translation_6051.html">Lipschitz constraint</a> (L-constraint), where the minimum value of $C$ is called the Lipschitz constant (L-constant), denoted as $\Vert f\Vert_{L}$. Thus, for the WGAN discriminator, two steps are required: 1. $D$ must satisfy the L-constraint; 2. the L-constant must not exceed 1.</p>
+
+    <p>In fact, current mainstream neural network models are in the form of "linear combinations + non-linear activation functions," and mainstream activation functions are "near-linear," such as ReLU, LeakyReLU, and SoftPlus. Their derivatives' absolute values do not exceed 1, so mainstream models actually satisfy the L-constraint already. The key is how to ensure the L-constant does not exceed 1 (actually, it doesn't strictly have to be 1; it just needs to be bounded by some fixed constant).</p>
+
+    <h2>Scheme Introduction</h2>
+    <p>The ideas behind Weight Clipping and Spectral Normalization are similar; they both constrain parameters to ensure that the L-constant of each layer in the model is bounded, thereby bounding the total L-constant. Gradient Penalty, on the other hand, notes that a sufficient condition for $\Vert D\Vert_{L}\leq 1$ is $\Vert \nabla_x D(x)\Vert \leq 1$, so it imposes a "soft constraint" through the penalty term $(\Vert \nabla_x D(x)\Vert - 1)^2$.</p>
+
+    <p>The Gradient Normalization introduced in this article is also based on the same sufficient condition. It uses the gradient to transform $D(x)$ into $\hat{D}(x)$ such that it automatically satisfies $\Vert\nabla_x \hat{D}(x)\Vert \leq 1$. Specifically, we usually use ReLU or LeakyReLU as the activation function. Under these activation functions, $D(x)$ is actually a "piecewise linear function." This means that except at the boundaries, $D(x)$ is a linear function within local continuous regions; correspondingly, $\nabla_x D(x)$ is a constant vector.</p>
+
+    <p>Thus, Gradient Normalization aims to let $\hat{D}(x)=D(x)/\Vert \nabla_x D(x)\Vert$. In this way, we have:</p>
+
+    \begin{equation}\Vert\nabla_x \hat{D}(x)\Vert = \left\Vert \nabla_x \left(\frac{D(x)}{\Vert \nabla_x D(x)\Vert}\right)\right\Vert=\left\Vert \frac{\nabla_x D(x)}{\Vert \nabla_x D(x)\Vert}\right\Vert=1\end{equation}
+
+    <p>Of course, this might lead to division-by-zero errors, so the two papers proposed different solutions. The first paper (ICCV) directly added $|D(x)|$ to the denominator, which also guarantees the boundedness of the function:</p>
+
+    \begin{equation} \hat{D}(x) = \frac{D(x)}{\Vert \nabla_x D(x)\Vert + |D(x)|}\in [-1,1]\end{equation}
+
+    <p>The second paper (WACV) more simply added an $\epsilon$:</p>
+
+    \begin{equation} \hat{D}(x) = \frac{D(x)\cdot \Vert \nabla_x D(x)\Vert}{\Vert \nabla_x D(x)\Vert^2 + \epsilon}\end{equation}
+
+    <p>The second paper also mentioned testing $\hat{D}(x)=D(x)/(\Vert \nabla_x D(x)\Vert+\epsilon)$, noting the results were slightly worse but similar.</p>
+
+    <h2>Experimental Results</h2>
+    <p>Let's look at the experimental results. Naturally, since both were accepted to top conferences, the experimental results are positive. Some results are shown below:</p>
+
+    <p><em>[Experimental results table from the ICCV paper]</em></p>
+    <p><em>[Experimental results table from the WACV paper]</em></p>
+    <p><em>[Generation effect demonstration from the ICCV paper]</em></p>
+
+    <h2>Remaining Doubts</h2>
+    <p>The results look good, the theory seems sound, and it was recognized by two top conferences simultaneously, which undoubtedly makes it appear to be good work. However, my confusion has only just begun.</p>
+
+    <p>The most important issue with this work is that, according to the piecewise linear function assumption, although the gradient of $D(x)$ is locally a constant, it is discontinuous overall (if the gradient were globally continuous and constant, it would be a linear function, not piecewise linear). However, $D(x)$ itself is a continuous function, so $\hat{D}(x)=D(x)/\Vert \nabla_x D(x)\Vert$ is a continuous function divided by a discontinuous function, resulting in a discontinuous function!</p>
+
+    <p>So the question arises: it seems quite incredible that a discontinuous function can serve as a discriminator. One must realize that this discontinuity isn't just at a few boundary points; it's a discontinuity between two regions, making it an non-negligible presence. On Reddit, other readers expressed similar doubts, but as of yet, the authors have not provided a reasonable explanation (<a href="https://www.reddit.com/r/MachineLearning/comments/pjdvi4/r_iccv_2021_gradient_normalization_for_generative/">Link</a>).</p>
+
+    <p>Another issue is that if the piecewise linear function assumption were truly effective, then using $\hat{D}(x)=\left\langle \frac{\nabla_x D(x)}{\Vert \nabla_x D(x)\Vert}, x\right\rangle$ as the discriminator should theoretically be equivalent. However, my experimental results show that such a $\hat{D}(x)$ performs extremely poorly. Therefore, one possibility is that Gradient Normalization is indeed effective, but the reason for its effectiveness is not as simple as analyzed in the above two papers; perhaps there are more complex mechanisms at play that we haven't discovered yet. Furthermore, it's possible that our understanding of GANs is still far from sufficient; that is, the requirements for the continuity of the discriminator might be far different from what we imagine.</p>
+
+    <p>Finally, in my experimental results, the performance of Gradient Normalization was not as good as Gradient Penalty. Moreover, Gradient Penalty only requires second-order gradients when training the discriminator, whereas Gradient Normalization requires second-order gradients for training both the generator and the discriminator. Thus, the speed of Gradient Normalization decreases significantly, and memory consumption increases noticeably. From my personal experience, Gradient Normalization is not a particularly friendly scheme.</p>
+
+    <h2>Summary</h2>
+    <p>This article introduced a new scheme for implementing WGAN—Gradient Normalization. The scheme is simple in form and the results reported in the papers are quite good, but I personally believe there are still many points worth questioning.</p>
+
+    <hr />
+
+    <p>Su Jianlin. (Nov. 15, 2021). "A New WGAN Scheme: Implementing Lipschitz Constraints through Gradient Normalization" [Blog post]. Retrieved from <a href="translation_8757.html">https://kexue.fm/archives/8757</a></p>
+
+    </article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8757.html" style="color: #005fcc;">https://kexue.fm/archives/8757</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

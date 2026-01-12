@@ -1,0 +1,245 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/3785">Exploration of OCR Technology: 3. Feature Extraction (1)</a></h1>
+
+    <p>By 苏剑林 | June 18, 2016</p>
+
+    <p>As the first step of an OCR system, feature extraction aims to identify characteristics of candidate text regions in an image, facilitating text localization in the second step and recognition in the third step. In this section, we focus on imitating the human eye's process for handling images and Chinese characters, carving out an innovative path for image processing and character localization. <strong>This work is the core of the entire OCR system and the most pivotal part of our efforts.</strong></p>
+
+    <p>Traditional text segmentation approaches mostly follow the path of "edge detection + erosion and dilation + connected component detection," such as in paper [1]. However, edge detection in images with complex backgrounds leads to excessive edges in background sections (i.e., increased noise), while edge information for the text itself is easily overlooked, resulting in poor performance. If erosion or dilation is performed at this stage, the background and text regions will merge, further worsening the outcome. <strong>(In fact, we have traveled far enough down this path ourselves—we even wrote our own edge detection functions—but after extensive testing, we ultimately decided to abandon this approach.)</strong></p>
+
+    <p>Therefore, in this article, we have abandoned edge detection and erosion/dilation. Instead, through steps such as clustering, segmentation, denoising, and pooling, we have obtained high-quality features of the text portions. The general workflow is shown in Figure 2. These features can even be directly input into a character recognition model without additional processing. Since each part of our results is supported by a theoretical foundation, the reliability of the model is guaranteed.</p>
+
+    <p>Figure 2: General workflow of feature extraction</p>
+
+    <p>In this experimental section, we will use Figure 3 to demonstrate our results. The characteristics of this image are its medium size, vibrant background, and rich colors, with text and graphics interspersed in a non-fixed layout—typical of e-commerce promotional images. As we can see, the key to processing this image is distinguishing between the graphic and text areas, identifying and removing the electric rice cooker on the right, and retaining only the text regions.</p>
+
+    <p>Figure 3: Xiaomi Rice Cooker introductory image</p>
+
+    <h3>Image Preprocessing <a href="https://kexue.fm/archives/3785#%E5%9B%BE%E5%83%8F%E7%9A%84%E9%A2%84%E5%A4%84%E7%90%86">#</a></h3>
+
+    <p>First, we read the original image as a grayscale image to obtain an $m \times n$ grayscale matrix $M$, where $m, n$ are the image's height and width. Reading the image this way results in lower dimensionality compared to directly reading RGB color images while retaining essential text information. Grayscale conversion essentially integrates the original three channels of the RGB image into a single channel using the following formula:</p>
+    $$Y = 0.299R + 0.587G + 0.114B \tag{1}$$
+    <p>The grayscale version of Figure 3 is shown below.</p>
+    <p>Grayscale Image</p>
+
+    <p>The dimensions of the image itself are small. If processed directly, text strokes might be too thin and easily discarded as noise. To ensure strokes have a certain thickness, the image can be enlarged first. In our experiments, enlarging the image to twice its original size generally yields good results.</p>
+
+    <p>However, after enlargement, the distinction between text and background decreases. This is because interpolation algorithms fill in the gaps between pixels during upscaling. At this point, it is necessary to increase the contrast accordingly. Testing shows that for most images, a "power transformation" with an exponent of 2 works well. The power transformation is:</p>
+    $$x \mapsto x^r \tag{2}$$
+    <p>where $x$ represents the elements in matrix $M$, and $r$ is the exponent, which we set to 2 here. Then, the results need to be mapped back to the range $[0, 255]$:</p>
+    $$x \mapsto \frac{x-M_{min}}{M_{max}-M_{min}} \times 255 \tag{3}$$
+    <p>where $M_{max}$ and $M_{min}$ are the maximum and minimum values of matrix $M$. After this processing, the image appears as follows:</p>
+    <p>Power Transformation</p>
+
+    <h3>Grayscale Clustering <a href="https://kexue.fm/archives/3785#%E7%81%B0%E5%BA%A6%E8%81%9A%E7%B1%BB">#</a></h3>
+
+    <p>Next, we perform clustering on the colors of the image. Clustering is based on two factual premises:</p>
+
+    <blockquote>
+        <p>1. <strong>Grayscale Resolution:</strong> The human eye's grayscale resolution is approximately 40; thus, pixel values of 254 and 255 both appear simply as white to us.</p>
+        <p>2. <strong>Design Principles:</strong> According to general aesthetic principles used in poster design or fashion, it is usually recommended to use no more than three primary colors in a composition.</p>
+    </blockquote>
+
+    <p>In simpler terms, although the grayscale range of an image is $[0, 255]$, the overall tones we perceive are usually few. Therefore, similar grayscale levels can be grouped into one category, reducing the color distribution and effectively lowering noise.</p>
+
+    <p>In fact, clustering is a process of <strong>adaptively multi-leveling</strong> based on the image's characteristics, avoiding the information loss associated with traditional simple binarization. Since we need to determine the number of clusters automatically, traditional methods like KMeans were discarded. Furthermore, our tests showed that viable methods such as MeanShift suffer from slow speeds. Consequently, we designed our own clustering method using a "Kernel Density Estimation" approach, clustering by finding the extreme points of color density.</p>
+
+    <p><strong>Kernel Density Estimation</strong></p>
+
+    <p>With the preprocessed image, we can count the frequency of each grayscale level to obtain a frequency distribution histogram as shown in Figure 5:</p>
+    <p>Figure 5: Grayscale statistics of the preprocessed image</p>
+
+    <p>As can be seen, the grayscale distribution forms several prominent peaks; in other words, there is a clear clustering trend. However, histogram results are discrete. A smooth result is better for analysis and carries more weight. The method used to smooth statistical results is Kernel Density Estimation (KDE).</p>
+
+    <p>Kernel density estimation is a non-parametric estimation method proposed by Rosenblatt and Parzen, highly regarded in statistical theory and application [2]. Alternatively, it can be viewed simply as a function smoothing technique. When we estimate the probability (density) of a value based on a large amount of data, we are essentially making the following calculation:</p>
+    $$\hat{p}(x)=\frac{1}{nh}\sum_{i=1}^n K\left(\frac{x-x_i}{h}\right) \tag{4}$$
+    <p>where $K(x)$ is called the kernel function. When $h$ is set to 1 and $K(x)$ is defined as:</p>
+    $$K(x)=\left\{\begin{aligned}&1, \, x=0\\ &0, \, x \neq 0\end{aligned}\right. \tag{5}$$
+    <p>it becomes the histogram estimation mentioned above. The term $K(x)$ simply tells us that all $x_i$ within the range $h$ are counted toward $x$, with the weight given by $K\left(\frac{x-x_i}{h}\right)$. It is evident that the choice of $h$ significantly impacts the result; we call $h$ the bandwidth, and it primarily affects the smoothness of the result.</p>
+
+    <p>If $K(x)$ is discrete, the result remains discrete, but if $K(x)$ is smooth, the result will also be smooth. A commonly used smooth kernel function is the Gaussian kernel:</p>
+    $$K(x)=\frac{1}{\sqrt{2\pi}}e^{-x^2/2} \tag{6}$$
+    <p>The resulting estimation is called Gaussian Kernel Density Estimation. Here, we use Scott's rule to adaptively select $h$, though we still need to manually specify a smoothing factor, which we set to 0.2 for this article. For the sample image, we obtain the red curve result shown in Figure 6.</p>
+    <p>Figure 6: Gaussian kernel density estimation of the frequency distribution</p>
+
+    <p><strong>Maxima-Minima Segmentation</strong></p>
+
+    <p>From Figure 6, we can further observe the clustering trend of the image. This manifests as several distinct local maxima and minima points. Here, the maxima are located at $x=10, 57, 97, 123, 154$, and the minima are at $25, 71, 121, 142$.</p>
+
+    <p>Therefore, a natural clustering method arises: cluster into as many categories as there are maxima, using the minima as boundaries between categories. That is, for Figure 3, the image can be divided into 5 layers to be processed individually. After layering, the shape of each layer is shown below, where white represents 1 and black represents 0.</p>
+    <p>Layer 1</p>
+    <p>Layer 2</p>
+    <p>Layer 3</p>
+    <p>Layer 4</p>
+    <p>Layer 5</p>
+
+    <p><strong>Dividing the image into 5 layers through clustering</strong></p>
+
+    <p>As shown, due to the assumptions of "contrast" and "continuity," text layers can indeed be isolated using this kernel density estimation-based clustering method. Furthermore, <strong>the clustering-by-layering approach requires no assumptions about text color; even when the text color matches the background, effective detection can still be achieved.</strong></p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_3785.html" style="color: #005fcc;">https://kexue.fm/archives/3785</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

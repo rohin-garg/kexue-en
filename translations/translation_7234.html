@@ -1,0 +1,436 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/7234">A Brief Discussion on Adversarial Training: Significance, Methods, and Thoughts (with Keras Implementation)</a></h1>
+
+    <p>By 苏剑林 | March 01, 2020</p>
+
+
+<p>Currently, when talking about "adversarial" in deep learning, there are generally two meanings: one is Generative Adversarial Networks (GANs), representing a major class of advanced generative models; the other is the field related to adversarial attacks and adversarial samples. This latter field is related to GANs but quite different, primarily concerning the robustness of models under small perturbations. The adversarial topics previously covered in this blog have all been about the former; today, let's discuss "adversarial training" within the context of the latter.</p>
+
+<p>This article includes the following content:</p>
+
+<blockquote>
+    1. Introduction to basic concepts like adversarial samples and adversarial training;<br>
+    2. Introduction to adversarial training based on Fast Gradient Method (FGM) and its application in NLP;<br>
+    3. A Keras implementation of adversarial training (invoked with a single line of code);<br>
+    4. Discussion on the equivalence between adversarial training and gradient penalty;<br>
+    5. An intuitive geometric understanding of adversarial training based on gradient penalty.
+</blockquote>
+
+<h2>Method Introduction</h2>
+
+<p>In recent years, with the rapid development and deployment of deep learning, adversarial samples have received increasing attention. In the CV (Computer Vision) field, we need to enhance model robustness through adversarial attacks and defense—for example, in autonomous driving systems, preventing the model from recognizing a red light as a green light due to random noise. Similar adversarial training exists in the NLP (Natural Language Processing) field, but there, it is more commonly used as a regularization technique to improve the model's generalization ability!</p>
+
+<p>This has made adversarial training one of the "magic weapons" for climbing NLP leaderboards. Previously, Microsoft surpassed the original RoBERTa on <a href="https://gluebenchmark.com/leaderboard">GLUE</a> using RoBERTa + adversarial training; later, colleagues at my company refreshed the <a href="https://stanfordnlp.github.io/coqa/">CoQA</a> leaderboard using adversarial training. This successfully piqued my interest, so I studied it and am sharing it here.</p>
+
+<h3>Basic Concepts</h3>
+
+<p>To understand adversarial training, one must first understand "adversarial samples," which first appeared in the paper <a href="https://papers.cool/arxiv/1312.6199">"Intriguing properties of neural networks"</a>. Simply put, they refer to samples that "look" almost identical to humans but result in completely different predictions for the model. For example, see this classic case:</p>
+
+<p><em>Classic example of an adversarial sample. From the paper "Explaining and Harnessing Adversarial Examples".</em></p>
+
+<p>Once you understand adversarial samples, other related concepts are easy to grasp. For instance, "adversarial attack" is essentially finding ways to create more adversarial samples, while "adversarial defense" is finding ways for the model to correctly identify them. So-called "adversarial training" is a type of adversarial defense that constructs adversarial samples and adds them to the original dataset, hoping to enhance the model's robustness against such samples. Simultaneously, as mentioned at the beginning, it often improves model performance in NLP.</p>
+
+<h3>Min-Max</h3>
+
+<p>In general, adversarial training can be unified into the following format:</p>
+
+\begin{equation}\min_{\theta}\mathbb{E}_{(x,y)\sim\mathcal{D}}\left[\max_{\Delta x\in\Omega}L(x+\Delta x, y;\theta)\right]\label{eq:min-max}\end{equation}
+
+<p>Where $\mathcal{D}$ represents the training set, $x$ is the input, $y$ is the label, $\theta$ represents the model parameters, $L(x,y;\theta)$ is the loss for a single sample, $\Delta x$ is the adversarial perturbation, and $\Omega$ is the perturbation space. This unified format was first proposed in the paper <a href="https://papers.cool/arxiv/1706.06083">"Towards Deep Learning Models Resistant to Adversarial Attacks"</a>.</p>
+
+<p>This formula can be understood in steps:</p>
+
+<blockquote>
+    1. Inject perturbation $\Delta x$ into $x$. The goal of $\Delta x$ is to make $L(x+\Delta x, y;\theta)$ as large as possible—i.e., to make the existing model's prediction as incorrect as possible;<br>
+    2. Of course, $\Delta x$ is not unconstrained. It cannot be too large, or it won't fulfill the "looks almost identical" criteria. Thus, $\Delta x$ must satisfy certain constraints, usually $\|\Delta x\|\leq \epsilon$, where $\epsilon$ is a constant;<br>
+    3. After constructing the adversarial sample $x+\Delta x$ for each sample, use $(x + \Delta x, y)$ as the data pair to minimize the loss and update parameters $\theta$ (gradient descent);<br>
+    4. Repeat steps 1, 2, and 3 iteratively.
+</blockquote>
+
+<p>Viewed this way, the optimization process alternates between $\max$ and $\min$. This is indeed similar to GANs; however, in GANs, the variable being maximized is also model parameters, whereas here, the variable being maximized is the input (the amount of perturbation). That is, a steps of $\max$ must be customized for every single input.</p>
+
+<h3>Fast Gradient</h3>
+
+<p>The question now is how to calculate $\Delta x$. Its goal is to increase $L(x+\Delta, y;\theta)$. We know that the method to decrease loss is gradient descent; conversely, the method to increase loss is naturally gradient ascent. Therefore, we can simply take:</p>
+
+\begin{equation}\Delta x = \epsilon \nabla_x L(x, y;\theta)\end{equation}
+
+<p>To prevent $\Delta x$ from becoming too large, $\nabla_x L(x, y;\theta)$ is usually standardized. Common methods include:</p>
+
+\begin{equation}\Delta x = \epsilon \frac{\nabla_x L(x, y;\theta)}{\| \nabla_x L(x, y;\theta)\|}\quad\text{or}\quad \Delta x = \epsilon \text{sign}(\nabla_x L(x, y;\theta))\end{equation}
+
+<p>Once we have $\Delta x$, we can substitute it back into Equation $\eqref{eq:min-max}$ for optimization:</p>
+
+\begin{equation}\min_{\theta}\mathbb{E}_{(x,y)\sim\mathcal{D}}\left[L(x+\Delta x, y;\theta)\right]\end{equation}
+
+<p>This constitutes an adversarial training method known as <strong>Fast Gradient Method (FGM)</strong>, first proposed by the "father of GANs," Ian Goodfellow, in the paper <a href="https://papers.cool/arxiv/1412.6572">"Explaining and Harnessing Adversarial Examples"</a>.</p>
+
+<p>Furthermore, there is another adversarial training method called <strong>Projected Gradient Descent (PGD)</strong>. It essentially achieves a better $\Delta x$ to maximize $L(x+\Delta x,y;\theta)$ through several iterations (if the norm exceeds $\epsilon$ during iteration, it is projected back; for details, refer to <a href="https://papers.cool/arxiv/1706.06083">"Towards Deep Learning Models Resistant to Adversarial Attacks"</a>). However, this article does not aim to provide a complete introduction to adversarial learning, and since I find FGM more elegant and effective, it remains our focus. For a supplementary introduction, I recommend reading the article <a href="https://zhuanlan.zhihu.com/p/91269728">"Gong Shou Dao: Adversarial Training in NLP + PyTorch Implementation"</a> by Fu Bang.</p>
+
+<h3>Back to NLP</h3>
+
+<p>For CV tasks, the above process works smoothly because images can be treated as continuous real-valued vectors. $\Delta x$ is also a real vector, so $x+\Delta x$ remains a meaningful image. But NLP is different. The input for NLP is text, which is essentially one-hot vectors (if you haven't realized this yet, please read <a href="translation_4122.html">"What exactly is going on with Word Vectors and Embeddings?"</a>). The Euclidean distance between two different one-hot vectors is always $\sqrt{2}$, so theoretically, "small perturbations" do not exist.</p>
+
+<p>A natural idea, as in the paper <a href="https://papers.cool/arxiv/1605.07725">"Adversarial Training Methods for Semi-Supervised Text Classification"</a>, is to apply permutations to the Embedding layer. This approach is operationally sound, but the problem is that a perturbed Embedding vector does not necessarily match any entry in the original Embedding table. Consequently, the perturbation in the Embedding layer cannot be mapped back to actual text input. This isn't an "adversarial sample" in the strictest sense, as an adversarial sample should still correspond to a valid original input.</p>
+
+<p>So, does applying adversarial perturbations at the Embedding layer still have meaning? Yes! Experimental results show that in many tasks, adversarial perturbation in the Embedding layer effectively improves model performance.</p>
+
+<h2>Experimental Results</h2>
+
+<p>Since it is effective, we must verify it personally through experiments. How do we implement adversarial training in code? How can we make it as simple as possible to use? And what is the actual effect?</p>
+
+<h3>Strategy Analysis</h3>
+
+<p>For CV tasks, the shape of the input tensor is typically $(b, h, w, c)$. We need to fix the model's batch size ($b$) and then add a `Variable` of the same shape $(b, h, w, c)$ initialized to zero, let's call it $\Delta x$. We can then calculate the gradient of the loss with respect to $x$ and assign values to $\Delta x$ based on that gradient to interfering with the input, followed by conventional gradient descent.</p>
+
+<p>For NLP tasks, in principle, one should perform the same operation on the output of the Embedding layer. The Embedding layer's output shape is $(b, n, d)$, so we should add a `Variable` of shape $(b, n, d)$ and follow the same steps. However, this would require deconstructing and rebuilding the model, which is not user-friendly.</p>
+
+<p>Instead, we can take a slightly simpler route. The output of the Embedding layer is taken directly from the Embedding parameter matrix. Thus, we can directly apply perturbations to the Embedding parameter matrix. The diversity of adversarial samples obtained this way will be lower (because the same token across different samples shares the same perturbation), but it still acts as regularization and is much easier to implement.</p>
+
+<h3>Code Reference</h3>
+
+<p>Based on the above logic, here is a reference implementation for FGM-based adversarial training on the Embedding layer in Keras:</p>
+
+<p>Core code:</p>
+
+<pre><code>def adversarial_training(model, embedding_name, epsilon=1):
+    """Add adversarial training to the model.
+    'model' is the Keras model, 'embedding_name' is the name of the 
+    Embedding layer in the model. Use this after model.compile().
+    """
+    if model.train_function is None: # If train function isn't made yet
+        model._make_train_function() # Make it manually
+    old_train_function = model.train_function # Back up old train function
+    
+    # Locate the Embedding layer
+    for output in model.outputs:
+        embedding_layer = search_layer(output, embedding_name)
+        if embedding_layer is not None:
+            break
+    if embedding_layer is None:
+        raise Exception('Embedding layer not found')
+        
+    # Calculate Embedding gradients
+    embeddings = embedding_layer.embeddings # Embedding matrix
+    gradients = K.gradients(model.total_loss, [embeddings]) # Gradient of embeddings
+    gradients = K.zeros_like(embeddings) + gradients[0] # Convert to dense tensor
+    
+    # Encapsulate as a function
+    inputs = (model._feed_inputs +
+              model._feed_targets +
+              model._feed_sample_weights) # All input layers
+    embedding_gradients = K.function(
+        inputs=inputs,
+        outputs=[gradients],
+        name='embedding_gradients',
+    ) # Wrap as a function
+
+    def train_function(inputs): # Redefine the training function
+        grads = embedding_gradients(inputs)[0] # Embedding gradients
+        delta = epsilon * grads / (np.sqrt((grads**2).sum()) + 1e-8) # Calculate perturbation
+        K.set_value(embeddings, K.eval(embeddings) + delta) # Inject perturbation
+        outputs = old_train_function(inputs) # Gradient descent
+        K.set_value(embeddings, K.eval(embeddings) - delta) # Remove perturbation
+        return outputs
+        
+    model.train_function = train_function # Overwrite original train function
+</code></pre>
+
+<p>After defining the above function, adding adversarial training to a Keras model takes only one line of code:</p>
+
+<pre><code># After defining the function, enabling adversarial training takes one line
+adversarial_training(model, 'Embedding-Token', 0.5)
+</code></pre>
+
+<p>It should be noted that because calculating the adversarial perturbation also requires gradient calculation, each step of training involves calculating gradients twice, effectively doubling the training time per step.</p>
+
+<h3>Effect Comparison</h3>
+
+<p>To test the actual effect, I selected two classification tasks from the <a href="https://www.cluebenchmarks.com/">Chinese CLUE benchmark</a>: IFLYTEK and TNEWS, using the Chinese BERT base model. On the CLUE leaderboard, the BERT base scores are 60.29% and 56.58% respectively. After adversarial training, the scores reached 62.46% and 57.66%, improving by 2% and 1% respectively!</p>
+
+\begin{array}{c|cc}
+\hline
+& \text{IFLYTEK} & \text{TNEWS} \\
+\hline
+\text{No Adversarial Training} & 60.29\% & 56.58\% \\
+\text{With Adversarial Training} & 62.46\% & 57.66\% \\
+\hline
+\end{array}
+
+<p>The training script can be found here: <a href="https://github.com/bojone/bert4keras/blob/master/examples/task_iflytek_adversarial_training.py">task_iflytek_adversarial_training.py</a>.</p>
+
+<p>Of course, like all regularization methods, adversarial training cannot guarantee improvement in every single task. However, based on most current "battle results," it is a technique well worth trying. Furthermore, BERT fine-tuning itself is a very mysterious (luck-dependent) process. A recent paper <a href="https://papers.cool/arxiv/2002.06305">"Fine-Tuning Pretrained Language Models: Weight Initializations, Data Orders, and Early Stopping"</a> ran hundreds of fine-tuning experiments with different random seeds and found that the best results could be several points higher. So if you run it once and see no improvement, you might want to run it a few more times before drawing a conclusion.</p>
+
+<h2>Extended Thinking</h2>
+
+<p>In this section, we analyze the above results from another perspective, deriving another method for adversarial training and obtaining a more intuitive geometric understanding of the process.</p>
+
+<h3>Gradient Penalty</h3>
+
+<p>Assume we have obtained the adversarial perturbation $\Delta x$. When updating $\theta$, consider the expansion of $L(x+\Delta x, y; \theta)$:</p>
+
+\begin{equation}\begin{aligned}&\min_{\theta}\mathbb{E}_{(x,y)\sim\mathcal{D}}\left[L(x+\Delta x, y; \theta)\right]\\
+\approx&\, \min_{\theta}\mathbb{E}_{(x,y)\sim\mathcal{D}}\left[L(x, y; \theta)+\langle\nabla_x L(x, y; \theta), \Delta x\rangle\right]
+\end{aligned}\end{equation}
+
+<p>The corresponding gradient of $\theta$ is:</p>
+
+\begin{equation}\nabla_{\theta}L(x, y;\theta)+\langle\nabla_{\theta}\nabla_x L(x, y;\theta), \Delta x\rangle\end{equation}
+
+<p>Substituting $\Delta x = \epsilon \nabla_x L(x, y; \theta)$, we get:</p>
+
+\begin{equation}\begin{aligned}&\nabla_{\theta}L(x, y;\theta)+\epsilon\langle\nabla_{\theta}\nabla_x L(x, y;\theta), \nabla_x L(x, y;\theta)\rangle\\
+=&\,\nabla_{\theta}\left(L(x, y;\theta)+\frac{1}{2}\epsilon\left\|\nabla_x L(x, y;\theta)\right\|^2\right)
+\end{aligned}\end{equation}
+
+<p>This result indicates that applying an adversarial perturbation of $\epsilon \nabla_x L(x, y; \theta)$ to the input samples is, to some extent, equivalent to adding a "gradient penalty" to the loss:</p>
+
+\begin{equation}\frac{1}{2}\epsilon\left\|\nabla_x L(x, y;\theta)\right\|^2\label{eq:gp}\end{equation}
+
+<p>If the adversarial perturbation is $\epsilon \nabla_x L(x, y; \theta) / \|\nabla_x L(x, y; \theta)\|$, the corresponding gradient penalty term would be $\epsilon\|\nabla_x L(x, y; \theta)\|$ (without the $1/2$ and the square).</p>
+
+<p>In fact, this result is not new. To my knowledge, it first appeared in the paper <a href="https://papers.cool/arxiv/1711.09404">"Improving the Adversarial Robustness and Interpretability of Deep Neural Networks by Regularizing their Input Gradients"</a>. However, this article is not easy to find because if you search for keywords like "adversarial training gradient penalty," almost all the results will be about WGAN-GP.</p>
+
+<h3>Geometric Image</h3>
+
+<p>In fact, regarding gradient penalty, we have a very intuitive geometric image. Taking a standard classification problem as an example, assume there are $n$ categories. The model essentially "digs" $n$ holes and puts samples of the same category into the same hole:</p>
+
+<p><em>Classification is like digging holes and placing similar samples in the same hole.</em></p>
+
+<p>Gradient penalty says, "Samples should not only be in the same hole but also at the very bottom of the hole," requiring the inside of each hole to look like this:</p>
+
+<p><em>Adversarial training hopes every sample sits at the bottom of a "hole within a hole."</em></p>
+
+<p>Why at the bottom? Because physics tells us that the bottom of a pit is the most stable! Thus, it is less likely to be disturbed, which is exactly the goal of adversarial training.</p>
+
+<p><em>"The bottom" is most stable. Even under disturbance, it stays around the bottom and is unlikely to jump out (jumping out usually means classification error).</em></p>
+
+<p>What does "bottom" mean? It's a local minimum where the derivative (gradient) is zero. So, isn't that just saying we want $\|\nabla_x L(x,y;\theta)\|$ to be as small as possible? This is the geometric meaning of the gradient penalty $\eqref{eq:gp}$. For similar geometric images of "digging holes," "pit bottoms," and gradient penalties, you can also refer to <a href="translation_6316.html">"Energy Perspective of GANs (I): GAN = 'Digging Holes' + 'Jumping into Holes'"</a>.</p>
+
+<h3>L-Constraint</h3>
+
+<p>We can also look at gradient penalty from the perspective of L-constraints (Lipschitz constraints). Adversarial samples are characterized by small perturbations in input leading to large changes in output. Regarding the control of input-output relationships, we previously explored this in <a href="translation_6051.html">"L-Constraint in Deep Learning: Generalization and Generative Models"</a>. A good model should theoretically satisfy "small perturbations in input lead to small changes in output." To achieve this, a common solution is to make the model satisfy the L-constraint, i.e., there exists a constant $L$ such that:</p>
+
+\begin{equation}\| f(x_1)-f(x_2)\| \leq L \| x_1 - x_2\|\end{equation}
+
+<p>This way, as long as the input difference $\| x_1 - x_2\|$ is small enough, the output difference is guaranteed to be small. As discussed in <a href="translation_6051.html">"L-Constraint in Deep Learning"</a>, one implementation of the L-constraint is Spectral Normalization. Adding spectral normalization to a neural network can enhance its adversarial defense performance. Related work has been published in <a href="https://papers.cool/arxiv/1811.07457">"Generalizable Adversarial Training via Spectral Normalization"</a>.</p>
+
+<p>The downside is that spectral normalization applies to the weights of every layer, making the entire network satisfy the L-constraint at every individual layer. This is not strictly necessary (we only need the whole model to satisfy it, not every layer), and theoretically, L-constraints can reduce model expressivity, thereby lowering performance. In the WGAN series, besides spectral normalization, another common scheme to make the discriminator satisfy the L-constraint is gradient penalty. Therefore, gradient penalty can also be understood as a regularization term that forces the model to satisfy the L-constraint, which effectively resists adversarial attacks.</p>
+
+<h3>Code Implementation</h3>
+
+<p>Since gradient penalty claims to have similar effects, it must also be verified experimentally. Compared to the FGM adversarial training described earlier, gradient penalty is actually easier to implement because it just adds a term to the loss, and the implementation is universal across CV and NLP.</p>
+
+<p>The Keras reference implementation is as follows:</p>
+
+<pre><code>def sparse_categorical_crossentropy(y_true, y_pred):
+    """Custom sparse categorical crossentropy.
+    Needed because Keras's built-in version doesn't support second-order gradients.
+    """
+    y_true = K.reshape(y_true, K.shape(y_pred)[:-1])
+    y_true = K.cast(y_true, 'int32')
+    y_true = K.one_hot(y_true, K.shape(y_pred)[-1])
+    return K.categorical_crossentropy(y_true, y_pred)
+
+def loss_with_gradient_penalty(y_true, y_pred, epsilon=1):
+    """Loss with gradient penalty.
+    """
+    loss = K.mean(sparse_categorical_crossentropy(y_true, y_pred))
+    embeddings = search_layer(y_pred, 'Embedding-Token').embeddings
+    gp = K.sum(K.gradients(loss, [embeddings])[0].values**2)
+    return loss + 0.5 * epsilon * gp
+
+model.compile(
+    loss=loss_with_gradient_penalty,
+    optimizer=Adam(2e-5),
+    metrics=['sparse_categorical_accuracy'],
+)
+</code></pre>
+
+<p>As you can see, defining a loss with gradient penalty is very simple, involving just a few lines of code. It should be noted that gradient penalty implies calculating second-order derivatives during parameter updates. However, the default loss functions in TensorFlow and Keras might not support second-order derivatives (e.g., `K.categorical_crossentropy` supports it, while `K.sparse_categorical_crossentropy` does not). In such cases, you need to redefine the loss function yourself.</p>
+
+<h3>Effect Comparison</h3>
+
+<p>Using the same two tasks as before, the results are shown in the table below. It can be seen that gradient penalty achieves results largely consistent with FGM.</p>
+
+\begin{array}{c|cc}
+\hline
+& \text{IFLYTEK} & \text{TNEWS} \\
+\hline
+\text{No Adversarial Training} & 60.29\% & 56.58\% \\
+\text{With Adversarial Training} & 62.46\% & 57.66\% \\
+\text{With Gradient Penalty} & 62.31\% & 57.81\% \\
+\hline
+\end{array}
+
+<p>The complete code can be found here: <a href="https://github.com/bojone/bert4keras/blob/master/examples/task_iflytek_gradient_penalty.py">task_iflytek_gradient_penalty.py</a>.</p>
+
+<h2>Summary</h2>
+
+<p>This article briefly introduced the basic concepts and derivations of adversarial training, focusing on the FGM method and providing a Keras implementation. Experiments prove that it can improve the generalization performance of some NLP models. Additionally, we discussed the connection between adversarial learning and gradient penalty, offering an intuitive geometric interpretation of the latter.</p>
+
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_7234.html" style="color: #005fcc;">https://kexue.fm/archives/7234</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

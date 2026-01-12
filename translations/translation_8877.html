@@ -1,0 +1,251 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/8877">Efficient GlobalPointer: Fewer Parameters, Better Results</a></h1>
+
+<p>By 苏剑林 | January 25, 2022</p>
+
+<p>In <a href="translation_8373.html">"GlobalPointer: A Unified Way to Handle Nested and Non-Nested NER"</a>, we proposed a token-pair recognition module named "GlobalPointer." When applied to NER, it can handle both nested and non-nested tasks in a unified manner. In non-nested scenarios, it offers faster speeds than CRF and performance that is not inferior to CRF. In other words, based on current experimental results, at least for NER scenarios, we can safely replace CRF with GlobalPointer without worrying about losses in performance or speed.</p>
+
+<p>In this article, we propose an improved version of GlobalPointer—Efficient GlobalPointer. It primarily targets the issue of low parameter utilization in the original GlobalPointer, significantly reducing the number of parameters. More interestingly, experimental results from multiple tasks show that Efficient GlobalPointer, despite having fewer parameters, actually achieves better results.</p>
+
+<h2>Massive Parameters</h2>
+
+<p>Let's briefly review GlobalPointer; for a detailed introduction, readers are referred to <a href="translation_8373.html">"GlobalPointer: A Unified Way to Handle Nested and Non-Nested NER"</a>. Simply put, GlobalPointer is a token-pair recognition module based on inner products. It can be used for NER because for NER, we only need to identify token-pairs like "(start, end)" for each type of entity.</p>
+
+<p>Suppose an input $t$ of length $n$ is encoded into a vector sequence $[\boldsymbol{h}_1,\boldsymbol{h}_2,\cdots,\boldsymbol{h}_n]$. In the original GlobalPointer, through transformations $\boldsymbol{q}_{i,\alpha}=\boldsymbol{W}_{q,\alpha}\boldsymbol{h}_i$ and $\boldsymbol{k}_{i,\alpha}=\boldsymbol{W}_{k,\alpha}\boldsymbol{h}_i$, we obtain vector sequences $[\boldsymbol{q}_{1,\alpha},\boldsymbol{q}_{2,\alpha},\cdots,\boldsymbol{q}_{n,\alpha}]$ and $[\boldsymbol{k}_{1,\alpha},\boldsymbol{k}_{2,\alpha},\cdots,\boldsymbol{k}_{n,\alpha}]$. We then define:
+\begin{equation}s_{\alpha}(i,j) = \boldsymbol{q}_{i,\alpha}^{\top}\boldsymbol{k}_{j,\alpha}\end{equation}
+as the score for a continuous segment from $i$ to $j$ being an entity of type $\alpha$. For now, we omit the bias term; if you feel it's necessary, you can add it yourself.</p>
+
+<p>In this way, for as many types of entities as there are, there are that many $\boldsymbol{W}_{q,\alpha}$ and $\boldsymbol{W}_{k,\alpha}$. Let $\boldsymbol{W}_{q,\alpha},\boldsymbol{W}_{k,\alpha}\in\mathbb{R}^{d\times D}$. For every new entity type added, we must add $2Dd$ parameters. In contrast, if using CRF+BIO tagging, each new entity type only requires an additional $2D$ parameters (the transition matrix parameters are few and can be ignored). For BERT base, a common choice is $D=768, d=64$; it is evident that the parameter count of GlobalPointer is far greater than that of CRF.</p>
+
+<h2>Identification and Classification</h2>
+
+<p>In fact, it is not hard to imagine that for any type $\alpha$, its scoring matrix $s_{\alpha}(i,j)$ must have many similarities, because for most token-pairs, they represent "non-entities," and the correct score for these non-entities is negative. This means we don't need to design independent $s_{\alpha}(i,j)$ for every entity type; they should share more commonalities.</p>
+
+<p>How do we highlight the commonalities of $s_{\alpha}(i,j)$? Taking NER as an example, we know that NER can actually be decomposed into two steps: "extraction" and "classification." "Extraction" is to extract segments that are entities, and "classification" is to determine the type of each entity. In this way, the "extraction" step is equivalent to NER with only one entity type, which we can complete with a single scoring matrix, i.e., $(\boldsymbol{W}_q\boldsymbol{h}_i)^{\top}(\boldsymbol{W}_k\boldsymbol{h}_j)$. For "classification," we can use "feature concatenation + Dense layer," i.e., $\boldsymbol{w}_{\alpha}^{\top}[\boldsymbol{h}_i;\boldsymbol{h}_j]$. Thus, we can combine the two terms as a new scoring function:
+\begin{equation}s_{\alpha}(i,j) = (\boldsymbol{W}_q\boldsymbol{h}_i)^{\top}(\boldsymbol{W}_k\boldsymbol{h}_j) + \boldsymbol{w}_{\alpha}^{\top}[\boldsymbol{h}_i;\boldsymbol{h}_j]\label{eq:EGP-1}\end{equation}
+By doing this, the "extraction" parameters are shared across all entity types. Therefore, for each new entity type, we only need to add the corresponding $\boldsymbol{w}_{\alpha}\in\mathbb{R}^{2D}$, meaning the parameter increase per entity type is just $2D$. Furthermore, we denote $\boldsymbol{q}_i=\boldsymbol{W}_q\boldsymbol{h}_i, \boldsymbol{k}_i=\boldsymbol{W}_k\boldsymbol{h}_i$. To further reduce the parameter count, we can use $[\boldsymbol{q}_i;\boldsymbol{k}_i]$ to replace $\boldsymbol{h}_i$. At this point:
+\begin{equation}s_{\alpha}(i,j) = \boldsymbol{q}_i^{\top}\boldsymbol{k}_j + \boldsymbol{w}_{\alpha}^{\top}[\boldsymbol{q}_i;\boldsymbol{k}_i;\boldsymbol{q}_j;\boldsymbol{k}_j]\label{eq:EGP}\end{equation}
+Currently $\boldsymbol{w}_{\alpha}\in\mathbb{R}^{4d}$, so the parameter increase per new entity type is $4d$. Since usually $d \ll D$, the parameter count of Equation $\eqref{eq:EGP}$ is often less than that of Equation $\eqref{eq:EGP-1}$. This is the final scoring function used by Efficient GlobalPointer.</p>
+
+<h2>Surprising Experiments</h2>
+
+<p>Efficient GlobalPointer is already built into <code>bert4keras>=0.10.9</code>. Readers only need to change one line of code to switch to Efficient GlobalPointer.</p>
+
+<pre><code># from bert4keras.layers import GlobalPointer
+from bert4keras.layers import EfficientGlobalPointer as GlobalPointer</code></pre>
+
+<p>Let's compare the results of GlobalPointer and Efficient GlobalPointer:</p>
+
+<p>
+\begin{array}{c}
+\text{People's Daily NER Experimental Results} \\
+{\begin{array}{c|cc}
+\hline
+& \text{Val F1} & \text{Test F1}\\
+\hline
+\text{CRF} & 96.39\% & 95.46\% \\
+\text{GlobalPointer} & \mathbf{96.25\%} & \mathbf{95.51\%} \\
+\text{Efficient GlobalPointer} & 96.10\% & 95.36\%\\
+\hline
+\end{array}} \\ \\
+\text{CLUENER Experimental Results} \\
+{\begin{array}{c|cc}
+\hline
+& \text{Val F1} & \text{Test F1} \\
+\hline
+\text{CRF} & 79.51\% & 78.70\% \\
+\text{GlobalPointer} & 80.03\% & 79.44\%\\
+\text{Efficient GlobalPointer} & \mathbf{80.66\%} & \mathbf{80.04\%} \\
+\hline
+\end{array}} \\ \\
+\text{CMeEE Experimental Results} \\
+{\begin{array}{c|cc}
+\hline
+& \text{Val F1} & \text{Test F1} \\
+\hline
+\text{CRF} & 63.81\% & 64.39\% \\
+\text{GlobalPointer} & 64.84\% & 65.98\%\\
+\text{Efficient GlobalPointer} & \mathbf{65.16\%} & \mathbf{66.54\%} \\
+\hline
+\end{array}}
+\end{array}
+</p>
+
+<p>As we can see, the experimental results for Efficient GlobalPointer are quite good. Except for a slight decline in the People's Daily task, the other two tasks achieved certain improvements, and overall, the magnitude of the improvement is greater than the decline. Therefore, Efficient GlobalPointer does not only save on parameter count but also improves performance. In terms of speed, Efficient GlobalPointer is almost the same as the original GlobalPointer.</p>
+
+<h2>Analysis and Commentary</h2>
+
+<p>Considering that People's Daily NER has only 3 entity types while CLUENER and CMeEE have 10 and 9 entity types respectively, and looking at the scores, People's Daily is higher than the other two, suggesting that CLUENER and CMeEE are more difficult. On the other hand, Efficient GlobalPointer achieved improvements on both CLUENER and CMeEE. Therefore, we can preliminary infer: the more entity categories and the more difficult the task, the more effective Efficient GlobalPointer becomes.</p>
+
+<p>This is not difficult to understand. The original GlobalPointer has excessively large parameters, so on average, each parameter update is sparser, and it is relatively easier to overfit. Efficient GlobalPointer shares the "extraction" part of the parameters and only uses "classification" parameters to distinguish between different entity types. Thus, the learning of the entity extraction step is more thorough, and the entity classification step is easier to learn because it has fewer parameters. Conversely, the good experimental performance of Efficient GlobalPointer also indirectly proves that the decomposition in Equation $\eqref{eq:EGP}$ is reasonable.</p>
+
+<p>Of course, it is not ruled out that the original GlobalPointer might achieve better results when there is sufficient training data. However, even so, when the number of categories is large, the original GlobalPointer might consume too much video memory to be usable. Taking the base version $D=768, d=64$ as an example again, if there are 100 categories, the original GlobalPointer's parameter count would be $2 \times 768 \times 64 \times 100$, which is nearly ten million—it must be said that this is indeed not user-friendly enough.</p>
+
+<h2>Summary</h2>
+
+<p>This article pointed out the low parameter utilization issue of the original GlobalPointer and proposed a corresponding improved version, Efficient GlobalPointer. Experimental results show that while reducing the number of parameters, Efficient GlobalPointer basically does not lose performance and may even obtain improvements.</p
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8877.html" style="color: #005fcc;">https://kexue.fm/archives/8877</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

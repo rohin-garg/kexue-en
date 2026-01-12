@@ -1,0 +1,283 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.plugins.get('tex'), display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9138">Ladder Side-Tuning: The "Wall-Climbing Ladder" for Pre-trained Models</a></h1>
+
+<p>By 苏剑林 | June 20, 2022</p>
+
+<p>
+    If large-scale pre-trained models are the "brilliant strategies" (Zhang Liang's strategies) of natural language processing, then what is the corresponding "wall-climbing ladder" (counter-strategy)? In the author's opinion, it is the various techniques used to efficiently fine-tune these large models for specific tasks. Besides directly fine-tuning all parameters, there are many parameter-efficient fine-tuning techniques such as <a href="https://papers.cool/arxiv/1902.00751">Adapter</a> and <a href="translation_8295.html">P-Tuning</a>. These methods achieve performance close to full parameter fine-tuning by updating only a small number of parameters. However, these techniques are usually only "parameter-efficient" and not necessarily "training-efficient." This is because they still require backpropagation through the entire model to obtain gradients for the few trainable parameters. In other words, while the number of trainable parameters is significantly reduced, the training speed does not see a marked improvement.
+</p>
+
+<p>
+    A recent paper, <a href="https://papers.cool/arxiv/2206.06522">"LST: Ladder Side-Tuning for Parameter and Memory Efficient Transfer Learning,"</a> proposes a new training technique called "Ladder Side-Tuning (LST)." It claims to achieve both parameter efficiency and training efficiency simultaneously. Is there truly such an ideal "wall-climbing ladder"? Let's dive in and learn about it.
+</p>
+
+<h2>Main Idea</h2>
+
+<p>
+    The structure of LST can be clearly explained using "Figure 2" from the original paper:
+</p>
+
+<p style="text-align:center;">
+    <img src="https://kexue.fm/usr/uploads/2022/06/174987157.png" alt="Comparison of LST with Adapter and P-tuning" style="max-width:100%;">
+    <br><em>Comparison of LST with Adapter and P-tuning</em>
+</p>
+
+<p>
+    Backpropagation, the process of calculating model gradients, proceeds step-by-step from the output layer to the input layer. Therefore, the depth/computation of backpropagation depends on the location of the trainable parameters closest to the input layer; it is not strictly tied to the total number of trainable parameters. For the <b>Adapter</b>, small layers are inserted after every layer of the original model. Although the original parameters are fixed and only the new layers are trainable, because there are new layers at every depth, backpropagation must still travel all the way back to the input layer. For <b>P-tuning</b>, while it essentially only has a small number of trainable parameters in the Embedding layer, the Embedding layer <i>is</i> the input layer. Thus, backpropagation must also traverse the entire model. Consequently, neither of these schemes significantly improves training efficiency.
+</p>
+
+<p>
+    As for <b>LST</b>, it builds a "side branch" (a ladder) alongside the original large model. It takes the outputs from specific layers of the large model as inputs for the side branch model. All trainable parameters reside solely within the side branch. Since the original large model only provides inputs and does not require gradient updates, the complexity of backpropagation depends only on the scale of the side branch model. It does not require backpropagation through the original large model, which leads to a significant increase in training efficiency.
+</p>
+
+<h2>Experimental Results</h2>
+
+<p>
+    The original paper performed several experiments with LST across both NLP and CV domains. Below are the results for LST on the GLUE dataset:
+</p>
+
+<p style="text-align:center;">
+    <img src="https://kexue.fm/usr/uploads/2022/06/1410141641.png" alt="LST Experimental results on GLUE" style="max-width:100%;">
+    <br><em>LST Experimental results on GLUE</em>
+</p>
+
+<p>
+    It can be seen that LST indeed possesses the characteristics of being parameter-efficient and training-efficient. It manages to reach a decent fine-tuning effect with fewer trainable parameters and lower training costs. In particular, the experimental results in the last two rows demonstrate the possibility of fine-tuning large models using limited training resources via LST.
+</p>
+
+<p>
+    I also attempted a simple implementation on the Chinese CLUE tasks. The reference code can be found here:
+</p>
+
+<blockquote>
+    <strong>Github: <a href="https://github.com/bojone/LST-CLUE">https://github.com/bojone/LST-CLUE</a></strong>
+</blockquote>
+
+<p>
+    Note that while the "ladder" in the original paper uses MLP layers (similar to those in Adapters), my implementation directly uses "Attention + FFN" combinations, mirroring the Transformer architecture. The number of trainable parameters was controlled at approximately 1 million, which is about 1.2% of the base version or 0.4% of the large version. The ladder was initialized randomly. The final results on the validation sets are as follows:
+</p>
+
+\[\small{\begin{array}{c|ccccccccccc}
+\hline
+& \text{iflytek} & \text{tnews} & \text{afqmc} & \text{cmnli} & \text{ocnli} & \text{wsc} & \text{csl} & \text{cmrc2018} & \text{c3} & \text{chid} & \text{cluener}\\
+\hline
+\text{BERT base} & 60.06 & 56.80 & 72.41 & 79.56 & 73.93 & 78.62 & 83.93 & 56.17 & 60.54 & 85.69 & 79.45 \\
+\text{RoBERTa base} & 60.64 & 58.06 & 74.05 & 81.24 & 76.00 & 87.50 & 84.50 & 56.54 & 67.66 & 86.71 & 79.47\\
+\hline
+\text{RoBERTa base + LST} & 59.29 & 56.82 & 70.37 & 76.27 & 71.02 & 68.09 & 82.63 & 42.50 & 56.97 & 69.35 & 78.30\\
+\text{RoBERTa large + LST} & 60.41 & 57.12 & 72.36 & 75.80 & 72.07 & 75.00 & 84.23 & 39.98 & 60.19 & 72.55 & 77.80\\
+\hline
+\end{array}}\]
+
+<p>
+    It can be seen that the experimental results are not as optimistic as the English experiments in the original paper (though this might be due to my implementation not being optimal). However, the training efficiency indeed showed a significant increase (roughly doubled on average). After the entire experiment, my feeling is that for conventional classification tasks of general difficulty, LST can achieve similar results. However, for more difficult tasks, such as reading comprehension, LST shows a very significant performance drop.
+</p>
+
+<p>
+    Of course, this issue is likely not unique to LST. Most fine-tuning methods that claim to be parameter-efficient probably face this problem, as these methods are mostly tested on GLUE, which consists entirely of relatively simple classification tasks...
+</p>
+
+<h2>Extended Reflections</h2>
+
+<p>
+    With the benefit of hindsight, LST is not a particularly "sophisticated" approach. In essence, it involves freezing the pre-trained model and using its output layer and some intermediate layer results as supplementary inputs to train a new small model. Once this is understood, many readers may already have similar schemes brewing in their minds. However, the true significance of LST lies in telling us that we <i>can</i> do this, providing a feasible reference scheme, and proving through experiments that it is an effective way to utilize large models.
+</p>
+
+<p>
+    Readers with similar research experience will realize that the initialization of the new "ladder" branch in LST is a critical issue. If it is completely randomly initialized, there may be difficulties in training, leading to suboptimal results. The original paper also mentions this and provides a scheme for taking slices of the large model's weight matrices to initialize the small model's matrices, thereby improving LST's final performance. The details can be found in the paper. As for my own implementation, I simply wanted to verify the effectiveness of LST, so I was lazy and did not implement this step.
+</p>
+
+<p>
+    Taking this a step further: since the initialization of the added "ladder" branch is difficult, yet LST is indeed an effective way to fine-tune large models, could we pre-reserve this "ladder" when training new large models in the future? That is, we could directly include this "ladder" as part of the pre-trained model during large-scale pre-training. Then, during fine-tuning, we would only fine-tune the "ladder." This would allow for efficient fine-tuning of large models without worrying about initialization issues.
+</p>
+
+<p>
+    In terms of form, I find LST to be quite similar to <a href="translation_7575.html">BERT-of-Theseus</a>, a model compression method based on module replacement described previously. The difference is that the goal of the latter is small model distillation, which still requires backpropagation through the large model. LST’s goal is to improve training efficiency by avoiding backpropagation through the large model, although it still requires the large model for forward propagation during inference. You could say the two are somewhat complementary.
+</p>
+
+<h2>Summary</h2>
+
+<p>
+    This article introduced Ladder Side-Tuning, a fine-tuning method for large models that is both parameter-efficient and training-efficient.
+</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9138.html" style="color: #005fcc;">https://kexue.fm/archives/9138</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

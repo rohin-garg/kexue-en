@@ -1,0 +1,250 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/9509">Diffusion Model Musings (18): Score Matching = Conditional Score Matching</a></h1>
+
+<p>By 苏剑林 | February 28, 2023</p>
+
+<p>In previous introductions, we have repeatedly mentioned "Score Matching" and "Conditional Score Matching." These are concepts that frequently appear in diffusion models, energy-based models, and the like. In particular, many articles directly state that the training objective of diffusion models is "Score Matching," but in fact, the training objective of current mainstream diffusion models such as DDPM is actually "Conditional Score Matching."</p>
+
+<p>So, what is the specific relationship between "Score Matching" and "Conditional Score Matching"? Are they equivalent? This article discusses this question in detail.</p>
+
+<h2>Score Matching</h2>
+
+<p>First, Score Matching refers to the training objective:</p>
+\begin{equation}\mathbb{E}_{\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t)}\left[\left\Vert\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t) - \boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\right\Vert^2\right]\label{eq:sm}\end{equation}
+<p>where $\boldsymbol{\theta}$ represents the trainable parameters. Obviously, Score Matching aims to learn a model $\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)$ to approximate $\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t)$. We call $\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t)$ the "score."</p>
+
+<p>In the context of diffusion models, $p_t(\boldsymbol{x}_t)$ is given by:</p>
+\begin{equation}p_t(\boldsymbol{x}_t) = \int p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)p_0(\boldsymbol{x}_0)d\boldsymbol{x}_0 = \mathbb{E}_{\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0)}\left[p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\right]\label{eq:pt}\end{equation}
+<p>where $p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)$ is generally a simple distribution with a known analytical probability density formula (such as a conditional normal distribution), and $p_0(\boldsymbol{x}_0)$ is a given distribution. However, $p_0(\boldsymbol{x}_0)$ usually represents the training data, meaning we can only sample from $p_0(\boldsymbol{x}_0)$ but do not know its specific analytical expression.</p>
+
+<p>According to equation \eqref{eq:pt}, we can derive:</p>
+\begin{equation}\begin{aligned}
+\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t) =&\, \frac{\nabla_{\boldsymbol{x}_t}p_t(\boldsymbol{x}_t)}{p_t(\boldsymbol{x}_t)} \\
+=&\, \frac{\int p_0(\boldsymbol{x}_0)\nabla_{\boldsymbol{x}_t} p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)d\boldsymbol{x}_0}{p_t(\boldsymbol{x}_t)} \\
+=&\, \frac{\int p_0(\boldsymbol{x}_0)\nabla_{\boldsymbol{x}_t} p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)d\boldsymbol{x}_0}{\int p_0(\boldsymbol{x}_0) p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)d\boldsymbol{x}_0} \\
+=&\, \frac{\mathbb{E}_{\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0)}\left[\nabla_{\boldsymbol{x}_t}p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\right]}{\mathbb{E}_{\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0)}\left[p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\right]} \\
+\end{aligned}\label{eq:score-1}\end{equation}
+<p>Based on our assumptions, both $\nabla_{\boldsymbol{x}_t}p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)$ and $p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)$ have known analytical expressions. Therefore, in theory, we can estimate $\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t)$ by sampling $\boldsymbol{x}_0$. However, since this involves the division of two expectations, it is a biased estimate (refer to <a href="translation_6747.html">"A Brief Description of Unbiased and Biased Estimation"</a>). Consequently, many points need to be sampled to make a relatively accurate estimation. Thus, using equation \eqref{eq:sm} directly as a training objective requires a large batch size to achieve good results.</p>
+
+<h2>Conditional Score</h2>
+
+<p>In practice, the training objective used by general diffusion models is "Conditional Score Matching":</p>
+\[\mathbb{E}_{\boldsymbol{x}_0,\boldsymbol{x}_t\sim p_0(\boldsymbol{x}_0)p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)}\left[\left\Vert\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) - \boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\right\Vert^2\right]\]
+<p>By assumption, $\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)$ has a known analytical expression, so the above objective is directly usable by sampling pairs of $(\boldsymbol{x}_0, \boldsymbol{x}_t)$. Notably, this is an unbiased estimate, which means it does not particularly rely on a large batch size and is therefore a more practical training objective.</p>
+
+<p>To analyze the relationship between "Score Matching" and "Conditional Score Matching," we also need another identity for $\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t)$:</p>
+\begin{equation}\begin{aligned}
+\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t) =&\, \frac{\nabla_{\boldsymbol{x}_t}p_t(\boldsymbol{x}_t)}{p_t(\boldsymbol{x}_t)} \\
+=&\, \frac{\int p_0(\boldsymbol{x}_0)\nabla_{\boldsymbol{x}_t} p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)d\boldsymbol{x}_0}{p_t(\boldsymbol{x}_t)} \\
+=&\, \frac{\int p_0(\boldsymbol{x}_0)p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\nabla_{\boldsymbol{x}_t} \log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) d\boldsymbol{x}_0}{p_t(\boldsymbol{x}_t)} \\
+=&\, \int p_t(\boldsymbol{x}_0|\boldsymbol{x}_t)\nabla_{\boldsymbol{x}_t} \log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) d\boldsymbol{x}_0 \\
+=&\, \mathbb{E}_{\boldsymbol{x}_0\sim p_t(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\nabla_{\boldsymbol{x}_t} \log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\right] \\
+\end{aligned}\label{eq:score-2}\end{equation}
+
+<h2>Inequality Relation</h2>
+
+<p>First, we can quickly prove the first result between the two: Conditional Score Matching is an upper bound of Score Matching. This implies that minimizing Conditional Score Matching to some extent also minimizes Score Matching.</p>
+
+<p>The proof is not difficult; we have already proved this in <a href="translation_9467.html">"Diffusion Model Musings (16): W-distance ≤ Score Matching"</a>:</p>
+\begin{equation}\begin{aligned}
+&\,\mathbb{E}_{\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t)}\left[\left\Vert\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t) - \boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\right\Vert^2\right] \\
+=&\,\mathbb{E}_{\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t)}\left[\left\Vert\mathbb{E}_{\boldsymbol{x}_0\sim p_t(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\right] - \boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\right\Vert^2\right] \\
+\leq &\,\mathbb{E}_{\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t)}\mathbb{E}_{\boldsymbol{x}_0\sim p_t(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\left\Vert\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) - \boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\right\Vert^2\right] \\
+= &\,\mathbb{E}_{\boldsymbol{x}_0\sim p_0(\boldsymbol{x}_0),\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)}\left[\left\Vert\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) - \boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\right\Vert^2\right] \\
+\end{aligned}\end{equation}
+<p>The first equality is due to identity \eqref{eq:score-2}. The second inequality is due to the generalization of the mean square inequality or Jensen's inequality. The third equality follows from Bayes' theorem.</p>
+
+<h2>Equivalence Relation</h2>
+
+<p>A few days ago, during a discussion about Score Matching in a WeChat group, a fellow member pointed out: The difference between Conditional Score Matching and Score Matching is a constant independent of optimization, so the two are actually completely equivalent! When I first heard this conclusion, I was quite surprised; the two have an equivalence relationship, not just an upper/lower bound relationship. Not only that, after I tried to prove it, I found the proof process to be quite simple!</p>
+
+<p>First, regarding Score Matching, we have:</p>
+\begin{equation}\begin{aligned}
+&\,\mathbb{E}_{\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t)}\left[\left\Vert\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t) - \boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\right\Vert^2\right] \\
+=&\,\mathbb{E}_{\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t)}\left[\color{orange}{\left\Vert\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t)\right\Vert^2} + \color{red}{\left\Vert\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\right\Vert^2} - \color{green}{2\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\cdot\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t)}\\right] \\
+\end{aligned}\end{equation}
+
+<p>Then, regarding Conditional Score Matching, we have:</p>
+\begin{equation}\begin{aligned}
+&\,\mathbb{E}_{\boldsymbol{x}_0,\boldsymbol{x}_t\sim p_0(\boldsymbol{x}_0)p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)}\left[\left\Vert\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0) - \boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\right\Vert^2\right] \\[5pt]
+=&\,\mathbb{E}_{\boldsymbol{x}_0,\boldsymbol{x}_t\sim p_0(\boldsymbol{x}_0)p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)}\left[\left\Vert\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\right\Vert^2 + \left\Vert\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\right\Vert^2 - 2\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\cdot\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\right] \\[5pt]
+=&\,\mathbb{E}_{\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t),\boldsymbol{x}_0\sim p_t(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\left\Vert\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\right\Vert^2 + \left\Vert\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\right\Vert^2 - 2\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\cdot\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\right] \\[5pt]
+=&\,\mathbb{E}_{\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t)}\left[{\begin{aligned}&\color{orange}{\mathbb{E}_{\boldsymbol{x}_0\sim p_t(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\left\Vert\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\right\Vert^2\right]} + \color{red}{\left\Vert\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\right\Vert^2} \\
+&\qquad\qquad- \color{green}{2\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\cdot\mathbb{E}_{\boldsymbol{x}_0\sim p_t(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\right]}\end{aligned}}\right] \\[5pt]
+=&\,\mathbb{E}_{\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t)}\left[\color{orange}{\mathbb{E}_{\boldsymbol{x}_0\sim p_t(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\left\Vert\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\right\Vert^2\right]} + \color{red}{\left\Vert\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\right\Vert^2} - \color{green}{2\boldsymbol{s}_{\boldsymbol{\theta}}(\boldsymbol{x}_t,t)\cdot\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t)}\right] \\
+\end{aligned}\end{equation}
+
+<p>Taking the difference between the two, we find the result is:</p>
+\begin{equation}\mathbb{E}_{\boldsymbol{x}_t\sim p_t(\boldsymbol{x}_t)}\left[\color{orange}{\mathbb{E}_{\boldsymbol{x}_0\sim p_t(\boldsymbol{x}_0|\boldsymbol{x}_t)}\left[\left\Vert\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t|\boldsymbol{x}_0)\right\Vert^2\right] - \left\Vert\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t)\right\Vert^2}\right]\end{equation}
+<p>This is independent of the parameters $\boldsymbol{\theta}$. Therefore, minimizing the Score Matching objective and minimizing the Conditional Score Matching objective are theoretically equivalent. According to group members, this result first appeared in the article <a href="https://www.iro.umontreal.ca/~vincentp/Publications/smdae_techreport.pdf">"A Connection Between Score Matching and Denoising Autoencoders"</a>.</p>
+
+<p>Since the two are theoretically equivalent, does this mean our previous statement that "Score Matching" requires a larger batch size than "Conditional Score Matching" is incorrect? Not exactly. If we still estimate $\nabla_{\boldsymbol{x}_t}\log p_t(\boldsymbol{x}_t)$ directly from equation \eqref{eq:score-1} and then perform Score Matching, the result is indeed still biased and depends on a large batch size. However, when we expand and further simplify the objective \eqref{eq:sm}, we gradually transform biased estimation into unbiased estimation, which then does not rely heavily on the batch size. In other words, although the two objectives are theoretically equivalent from the perspective of statistical quantities, they belong to different types of statistics; their equivalence is only an exact equivalence when the number of sampled points tends to infinity.</p>
+
+<h2>Summary</h2>
+
+<p>This article mainly analyzes the relationship between the two training objectives: "Score Matching" and "Conditional Score Matching."</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9509.html" style="color: #005fcc;">https://kexue.fm/archives/9509</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

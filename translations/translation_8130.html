@@ -1,0 +1,376 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/8130">Transformer Position Encodings That Make Researchers Rack Their Brains</a></h1>
+    <p>By 苏剑林 | February 03, 2021</p>
+
+    <p>Unlike RNN or CNN models, for the Transformer model, the addition of position encoding is essential. This is because the pure Attention module is unable to capture the input order; that is, it cannot distinguish between tokens at different positions. For this reason, we generally have two choices: 1. Find a way to incorporate position information into the input, which constitutes the general approach for absolute position encoding; 2. Find a way to fine-tune the Attention structure so that it has the ability to distinguish tokens at different positions, which constitutes the general approach for relative position encoding.</p>
+
+    <p>Although it is said that there are mainly two categories—absolute position encoding and relative position encoding—each category can actually spawn various variants. To this end, researchers have exerted a great deal of effort and racked their brains. Additionally, there are some position encodings that do not follow conventional patterns. In this article, let us appreciate the "Eight Immortals crossing the sea, each showing their own prowess" style encoding schemes that researchers have constructed to better express position information.</p>
+
+    <h2>Absolute Position Encoding</h2>
+    <p>In terms of form, absolute position encoding is a relatively simple solution. Nevertheless, it hasn't stopped various researchers from coming up with ingenious ideas and numerous variants. Generally, absolute position encoding is added to the input: for the $k$-th vector $\boldsymbol{x}_k$ in the input, a position vector $\boldsymbol{p}_k$ is added to become $\boldsymbol{x}_k + \boldsymbol{p}_k$, where $\boldsymbol{p}_k$ only depends on the position index $k$.</p>
+
+    <h3>Trainable</h3>
+    <p>Obviously, the most naive scheme for absolute position encoding is not to design anything special but to treat the position encoding directly as trainable parameters. For example, if the maximum length is 512 and the encoding dimension is 768, then a $512 \times 768$ matrix is initialized as the position vectors, allowing it to update during the training process. Current models like BERT and GPT use this type of position encoding. In fact, it can be traced back even earlier; for example, Facebook's 2017 paper <a href="https://papers.cool/arxiv/1705.03122">"Convolutional Sequence to Sequence Learning"</a> already utilized it.</p>
+
+    <p>For this trainable absolute position encoding, it is generally believed that its disadvantage is the lack of extrapolation properties. That is, if the pre-training maximum length is 512, then it can only process sentences with a maximum length of 512, and any longer will be unmanageable. Of course, one can randomly initialize position vectors exceeding 512 and then continue fine-tuning. However, the author's recent research indicates that through hierarchical decomposition, absolute position encoding can be extrapolated to a sufficiently long range while maintaining decent performance. For details, please refer to the author's previous blog post <a href="translation_7947.html">"Hierarchical Decomposition of Position Encodings, Allowing BERT to Handle Ultra-Long Text"</a>. Therefore, extrapolation is not actually a clear disadvantage of absolute position encoding.</p>
+
+    <h3>Sinusoidal</h3>
+    <p>Sinusoidal position encoding is an explicit solution proposed in Google's paper <a href="https://papers.cool/arxiv/1706.03762">"Attention is All You Need"</a>:</p>
+
+    \begin{equation}\left\{\begin{aligned}&\boldsymbol{p}_{k,2i}=\sin\Big(k/10000^{2i/d}\Big)\\
+    &\boldsymbol{p}_{k, 2i+1}=\cos\Big(k/10000^{2i/d}\Big)
+    \end{aligned}\right.\end{equation}
+
+    <p>Where $\boldsymbol{p}_{k,2i}, \boldsymbol{p}_{k,2i+1}$ are the $2i$-th and $(2i+1)$-th components of the encoding vector for position $k$, and $d$ is the dimension of the position vector.</p>
+
+    <p>Clearly, the characteristic of sinusoidal position encoding is that it has an explicit generation rule, thus it can be expected to have some degree of extrapolation. Another reason for using it is: since $\sin(\alpha+\beta)=\sin\alpha\cos\beta+\cos\alpha\sin\beta$ and $\cos(\alpha+\beta)=\cos\alpha\cos\beta-\sin\alpha\sin\beta$, this Indicates that the vector at position $\alpha+\beta$ can be expressed as a combination of the vectors at position $\alpha$ and position $\beta$, which provides the possibility of expressing relative position information. Curiously, we rarely see work directly using this form of absolute position encoding nowadays, for reasons unknown.</p>
+
+    <h3>Recursive</h3>
+    <p>In principle, RNN models do not require position encoding as their structure inherently provides the possibility to learn position information (as recursion implies we can train a "counting" model). Therefore, if an RNN layer is added after the input before going into the Transformer, position encoding theoretically wouldn't be necessary. Similarly, we can use an RNN model to learn an absolute position encoding. For instance, starting from a vector $\boldsymbol{p}_0$, we can obtain the encoding vectors for each position through a recursive format $\boldsymbol{p}_{k+1}=f(\boldsymbol{p}_k)$.</p>
+
+    <p>The ICML 2020 paper <a href="https://papers.cool/arxiv/2003.09229">"Learning to Encode Position for Transformer with Continuous Dynamical Model"</a> pushed this idea to the extreme. It proposed modeling position encoding using an Ordinary Differential Equation (ODE) $d\boldsymbol{p}_t/dt=\boldsymbol{h}(\boldsymbol{p}_t,t)$, a scheme called FLOATER. Obviously, FLOATER also belongs to recursive models. The function $\boldsymbol{h}(\boldsymbol{p}_t,t)$ can be modeled via a neural network, so such differential equations are also known as Neural ODEs, and work on this has gradually increased recently.</p>
+
+    <p>Theoretically, position encoding based on recursive models also possesses good extrapolation properties, and it is more flexible than sinusoidal position encoding (for instance, it is easy to prove that sinusoidal encoding is a special case of FLOATER). However, recursive position encoding clearly sacrifices some parallelism, which may lead to speed bottlenecks.</p>
+
+    <h3>Product-based</h3>
+    <p>We just mentioned that the combination of the input $\boldsymbol{x}_k$ and the absolute position encoding $\boldsymbol{p}_k$ is generally $\boldsymbol{x}_k + \boldsymbol{p}_k$. Is there an "unconventional" combination method? Such as $\boldsymbol{x}_k \otimes \boldsymbol{p}_k$ (element-wise multiplication)? Usually, when building models, we have multiple ways to fuse two vectors, such as addition, multiplication, or even concatenation. Why does everyone default to only considering addition when it comes to absolute position encoding?</p>
+
+    <p>Apologies, the author does not know the answer either. It might be that addition is chosen by default because vector addition has a very distinct geometric meaning, but for deep learning models, this geometric meaning actually has little practical value. A recent experiment the author saw suggests that replacing "add" with "multiply"—that is, the $\boldsymbol{x}_k \otimes \boldsymbol{p}_k$ method—seems to achieve better results than $\boldsymbol{x}_k + \boldsymbol{p}_k$. The author has not personally done a complete comparison of the specific effects, but merely presents this as a possibility. Regarding the experimental source, refer to <a href="https://zhuanlan.zhihu.com/p/183234823">"Research on Chinese Language Models: (1) Multiplicative Position Encoding"</a>.</p>
+
+    <h2>Relative Position Encoding</h2>
+    <p>Relative position does not fully model the position information of every input; instead, it considers the relative distance between the current position and the position being Attended to while calculating Attention. Since natural language generally relies more on relative positions, relative position encoding usually shows excellent performance. For relative position encoding, there is greater flexibility, reflecting the "unconstrained imagination" of researchers.</p>
+
+    <h3>Classic Style</h3>
+    <p>Relative position encoding originated from Google's paper <a href="https://papers.cool/arxiv/1803.02155">"Self-Attention with Relative Position Representations"</a>. Huawei's open-source NEZHA model also used this position encoding, and various subsequent relative position encoding variants basically follow the same pattern with simple modifications.</p>
+
+    <p>It is generally believed that relative position encoding was inspired by absolute position encoding. Consider the general Attention with absolute position encoding:</p>
+
+    \begin{equation}\left\{\begin{aligned}
+    \boldsymbol{q}_i =&\, (\boldsymbol{x}_i + \boldsymbol{p}_i)\boldsymbol{W}_Q \\
+    \boldsymbol{k}_j =&\, (\boldsymbol{x}_j + \boldsymbol{p}_j)\boldsymbol{W}_K \\
+    \boldsymbol{v}_j =&\, (\boldsymbol{x}_j + \boldsymbol{p}_j)\boldsymbol{W}_V \\
+    a_{i,j} =&\, softmax\left(\boldsymbol{q}_i \boldsymbol{k}_j^{\top}\right)\\
+    \boldsymbol{o}_i =&\, \sum_j a_{i,j}\boldsymbol{v}_j
+    \end{aligned}\right.\end{equation}
+
+    <p>Where $softmax$ normalizes over the $j$ dimension, and the vectors here are row vectors. Let's first expand $\boldsymbol{q}_i \boldsymbol{k}_j^{\top}$:</p>
+
+    \begin{equation}
+    \boldsymbol{q}_i \boldsymbol{k}_j^{\top} = \left(\boldsymbol{x}_i + \boldsymbol{p}_i\right)\boldsymbol{W}_Q \boldsymbol{W}_K^{\top}\left(\boldsymbol{x}_j + \boldsymbol{p}_j\right)^{\top} = \left(\boldsymbol{x}_i \boldsymbol{W}_Q + \boldsymbol{p}_i \boldsymbol{W}_Q\right)\left(\boldsymbol{W}_K^{\top}\boldsymbol{x}_j^{\top} + \boldsymbol{W}_K^{\top}\boldsymbol{p}_j^{\top}\right)
+    \end{equation}
+
+    <p>To introduce relative position information, Google removed the first position term and changed the second term $\boldsymbol{p}_j \boldsymbol{W}_K$ to a binary position vector $\boldsymbol{R}_{i,j}^{K}$, changing it to:</p>
+
+    \begin{equation}
+    a_{i,j} = softmax\left(\boldsymbol{x}_i \boldsymbol{W}_Q\left(\boldsymbol{x}_j\boldsymbol{W}_K + \color{green}{\boldsymbol{R}_{i,j}^K}\right)^{\top}\right)
+    \end{equation}
+
+    <p>And in $\boldsymbol{o}_i =\sum\limits_j a_{i,j}\boldsymbol{v}_j = \sum\limits_j a_{i,j}(\boldsymbol{x}_j\boldsymbol{W}_V + \boldsymbol{p}_j\boldsymbol{W}_V)$, $\boldsymbol{p}_j \boldsymbol{W}_V$ is replaced by $\boldsymbol{R}_{i,j}^{V}$:</p>
+
+    \begin{equation}\boldsymbol{o}_i = \sum_j a_{i,j}\left(\boldsymbol{x}_j\boldsymbol{W}_V + \color{green}{\boldsymbol{R}_{i,j}^{V}}\right)
+    \end{equation}
+
+    <p>The so-called relative position means that $\boldsymbol{R}_{i,j}^{K}, \boldsymbol{R}_{i,j}^{V}$, which originally depended on binary coordinates $(i,j)$, are changed to depend only on the relative distance $i-j$, and are usually truncated to adapt to arbitrary distances:</p>
+
+    \begin{equation}\begin{aligned}
+    \boldsymbol{R}_{i,j}^{K} = \boldsymbol{p}_K\left[\text{clip}(i-j, p_{\min}, p_{\max})\right]\\
+    \boldsymbol{R}_{i,j}^{V} = \boldsymbol{p}_V\left[\text{clip}(i-j, p_{\min}, p_{\max})\right]
+    \end{aligned}\label{eq:rp-clip}\end{equation}
+
+    <p>In this way, only a finite number of position encodings are needed to express relative positions of any length (due to clipping). Regardless of whether $\boldsymbol{p}_K, \boldsymbol{p}_V$ are trainable or sinusoidal, they can meet the requirement of processing text of any length.</p>
+
+    <h3>XLNET Style</h3>
+    <p>XLNET-style position encoding actually originates from the Transformer-XL paper <a href="https://papers.cool/arxiv/1901.02860">"Transformer-XL: Attentive Language Models Beyond a Fixed-Length Context"</a>. It was only after the <a href="https://papers.cool/arxiv/1906.08237">XLNET</a> model used the Transformer-XL architecture and surpassed BERT to some extent that Transformer-XL became widely known; thus, this position encoding is also often referred to by the name XLNET.</p>
+
+    <p>XLNET-style position encoding comes from a full expansion of the aforementioned $\boldsymbol{q}_i \boldsymbol{k}_j^{\top}$:</p>
+
+    \begin{equation}
+    \boldsymbol{q}_i \boldsymbol{k}_j^{\top} = \boldsymbol{x}_i \boldsymbol{W}_Q \boldsymbol{W}_K^{\top}\boldsymbol{x}_j^{\top} + \boldsymbol{x}_i \boldsymbol{W}_Q \boldsymbol{W}_K^{\top}\boldsymbol{p}_j^{\top} + \boldsymbol{p}_i \boldsymbol{W}_Q \boldsymbol{W}_K^{\top}\boldsymbol{x}_j^{\top} + \boldsymbol{p}_i \boldsymbol{W}_Q \boldsymbol{W}_K^{\top}\boldsymbol{p}_j^{\top}\label{eq:qk-exp}
+    \end{equation}
+
+    <p>The approach of Transformer-XL is simple: directly replace $\boldsymbol{p}_j$ with the relative position vector $\boldsymbol{R}_{i-j}$. As for the two $\boldsymbol{p}_i$, they are simply replaced by two trainable vectors $\boldsymbol{u}, \boldsymbol{v}$:</p>
+
+    \begin{equation}\boldsymbol{x}_i \boldsymbol{W}_Q \boldsymbol{W}_K^{\top}\boldsymbol{x}_j^{\top} + \boldsymbol{x}_i \boldsymbol{W}_Q \boldsymbol{W}_K^{\top}\color{green}{\boldsymbol{R}_{i-j}^{\top}} + \color{red}{\boldsymbol{u}}\boldsymbol{W}_Q \boldsymbol{W}_K^{\top}\boldsymbol{x}_j^{\top} + \color{red}{\boldsymbol{v}} \boldsymbol{W}_Q \boldsymbol{W}_K^{\top}\color{green}{\boldsymbol{R}_{i-j}^{\top}}
+    \end{equation}
+
+    <p>In this encoding scheme, $\boldsymbol{R}_{i-j}$ is not truncated like in Equation $\eqref{eq:rp-clip}$, but instead uses the sinusoidal generation scheme. Since the encoding space of $\boldsymbol{R}_{i-j}$ is not necessarily the same as $\boldsymbol{x}_j$, the $\boldsymbol{W}_K^{\top}$ in front of $\boldsymbol{R}_{i-j}$ is replaced with another independent matrix $\boldsymbol{W}_{K,R}^{\top}$. Also, $\color{red}{\boldsymbol{u}}\boldsymbol{W}_Q$ and $\color{red}{\boldsymbol{v}} \boldsymbol{W}_Q$ can be directly merged into single vectors $\color{red}{\boldsymbol{u}}$ and $\color{red}{\boldsymbol{v}}$, so the final formula used is:</p>
+
+    \begin{equation}\boldsymbol{x}_i \boldsymbol{W}_Q \boldsymbol{W}_K^{\top}\boldsymbol{x}_j^{\top} + \boldsymbol{x}_i \boldsymbol{W}_Q \boldsymbol{W}_{K,R}^{\top}\color{green}{\boldsymbol{R}_{i-j}^{\top}} + \color{red}{\boldsymbol{u}}\boldsymbol{W}_K^{\top}\boldsymbol{x}_j^{\top} + \color{red}{\boldsymbol{v}} \boldsymbol{W}_{K,R}^{\top}\color{green}{\boldsymbol{R}_{i-j}^{\top}}
+    \end{equation}
+
+    <p>Furthermore, the position bias on $\boldsymbol{v}_j$ is simply removed, effectively setting $\boldsymbol{o}_i = \sum\limits_j a_{i,j}\boldsymbol{x}_j\boldsymbol{W}_V$. It seems that starting from this work, subsequent relative position encodings are only added to the Attention matrix and not to $\boldsymbol{v}_j$.</p>
+
+    <h3>T5 Style</h3>
+    <p>The T5 model comes from the article <a href="https://papers.cool/arxiv/1910.10683">"Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer"</a>, which used an even simpler relative position encoding. The idea still follows expansion $\eqref{eq:qk-exp}$. if we must analyze the meaning of each term, they can be understood as combinations of "input-input", "input-position", "position-input", and "position-position" attentions. If we believe that input information and position information should be independent (disentangled), then they shouldn't have too much interaction. Therefore, the "input-position" and "position-input" terms can be removed, and $\boldsymbol{p}_i \boldsymbol{W}_Q \boldsymbol{W}_K^{\top}\boldsymbol{p}_j^{\top}$ is actually just a scalar that only depends on $(i,j)$, which can be trained directly as a parameter, simplified to:</p>
+
+    \begin{equation}\boldsymbol{x}_i \boldsymbol{W}_Q \boldsymbol{W}_K^{\top}\boldsymbol{x}_j^{\top} + \color{green}{\boldsymbol{\beta}_{i,j}}\end{equation}
+
+    <p>Simply put, it merely adds a trainable bias term on top of the Attention matrix. Like the XLNET style, the position bias on $\boldsymbol{v}_j$ is directly removed. Microsoft's TUPE position encoding, proposed in the ICLR 2021 paper <a href="https://papers.cool/arxiv/2006.15595">"Rethinking Positional Encoding in Language Pre-training"</a>, contains the same idea.</p>
+
+    <p>What's "distinctive" is that, unlike conventional position encodings that treat $\boldsymbol{\beta}_{i,j}$ as a function of $i-j$ and truncate it, T5 uses a "bucket" approach for relative positions. That is, a relative position of $i-j$ corresponds to the $f(i-j)$ bucket. The mapping is as follows:</p>
+
+    <table border="1" style="width:100%; text-align:center;">
+        <tr>
+            <td>$i - j$</td><td>0</td><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td><td>7</td><td>8</td><td>9</td><td>10</td><td>11</td><td>12</td><td>13</td><td>14</td><td>15</td>
+        </tr>
+        <tr>
+            <td>$f(i-j)$</td><td>0</td><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td><td>7</td><td>8</td><td>8</td><td>8</td><td>8</td><td>9</td><td>9</td><td>9</td><td>9</td>
+        </tr>
+        <tr>
+            <td>$i - j$</td><td>16</td><td>17</td><td>18</td><td>19</td><td>20</td><td>21</td><td>22</td><td>23</td><td>24</td><td>25</td><td>26</td><td>27</td><td>28</td><td>29</td><td>30</td><td>$\cdots$</td>
+        </tr>
+        <tr>
+            <td>$f(i-j)$</td><td>10</td><td>10</td><td>10</td><td>10</td><td>10</td><td>10</td><td>10</td><td>11</td><td>11</td><td>11</td><td>11</td><td>11</td><td>11</td><td>11</td><td>11</td><td>$\cdots$</td>
+        </tr>
+    </table>
+
+    <p>For the specific mapping code, readers can check the source code themselves. The logic of this design is also quite intuitive: for closer positions (0–7), we need higher precision, so each is assigned an independent position encoding. For slightly further positions (e.g., 8–11), we don't need to distinguish as clearly, so they can share a position encoding. The further the distance, the larger the range of sharing, until reaching a specified range for clipping.</p>
+
+    <h3>DeBERTa Style</h3>
+    <p>DeBERTa was also developed by Microsoft and released last June. The paper is <a href="https://papers.cool/arxiv/2006.03654">"DeBERTa: Decoding-enhanced BERT with Disentangled Attention"</a>. Recently it has gained popularity again, firstly because it was formally accepted by ICLR 2021, and secondly because it topped the <a href="https://super.gluebenchmark.com/">SuperGLUE</a> leaderboard, slightly surpassing T5.</p>
+
+    <p>In fact, DeBERTa's primary improvement is also in position encoding. Still starting from the expansion formula $\eqref{eq:qk-exp}$, where T5 essentially removed the 2nd and 3rd terms and kept the 4th term replaced by relative position encoding, DeBERTa does exactly the opposite. It discards the 4th term while keeping the 2nd and 3rd terms and replacing them with relative position encodings (Sure enough, research often involves enumerating all permutations and combinations to see which is best):</p>
+
+    \begin{equation}
+    \boldsymbol{q}_i \boldsymbol{k}_j^{\top} = \boldsymbol{x}_i \boldsymbol{W}_Q \boldsymbol{W}_K^{\top}\boldsymbol{x}_j^{\top} + \boldsymbol{x}_i \boldsymbol{W}_Q \boldsymbol{W}_K^{\top}\color{green}{\boldsymbol{R}_{i,j}^{\top}} + \color{green}{\boldsymbol{R}_{j,i}} \boldsymbol{W}_Q \boldsymbol{W}_K^{\top}\boldsymbol{x}_j^{\top}
+    \end{equation}
+
+    <p>As for the design of $\boldsymbol{R}_{i,j}$, it is truncated similar to Equation $\eqref{eq:rp-clip}$, with nothing particularly special.</p>
+
+    <p>However, what's interesting about DeBERTa is that it provides a new perspective on using relative and absolute position encodings. It points out that most NLP tasks may only require relative position information, but absolute position information is indeed helpful in some scenarios. Thus, it views the entire model in two parts. Using the Base version of the MLM pre-training model as an example, it has 13 layers in total. The first 11 layers only use relative position encoding, and this part is called the Encoder. The last 2 layers incorporate absolute position information, which it calls the Decoder, abbreviated as EMD (Enhanced Mask Decoder). For downstream task fine-tuning, the first 11-layer Encoder plus a 1-layer Decoder is used.</p>
+
+    <p>The success on SuperGLUE confirms the value of DeBERTa, but various naming conventions in its paper are somewhat uncomfortable. For instance, self-naming "Encoder" and "Decoder" can easily lead people to misunderstand it as a Seq2Seq model. For example, the abbreviation EMD also shares its name with Earth Mover's Distance. While name collisions are sometimes inevitable, colliding with objects well-known in the ML community is quite confusing. I really wonder what the authors were thinking...</p>
+
+    <h2>Other Position Encodings</h2>
+    <p>Although absolute and relative position encodings come in many varieties, they still fall within the classic scope. From the introduction above, we can still sense a strong conventional methodology. Besides these, there are some that do not follow the usual script but still express position encoding.</p>
+
+    <h3>CNN Style</h3>
+    <p>Even though the classic work applying CNN to NLP, <a href="https://papers.cool/arxiv/1705.03122">"Convolutional Sequence to Sequence Learning"</a>, included position encodings, we know that general CNN models—especially in images—do not add separate position encodings. So how does a CNN model capture position information?</p>
+
+    <p>If the author were to answer, it might be that the anisotropy of the convolution kernel allows it to distinguish relative positions in different directions. However, the ICLR 2020 paper <a href="https://papers.cool/arxiv/2001.08248">"How Much Position Information Do Convolutional Neural Networks Encode?"</a> gave a somewhat surprising answer: position information in CNN models is leaked by Zero Padding!</p>
+
+    <p>We know that to keep the feature size consistent during convolution encoding, we typically pad the input with zeros. This paper shows that this operation enables the model to identify position information. That is, while kernel anisotropy is important, the existence of zero padding is fundamental; one can imagine that it actually extracts the relative distance between the current position and the padding boundary.</p>
+
+    <p>However, this capability depends on the locality of CNNs. It is not applicable to global, prior-less structures like Attention. For readers who only care about Transformer position encoding schemes, consider this as a way to broaden your horizons.</p>
+
+    <h3>Complex Style</h3>
+    <p>Complex-numbered position encoding is perhaps the most unique position encoding scheme. It comes from the ICLR 2020 paper <a href="https://papers.cool/arxiv/1912.12333">"Encoding word order in complex embeddings"</a>. The main idea of the paper is to combine the properties of complex numbers with some basic principles to derive its position encoding form (Complex Order) as:</p>
+
+    \begin{equation}\left[r_{j, 1} e^{\text{i}\left(\omega_{j, 1} k+\theta_{j, 1}\right)}, \ldots, r_{j, 2} e^{\text{i}\left(\omega_{j, 2} k+\theta_{j, 2}\right)}, \cdots, r_{j, d} e^{\text{i}\left(\omega_{j, d} k+\theta_{j, d}\right)}\right]\label{eq:complex}\end{equation}
+
+    <p>Where $\text{i}$ is the imaginary unit, $j$ represents a word, $k$ represents the position where the word is located, and:</p>
+
+    \begin{equation}\begin{aligned}
+    \boldsymbol{r}_j =&\, [r_{j, 1},r_{j, 2},\cdots,r_{j, d}]\\
+    \boldsymbol{\omega}_j =&\, [\omega_{j, 1},\omega_{j, 2},\cdots,\omega_{j, d}]\\
+    \boldsymbol{\theta}_j =&\, [\theta_{j, 1},\theta_{j, 2},\cdots,\theta_{j, d}]\\
+    \end{aligned}\end{equation}
+
+    <p>represent three sets of position-independent word vectors for word $j$. You read that correctly; it assumes each word has three sets of word vectors (which can, of course, be parameter-shared in some form, reducing them to two sets or even one), and then the word vector related to position $k$ is calculated according to the formula above.</p>
+
+    <p>You thought introducing multiple sets of word vectors was its most unique part? No! Notice that equation $\eqref{eq:complex}$ is still in complex form. Guess what it does next? Realize it? No, it uses it directly in a complex-valued model! That is, it follows a complex-valued model route where not only is the input Embedding layer complex, but every layer of the Transformer inside is also complex. It also implemented and compared complex versions of Fasttext, LSTM, CNN, etc. The first author of this article is Benyou Wang. His related work revolves mostly around complex models; he is truly a die-hard fan of complex-valued models.</p>
+
+    <h3>Fused Style</h3>
+    <p>Coincidentally, using the form of complex numbers, the author has also conceived a clever position encoding that integrates absolute and relative position encodings into one. Sharing it here, interested readers are welcome to exchange ideas.</p>
+
+    <p>For simplicity, let's first assume $\boldsymbol{q}_m, \boldsymbol{k}_n$ are two-dimensional row vectors at positions $m, n$. Since they are two-dimensional, we can treat them as complex numbers. We know that the key to Attention lies in the dot product of vectors, which in complex representation is:</p>
+
+    \begin{equation}\langle \boldsymbol{q}_m, \boldsymbol{k}_n\rangle = \text{Re}\left[\boldsymbol{q}_m \boldsymbol{k}_n^*\right]\end{equation}
+
+    <p>Where $^*$ is the complex conjugate, the multiplication on the right is ordinary complex multiplication, and $\text{Re}[]$ denotes taking the real part of the result. The above equation means:</p>
+
+    <blockquote>The dot product of two two-dimensional vectors is equal to the real part of the product of one complex number and the conjugate of the other when viewed as complex numbers.</blockquote>
+
+    <p>If we multiply $\boldsymbol{q}_m, \boldsymbol{k}_n$ by $e^{\text{i}m\theta}, e^{\text{i}n\theta}$ respectively to become $\boldsymbol{q}_m e^{\text{i}m\theta}, \boldsymbol{k}_n e^{\text{i}n\theta}$, it's equivalent to equipping them with absolute position encodings (because they explicitly depend on the absolute positions $m, n$). Then, putting them into the dot product, we have:</p>
+
+    \begin{equation}\langle \boldsymbol{q}_m e^{\text{i}m\theta}, \boldsymbol{k}_n e^{\text{i}n\theta}\rangle = \text{Re}\left[\left(\boldsymbol{q}_m e^{\text{i}m\theta}\right) \left(\boldsymbol{k}_n e^{\text{i}n\theta}\right)^*\right] = \text{Re}\left[\boldsymbol{q}_m \boldsymbol{k}_n^* e^{\text{i}(m-n)\theta}\right]\end{equation}
+
+    <p>Quite interestingly, the dot product only depends on the relative position $m-n$! This cleverly fuses absolute and relative positions together.</p>
+
+    <p>Note: We are not as "crazy" as Complex Order. The above calculation is essentially within the realm of real numbers; we just borrowed complex numbers to complete certain derivations. From the results above, we know that for a two-dimensional real vector $[x, y]$ at position $n$, treating it as a complex number and multiplying by $e^{\text{i}n\theta}$ yields the identity:</p>
+
+    \begin{equation}(x + y\text{i})e^{\text{i}n\theta} = (x \cos n\theta - y\sin n\theta) + \text{i} (x \sin n\theta + y\cos n\theta)\end{equation}
+
+    <p>This means that by using:</p>
+
+    \begin{equation}\begin{pmatrix}x \\ y\end{pmatrix}
+    \to
+    \begin{pmatrix}x \cos n\theta - y\sin n\theta \\ x \sin n\theta + y\cos n\theta
+    \end{pmatrix} = \begin{pmatrix}x \\ y
+    \end{pmatrix}\cos n\theta + \begin{pmatrix}-y \\ x
+    \end{pmatrix}\sin n\theta\end{equation}
+
+    <p>to assign absolute position information to $[x, y]$, it is equivalent to relative position encoding during the Attention calculation. For vectors with more than two dimensions, we can consider grouping every two dimensions and performing the same operation, where $\theta$ for each group can be different.</p>
+
+    <p>Thus, we obtain a position encoding scheme that fuses absolute and relative position information. In form, it looks a bit like multiplicative absolute position encoding. By performing this position encoding on $\boldsymbol{q}, \boldsymbol{k}$, the effect is equivalent to relative position encoding. If explicit absolute position information is still needed, this position encoding can also be applied to $\boldsymbol{v}$ simultaneously. Overall, by manipulating absolute positions, we can achieve the effect of both absolute and relative positions. Preliminary experiments show it can work, but it hasn't been fully verified yet; everyone is welcome to try and exchange ideas.</p>
+
+    <h2>Summary</h2>
+    <p>This article summarizes some work on position encoding, generally categorized into absolute, relative, and non-conventional styles, showing various ingenious operations. Finally, the author shared a conception of a position encoding scheme that fuses absolute and relative positions for interested readers' reference.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8130.html" style="color: #005fcc;">https://kexue.fm/archives/8130</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

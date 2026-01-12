@@ -1,0 +1,280 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/8062">Searching for Text: (1) From Text Generation to Search Sampling</a></h1>
+
+    <p>By 苏剑林 | January 07, 2021</p>
+
+
+<p>Recently, I have entered a new niche: performing text generation tasks based on the idea of discrete optimization. Simply put, we quantitatively write down the target for the text we want to generate, construct a distribution, and then search for the maximum point of this distribution or sample from it. This process usually <strong>does not require training on labeled data</strong>. Since language is discrete, continuous function optimization methods like gradient descent are unavailable. Furthermore, because this distribution usually does not have a form that is easy to sample from, direct sampling is also unfeasible. Therefore, specially designed sampling algorithms are required, such as Rejection Sampling, MCMC (Markov Chain Monte Carlo), MH sampling (Metropolis-Hastings Sampling), Gibbs Sampling, and so on.</p>
+
+<p>Some readers might find this familiar; does it feel like returning to those head-spinning years of learning LDA (Latent Dirichlet Allocation)? That's right—the aforementioned sampling algorithms are also the essential foundation for understanding the LDA model. In this article, we will review these various sampling algorithms, which will appear in the rich text generation applications to be introduced later.</p>
+
+<h2>Defining the Goal</h2>
+
+<p>In many cases, we need to <strong>generate a target text $\boldsymbol{x}$ based on some specific information $\boldsymbol{c}$</strong>. In mathematical terms, this is a conditional language model $p(\boldsymbol{x}|\boldsymbol{c})$. However, we cannot obtain enough corpora of pairs $(\boldsymbol{x},\boldsymbol{c})$ to directly train a conditional language model in a supervised manner. Instead, we can only train an unconditional language model $p(\boldsymbol{x})$, but we can manually design a metric to quantitatively describe the relationship between $\boldsymbol{x}$ and $\boldsymbol{c}$. In this case, how to perform conditional text generation based on the unconditional language model $p(\boldsymbol{x})$ and the relationship between $\boldsymbol{x}$ and $\boldsymbol{c}$ becomes our object of study. We can call this "<strong>Constrained Text Generation</strong>."</p>
+
+<p>For example, in <strong>sentence generation using keywords</strong>, $\boldsymbol{c}$ is the set of keywords. We can define an indicator function:</p>
+
+\begin{equation}\chi(\boldsymbol{x}, \boldsymbol{c})=\left\{\begin{aligned}&1,\,\,\text{if }\boldsymbol{x}\text{ contains the keyword set }\boldsymbol{c} \\ 
+&0,\,\,\text{if }\boldsymbol{x}\text{ does not contain the keyword set }\boldsymbol{c}\end{aligned}\right. 
+\end{equation}
+
+<p>Then define</p>
+
+\begin{equation}\rho(\boldsymbol{x}, \boldsymbol{c}) = p(\boldsymbol{x})\chi(\boldsymbol{x}, \boldsymbol{c})\end{equation}
+
+<p>$p(\boldsymbol{x})$ ensures the fluency of the generated sentence, and $\chi(\boldsymbol{x}, \boldsymbol{c})$ ensures that the generated sentence contains the required keywords. The problem then becomes the maximization operation $\mathop{\text{argmax}}\limits_{\boldsymbol{x}} \rho(\boldsymbol{x}, \boldsymbol{c})$ or the sampling operation $\boldsymbol{x}\sim \rho(\boldsymbol{x}, \boldsymbol{c})$. Of course, $\rho(\boldsymbol{x}, \boldsymbol{c})$ is not a probability distribution yet; it only becomes a true probability distribution after normalization:</p>
+
+\begin{equation}\frac{\rho(\boldsymbol{x}, \boldsymbol{c})}{\sum\limits_{\boldsymbol{x}}\rho(\boldsymbol{x}, \boldsymbol{c})} = \frac{p(\boldsymbol{x})\chi(\boldsymbol{x}, \boldsymbol{c})}{\sum\limits_{\boldsymbol{x}}p(\boldsymbol{x})\chi(\boldsymbol{x}, \boldsymbol{c})}\end{equation}
+
+<p>But the denominator is usually difficult to calculate explicitly. This means that for the distribution to be sampled, we only know that it is proportional to some function $\rho(\boldsymbol{x}, \boldsymbol{c})$, but we do not know the exact expression of the distribution.</p>
+
+<p>Similar examples are not rare, such as <strong>text summarization</strong>. What is text summarization? It is essentially using fewer words $\boldsymbol{x}$ to express as much of the same meaning as the original text $\boldsymbol{c}$ as possible. In this case, we can define:</p>
+
+\begin{equation}\rho(\boldsymbol{x}, \boldsymbol{c}) = p(\boldsymbol{x})\cdot \text{sim}(\boldsymbol{x}, \boldsymbol{c})\cdot \chi(\boldsymbol{x}, \boldsymbol{c})\end{equation}
+
+<p>Here, $\text{sim}(\boldsymbol{x}, \boldsymbol{c})$ is some text similarity function, and $\chi(\boldsymbol{x}, \boldsymbol{c})$ is an indicator function for length—i.e., if the length of $\boldsymbol{x}$ is within a certain range (which may depend on $\boldsymbol{c}$), it is 1; otherwise, it is 0. In this case, we also obtain an unnormalized probability distribution $\rho(\boldsymbol{x}, \boldsymbol{c})$ that needs to be maximized or sampled from. Obviously, this goal means that we want to obtain a piece of text that is as semantically similar to the original text as possible and satisfies certain length constraints. Isn't this the very purpose of a summary? Therefore, the core starting point of this approach is: <strong>we must clearly and quantitatively define the target we want to generate, and then perform the next steps.</strong></p>
+
+<h2>Difficulty Analysis</h2>
+
+<p>So, putting the previous background aside, the problem we face now is that we have a distribution $p(\boldsymbol{x})$ where we only know $p(\boldsymbol{x})\propto \rho(\boldsymbol{x})$, i.e.,</p>
+
+\begin{equation}p(\boldsymbol{x}) = \frac{\rho(\boldsymbol{x})}{\sum\limits_{\boldsymbol{x}} \rho(\boldsymbol{x})}\end{equation}
+
+<p>where the denominator cannot be calculated explicitly. In this series of articles, $\boldsymbol{x}$ represents text—that is, a sequence of discrete elements—but the subsequent inferences also apply to scenarios where $\boldsymbol{x}$ is a continuous vector. Now we want to search for the maximum position $\mathop{\text{argmax}}\limits_{\boldsymbol{x}} p(\boldsymbol{x})$ or perform sampling $\boldsymbol{x}\sim p(\boldsymbol{x})$. As we will see later, searching for the maximum value can actually be seen as a special case of sampling, so we are mainly concerned with sampling methods.</p>
+
+<p>As mentioned before, the reason we need to design special algorithms to complete sampling is that direct sampling from $p(\boldsymbol{x})$ is difficult. We need to understand the difficulties of sampling to truly understand the key points of the sampling algorithms designed later. Where is the difficulty? If the candidate space of $\boldsymbol{x}$ is not large—say, even if there are 1 million candidate values—we can calculate every $p(\boldsymbol{x})$ and then perform regular categorical sampling. However, the candidate space of $\boldsymbol{x}$ is usually far more than 1 million. For example, if $\boldsymbol{x}$ has 10 components and each component has 10,000 choices (corresponding to the vocabulary size), then the total number of permutations is $10^{40}$. It is impossible to pre-calculate the probability of every permutation and sample accordingly.</p>
+
+<p>What should be done then? As the saying goes, "a journey of a thousand miles begins with a single step." We have to take it one step at a time. That is to say, if I cannot directly achieve a "1 out of $10^{40}$" selection, can I do a "1 out of $10^4$" selection 10 times? This corresponds to the so-called "autoregressive generation":</p>
+
+\begin{equation}p(\boldsymbol{x})=p(x_1) p(x_2|x_1) p(x_3|x_1, x_2) \cdots p(x_n|x_1,\cdots,x_{n-1}) = \prod_{t=1}^n p(x_t|\boldsymbol{x}_{< t})\end{equation}
+
+<p>In this way, we can first sample an $x_1$ from $p(x_1)$, then sample an $x_2$ from $p(x_2|x_1)$, and so on recursively. However, autoregressive generation only corresponds to unconditional language models or supervised Seq2Seq models. If we want to add some constraints to the generation process of an unconditional language model, as in the examples mentioned earlier, the resulting model is no longer autoregressive and cannot be sampled using this recursive method.</p>
+
+<p>Therefore, we inevitably need the various sampling algorithms introduced later. They also use the "one step at a time" idea, but the distribution forms they use are more general.</p>
+
+<h2>Importance Sampling</h2>
+
+<p>In articles such as <i>"Optimization from a Sampling Perspective: A Unified View of Differentiable and Non-differentiable Optimization"</i> and <i>"How to Partition a Validation Set Closer to the Test Set?"</i>, we introduced the concept of "Importance Sampling." That is, if we want to estimate the expectation $\mathbb{E}_{\boldsymbol{x}\sim p(\boldsymbol{x})}[f(\boldsymbol{x})]$, but $p(\boldsymbol{x})$ is not a distribution that is easy to sample from, we can find a distribution $q(\boldsymbol{x})$ that is close to $p(\boldsymbol{x})$ and easy to sample from. Then, according to the following transformation:</p>
+
+\begin{equation} 
+\mathbb{E}_{\boldsymbol{x}\sim p(\boldsymbol{x})}[f(\boldsymbol{x})] = \sum_{\boldsymbol{x}} p(\boldsymbol{x}) f(\boldsymbol{x}) = \sum_{\boldsymbol{x}} q(\boldsymbol{x})\frac{p(\boldsymbol{x})}{q(\boldsymbol{x})}f(\boldsymbol{x}) = \mathbb{E}_{\boldsymbol{x}\sim q(\boldsymbol{x})}\left[\frac{p(\boldsymbol{x})}{q(\boldsymbol{x})}f(\boldsymbol{x})\right] 
+\end{equation}
+
+<p>it is converted into sampling from $q(\boldsymbol{x})$ to calculate the expectation of $\frac{p(\boldsymbol{x})}{q(\boldsymbol{x})}f(\boldsymbol{x})$, which means weighting each sample by $\frac{p(\boldsymbol{x})}{q(\boldsymbol{x})}$. Therefore, it is called "<strong>Importance Sampling</strong>." If we only know $p(\boldsymbol{x})\propto \rho(\boldsymbol{x})$, importance sampling can still be performed because</p>
+
+\begin{equation}1 = \sum_{\boldsymbol{x}} p(\boldsymbol{x}) = \sum_{\boldsymbol{x}} q(\boldsymbol{x})\frac{p(\boldsymbol{x})}{q(\boldsymbol{x})} = \mathbb{E}_{\boldsymbol{x}\sim q(\boldsymbol{x})}\left[\frac{p(\boldsymbol{x})}{q(\boldsymbol{x})}\right]\end{equation}
+
+<p>So</p>
+
+\begin{equation} 
+\mathbb{E}_{\boldsymbol{x}\sim q(\boldsymbol{x})}\left[\frac{p(\boldsymbol{x})}{q(\boldsymbol{x})}f(\boldsymbol{x})\right] = \mathbb{E}_{\boldsymbol{x}\sim q(\boldsymbol{x})}\left[\frac{p(\boldsymbol{x}) / q(\boldsymbol{x})}{\mathbb{E}_{\boldsymbol{x}\sim q(\boldsymbol{x})}[p(\boldsymbol{x}) / q(\boldsymbol{x})]}f(\boldsymbol{x})\right] 
+\end{equation}
+
+<p>As a result, we find that the above formula only depends on the relative value of $p(\boldsymbol{x})$, not its absolute value. Therefore, it is also okay to replace $p(\boldsymbol{x})$ with $\rho(\boldsymbol{x})$, which is proportional to it, ultimately simplifying to:</p>
+
+\begin{equation} 
+\mathbb{E}_{\boldsymbol{x}\sim p(\boldsymbol{x})}[f(\boldsymbol{x})] \approx \frac{\sum\limits_{i=1}^N \rho(\boldsymbol{x}_i) / q(\boldsymbol{x}_i) \cdot f(\boldsymbol{x}_i)}{\sum\limits_{i=1}^N 
+\rho(\boldsymbol{x}_i) / q(\boldsymbol{x}_i)},\quad \boldsymbol{x}_1,\cdots,\boldsymbol{x}_N\sim q(\boldsymbol{x})\end{equation}
+
+<h2>Rejection Sampling</h2>
+
+<p>The importance sampling in the previous section achieves the conversion of expectations from a complex distribution to expectations from a simple distribution, but this is not our real goal. What we want to achieve is pulling samples from the distribution $p(\boldsymbol{x})$, rather than estimating some expectation of it. The idea is still the same as importance sampling: introduce a distribution $q(\boldsymbol{x})$ that is easy to sample from, and then randomly filter out some samples so that the remaining samples follow the distribution $p(\boldsymbol{x})$.</p>
+
+<p>Specifically, assuming there is a function $\alpha(\boldsymbol{x})\in [0, 1]$, we carry out sampling according to the following process, known as "<strong>Rejection Sampling</strong>":</p>
+
+<p style="padding-left: 30px;"><strong>Rejection Sampling:</strong> Sample a specimen $\boldsymbol{x}$ from $q(\boldsymbol{x})$, sample a random number $\varepsilon$ from $U[0,1]$. If $\varepsilon \leq \alpha(\boldsymbol{x})$, then accept the sample; otherwise, reject it and repeat the process.</p>
+
+<p>So, what is the true probability distribution of the $\boldsymbol{x}$ sampled at this time? It's not difficult. Since the probability of sample $\boldsymbol{x}$ being retained is $\alpha(\boldsymbol{x})$, its relative probability is $q(\boldsymbol{x})\alpha(\boldsymbol{x})$. We only need to re-normalize it:</p>
+
+\begin{equation}\frac{q(\boldsymbol{x})\alpha(\boldsymbol{x})}{\sum\limits_{\boldsymbol{x}} q(\boldsymbol{x})\alpha(\boldsymbol{x})}\end{equation}
+
+<p>to get the true probability distribution corresponding to rejection sampling. From this form, it can also be seen that <strong>multiplying the acceptance rate by a number between 0 and 1 theoretically does not change the distribution corresponding to rejection sampling.</strong></p>
+
+<p>This process inspires us that rejection sampling allows us to sample from a distribution proportional to $q(\boldsymbol{x})\alpha(\boldsymbol{x})$. Then, according to $p(\boldsymbol{x})=q(\boldsymbol{x})\frac{p(\boldsymbol{x})}{q(\boldsymbol{x})}$, we can let $\alpha(\boldsymbol{x})=\frac{p(\boldsymbol{x})}{q(\boldsymbol{x})}$ be the acceptance probability to perform rejection sampling starting from $q(\boldsymbol{x})$. The result is equivalent to sampling from $p(\boldsymbol{x})$. Of course, it is not that simple. According to the normalization property of probability, unless $q(\boldsymbol{x})$ is identical to $p(\boldsymbol{x})$, $\frac{p(\boldsymbol{x})}{q(\boldsymbol{x})}$ cannot always be within $[0, 1]$. But this doesn't matter; as long as $\frac{p(\boldsymbol{x})}{q(\boldsymbol{x})}$ has an upper bound, we can choose a sufficiently large constant $M$ such that $\frac{p(\boldsymbol{x})}{q(\boldsymbol{x})\cdot M}\in [0, 1]$. At this point, using $\alpha(\boldsymbol{x})=\frac{p(\boldsymbol{x})}{q(\boldsymbol{x})\cdot M}$ as the acceptance probability works. As we just said, multiplying by a constant will not affect the distribution corresponding to rejection sampling. In other words, this process also does not depend on a perfectly accurate $p(\boldsymbol{x})$; $p(\boldsymbol{x})$ can be replaced with $\rho(\boldsymbol{x})$, which is proportional to it.</p>
+
+<p>Regarding the acceptance rate $\alpha(\boldsymbol{x})$, although theoretically it is only required that $\alpha(\boldsymbol{x})\in[0, 1]$, in practice it is better to have $\max\limits_{\boldsymbol{x}}\alpha(\boldsymbol{x}) = 1$. This is because an excessively low acceptance rate will lead to too many rejections (almost every sample is rejected), resulting in low sampling efficiency and an excessive cost to generate one reasonable sample. Similarly, although theoretically the only requirements for $q(\boldsymbol{x})$ are that it is easy to sample from and that $\frac{p(\boldsymbol{x})}{q(\boldsymbol{x})}$ has an upper bound, in practice $q(\boldsymbol{x})$ and $p(\boldsymbol{x})$ should still be as similar as possible. Otherwise, it may still cause the acceptance rate to be too low, making the sampling cost unacceptably high. Therefore, although rejection sampling seems to provide a solution for sampling from almost any distribution $p(\boldsymbol{x})$, the design of the approximate distribution $q(\boldsymbol{x})$ remains a significant challenge in practical applications.</p>
+
+<h2>Summary</h2>
+
+<p>Starting from this article, we have opened a new "pit," attempting to complete certain text generation tasks (constrained text generation) from the perspective of discrete optimization. It identifies a quantitative evaluation target and then obtains the desired output by maximizing this target or sampling from it, without requiring labeled data to supervise the training of a new model. In this process, the tools to be used are mainly sampling algorithms. This article first introduced the very basic Importance Sampling and Rejection Sampling. We will continue to improve this series of articles in the future, so stay tuned.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8062.html" style="color: #005fcc;">https://kexue.fm/archives/8062</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,0 +1,307 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    macros: {
+      boldsymbol: ["{\\style{font-weight: bold; font-style: italic;}{#1}}", 1]
+    }
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/10040">Transformer Upgrade Road: 17. Simple Reflections on Multimodal Position Encoding</a></h1>
+
+<p>By 苏剑林 | March 29, 2024</p>
+
+<p>In the second article of this series, <a href="translation_8265.html">"Transformer Upgrade Road: 2. Rotary Position Embedding (RoPE) and Its Advantages,"</a> I proposed Rotary Position Embedding (RoPE)—a scheme that implements relative position encoding through an absolute position form. Initially, RoPE was designed for one-dimensional sequences such as text and audio (RoPE-1D). Later, in <a href="translation_8397.html">"Transformer Upgrade Road: 4. Rotary Position Embedding for 2D Positions,"</a> we extended it to two-dimensional sequences (RoPE-2D), which is applicable to the ViT (Vision Transformer) for images. However, whether it is RoPE-1D or RoPE-2D, their common characteristic is a single modality—scenarios with either pure text or pure image inputs. So, for multimodal scenarios like mixed text-image inputs, how should RoPE be adjusted?</p>
+
+<p>I searched for related literature and found few works discussing this problem. The mainstream approach seems to be directly flattening all inputs and treating them as a one-dimensional input to apply RoPE-1D; consequently, even RoPE-2D is rarely seen. Not to mention whether this practice will become a performance bottleneck when image resolution increases further, it ultimately feels somewhat "inelegant." Therefore, in the following, we attempt to explore a natural integration of the two.</p>
+
+<h2>Rotary Position <a id="旋转位置" href="#旋转位置">#</a></h2>
+
+<p>The term "Rotary" in RoPE comes from the rotation matrix $\boldsymbol{\mathcal{R}}_n = \begin{pmatrix} \cos n\theta & -\sin n\theta \\ \sin n\theta & \cos n\theta \end{pmatrix}$, which satisfies:
+\begin{equation}\boldsymbol{\mathcal{R}}_m^{\top}\boldsymbol{\mathcal{R}}_n = \boldsymbol{\mathcal{R}}_{n-m}\end{equation}
+In this way, the inner product for $\boldsymbol{q}, \boldsymbol{k}$ (assumed to be column vectors) is:
+\begin{equation}\left(\boldsymbol{\mathcal{R}}_m\boldsymbol{q}\right)^{\top} \left(\boldsymbol{\mathcal{R}}_n\boldsymbol{k}\right) = \boldsymbol{q}^{\top}\boldsymbol{\mathcal{R}}_m^{\top}\boldsymbol{\mathcal{R}}_n \boldsymbol{k} = \boldsymbol{q}^{\top}\boldsymbol{\mathcal{R}}_{n-m}\boldsymbol{k}\end{equation}
+In the leftmost part of the equation, $\boldsymbol{\mathcal{R}}_m\boldsymbol{q}$ and $\boldsymbol{\mathcal{R}}_n\boldsymbol{k}$ are performed independently, involving no interaction between $m$ and $n$. Thus, it is formally an absolute position. However, since the equivalent form on the far right depends only on the relative position $n-m$, when combined with Dot-Product Attention, it essentially behaves as a relative position. This characteristic also grants RoPE translation invariance: because $(n+c) - (m+c) = n-m$, if a constant is added to all absolute positions before applying RoPE, the outcome of the Attention should theoretically remain unchanged (in practice, there may be slight errors due to precision limits).</p>
+
+<p>The above is the form for $\boldsymbol{q}, \boldsymbol{k} \in \mathbb{R}^2$. For $\boldsymbol{q}, \boldsymbol{k} \in \mathbb{R}^d$ (where $d$ is an even number), we need a $d \times d$ rotation matrix. For this, we introduce $d/2$ different $\theta$ values and construct a block diagonal matrix:
+\begin{equation}\small{\boldsymbol{\mathcal{R}}_n^{(d \times d)} = \begin{pmatrix}
+\cos n\theta_0 & -\sin n\theta_0 & 0 & 0 & \cdots & 0 & 0 \\
+\sin n\theta_0 & \cos n\theta_0 & 0 & 0 & \cdots & 0 & 0 \\
+0 & 0 & \cos n\theta_1 & -\sin n\theta_1 & \cdots & 0 & 0 \\
+0 & 0 & \sin n\theta_1 & \cos n\theta_1 & \cdots & 0 & 0 \\
+\vdots & \vdots & \vdots & \vdots & \ddots & \vdots & \vdots \\
+0 & 0 & 0 & 0 & \cdots & \cos n\theta_{d/2-1} & -\sin n\theta_{d/2-1} \\
+0 & 0 & 0 & 0 & \cdots & \sin n\theta_{d/2-1} & \cos n\theta_{d/2-1} \\
+\end{pmatrix}}\end{equation}
+Implementation-wise, this means grouping $\boldsymbol{q}$ and $\boldsymbol{k}$ in pairs, applying a 2D rotary transformation to each pair with a different $\theta$. This is existing RoPE content and will not be expanded upon further. In principle, we only need to find a solution for the lowest dimension, and it can then be extended to general dimensions via block diagonal formation. Therefore, the following analysis considers only the minimum dimension.</p>
+
+<h2>2D Position <a id="二维位置" href="#二维位置">#</a></h2>
+
+<p>When we talk about the concept of "dimension," it can have multiple meanings. For example, we just said $\boldsymbol{q}, \boldsymbol{k} \in \mathbb{R}^d$, meaning $\boldsymbol{q}$ and $\boldsymbol{k}$ are $d$-dimensional vectors. However, RoPE-1D and RoPE-2D focused on here do not refer to this dimension, but rather the number of dimensions required to record a <i>position</i>.</p>
+
+<p><b>Text and its position ID</b></p>
+
+<p>For example, to identify the position of a token in text, we only need a scalar $n$ to record that it is the $n$-th token. But for an image, even after patchification, it usually retains two spatial dimensions: width and height. Thus, we need a pair of coordinates $(x, y)$ to accurately encode the position of a specific patch:</p>
+
+<p><b>Image and its position coordinates</b></p>
+
+<p>The $\boldsymbol{\mathcal{R}}_n$ introduced in the previous section only encodes a scalar $n$; thus, it is RoPE-1D. To more reasonably handle image inputs, we must extend it to the corresponding RoPE-2D:
+\begin{equation}\boldsymbol{\mathcal{R}}_{x,y} = \left(
+\begin{array}{cc:cc}
+\cos x\theta & -\sin x\theta & 0 & 0 \\
+\sin x\theta & \cos x\theta & 0 & 0 \\
+\hdashline
+0 & 0 & \cos y\theta & -\sin y\theta \\
+0 & 0 & \sin y\theta & \cos y\theta \\
+\end{array}\right) = \begin{pmatrix}\boldsymbol{\mathcal{R}}_x & 0 \\ 0 & \boldsymbol{\mathcal{R}}_y\end{pmatrix}\end{equation}
+Clearly, this is simply $\boldsymbol{\mathcal{R}}_x$ and $\boldsymbol{\mathcal{R}}_y$ combined in block diagonal form, allowing for natural generalization to 3D or even higher dimensions. Implementation-wise, it is simple: split $\boldsymbol{q}$ and $\boldsymbol{k}$ in half (three equal parts for 3D, four for 4D, and so on), where each half is a vector in $\mathbb{R}^{d/2}$. Then apply RoPE-1D with $x$ to one half and RoPE-1D with $y$ to the other half, finally concatenating them back together.</p>
+
+<p>It should be noted that for considerations of symmetry and simplicity, in the construction of $\boldsymbol{\mathcal{R}}_{x,y}$ above, we used the same $\theta$ for both $x$ and $y$. In principle, this is not mandatory; in appropriate circumstances, we can configure slightly different $\theta$ values for $x$ and $y$.</p>
+
+<h2>Forced Dimensionality Reduction <a id="强行降维" href="#强行降维">#</a></h2>
+
+<p>As we can see, a text position is a scalar $n$, while an image position is a vector $(x, y)$. Since the two are inconsistent, some techniques are needed to reconcile this inconsistency when processing mixed text-image inputs.</p>
+
+<p>The most direct scheme, as mentioned at the beginning, is to flatten the image into a sequence of 1D vectors and treat it like ordinary text. Whatever position encoding is used for text is also used for the image. This approach is naturally very versatile and is not limited to RoPE; any absolute position encoding can be applied. I've observed that several existing multimodal models, such as Fuyu-8b, Deepseek-VL, and Emu2, follow this approach. Details may vary; for instance, when encountering patches from different rows, one might consider adding a special token like [SEP] to separate them:</p>
+
+<p><b>Text and images are both flattened into 1D for processing</b></p>
+
+<p>This scheme also aligns with current mainstream Decoder-Only architectures. Because Decoder-Only implies that even without position encoding, the model is not permutation-invariant, we must manually specify what we consider the optimal input order. Since an input order is being specified, using 1D position encoding following that order is a natural choice. Furthermore, for pure text, such a model is identical to a standard pure-text LLM, permitting the continued training of a pre-trained text LLM into a multimodal model.</p>
+
+<p>However, from my perspective, the concept of position encoding should not be tied to the usage of Attention; it should be universal to Decoders, Encoders, and any Attention Mask. On the other hand, maintaining the two-dimensional nature of positions is crucial to preserving our priors about spatial proximity as much as possible. For example, we believe positions $(x+1, y)$ and $(x, y+1)$ should have similar distances to $(x, y)$. But if flattened (horizontal then vertical), $(x, y)$ becomes $xw + y$, while $(x+1, y)$ and $(x, y+1)$ become $xw + y + w$ and $xw + y + 1$ respectively. The distance of the former from $xw + y$ depends on $w$, while the latter is a fixed $1$. Of course, we could specify other ordering sequences, but regardless of the order, it's impossible to fully capture the proximity of all neighboring locations. After all, losing a dimension means many expressible similarities are lost.</p>
+
+<h2>Unified Dimensionality Increase <a id="统一升维" href="#统一升维">#</a></h2>
+
+<p>From the perspective of vector spaces, a 1D scalar can be seen as a special case of a 2D vector. Therefore, compared to flattening into 1D, we have more room for operation if we unified all input positions into 2D.</p>
+
+<p>To this end, we could consider a common layout format: use images as delimiters to segment text. Continuous text is treated as a single line, and images are treated as text spanning multiple lines. Thus, the entire multimodal input corresponds to a multi-line document. Every text token or image patch has its own row number $x$ and an intra-row order $y$. This assigns a 2D position $(x, y)$ to all input units (tokens or patches), allowing the use of RoPE-2D (or other 2D position encodings) while maintaining the original 2D nature of image positions.</p>
+
+<p><b>Unified construction of 2D position coordinates by simulating layout</b></p>
+
+<p>Clearly, the main advantage of this scheme is its intuitiveness; it directly corresponds to the actual visual layout, making it easy to understand and extend. However, it also has a significant drawback: for pure text input, it cannot degrade back to RoPE-1D; instead, it becomes a version of RoPE-2D where $x$ is always 1. Whether a text LLM pre-trained this way can be successfully used to train a multimodal LLM is questionable. Furthermore, using images as split points might cause text to become excessively "fragmented" when there are many images, resulting in large fluctuations in the length of each text segment or unnaturally forced line breaks in otherwise continuous text, all of which could become bottlenecks for performance.</p>
+
+<h2>Combining into One <a id="合二为一" href="#合二为一">#</a></h2>
+
+<p>To preserve image patch position information losslessly, unifying to 2D and using RoPE-2D (or other 2D encodings) appears to be an inevitable choice. Thus, the previous section was on the right track; we just need to think further about how to allow it to degrade to RoPE-1D for pure text to maintain compatibility with existing text LLMs.</p>
+
+<p>First, as mentioned earlier, $\boldsymbol{\mathcal{R}}_{x,y}$ is a block diagonal combination of $\boldsymbol{\mathcal{R}}_x$ and $\boldsymbol{\mathcal{R}}_y$. Therefore, $\boldsymbol{\mathcal{R}}_{n,n}$ is a block diagonal combination of two $\boldsymbol{\mathcal{R}}_n$. Since RoPE-1D's $\boldsymbol{\mathcal{R}}_n^{(d \times d)}$ is also a block diagonal combination of multiple $\boldsymbol{\mathcal{R}}_n$ with different $\theta$ values, we can see that as long as we select different $\theta$ values from $\boldsymbol{\mathcal{R}}_n^{(d \times d)}$ for $x$ and $y$, $\boldsymbol{\mathcal{R}}_{n,n}$ can be viewed as a part of RoPE-1D (i.e., $\boldsymbol{\mathcal{R}}_n^{(d \times d)}$). Thus, for RoPE-2D to degrade to RoPE-1D, text positions should take the form $(n, n)$ rather than being assigned a row number as in the previous section.</p>
+
+<p>Next, inside the image, we use standard RoPE-2D. For a single image with $w \times h$ patches, its 2D position coordinates when flattened are:
+\begin{array}{c|cccc|cccc|c|cccc}
+\hline
+x & 1 & 1 & \cdots & 1 & 2 & 2 & \cdots & 2 & \quad \cdots \quad & h & h & \cdots & h \\
+\hline
+y & 1 & 2 & \cdots & w & 1 & 2 & \cdots & w & \quad \cdots \quad & 1 & 2 & \cdots & w \\
+\hline
+\end{array}
+If this image follows a sentence of length $L$, the position encoding of the last token of the sentence is $(L, L)$. Consequently, the position encoding for the image following the sentence should look like:
+\begin{array}{c|cccc|c|cccc}
+\hline
+x & L+1 & L+1 & \cdots & L+1 & \quad \cdots \quad & L+h & L+h & \cdots & L+h \\
+\hline
+y & L+1 & L+2 & \cdots & L+w & \quad \cdots \quad & L+1 & L+2 & \cdots & L+w \\
+\hline
+\end{array}
+However, this is not perfect. The last token of the sentence is at $(L, L)$, and the first patch of the image is at $(L+1, L+1)$, a difference of $(1, 1)$. If another sentence follows this image, let the first token of that sentence be at $(K, K)$, while the last patch of the image is at $(L+h, L+w)$. When $w \neq h$, no matter how we set $K$, we cannot make the difference between $(K, K)$ and $(L+h, L+w)$ equal to $(1, 1)$. That is, the image exhibits asymmetry relative to the surrounding sentences, which is inelegant.</p>
+
+<p>To improve this, we can multiply the image coordinates $x, y$ by positive numbers $s, t$ respectively:
+\begin{array}{c|cccc|cccc|c|cccc}
+\hline
+x & s & s & \cdots & s & 2s & 2s & \cdots & 2s & \quad \cdots \quad & hs & hs & \cdots & hs \\
+\hline
+y & t & 2t & \cdots & wt & t & 2t & \cdots & wt & \quad \cdots \quad & t & 2t & \cdots & wt \\
+\hline
+\end{array}
+As long as $s, t \neq 0$, this scaling preserves the position information losslessly, so such an operation is permissible. After introducing the scale, assuming the last token of the sentence is still at $(L, L)$, the image positions are the above sequence plus $L$. At this point, the difference between "the position of the last token of the sentence" and "the position of the first patch of the image" is $(s, t)$. If we want the difference between "the position of the first token of the sentence following the image" and "the position of the last patch of the image" to also be $(s, t)$, we must have:
+\begin{equation}\begin{pmatrix}L + hs \\ L + wt \end{pmatrix} + \begin{pmatrix}s \\ t \end{pmatrix} = \begin{pmatrix}K \\ K \end{pmatrix} \quad \Rightarrow \quad (h+1)s = (w+1)t\end{equation}
+Considering the arbitrariness of $h, w$, and wanting to ensure position IDs remain integers, the simplest solution is clearly $s = w+1, t = h+1$. The position of the first token of the new sentence will be $K = L + (w+1)(h+1)$. A concrete example is shown in the figure below:</p>
+
+<p><b>Two-dimensional positions supporting degradation to RoPE-1D</b></p>
+
+<h2>Extended Reflection <a id="延伸思考" href="#延伸思考">#</a></h2>
+
+<p>The last token of the left sentence is at $L$, and the first token of the right sentence is at $K = L + (w+1)(h+1)$. If the middle part were also a sentence, it would imply that the sentence has $(w+1)(h+1)-1$ tokens. This is equivalent to saying that if a $w \times h$ image is sandwiched between two sentences, then for their relative distance, it's as if they are separated by $(w+1)(h+1)-1$ tokens. This number seems a bit unnatural, as $wh$ would appear to be the perfect answer, but unfortunately, this is the simplest solution that ensures all position IDs are integers. If non-integer position IDs were allowed, one could agree that a $w \times h$ image is equivalent to $wh$ tokens, deriving:
+\begin{equation}s = \frac{wh + 1}{h+1}, \quad t = \frac{wh + 1}{w+1}\end{equation}</p>
+
+<p>Some readers might ask: what if two images of different sizes are adjacent? Is there still such a symmetric scheme? This is not difficult; as long as we add special tokens at the beginning and end of each image to mark them, such as [IMG] and [/IMG], and treat these special tokens as ordinary text tokens for position encoding, we directly avoid the case of two images being directly adjacent (because per the convention, the patches of the same image are necessarily sandwiched between [IMG] and [/IMG], and these tokens are treated as text, meaning every image is necessarily sandwiched between two text elements). Additionally, [SEP] was not mentioned in the description above; if needed, it can be introduced. In fact, [SEP] is only necessary when using a patch-by-patch autoregressive method for image generation; if images are purely used as input, or if image generation is done using diffusion models, [SEP] is redundant.</p>
+
+<p>At this point, our derivation for extending RoPE to mixed text-image input is complete. If a name is needed, the final scheme can be called "RoPE-Tie (RoPE for Text-image)." It must be admitted that the final RoPE-Tie isn't overly elegant, to the extent that it gives a feeling of "over-engineering." In terms of effectiveness, compared to directly flattening into 1D and using RoPE-1D, switching to RoPE-Tie might not yield a significant improvement; it's more of a product of my perfectionism. Therefore, for multimodal models that have already scaled to a certain size, there's no need to make changes. However, if you haven't started yet or are just beginning, you might as well try RoPE-Tie.</p>
+
+<h2>Article Summary <a id="文章小结" href="#文章小结">#</a></h2>
+
+<p>This article discussed how to combine RoPE-1D and RoPE-2D to better handle mixed text-image input formats. The main idea is to use RoPE-2D to support the two-dimensional position indices of images and, through appropriate constraints, allow it to degrade to standard RoPE-1D in pure text scenarios.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10040.html" style="color: #005fcc;">https://kexue.fm/archives/10040</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

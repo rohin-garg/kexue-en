@@ -1,0 +1,244 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+<h1><a href="https://kexue.fm/archives/10047">Generating Diffusion Models Chat (22): SNR and High-Resolution Image Generation (Part 1)</a></h1>
+
+<p>By 苏剑林 | April 08, 2024</p>
+
+<p>If we take stock of mainstream image diffusion model works, we will find a common characteristic: currently, most work on high-resolution image generation (hereinafter referred to as "large image generation") is carried out by first transforming into a Latent space through an Encoder (i.e., LDM, <a href="https://papers.cool/arxiv/2112.10752">Latent Diffusion Model</a>). Diffusion models trained directly in the original Pixel space mostly have resolutions not exceeding 64*64, and coincidentally, the Latent transformed by LDM through an AutoEncoder usually does not exceed 64*64 either. This naturally leads to a series of questions: Is there an inherent difficulty in high-resolution generation for diffusion models? Can high-resolution images be generated directly in Pixel space?</p>
+
+<p>The paper <a href="https://papers.cool/arxiv/2301.11093">"Simple diffusion: End-to-end diffusion for high resolution images"</a> attempts to answer this question. It analyzes the difficulty of large image generation through the concept of "Signal-to-Noise Ratio" (SNR) and uses it to optimize the noise schedule. At the same time, it proposes techniques such as scaling up the architecture only on the lowest resolution features and using multi-scale losses to ensure training efficiency and effectiveness. These changes allowed the original paper to successfully train image diffusion models with resolutions as high as 1024*1024 directly in Pixel space.</p>
+
+<h2>Review of LDM <a href="https://kexue.fm/archives/10047#LDM%E5%9B%9E%E9%A1%BE">#</a></h2>
+
+<p>Before getting to the main topic, we might as well think in reverse: Why has LDM successfully become the mainstream approach for diffusion models? In my opinion, there are two main reasons:</p>
+
+<blockquote>
+<p>1. Whether in application or academia, the primary reason for using LDM is undoubtedly efficiency: current mainstream works directly reuse the pre-trained AutoEncoder open-sourced by the LDM paper. Its Encoder part transforms a 512*512 image into a 64*64 Latent, which means that using the computational power and time equivalent to a 64*64 resolution level, one can generate a 512*512 image. This efficiency is obviously very attractive;</p>
+<p>2. LDM fits the FID metric, making it appear to have no loss in quality: FID stands for "Fréchet Inception Distance," where Inception refers to using the InceptionV3 model pre-trained on ImageNet as an Encoder to encode images, and then calculating the $\mathcal{W}$ distance assuming the encoded features follow a Gaussian distribution. Since LDM also performs Encoder encoding first, and although the two Encoders are not identical, they share certain commonalities, LDM performs as if it were almost lossless in terms of FID.</p>
+</blockquote>
+
+<p>We can expand on this slightly. The AutoEncoder of LDM combines many components during the training phase—its reconstruction Loss is not just the conventional MAE or MSE, but also includes Adversarial Loss and Perceptual Loss. The Adversarial Loss is used to ensure the sharpness of the reconstruction results, while the Perceptual Loss is used to ensure the similarity in semantics and style of the reconstruction results. <a href="https://papers.cool/arxiv/1603.08155">Perceptual Loss</a> is very similar to FID in that both are similarity metrics calculated using features from an ImageNet model, except it uses VGG-16 instead of InceptionV3. Due to the similarity of the training tasks, one can guess that the features of both share many commonalities, so the addition of Perceptual Loss implicitly ensures that the loss in FID is as small as possible.</p>
+
+<p>Furthermore, the Encoder of LDM is dimensionality-reducing relative to the original image. For example, if the original image size is 512*512*3, directly patchifying it would result in 64*64*192, but the features coming out of the LDM Encoder are 64*64*4, a reduction to 1/48. Meanwhile, to further reduce the variance of the encoded features and prevent the model from "rote memorization," LDM also adds corresponding regularization terms to the features coming out of the Encoder, with options being the KL divergence term of <a href="translation_5253.html">VAE</a> or the VQ regularization of <a href="translation_6760.html">VQ-VAE</a>. The design of dimensionality reduction and regularization both compress the diversity of features and improve feature generalization, but they also lead to increased reconstruction difficulty, eventually resulting in lossy reconstruction results.</p>
+
+<p>By this point, the reasons for LDM's success are "suddenly clear": the combination of "dimensionality reduction + regularization" reduces the information content of the Latent, thereby reducing the difficulty of learning a diffusion model in Latent space. Simultaneously, the existence of Perceptual Loss ensures that while the reconstruction is lossy, the FID is almost lossless (theoretically, it would be even better if the Encoder for Perceptual Loss was the same InceptionV3 as used for FID). Consequently, for the FID metric, LDM is practically a free lunch, which is why both academia and engineering are happy to continue using it.</p>
+
+<h2>Signal-to-Noise Ratio <a href="https://kexue.fm/archives/10047#%E4%BF%A1%E5%99%AA%E4%B9%8B%E6%AF%94">#</a></h2>
+
+<p>Despite being simple and efficient, LDM is ultimately lossy; its Latent can only preserve macroscopic semantics, and local details may be severely missing. In a previous article <a href="translation_9984.html">"Casual Talk on Multimodal Ideas (1): Lossless Input"</a>, I expressed the view that when used as an input, the best representation of an image is the original Pixel array. Based on this view, I have recently been focusing more on diffusion models trained directly in Pixel space.</p>
+
+<p>However, when the diffusion model configurations for low-resolution (e.g., 64*64) images are directly applied to high-resolution (e.g., 512*512) large image generation, problems such as excessive computational consumption and slow convergence speed arise, and the effects are not as good as LDM (at least according to the FID metric). Simple diffusion analyzes these problems one by one and proposes corresponding solutions. Among them, I think the use of the "Signal-to-Noise Ratio" (SNR) concept to analyze the low learning efficiency of high-resolution diffusion models is the most brilliant.</p>
+
+<p>Specifically, Simple diffusion observed that if we add noise of a certain variance to a high-resolution image, the signal-to-noise ratio is actually higher compared to a low-resolution image with the same variance noise added. Figure 3 of the original paper demonstrates this very intuitively, as shown in the image below. The first row of images consists of 512*512 images with specific variance noise added and then downsampled (average pooling) to 64*64, while the second row shows 64*64 images with the same variance noise added directly. It is obvious that the images in the first row are clearer, meaning the relative signal-to-noise ratio is higher.</p>
+
+<p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2024/04/3990884813.png" alt="SNR of different resolutions with same noise" /></p>
+<p style="text-align:center;">SNR of the same noise at different resolutions</p>
+
+<p>As the name suggests, "Signal-to-Noise Ratio" is the ratio of the intensity of the signal to the intensity of the noise. A higher SNR (i.e., a lower proportion of noise) means that denoising is easier. In other words, during the training phase, the Denoiser faces more simple samples. However, in reality, large image generation is clearly more difficult. This means our target is a more difficult model, but we have provided simpler samples, thus leading to low learning efficiency.</p>
+
+<h2>Aligning Downward <a href="https://kexue.fm/archives/10047#%E5%90%91%E4%BD%8E%E7%9C%8B%E9%BD%90">#</a></h2>
+
+<p>We can also describe this mathematically. Following the notation of this series, the operation to construct $\boldsymbol{x}_t$ through noise addition can be expressed as
+\begin{equation}\boldsymbol{x}_t = \bar{\alpha}_t \boldsymbol{x}_0 + \bar{\beta}_t \boldsymbol{\varepsilon},\quad \boldsymbol{\varepsilon}\sim\mathcal{N}(\boldsymbol{0},\boldsymbol{I})\end{equation}
+where $\bar{\alpha}_t, \bar{\beta}_t$ are called the noise schedule, satisfying $\bar{\alpha}_0=\bar{\beta}_T=1, \bar{\alpha}_T=\bar{\beta}_0=0$. In addition, there are generally extra constraints, such as $\bar{\alpha}_t^2 + \bar{\beta}_t^2=1$ in DDPM, which we will continue to use here.</p>
+
+<p>For a random variable, the signal-to-noise ratio is the ratio of the square of the mean to the variance. Given $\boldsymbol{x}_0$, the mean of $\boldsymbol{x}_t$ is clearly $\bar{\alpha}_t \mathbb{E}[\boldsymbol{x}_0]$ and the variance is $\bar{\beta}_t^2$, so the SNR is $\frac{\bar{\alpha}_t^2}{\bar{\beta}_t^2}\mathbb{E}[\boldsymbol{x}_0]^2$. Since we are always discussing this given $\boldsymbol{x}_0$, we can simply say the signal-to-noise ratio is $SNR(t) = \frac{\bar{\alpha}_t^2}{\bar{\beta}_t^2}$.</p>
+
+<p>When we apply average pooling of size $s\times s$ to $\boldsymbol{x}_t$, each $s\times s$ patch becomes a scalar by taking the average, i.e.,
+\begin{equation}\frac{1}{s^2}\sum_{i=1}^s \sum_{j=1}^s\boldsymbol{x}_t^{(i,j)} = \bar{\alpha}_t\left(\frac{1}{s^2}\sum_{i=1}^s \sum_{j=1}^s \boldsymbol{x}_0^{(i,j)}\right) + \bar{\beta}_t\left(\frac{1}{s^2}\sum_{i=1}^s \sum_{j=1}^s \boldsymbol{\varepsilon}^{(i,j)}\right) ,\quad \boldsymbol{\varepsilon}^{(i,j)}\sim\mathcal{N}(0, 1)\end{equation}
+Average pooling does not change the mean but reduces the variance, thereby increasing the SNR. This is because from the additivity of normal distributions, we have
+\begin{equation}\frac{1}{s^2}\sum_{i=1}^s \sum_{j=1}^s \boldsymbol{\varepsilon}^{(i,j)}\sim\mathcal{N}(0, 1/s^2)\end{equation}
+Therefore, under the same noise schedule, if we align a high-resolution image to a low-resolution one via average pooling, we will find the SNR is higher, specifically $s^2$ times the original:
+\begin{equation}SNR^{w\times h\to w/s\times h/s}(t) = SNR^{w/s\times h/s}(t) \times s^2 \end{equation}
+Thinking in reverse, if we already have a noise schedule $\bar{\alpha}_t^{w/s\times h/s},\bar{\beta}_t^{w/s\times h/s}$ tuned for low-resolution images, then when we want to scale up to a higher resolution, we should adjust the noise schedule to $\bar{\alpha}_t^{w\times h},\bar{\beta}_t^{w\times h}$ so that after downsampling to the low resolution, its SNR can align with the already tuned low-resolution noise schedule. This way, we can "inherit" the learning efficiency of the low-resolution diffusion model to the greatest extent possible, i.e.,
+\begin{equation} \frac{(\bar{\alpha}_t^{w\times h})^2}{(\bar{\beta}_t^{w\times h})^2} \times r^2 = \frac{(\bar{\alpha}_t^{w/s\times h/s})^2}{(\bar{\beta}_t^{w/s\times h/s})^2} \end{equation}
+If we add the constraint $\bar{\alpha}_t^2 + \bar{\beta}_t^2 = 1$, we can uniquely solve for $\bar{\alpha}_t^{w\times h},\bar{\beta}_t^{w\times h}$ from $\bar{\alpha}_t^{w/s\times h/s},\bar{\beta}_t^{w/s\times h/s}$. This solves the noise schedule setting problem for high-resolution diffusion.</p>
+
+<h2>Architectural Scaling <a href="https://kexue.fm/archives/10047#%E6%9E%B6%E6%9E%84%E6%8B%93%E5%B1%95">#</a></h2>
+
+<p>To perform well in large image diffusion generation, besides adjusting the noise schedule, we also need to scale up the architecture. As we have already said, large image generation is a harder problem and therefore should require a more heavyweight architecture.</p>
+
+<p>Commonly used architectures for diffusion models are <a href="https://papers.cool/arxiv/1505.04597">U-Net</a> or <a href="https://papers.cool/arxiv/2209.12152">U-Vit</a>, both of which gradually downsample and then gradually upsample. For example, with a 512*512 input, they generally perform calculations in one block, then downsample to 256*256, then perform calculations in a new block, then downsample to 128*128, and so on, downsampling to a minimum resolution of 16*16. Then they repeat this process but change downsampling to upsampling until the resolution is restored to 512*512. In the default settings, we would divide the parameters equally among each block. However, this means that blocks closer to the input and output have much larger input dimensions, leading to a dramatic increase in computational load, making model training inefficient or even unfeasible.</p>
+
+<p>Simple diffusion proposes two solutions. First, it suggests that downsampling can be performed directly after the first layer (instead of the first block, where each block has multiple layers), and it considers downsampling in one go to 128*128 or even 64*64. Similarly, when outputting, it only upsamples directly from 64*64 or 128*128 to 512*512 before the very last layer. This way, the resolution processed by most blocks of the model is reduced, thereby reducing the overall computational load. Second, it suggests placing the scaled-up layers of the model after the lowest resolution (i.e., 16*16) instead of spreading them across blocks of every resolution. That is, the newly added layers all process 16*16 inputs, including Dropout, which is also only added to the low-resolution layers. In this way, the computational pressure brought by increasing the resolution is significantly reduced.</p>
+
+<p>Furthermore, to further stabilize training, the paper proposes a "Multi-scale Loss" training objective. By default, the Loss of a diffusion model is equivalent to the MSE loss:
+\begin{equation}\mathcal{L}=\frac{1}{wh}\Vert \boldsymbol{\varepsilon} - \boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\bar{\alpha}_t \boldsymbol{x}_0 + \bar{\beta}_t \boldsymbol{\varepsilon}, t)\Vert^2\end{equation}
+Simple diffusion generalizes this to:
+\begin{equation}\mathcal{L}_{s\times s} = \frac{1}{(w/s)(h/s)}\big\Vert \mathcal{D}_{w/s\times h/s}[\boldsymbol{\varepsilon}] - \mathcal{D}_{w/s\times h/s}[\boldsymbol{\epsilon}_{\boldsymbol{\theta}}(\bar{\alpha}_t \boldsymbol{x}_0 + \bar{\beta}_t \boldsymbol{\varepsilon}, t)]\big\Vert^2\end{equation}
+where $\mathcal{D}_{w/s\times h/s}[\cdot]$ is a downsampling operator that transforms the input to $w/s\times h/s$ via average pooling. The original paper took the average of losses corresponding to multiple $s$ values as the final training objective. The purpose of this multi-scale loss is clear: just like adjusting the noise schedule via SNR alignment, it is to ensure that the trained high-resolution diffusion model is at least no worse than a directly trained low-resolution model.</p>
+
+<p>As for the experimental part, everyone can read the original paper themselves. The maximum resolution Simple diffusion experimented with was 1024*1024 (mentioned in the appendix), the results were acceptable, and comparative experiments showed that all the proposed techniques provided improvements. Ultimately, the diffusion model trained directly in Pixel space achieved competitive results compared to LDM.</p>
+
+<h2>Summary <a href="https://kexue.fm/archives/10047#%E6%96%87%E7%AB%A0%E5%B0%8F%E7%BB%93">#</a></h2>
+
+<p>In this article, we introduced Simple diffusion, a work exploring how to train image diffusion models end-to-end directly in Pixel space. It utilizes the concept of SNR to describe the issue of low training efficiency for high-resolution diffusion models, and based on this, it adjusts to a new noise schedule and explores how to scale up the model architecture as cost-efficiently as possible.</p>
+
+<p><em><strong>Reprinted with address:</strong> <a href="translation_10047.html">https://kexue.fm/archives/10047</a></em></p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10047.html" style="color: #005fcc;">https://kexue.fm/archives/10047</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

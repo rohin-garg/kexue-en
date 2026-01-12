@@ -1,0 +1,277 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/10007">Fitting One-Dimensional Probability Density Functions with Fourier Series</a></h1>
+
+    <p>By 苏剑林 | March 07, 2024</p>
+
+    <p>In <a href="translation_9932.html">"Musings on Multi-modal Approaches (Part 1): Lossless Input"</a>, we mentioned that the fundamental difficulty of image generation is that there is no universal fitter for continuous probability densities. Of course, one cannot say there are none at all; for example, Gaussian Mixture Models (GMM) can theoretically fit any probability density, and even GANs can essentially be understood as GMMs mixing an infinite number of Gaussian models. However, although GMM's theoretical capacity is sufficient, its Maximum Likelihood Estimation is very difficult, especially because it is usually not suitable for gradient-based optimizers, which limits its application scenarios.</p>
+    <p>Recently, a new paper from Google, <a href="https://arxiv.org/abs/2402.05327">"Fourier Basis Density Model"</a>, proposed a new solution for the one-dimensional case—using Fourier series for fitting. The analysis process in the paper is quite interesting, and the construction form is very clever, making it well worth studying.</p>
+
+    <h3>Problem Description</h3>
+    <p>Some readers might question: what is the value of studying only the one-dimensional case? Indeed, if only image generation scenarios are considered, its value might be limited. However, one-dimensional probability density estimation itself has its own application value, such as in lossy data compression, making it a subject worth researching. Furthermore, even if we need to study multi-dimensional probability densities, they can be converted into multiple one-dimensional conditional probability densities through autoregression. Finally, the analysis and construction process itself is very much worth contemplating, so even as a exercise in mathematical analysis, it is quite beneficial.</p>
+    <p>To the point. One-dimensional probability density estimation refers to estimating the probability density function of a sampling distribution given $n$ real numbers $x_1, x_2, \dots, x_n$ sampled from the same distribution. Methods for this problem can be divided into "non-parametric estimation" and "parametric estimation." Non-parametric estimation primarily refers to Kernel Density Estimation (KDE), which, similar to <a href="translation_8009.html">"Using the Dirac Function to Construct Smooth Approximations of Non-smooth Functions"</a>, essentially uses the Dirac function for smooth approximation:</p>
+<begin{equation}p(x) = \int p(y)\delta(x - y) = \mathbb{E}_{y\sim p(y)}[\delta(x - y)]\approx \frac{1}{n}\sum_{i=1}^n \delta(x - x_i)\label{eq:delta}\end{equation}
+    <p>However, $\delta(x - y)$ is not a conventional smooth function, so we need to find a smooth approximation for it, such as $\frac{e^{-(x-y)^2/2\sigma^2}}{\sqrt{2\pi}\sigma}$, which is the probability density function of a normal distribution. As $\sigma \to 0$, it becomes $\delta(x-y)$. Substituting this into the above equation results in "Gaussian Kernel Density Estimation."</p>
+    <p>As can be seen, kernel density estimation essentially involves memorizing the data, so it can be inferred that its generalization ability is limited. Additionally, its complexity is proportional to the amount of data, making it impractical when the data scale is large. Therefore, we need "parametric estimation," which involves constructing a family of probability density functions $p_{\theta}(x)$ that are non-negative, normalized, and have a fixed number of parameters $\theta$, and then solving via maximum likelihood:</p>
+<begin{equation}\theta^* = \mathop{\text{argmax}}_{\theta} \sum_{i=1}^n \log p_{\theta}(x_i)\end{equation}
+    <p>The key to this problem is how to construct a family of probability density functions $p_{\theta}(x)$ with sufficient fitting capacity.</p>
+
+    <h3>Existing Methods</h3>
+    <p>The classic method for parametric probability density estimation is the Gaussian Mixture Model (GMM). Its starting point is also Equation $\eqref{eq:delta}$ plus a Gaussian kernel, but instead of traversing all data as centers, it finds a finite number $K$ of means and variances through training to construct a model whose complexity is independent of the data volume:</p>
+<begin{equation}p_{\theta}(x) = \frac{1}{K}\sum_{i=1}^K \frac{e^{-(x-\mu_i)^2/2\sigma_i^2}}{\sqrt{2\pi}\sigma_i},\quad \theta = \{\mu_1,\sigma_1,\mu_2,\sigma_2,\cdots,\mu_K,\sigma_K\}\end{equation}
+    <p>GMM is also commonly understood as a clustering method, an extension of K-Means, where $\mu_1, \mu_2, \dots, \mu_K$ are cluster centers, and unlike K-Means, it includes variances $\sigma_1, \sigma_2, \dots, \sigma_K$. Due to the theoretical guarantee of Equation $\eqref{eq:delta}$, GMM can theoretically fit any complex distribution when $K$ is large enough and $\sigma$ is small enough, making GMM's theoretical capacity sufficient. However, the problem with GMM is that the form $e^{-(x-\mu_i)^2/2\sigma_i^2}$ decays too quickly, leading to severe gradient disappearance. Consequently, it can usually only be solved using the EM algorithm (refer to <a href="translation_5155.html">"The Three Senses of Capsules: Matrix Capsules and EM Routing"</a>), which is difficult to optimize with gradient-based optimizers, limiting its application. Furthermore, even with the EM algorithm, one usually only finds a sub-optimal solution.</p>
+    <p>The original paper also mentions a method called DFP (Deep Factorized Probability), designed specifically for one-dimensional probability density estimation, originating from the paper <a href="https://arxiv.org/abs/1802.01436">"Variational image compression with a scale hyperprior"</a>. DFP utilizes the monotonicity of the cumulative probability function, i.e., the following integral:</p>
+<begin{equation}\Phi(x) = \int_{-\infty}^x p(y)dy \in [0,1]\end{equation}
+    <p>must be monotonically increasing. If we can first construct a monotonically increasing function $\Phi_{\theta}(x): \mathbb{R}\mapsto[0,1]$, then its derivative will be a valid probability density function. How to ensure the output of a model increases monotonically with its input? DFP uses a multi-layer neural network to build the model and ensures: 1. all activation functions are monotonically increasing; 2. all multiplicative weights are non-negative. Under these two constraints, the model must exhibit monotonicity. Finally, adding a Sigmoid controls the output range to $[0,1]$.</p>
+    <p>The principle of DFP is simple and intuitive, but similar to flow-based models, this layer-by-layer constraint raises concerns about lost fitting capacity. Furthermore, since the model is built entirely from neural networks, according to conclusions such as <a href="https://arxiv.org/abs/1808.04295">"Frequency Principle: Fourier Analysis Sheds Light on Deep Neural Networks"</a>, neural networks prioritize learning low-frequency signals during training. This may result in poor fitting of probability density peaks, i.e., over-smoothed fitting results. However, in many scenarios, the ability to fit peaks is one of the important indicators for evaluating a probability modeling method.</p>
+
+    <h3>Enter Fourier</h3>
+    <p>As indicated by the paper title "Fourier Basis Density Model" (hereafter referred to as FBDM), the proposed new method is based on using Fourier series to fit probability densities. Truth be told, the idea of using Fourier series for fitting is not difficult to come by; what is difficult is that there is a key non-negativity constraint that is uneasy to construct, and FBDM successfully navigated all the relevant details, which is truly admirable.</p>
+    <p>For simplicity, we set the domain of $x$ to $[-1,1]$. Since any real number on $\mathbb{R}$ can be mapped to $[-1,1]$ through transformations like $\tanh$, this setting does not lose generality. That is to say, the probability density function $p(x)$ we seek is a function defined on $[-1,1]$. We can write it as a Fourier series:</p>
+<begin{equation}p(x) = \sum_{n=-\infty}^{\infty} c_n e^{i\pi n x},\quad c_n = \frac{1}{2}\int_{-1}^1 p(x) e^{-i\pi n x} dx\end{equation}
+    <p>However, what we are doing now is the reverse: we do not know $p(x)$ to find its Fourier series; instead, we only have samples of $p(x)$. We need to set $p(x)$ in the following truncated Fourier series form and find the coefficients $c_n$ using an optimizer:</p>
+<begin{equation}f_{\theta}(x) = \sum_{n=-N}^{N} c_n e^{i\pi n x},\quad \theta = \{c_{-N},c_{-N+1},\cdots,c_{N-1},c_N\}\label{eq:fourier-series}\end{equation}
+    <p>As is well known, as a reasonable probability density function, $f_{\theta}(x)$ must satisfy at least the following two conditions:</p>
+<begin{equation}\text{Non-negative:}\,\,f_{\theta}(x)\geq 0,\quad \text{Normalized:}\,\,\int_{-1}^1 f_{\theta}(x)dx = 1\end{equation}
+    <p>The problem is that if $c_n$ are arbitrary real/complex numbers, then even the reality of Equation $\eqref{eq:fourier-series}$ cannot be guaranteed, let alone non-negativity. Thus, using Fourier series for fitting is not hard to think of; the difficulty lies in setting the form of $c_n$ such that the corresponding output is necessarily non-negative (as we will see later, under Fourier series, non-negativity is the hardest part, while normalization is actually simple).</p>
+
+    <h3>Ensuring Non-negativity</h3>
+    <p>In this section, we look at the most difficult part of the paper: the construction of non-negativity. The difficulty here is not that the derivation is complex, but that it is highly skilled.</p>
+    <p>First, we know that reality is a prerequisite for non-negativity, and ensuring reality is relatively simple:</p>
+<begin{equation}c_n^* = \left[\frac{1}{2}\int_{-1}^1 p(x) e^{-i\pi n x} dx\right]^* = \frac{1}{2}\int_{-1}^1 p(x) e^{i\pi n x} dx = c_{-n}\end{equation}
+    <p>It can be proven conversely that this condition is also sufficient. Therefore, guaranteeing reality only requires the constraint $c_n^* = c_{-n}$. This is relatively easy to implement and means that when the series in Equation $\eqref{eq:fourier-series}$ serves as a probability density function, there are only $N+1$ independent parameters $c_0, c_1, \dots, c_N$.</p>
+    <p>Regarding the non-negativity constraint, the original paper simply throws out a reference to "Herglotz’s theorem" and provides the answer directly, with almost no derivation. I searched for Herglotz’s theorem and found few introductions, so I had to try to bypass Herglotz’s theorem and understand the paper's answer in my own way.</p>
+    <p>Consider any finite subset of integers $\mathbb{K}\subseteq\mathbb{N}$ and the corresponding arbitrary complex sequence $\{u_k|k\in\mathbb{K}\}$. We have:</p>
+<begin{equation}\begin{aligned} 
+\sum_{n,m\in \mathbb{K}} u_n^* c_{n-m} u_m =&\, \sum_{n,m\in \mathbb{K}} u_n^* \left[\frac{1}{2}\int_{-1}^1 p(x) e^{-i\pi (n-m) x} dx\right] u_m \\ 
+=&\, \frac{1}{2}\int_{-1}^1 p(x) \left[\sum_{n,m\in \mathbb{K}} u_n^* e^{-i\pi (n-m) x} u_m \right] dx \\ 
+=&\, \frac{1}{2}\int_{-1}^1 p(x) \sum_{n,m\in \mathbb{K}} \left[(u_n e^{i\pi n x})^* (u_m e^{i\pi m x})\right] dx \\ 
+=&\, \frac{1}{2}\int_{-1}^1 p(x) \left[\left(\sum_{n\in \mathbb{K}}u_n e^{i\pi n x}\right)^* \left(\sum_{m\in \mathbb{K}}u_m e^{i\pi m x}\right)\right] dx \\ 
+=&\, \frac{1}{2}\int_{-1}^1 p(x) \left|\sum_{n\in \mathbb{K}}u_n e^{i\pi n x}\right|^2 dx \\ 
+\geq&\, 0 \\ 
+\end{aligned}\end{equation}
+    <p>The final $\geq 0$ depends on $p(x) \geq 0$, so we have derived a necessary condition for $f_{\theta}(x) \geq 0$: $\sum_{n,m\in \mathbb{K}} u_n^* c_{n-m} u_m \geq 0$. If we arrange all $c_{n-m}$ into a large matrix (a Toeplitz matrix), then in linear algebra terms, this condition is that any submatrix formed by the intersection of rows and columns corresponding to $\mathbb{K}$ must be a positive semi-definite matrix in complex space. It can also be proven that this condition is sufficient; that is, an $f_{\theta}(x)$ satisfying this condition must be greater than or equal to 0.</p>
+    <p>So the problem turns into finding a complex sequence $\{c_n\}$ such that the corresponding Toeplitz matrix $\{c_{n-m}\}$ is a positive semi-definite matrix. While this transformation seems to make the problem more complex, readers familiar with time series might know a ready-made construction: "autocorrelation coefficients." For any complex sequence $\{a_k\}$, the autocorrelation coefficient is defined as:</p>
+<begin{equation}r_n = \sum_{k=-\infty}^{\infty} a_k a_{k+n}^*\end{equation}
+    <p>It can be proven that $r_{n-m}$ is necessarily positive semi-definite:</p>
+<begin{equation}\begin{aligned} 
+\sum_{n,m\in \mathbb{K}} u_n^* r_{n-m} u_m =&\, \sum_{n,m\in \mathbb{K}} u_n^* \left(\sum_{k=-\infty}^{\infty} a_k a_{k+n-m}^*\right) u_m \\ 
+=&\, \sum_{n,m\in \mathbb{K}} u_n^* \left(\sum_{k=-\infty}^{\infty} a_{k+m} a_{k+n}^*\right) u_m \\ 
+=&\, \sum_{k=-\infty}^{\infty}\left(\sum_{n\in \mathbb{K}} a_{k+n} u_n\right)^*\left(\sum_{m\in \mathbb{K}} a_{k+m} u_m\right) \\ 
+=&\, \sum_{k=-\infty}^{\infty}\left|\sum_{n\in \mathbb{K}} a_{k+n} u_n\right|^2 \\ 
+\geq&\, 0 
+\end{aligned}\end{equation}
+    <p>Therefore, taking $c_n$ in the form of $r_n$ is a feasible solution. To ensure that $c_n$ has only $N+1$ independent parameters, we agree that $a_k=0$ when $k < 0$ or $k > N$. We then get:</p>
+<begin{equation}c_n = \sum_{k=0}^{N-n} a_k a_{k+n}^*\end{equation}
+    <p>This constructs the corresponding $c_n$ such that the resulting Fourier series in Equation $\eqref{eq:fourier-series}$ is necessarily non-negative, satisfying the requirement for the probability density function.</p>
+
+    <h3>General Results</h3>
+    <p>Thus far, the most difficult part of the whole problem—"non-negativity"—has been solved. The remaining normalization is simple because:</p>
+<begin{equation}\int_{-1}^1 f_{\theta}(x)dx = \int_{-1}^1 \sum_{n=-N}^{N} c_n e^{i\pi n x} dx = 2c_0\end{equation}
+    <p>So the normalization factor is $2c_0$! Therefore, we only need to set $p_{\theta}(x)$ as:</p>
+<begin{equation} 
+p_{\theta}(x) = \frac{f_{\theta}(x)}{2c_0}=\frac{1}{2} + \sum_{n=1}^{N} \frac{c_n e^{i\pi n x} + c_{-n}e^{-i\pi n x}}{2c_0} = \text{Re}\left[\frac{1}{2} + \sum_{n=1}^N \frac{c_n}{c_0} e^{i\pi n x}\right], \\ 
+c_n = \sum_{k=0}^{N-n} a_k a_{k+n}^*,\quad\theta = \{a_0,a_1,\cdots,a_N\}\end{equation}
+    <p>This is a valid probability density candidate function. Of course, currently this distribution is only defined on $[-1,1]$. We need to extend it to the entire $\mathbb{R}$. This is not difficult; we first think of a transformation that compresses $\mathbb{R}$ to $[-1,1]$, and then find the form of the probability density after the transformation. To this end, we can first estimate the mean $\mu$ and variance $\sigma^2$ from the original samples, then use $x=\frac{y-\mu}{\sigma}$ to turn it into a distribution with mean 0 and variance 1, and then compress it into $[-1,1]$ through $x=\tanh\left(\frac{y-\mu}{\sigma}\right)$. The corresponding new probability density function is:</p>
+<begin{equation}q_{\theta}(y) = p_{\theta}(x)\frac{dx}{dy} = \frac{1}{\sigma}\text{sech}^2\left(\frac{y-\mu}{\sigma}\right) p_{\theta}\left(\tanh\left(\frac{y-\mu}{\sigma}\right)\right)\end{equation}
+    <p>From an end-to-end learning perspective, we can directly substitute the original data into the log-likelihood of $q_{\theta}(y)$ for optimization (instead of optimizing after compression), and even treat $\mu, \sigma$ as trainable parameters to be adjusted together.</p>
+    <p>Finally, to prevent overfitting, we also need a regularization term. The purpose of regularization is to hope the fitted distribution can be slightly smoother and not over-fit to local details. To this end, we consider the square of the norm of the derivative of $f_{\theta}(x)$ as the regularization term:</p>
+<begin{equation}\gamma\int_{-1}^1 \left|\frac{df_{\theta}(x)}{dx}\right|^2 dx = \gamma\sum_{n=-N}^N 2\pi^2 n^2 |c_n|^2\end{equation}
+    <p>As seen from the final form, it increases the penalty weight for high-frequency coefficients, which helps prevent the model from overfitting high-frequency details and improves generalization.</p>
+
+    <h3>Extended Thoughts</h3>
+    <p>At this point, we have completed all the theoretical derivations of FBDM. The rest is naturally conducting experiments. We will not repeat that part; just look at the results in the original paper. Note that all coefficients and operations of FBDM are in the complex domain. Forcing them to be real would significantly complicate the resulting forms, so for simplicity, they should be implemented directly based on the complex operations of the framework used (the original paper uses Jax).</p>
+    <p>Before looking at the experimental results, let's think about the evaluation metrics. In simulation experiments, we usually know the probability density expression of the true distribution. Therefore, the most direct metric is to calculate the KL divergence/Wasserstein distance between the true distribution and the fitted distribution. In addition, for fitting probability densities, we are usually more concerned with the fitting effect of the "peaks." Assuming the probability density is smooth, it may have multiple local maximum points, which we refer to as peaks or "modals." In many scenarios, the ability to accurately find more modals is more important than the overall distribution metric. For example, the basic idea of lossy compression is to retain only these modals to describe the distribution.</p>
+    <p>From the experimental results in the original paper, it can be seen that FBDM performs better in terms of KL divergence and modals under the same number of parameters:</p>
+    <p style="text-align:center;"><img src="https://testingcf.kexue.fm/imagess/10007/1.png" alt="Comparison of GMM, DFP, and FBDM effects" style="max-width:100%;"></p>
+    <p>I suspect the reason for this advantage is that the complex exponential form of FBDM is essentially trigonometric functions. Unlike the negative exp in GMM, it does not have the serious problem of gradient disappearance. Therefore, gradient-based optimizers have a higher probability of finding a better solution. From this perspective, FBDM can also be understood as a "Softmax" for continuous probability densities, both using $\exp$ as a basis to build a probability distribution, except one uses real exponents and the other uses imaginary exponents.</p>
+    <p>Compared to GMM, FBDM naturally has some disadvantages, such as being less intuitive, difficult to sample from, and difficult to generalize to high dimensions (though these disadvantages are also present in DFP). GMM is very intuitive, being a weighted average of a finite number of normal distributions. Sampling can be achieved through a hierarchical sampling process of category sampling followed by normal sampling. In contrast, FBDM does not have such an intuitive scheme; it seems sampling can only be done via the inverse cumulative probability function. That is, first find the cumulative probability function:</p>
+<begin{equation} \Phi(x) = P(\leq x) = \int_{-1}^x p_{\theta}(t)dt = \dots\end{equation}
+    <p>Actually, the integration is quite simple:</p>
+<begin{equation} \Phi(x) = \frac{x+1}{2} + \text{Re} \left[ \sum_{n=1}^N \frac{c_n}{c_0} \frac{e^{i\pi n x} - (-1)^n}{i\pi n} \right]\end{equation}
+    <p>Then $y=\Phi^{-1}(\varepsilon), \varepsilon\sim U[0,1]$ can achieve sampling. Regarding high-dimensional generalization, normal distributions inherently have high-dimensional forms, so generalizing GMM to any dimension is easy. But if FBDM is to be directly generalized to $D$ dimensions, then there will be $(N+1)^D$ parameters, which is obviously too complex. Or, like Decoder-Only LLMs, use autoregression to convert it into multiple one-dimensional conditional probability density estimations. In short, it's not that there are no ways, but one has to deal with more twists and turns.</p>
+
+    <h3>Summary</h3>
+    <p>This article introduced a new idea for modeling one-dimensional probability density functions using Fourier series. The key is to constrain the Fourier series—originally in the complex domain—to become a non-negative function through ingenious coefficient construction. The whole process is quite pleasing and well worth learning.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10007.html" style="color: #005fcc;">https://kexue.fm/archives/10007</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

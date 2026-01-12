@@ -1,0 +1,283 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']},
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="MathJax-script" async></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/9728">Transformer Upgrade Road: 13. Inverse Leaky ReRoPE</a></h1>
+    <p>By 苏剑林 | August 14, 2023</p>
+
+    <p>Last week in <a href="translation_9708.html">"Transformer Upgrade Road: 12. ReRoPE for Infinite Extrapolation?"</a>, I proposed ReRoPE and Leaky ReRoPE. Numerous experimental results indicate that they can extend the Context length of LLMs without fine-tuning and with almost no loss in training performance, achieving the ideal characteristic of "longer context, lower loss." Furthermore, unlike NTK-aware Scaled RoPE, ReRoPE seems to exhibit infinite Context processing capabilities.</p>
+
+    <p>In short, ReRoPE appears quite satisfactory, but the flies in the ointment are the increased inference costs. Specifically, the first step of inference requires calculating Attention twice, and each subsequent step requires recomputing position embeddings. This article attempts to resolve this issue by "inversely" using Leaky ReRoPE during training.</p>
+
+    <h2>Review</h2>
+    <p>Let us tirelessly revisit: RoPE is formally an absolute position encoding, but the effect it actually achieves is relative position encoding. The corresponding relative position matrix is:</p>
+
+\begin{equation}\begin{pmatrix}0 & \\
+1 & 0 & \\
+2 & 1 & 0 &\\
+3 & 2 & 1 & 0 & \\
+\ddots & 3 & 2 & 1 & 0 & \\
+\ddots & \ddots & 3 & 2 & 1 & 0 & \\
+\ddots & \ddots & \ddots & \ddots & \ddots & \ddots & \ddots \\
+\small{L - 2} & \ddots & \ddots & \ddots & \ddots & \ddots & \ddots & \ddots \\
+\small{L - 1} & \small{L - 2} & \ddots & \ddots & \ddots & 3 & 2 & 1 & 0 & \\
+\end{pmatrix}\label{eq:rope}\end{equation}
+
+    <p>To preserve locality while avoiding the position overflow issues caused by Long Context, Leaky ReRoPE changes the relative position matrix during the inference stage to:</p>
+
+\begin{equation}\begin{pmatrix}
+\color{red}{0} & \\
+\color{red}{1} & \color{red}{0} & \\
+\color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{red}{\small{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{w} & \color{red}{\small{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\small{w + \frac{1}{k}}} & \color{green}{w} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\small{w + \frac{2}{k}}} & \color{green}{\small{w + \frac{1}{k}}} & \color{green}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\ddots} & \color{green}{\small{w + \frac{2}{k}}} & \color{green}{\ddots} & \color{green}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \\
+\color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\small{w + \frac{2}{k}}} & \color{green}{\small{w + \frac{1}{k}}} & \color{green}{w} & \color{red}{\small{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\small{w + \frac{L-1-w}{k}}} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\small{w + \frac{2}{k}}} & \color{green}{\small{w + \frac{1}{k}}} & \color{green}{w} & \color{red}{\small{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\end{pmatrix}\label{eq:leaky-rerope}\end{equation}
+
+    <p>Where $w$ is the window width, generally taken as $\frac{1}{4}$ to $\frac{1}{2}$ of the training length; $k$ is used to adjust the maximum length that can be processed, and it is usually best if $w + \frac{L-1-w}{k}$ does not exceed half of the training length. As for ReRoPE, it directly takes the limit of $k \to \infty$:</p>
+
+\begin{equation}\begin{pmatrix}
+\color{red}{0} & \\
+\color{red}{1} & \color{red}{0} & \\
+\color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{red}{\small{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{w} & \color{red}{\small{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{w} & \color{green}{w} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{w} & \color{green}{w} & \color{green}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\ddots} & \color{green}{w} & \color{green}{\ddots} & \color{green}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \color{red}{\ddots} & \\
+\color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{w} & \color{green}{w} & \color{green}{w} & \color{red}{\small{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\color{green}{w} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{\ddots} & \color{green}{w} & \color{green}{w} & \color{green}{w} & \color{red}{\small{w - 1}} & \color{red}{\ddots} & \color{red}{2} & \color{red}{1} & \color{red}{0} & \\
+\end{pmatrix}\label{eq:rerope}\end{equation}
+
+    <h2>Inversion</h2>
+    <p>Looking at the evaluation results from the previous article, as a training-free extrapolation scheme, both ReRoPE and Leaky ReRoPE yield quite satisfactory results. They do not lose performance within the training length and achieve "Longer Context, Lower Loss." The only drawback is that their inference speed is slower compared to original Attention, and they are currently incompatible with acceleration technologies like Flash Attention.</p>
+
+    <p>So, can we reverse it? In the training phase, ReRoPE/Leaky ReRoPE is a normal-speed RoPE, and the inference phase is slowed down. Reversing that means: can we make the training phase slow and the inference phase a conventional RoPE? Some readers may wonder: why would you want to slow down the training phase? Isn't the training cost higher? This is because ReRoPE/Leaky ReRoPE is a length extrapolation method; the scenario is "Train Short, Test Long." The slowdown in training speed is short-term and controllable, whereas the slowdown in inference speed is long-term and "hard to swallow." Therefore, in comparison, if the slowdown is of the same degree, we would rather put the slow part into the training phase.</p>
+
+    <p>Let's look at Leaky ReRoPE again. Its relative position matrix during training is Equation $\eqref{eq:rope}$ with a step size of 1. During inference, it uses a step size of $1$ within the window $w$, and a step size of $\frac{1}{k} < 1$ outside the window. In other words, the difference is that a smaller step size is used outside the window during inference. If we reverse this and use Leaky ReRoPE during training with a step size outside the window <i>greater</i> than $1$, then according to the principle of "using a smaller step size outside the window during inference," can we use a step size equal to $1$ during inference outside the window, thereby degrading it back to RoPE?</p>
+
+    <p>I call the above idea "InvLeaky ReRoPE (Inverse Leaky ReRoPE)." Without further ado, let's conduct an experimental test.</p>
+
+    <h2>Experiment</h2>
+    <p>Continuing the previous experimental combination of "<a href="translation_8934.html">GAU</a> + <a href="translation_8978.html">Deep Norm</a> + <a href="translation_9512.html">Tiger</a> + Language Model," we use Leaky ReRoPE with $k=1/16, w=128$ during the training phase, use normal RoPE during the inference phase, and the test results are as follows:</p>
+
+    \[\begin{array}{c|cc}
+    \hline
+    \text{Test Length} & 512 (\text{Train}) & 4096 (\text{Repeat}) & 4096 (\text{Non-repeat})\\
+    \hline
+    \text{Baseline} & 49.41\% & 24.17\% & 23.16\% \\
+    \text{Baseline-}\log n & 49.40\% & 24.60\% & 24.02\% \\
+    \hline
+    \text{NTK-RoPE-fixed} & 49.41\% & 51.86\% & 39.61\% \\
+    \text{NTK-RoPE-}\log n^{\color{red}{\dagger}}\text{-fixed} & 49.41\% & 55.94\% & 41.11\% \\
+    \text{NTK-RoPE-}\log n\text{-fixed} & 49.40\% & 62.85\% & 44.14\% \\
+    \text{NTK-RoPE-mixed} & 49.41\% & 53.09\% & 40.12\% \\
+    \text{NTK-RoPE-}\log n^{\color{red}{\dagger}}\text{-mixed} & 49.41\% & 59.11\% & 42.38\% \\
+    \text{NTK-RoPE-}\log n\text{-mixed} & 49.40\% & 68.91\% & 45.41\% \\
+    \hline
+    \text{ReRoPE-w256} & 49.41\% & 77.90\% & 48.48\% \\
+    \text{ReRoPE-w256-}\log n^{\color{red}{\dagger}} & 49.41\% & 82.40\% & 48.85\% \\
+    \text{ReRoPE-w256-}\log n & 49.40\% & \boldsymbol{85.12\%} & \boldsymbol{49.07\%} \\
+    \hline
+    \text{InvLeaky ReRoPE-w128-}\log n & 49.38\% & 82.25\% & 48.32\% \\
+    \text{InvLeaky ReRoPE-w128-b8-}\log n & 49.62\% & 81.15\% & 48.85\% \\
+    \hline
+    \text{HFWA} & 48.70\% & 80.84\% & 48.15\% \\
+    \hline
+    \end{array}\]
+
+    <p>Where $\text{b8}$ means the frequency base of RoPE was changed from 10000 to 80000. It can be seen that although InvLeaky ReRoPE ("Leaky ReRoPE → RoPE") is not as effective as "RoPE → ReRoPE/Leaky ReRoPE," it still outperforms HFWA. Furthermore, because the inference stage is regular RoPE, existing acceleration technologies can be applied, so it remains quite competitive. Additionally, I performed some simple hyperparameter tuning on $k, w, b$, etc., and found that the optimal solution is basically the two combinations above—i.e., "set $k$ to the reciprocal of twice the expansion factor, set $w$ to $\frac{1}{4}$ of the training length, and optionally multiply $b$ by the expansion factor."</p>
+
+    <p>So, how much does InvLeaky ReRoPE affect training speed? In the above experiment, the model has 100 million parameters and a training length of 512. The training time per 1000 steps increased from 330 seconds to 350 seconds, an increase of less than 10%. Of course, GAU is a factor here because GAU uses single-headed attention, which is inherently faster than multi-headed attention. If multi-headed attention is used or the training length is longer, the increase might be larger, but it is estimated that an increase of no more than 50% should be acceptable.</p>
+
+    <h2>Summary</h2>
+    <p>This article proposed the "inverse" practice of Leaky ReRoPE. By using Leaky ReRoPE with a larger step size during the training phase, the inference phase can revert to regular RoPE, thereby maintaining inference speed. Experimental results show that this approach is still quite competitive.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9728.html" style="color: #005fcc;">https://kexue.fm/archives/9728</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

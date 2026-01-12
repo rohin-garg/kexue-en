@@ -1,0 +1,483 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    tags: 'ams',
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/4402">[The Incredible Word2Vec] 5. The TensorFlow Version of Word2Vec</a></h1>
+
+<p>By 苏剑林 | May 27, 2017</p>
+
+<p>This article encapsulates a relatively complete Word2Vec implementation, with the model part written in TensorFlow. The purpose of this article is not merely to reinvent the Word2Vec wheel, but to use this example to become familiar with TensorFlow's syntax and to test the effectiveness of a new softmax loss I designed, laying the groundwork for future research on language models.</p>
+
+<h2>What's Different <a href="#%E4%B8%8D%E5%90%8C%E7%9A%84%E5%9C%B0%E6%96%B9">#</a></h2>
+
+<p>For the basic mathematical principles of Word2Vec, please refer to the article <a href="translation_4299.html">"[The Incredible Word2Vec] 1. Mathematical Principles."</a> The primary models in this article are still CBOW and Skip-Gram, but the loss design is different. This article still utilizes a full softmax structure rather than a hierarchical softmax or negative sampling scheme, but during training, a cross-entropy loss based on random negative sampling is used. This loss differs from the existing <code>nce_loss</code> and <code>sampled_softmax_loss</code>. For now, let's name it <strong>random softmax loss</strong>.</p>
+
+<p>Additionally, in a softmax structure, the form is generally $\text{softmax}(Wx+b)$. Considering that the shape of the $W$ matrix is actually identical to the shape of the word vector matrix, this article considers a model where the softmax layer and the word vector layer share weights (at which point $b$ is set directly to 0). This model is equivalent to the negative sampling scheme of the original Word2Vec. It is also somewhat similar to the factorization of the word co-occurrence matrix in GloVe vectors, but because cross-entropy loss is used, it theoretically converges faster. Furthermore, the training results still possess the predictive probability significance of softmax (in contrast, after training existing Word2Vec negative sampling models, the final output values of the model are meaningless—only the word vectors are meaningful). Simultaneously, because parameters are shared, the updates to word vectors are more thorough. Readers are encouraged to test this scheme further.</p>
+
+<p>Therefore, this article effectively implements four model combinations: CBOW/Skip-Gram, with or without shared parameters for the softmax layer. Readers can choose which one to use.</p>
+
+<h2>Where the Loss Comes From <a href="#loss%E6%98%AF%E6%80%8E%E4%B9%88%E6%9D%A5%E7%9A%84">#</a></h2>
+
+<p>As mentioned earlier, one of the main objectives of this article is to test the effectiveness of the new loss. Below is a brief introduction to the origin and form of this loss. It begins with why softmax is difficult to train.</p>
+
+<p>Suppose the number of labels (which in this article is the vocabulary size in the dictionary) is $n$, then:</p>
+\begin{aligned}(p_1,p_2,\dots,p_n) =& \text{softmax}(z_1,z_2,\dots,z_n)\\
+=& \left(\frac{e^{z_1}}{Z}, \frac{e^{z_2}}{Z}, \dots, \frac{e^{z_n}}{Z}\right)\end{aligned}
+<p>Here, $Z = e^{z_1} + e^{z_2} + \dots + e^{z_n}$. If the correct category label is $t$, and cross-entropy is used as the loss, then:</p>
+$$L=-\log \frac{e^{z_t}}{Z}$$
+<p>The gradient is:</p>
+$$\nabla L=-\nabla z_t + \nabla (\log Z)=-\nabla z_t + \frac{\nabla Z}{Z}$$
+<p>Because of the existence of $Z$, every time gradient descent is performed, the complete $Z$ must be calculated to compute $\nabla Z$. This means the computational complexity for a single iteration of a single sample is $\mathcal{O}(n)$. For cases where $n$ is large, this is unacceptable, so an approximation scheme is sought (hierarchical softmax is one such scheme, but it is complex to implement and its results are usually slightly worse than standard softmax; furthermore, hierarchical softmax is only fast for training—if you need to find the label with the maximum probability during prediction, it is actually slower).</p>
+
+<p>Let's calculate the $\nabla L$ further:</p>
+\begin{aligned}\nabla L=&-\nabla z_t + \frac{\sum_i e^{z_i}\nabla z_i}{Z}\\
+=&-\nabla z_t + \frac{\sum_i e^{z_i}}{Z}\nabla z_i\\
+=&-\nabla z_t + \sum_i p_i \nabla z_i\\
+=&-\nabla z_t + \text{E}(\nabla z_i)
+\end{aligned}
+<p>In other words, the final gradient consists of two terms: one is the gradient of the correct label, and the other is the mean of the gradients of all labels. These two terms have opposite signs and can be understood as a "tug-of-war." The computation is mainly concentrated in the second term because one must iterate through all labels to calculate the specific mean. However, since the mean itself carries probabilistic significance, can we simply select a few labels randomly to calculate this gradient mean instead of calculating all gradients? If this is possible, the computational load for each step of the update would be fixed and would not increase rapidly as the number of labels grows.</p>
+
+<p>However, if we do this, labels need to be randomly selected according to their probability, which is not easy to code. Nevertheless, a more ingenious method is to avoid calculating the gradient directly; we can act directly on the loss. This leads to the loss in this article: <strong>For each "sample-label" pair, randomly select <code>nb_negative</code> labels, combine them with the original label to form <code>nb_negative + 1</code> labels, and calculate softmax and cross-entropy directly among these <code>nb_negative + 1</code> labels. After choosing this loss and calculating the gradient, you will find it naturally becomes the gradient mean selected according to probability.</strong></p>
+
+<h2>Code Implementation <a href="#%E4%BB%A3%E7%A0%81%E5%AE%9E%E7%8E%B0">#</a></h2>
+
+<p>I feel the code is quite concise; a single file contains everything. The training output mimics Gensim's Word2Vec. The model code is located on GitHub: <br />
+<a href="https://github.com/bojone/tf_word2vec/blob/master/Word2Vec.py">https://github.com/bojone/tf_word2vec/blob/master/Word2Vec.py</a></p>
+
+<p>Usage reference:</p>
+
+<pre><code>from Word2Vec import *
+import pymongo
+db = pymongo.MongoClient().travel.articles
+
+class texts:
+    def __iter__(self):
+        for t in db.find().limit(30000):
+            yield t['words']
+
+wv = Word2Vec(texts(), model='cbow', nb_negative=16, shared_softmax=True, epochs=2) # Build and train the model
+wv.save_model('myvec') # Save to the 'myvec' folder in the current directory
+
+# After training is complete, call it like this
+wv = Word2Vec() # Build an empty model
+wv.load_model('myvec') # Load the model from the 'myvec' folder in the current directory
+</code></pre>
+
+<p>A few points of clarification:</p>
+
+<blockquote>
+1. The input for training consists of tokenized sentences, which can be a list or an iterator (class + <code>__iter__</code>). Note that it cannot be a generator (function + <code>yield</code>); this is consistent with the requirements of the Gensim version of Word2Vec. This is because a generator can only be traversed once, while training Word2Vec requires traversing the data multiple times.<br /><br />
+2. The model does not support incremental training; that is, once the model is trained, it cannot be updated with additional documents (it's not impossible, but unnecessary and has little significance).<br /><br />
+3. Training the model requires TensorFlow, and using a GPU for acceleration is recommended. Once training is finished, reloading and using the model does not require TensorFlow—only NumPy.<br /><br />
+4. Regarding the number of iterations, 1–2 iterations are usually sufficient, and the number of negative samples can be 10–30. Other parameters, such as <code>batch_size</code>, can be adjusted through your own experiments.
+</blockquote>
+
+<h2>Simple Comparative Experiments <a href="#%E7%AE%80%E5%8D%95%E7%9A%84%E5%AF%B9%E6%AF%94%E5%AE%9E%E9%AA%8C">#</a></h2>
+
+<p>In TensorFlow, two existing losses for approximating softmax training are <code>nce_loss</code> and <code>sampled_softmax_loss</code>. Here, we perform a simple comparison. We train the same model on a corpus from the tourism sector (over 20,000 articles) and compare the results. The model is CBOW, the softmax choice is not to share the word vector layer, and all other parameters use the same default settings.</p>
+
+<h3>random_softmax_loss <a href="#random_softmax_loss">#</a></h3>
+
+<p>Time elapsed: 8 minutes 19 seconds (2 iterations, <code>batch_size</code> of 8000)</p>
+
+<p>Similarity test results:</p>
+
+<pre><code>>>> import pandas as pd
+>>> pd.Series(wv.most_similar(u'水果')) [Fruit]
+0 (食品 [Food], 0.767908)
+1 (鱼干 [Dried Fish], 0.762363)
+2 (椰子 [Coconut], 0.750326)
+3 (饮料 [Beverage], 0.722811)
+4 (食物 [Foodstuff], 0.719381)
+5 (牛肉干 [Beef Jerky], 0.715441)
+6 (菠萝 [Pineapple], 0.715354)
+7 (火腿肠 [Ham Sausage], 0.714509)
+8 (菠萝蜜 [Jackfruit], 0.712546)
+9 (葡萄干 [Raisins], 0.709274)
+dtype: object
+
+>>> pd.Series(wv.most_similar(u'自然')) [Nature]
+0 (人文 [Humanities], 0.645445)
+1 (和谐 [Harmony], 0.634387)
+2 (包容 [Inclusiveness], 0.61829)
+3 (大自然 [The Great Outdoors], 0.601749)
+4 (自然环境 [Natural Environment], 0.588165)
+5 (融 [Harmony/Blend], 0.579027)
+6 (博大 [Broad], 0.574943)
+7 (诠释 [Interpretation], 0.550352)
+8 (野性 [Wildness], 0.548001)
+9 (野趣 [Wild interest], 0.545887)
+dtype: object
+
+>>> pd.Series(wv.most_similar(u'广州')) [Guangzhou]
+0 (上海 [Shanghai], 0.749281)
+1 (武汉 [Wuhan], 0.730211)
+2 (深圳 [Shenzhen], 0.703333)
+3 (长沙 [Changsha], 0.683243)
+4 (福州 [Fuzhou], 0.68216)
+5 (合肥 [Hefei], 0.673027)
+6 (北京 [Beijing], 0.669859)
+7 (重庆 [Chongqing], 0.653501)
+8 (海口 [Haikou], 0.647563)
+9 (天津 [Tianjin], 0.642161)
+dtype: object
+
+>>> pd.Series(wv.most_similar(u'风景')) [Scenery]
+0 (景色 [Scenery/View], 0.825557)
+1 (美景 [Beautiful Scenery], 0.763399)
+2 (景致 [View/Landscape], 0.734687)
+3 (风光 [Scenery/Sights], 0.727672)
+4 (景观 [Landscape], 0.57638)
+5 (湖光山色 [Lakes and mountains], 0.573512)
+6 (山景 [Mountain view], 0.555502)
+7 (美不胜收 [Beautiful beyond words], 0.552739)
+8 (明仕 [Mingshi], 0.535922)
+9 (沿途 [Along the way], 0.53485)
+dtype: object
+
+>>> pd.Series(wv.most_similar(u'酒楼')) [Restaurant/Hotel]
+0 (酒家 [Restaurant], 0.768179)
+1 (排挡 [Food stall], 0.731749)
+2 (火锅店 [Hotpot restaurant], 0.729214)
+3 (排档 [Food stall], 0.726048)
+4 (餐馆 [Restaurant], 0.722667)
+5 (面馆 [Noodle house], 0.715188)
+6 (大排档 [Open-air food stall], 0.709883)
+7 (名店 [Famous shop], 0.708996)
+8 (松鹤楼 [Songhelou], 0.705759)
+9 (分店 [Branch store], 0.705749)
+dtype: object
+
+>>> pd.Series(wv.most_similar(u'酒店')) [Hotel]
+0 (万豪 [Marriot], 0.722409)
+1 (希尔顿 [Hilton], 0.713292)
+2 (五星 [Five-star], 0.697638)
+3 (五星级 [Five-star rated], 0.696659)
+4 (凯莱 [Gloria], 0.694978)
+5 (银泰 [Intime], 0.693179)
+6 (大酒店 [Grand Hotel], 0.692239)
+7 (宾馆 [Guesthouse], 0.67907)
+8 (喜来登 [Sheraton], 0.668638)
+9 (假日 [Holiday Inn], 0.662169)
+</code></pre>
+
+<h3>nce_loss <a href="#nce_loss">#</a></h3>
+
+<p>Time elapsed: 4 minutes (2 iterations, <code>batch_size</code> of 8000). However, the similarity test results were utterly eyesore-inducing. Considering the time was halved, to be fair, I increased the number of iterations to 4 and kept the rest unchanged. The similarity results remained a disaster, for example:</p>
+
+<pre><code>>>> pd.Series(wv.most_similar(u'水果')) [Fruit]
+0 (口 [Mouth/Measure word], 0.940704)
+1 (可 [Can], 0.940106)
+2 (100, 0.939276)
+3 (变 [Change], 0.938824)
+4 (第二 [Second], 0.938155)
+5 (： [Colon], 0.938088)
+6 (见 [See], 0.937939)
+7 (不好 [Not good], 0.937616)
+8 (和 [And], 0.937535)
+9 (（ [Parenthesis], 0.937383)
+dtype: object
+</code></pre>
+
+<p>I started to suspect I was using it wrong. So I adjusted it again, increasing <code>nb_negative</code> to 1000 and decreasing iterations back to 3. This timed at 9 minutes 17 seconds. The final loss was an order of magnitude smaller than before, and the similarity results became somewhat plausible, but still not particularly good, for instance:</p>
+
+<pre><code>>>> pd.Series(wv.most_similar(u'水果')) [Fruit]
+0 (特产 [Specialties], 0.984775)
+1 (海鲜 [Seafood], 0.981409)
+2 (之类 [Relating to], 0.981158)
+3 (食品 [Food], 0.980803)
+4 (。 [Period], 0.980371)
+5 (蔬菜 [Vegetable], 0.979822)
+6 (&, 0.979713)
+7 (芒果 [Mango], 0.979599)
+8 (可 [Can], 0.979486)
+9 (比如 [For example], 0.978958)
+dtype: object
+
+>>> pd.Series(wv.most_similar(u'自然')) [Nature]
+0 (与 [With], 0.985322)
+1 (地处 [Located at], 0.984874)
+2 (这些 [These], 0.983769)
+3 (夫人 [Madam], 0.983499)
+4 (里 [Inside], 0.983473)
+5 (的 [Possessive particle], 0.983456)
+6 (将 [Will/Will be], 0.983432)
+7 (故居 [Former residence], 0.983328)
+8 (那些 [Those], 0.983089)
+9 (这里 [Here], 0.983046)
+dtype: object
+</code></pre>
+
+<h3>sampled_softmax_loss <a href="#sampled_softmax_loss">#</a></h3>
+
+<p>Based on previous experience, I set <code>nb_negative</code> directly to 1000 and iterations to 3. This timed at 8 minutes 38 seconds. The similarity results are:</p>
+
+<pre><code>>>> pd.Series(wv.most_similar(u'水果')) [Fruit]
+0 (零食 [Snacks], 0.69762)
+1 (食品 [Food], 0.651911)
+2 (巧克力 [Chocolate], 0.64101)
+3 (葡萄 [Grape], 0.636065)
+4 (饼干 [Biscuit], 0.62631)
+5 (面包 [Bread], 0.613488)
+6 (哈密瓜 [Hami melon], 0.604927)
+7 (食物 [Foodstuff], 0.602576)
+8 (干货 [Dried goods], 0.601015)
+9 (菠萝 [Pineapple], 0.598993)
+dtype: object
+
+>>> pd.Series(wv.most_similar(u'自然')) [Nature]
+0 (人文 [Humanities], 0.577503)
+1 (大自然 [The Great Outdoors], 0.537344)
+2 (景观 [Landscape], 0.526281)
+3 (田园 [Rural], 0.526062)
+4 (独特 [Unique], 0.526009)
+5 (和谐 [Harmony], 0.503326)
+6 (旖旎 [Charming/Graceful], 0.498782)
+7 (无限 [Infinite], 0.491521)
+8 (秀美 [Beautiful/Elegant], 0.482407)
+9 (一派 [A scene of], 0.479687)
+dtype: object
+
+>>> pd.Series(wv.most_similar(u'广州')) [Guangzhou]
+0 (深圳 [Shenzhen], 0.771525)
+1 (上海 [Shanghai], 0.739744)
+2 (东莞 [Dongguan], 0.726057)
+3 (沈阳 [Shenyang], 0.687548)
+4 (福州 [Fuzhou], 0.654641)
+5 (北京 [Beijing], 0.650491)
+6 (动车组 [Bullet train], 0.644898)
+7 (乘动车 [Ride bullet train], 0.635638)
+8 (海口 [Haikou], 0.631551)
+9 (长春 [Changchun], 0.628518)
+dtype: object
+
+>>> pd.Series(wv.most_similar(u'风景')) [Scenery]
+0 (景色 [Scenery/View], 0.8393)
+1 (景致 [View/Landscape], 0.731151)
+2 (风光 [Scenery/Sights], 0.730255)
+3 (美景 [Beautiful Scenery], 0.666185)
+4 (雪景 [Snow scene], 0.554452)
+5 (景观 [Landscape], 0.530444)
+6 (湖光山色 [Lakes and mountains], 0.529671)
+7 (山景 [Mountain view], 0.511195)
+8 (路况 [Road quality], 0.490073)
+9 (风景如画 [Picturesque], 0.483742)
+dtype: object
+
+>>> pd.Series(wv.most_similar(u'酒楼')) [Restaurant]
+0 (酒家 [Restaurant], 0.766124)
+1 (菜馆 [Restaurant], 0.687775)
+2 (食府 [Restaurant/Food palace], 0.666957)
+3 (饭店 [Hotel/Restaurant], 0.664034)
+4 (川味 [Sichuan style], 0.659254)
+5 (饭馆 [Restaurant], 0.658057)
+6 (排挡 [Food stall], 0.656883)
+7 (粗茶淡饭 [Simple meal], 0.650861)
+8 (共和春 [Gonghechun], 0.650256)
+9 (餐馆 [Restaurant], 0.644265)
+dtype: object
+
+>>> pd.Series(wv.most_similar(u'酒店')) [Hotel]
+0 (宾馆 [Guesthouse], 0.685888)
+1 (大酒店 [Grand Hotel], 0.678389)
+2 (四星 [Four-star], 0.638032)
+3 (五星 [Five-star], 0.633661)
+4 (汉庭 [Hanting], 0.619405)
+5 (如家 [Home Inn], 0.614918)
+6 (大堂 [Lobby], 0.612269)
+7 (度假村 [Resort], 0.610618)
+8 (四星级 [Four-star rated], 0.609796)
+9 (天域 [Tianyu], 0.598987)
+dtype: object
+</code></pre>
+
+<h3>Summary <a href="#%E6%80%BB%E7%BB%93">#</a></h3>
+
+<p>Although this experiment isn't strictly rigorous, it should be fair to say that under identical training times, from the perspective of similarity tasks, <code>random_softmax</code> feels comparable to <code>sampled_softmax</code>, while <code>nce_loss</code> performs the worst. Further compression of iterations and parameter adjustments revealed similar results. Readers are welcome to test further. Since the <code>random_softmax</code> in this article performs a different sampling for every single sample, it requires fewer negative samples and sampling is more thorough.</p>
+
+<p>As for comparisons in other tasks, they will have to wait for future practice. After all, this isn't for publishing a paper, and I'm too lazy to do comprehensive benchmarks~</p>
+
+<h2>Future Work <a href="#%E5%90%8E%E7%BB%AD%E5%B7%A5%E4%BD%9C">#</a></h2>
+
+<p>The question is: if it performs similarly to <code>sampled_softmax</code>, why did I build a new loss? The reason is simple: when looking at the paper and formulas for <code>sampled_softmax</code>, I always felt they weren't particularly elegant and the theory wasn't "pretty" enough. Of course, looking at the results, perhaps I'm just being too obsessive-compulsive. This article can be considered a product of that obsession, as well as an exercise in TensorFlow.</p>
+
+<p>Furthermore, the article <a href="translation_4374.html">"Recording a Semi-Supervised Sentiment Analysis"</a> shows that language models have significant potential in pre-trained models and achieving semi-supervised learning tasks; even word vectors are just the first-layer parameters pre-trained by a language model. Therefore, I want to find time to dive deeper into similar content. This article is one of my preparations for that.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_4402.html" style="color: #005fcc;">https://kexue.fm/archives/4402</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

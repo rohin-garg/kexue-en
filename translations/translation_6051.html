@@ -1,0 +1,475 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    ignoreHtmlClass: 'tex2jax_ignore',
+    processHtmlClass: 'tex2jax_process'
+  },
+  loader: {
+    load: ['[tex]/ams']
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/6051">Lipschitz Constraint in Deep Learning: Generalization and Generative Models</a></h1>
+
+    <p>By 苏剑林 | October 07, 2018</p>
+
+    <p><strong>Preface:</strong> Last year, I wrote an introductory article on WGAN-GP titled <a href="translation_4439.html">"The Art of Mutual Grumbling: From Zero to WGAN-GP"</a>, mentioning that a Lipschitz constraint (hereafter referred to as the "L-constraint") is added to the discriminator of WGAN through gradient penalty. A few days ago, while pondering, I thought about WGAN again and felt that the gradient penalty in WGAN-GP isn't elegant enough. I also heard that WGAN has difficulties with conditional generation (because random interpolation between different classes can become messy...). So, I wanted to explore whether a new scheme could be devised to add an L-constraint to the discriminator.</p>
+
+    <p>After a few days of working behind closed doors, I discovered that what I had thought of had already been done by others—it seems there is truly nothing you can imagine that hasn't already been accomplished. It is mainly covered in these two papers: <a href="https://papers.cool/arxiv/1705.10941">"Spectral Norm Regularization for Improving the Generalizability of Deep Learning"</a> and <a href="https://papers.cool/arxiv/1802.05957">"Spectral Normalization for Generative Adversarial Networks"</a>.</p>
+
+    <p>Therefore, this article will briefly introduce the content related to the L-constraint based on my own understanding. Note that the theme of this article is the L-constraint, not just WGAN. It can be used in generative models as well as in general supervised learning.</p>
+
+    <h2>L-Constraint and Generalization</h2>
+
+    <h3>Perturbation Sensitivity</h3>
+
+    <p>Let the input be $x$, the output be $y$, the model be $f$, and the model parameters be $w$, denoted as:
+    \begin{equation}y = f_w(x)\end{equation}
+    Often, we want to obtain a "robust" model. What does robust mean? Generally, it has two meanings: first, stability with respect to parameter perturbations—for example, can the model still achieve similar results after becoming $f_{w+\Delta w}(x)$? In a dynamical system, we also consider whether the model can eventually return to $f_w(x)$. Second, stability with respect to input perturbations—for example, when the input changes from $x$ to $x+\Delta x$, does $f_w(x+\Delta x)$ still provide similar prediction results? Readers might have heard that deep learning models are susceptible to "adversarial attacks," where changing just one pixel in an image can lead to a completely different classification result; this is a case where the model is too sensitive to input perturbations.</p>
+
+    <h3>L-Constraint</h3>
+
+    <p>Therefore, most of the time we hope the model is insensitive to input perturbations, which usually improves the model's generalization performance. That is, we hope that when $\Vert x_1 - x_2 \Vert$ is very small,
+    \begin{equation}\Vert f_w(x_1) - f_w(x_2)\Vert\end{equation}
+    is also as small as possible. Of course, what "as small as possible" means exactly is hard to define. Thus, Lipschitz proposed a more specific constraint: there exists a constant $C$ (which depends only on the parameters and not on the inputs) such that the following inequality always holds:
+    \begin{equation}\Vert f_w(x_1) - f_w(x_2)\Vert \leq C(w)\cdot \Vert x_1 - x_2 \Vert\label{eq:l-cond}\end{equation}
+    In other words, we want the entire model to be "controlled" by a linear function. This is the L-constraint.</p>
+
+    <p><strong>In other words, here we consider a model that satisfies the L-constraint to be a good model. Furthermore, for a specific model, we hope to estimate the expression for $C(w)$ and hope that $C(w)$ is as small as possible. A smaller $C$ means it is less sensitive to input perturbations and has better generalization.</strong></p>
+
+    <h3>Neural Networks</h3>
+
+    <p>Here we analyze specific neural networks to observe when a neural network satisfies the L-constraint.</p>
+
+    <p>For simplicity, consider a single-layer fully connected network $f(Wx+b)$, where $f$ is the activation function and $W, b$ are the weight matrix and bias vector. Equation $\eqref{eq:l-cond}$ becomes:
+    \begin{equation}\Vert f(Wx_1+b) - f(Wx_2+b)\Vert \leq C(W,b)\cdot \Vert x_1 - x_2 \Vert\end{equation}
+    If we let $x_1, x_2$ be sufficiently close, we can approximate the left side with a first-order term to get:
+    \begin{equation}\left\Vert \frac{\partial f}{\partial y}W(x_1 - x_2)\right\Vert \leq C(W,b)\cdot \Vert x_1 - x_2 \Vert\end{equation}
+    where $y=Wx_2 + b$. Obviously, for the left side not to exceed the right side, the absolute value of each element in $\partial f / \partial y$ must not exceed a certain constant. This requires us to use activation functions with "bounded derivatives." Fortunately, our commonly used activation functions, such as sigmoid, tanh, and ReLU, all satisfy this condition. Assuming the gradient of the activation function is already bounded—especially for the ReLU activation function commonly used where this bound is 1—the $\partial f / \partial y$ term introduces only a constant. We can temporarily ignore it, and we only need to consider $\Vert W(x_1 - x_2)\Vert$.</p>
+
+    <p>Multi-layer neural networks can be analyzed step-by-step recursively, ultimately reducing to a single-layer problem. Structures like CNNs and RNNs are essentially special cases of fully connected layers, so the results for fully connected layers apply. Therefore, for neural networks, the problem becomes: if
+    \begin{equation}\Vert W(x_1 - x_2)\Vert \leq C\Vert x_1 - x_2 \Vert\label{sec:l-cond-nn}\end{equation}
+    holds identically, what can the value of $C$ be? Once we find the expression for $C$, we can aim to make $C$ as small as possible, thereby introducing a regularization term $C^2$ for the parameters.</p>
+
+    <h2>Matrix Norms</h2>
+
+    <h3>Definition</h3>
+
+    <p>By now, we have translated the problem into a matrix norm problem (the matrix norm acts similarly to the length of a vector). It is defined as:
+    \begin{equation}\Vert W\Vert_2 = \max_{x\neq 0}\frac{\Vert Wx\Vert}{\Vert x\Vert}\label{eq:m-norm}\end{equation}
+    If $W$ is a square matrix, this norm is also known as the "spectral norm" or "spectral radius." In this article, even if it is not square, we will call it the "Spectral Norm." Note that $\Vert Wx\Vert$ and $\Vert x\Vert$ both refer to vector norms, i.e., the ordinary vector magnitude. While we didn't have an explicit definition for the matrix norm on the left, it is defined through the limit of the vector model on the right. Therefore, this type of matrix norm is called a "matrix norm induced by a vector norm."</p>
+
+    <p>Alright, no more technical jargon. With the concept of vector norms, we have:
+    \begin{equation}\Vert W(x_1 - x_2)\Vert \leq \Vert W\Vert_2 \cdot \Vert x_1 - x_2 \Vert\end{equation}
+    Well, we haven't actually done much except change the notation. We still haven't figured out what $\Vert W\Vert_2$ equals.</p>
+
+    <h3>Frobenius Norm</h3>
+
+    <p>In fact, the precise concept and calculation method of the spectral norm $\Vert W\Vert_2$ requires several concepts from linear algebra. Let's set it aside for a moment and study a simpler norm: the Frobenius norm, or F-norm for short.</p>
+
+    <p>This name might sound intimidating, but its definition is extremely simple:
+    \begin{equation}\Vert W\Vert_F = \sqrt{\sum_{i,j}w_{ij}^2}\end{equation}
+    To put it simply, it treats the matrix as a vector and calculates the Euclidean length of that vector.</p>
+
+    <p>Using the Cauchy-Schwarz inequality, we can easily prove:
+    \begin{equation}\Vert Wx\Vert \leq \Vert W\Vert_F \cdot \Vert x \Vert\end{equation}
+    Clearly, $\Vert W\Vert_F$ provides an upper bound for $\Vert W\Vert_2$. That is, you can understand $\Vert W\Vert_2$ as the most accurate $C$ in equation $\eqref{sec:l-cond-nn}$ (the smallest $C$ among all that satisfy equation $\eqref{sec:l-cond-nn}$). But if you don't care much about precision, you can directly take $C=\Vert W\Vert_F$, which also makes equation $\eqref{sec:l-cond-nn}$ hold, given that $\Vert W\Vert_F$ is easy to calculate.</p>
+
+    <h3>L2 Regularization</h3>
+
+    <p>As mentioned earlier, to make the neural network satisfy the L-constraint as much as possible, we should hope that $C=\Vert W\Vert_2$ is as small as possible. We can add $C^2$ as a regularization term to the loss function. Although we haven't calculated the spectral norm $\Vert W\Vert_2$ yet, we found a larger upper bound $\Vert W\Vert_F$. Let's use that for now. The loss becomes:
+    \begin{equation}loss = loss(y, f_w(x)) + \lambda \Vert W\Vert_F^2\label{eq:l2-regular}\end{equation}
+    where the first part is the original model loss. If we look back at the expression for $\Vert W\Vert_F$, we find that the added regularization term is:
+    \begin{equation}\lambda\left(\sum_{i,j}w_{ij}^2\right)\end{equation}
+    Isn't this just L2 regularization?</p>
+
+    <p>Finally, after all that effort, we've gained something: we revealed the connection between L2 regularization (also known as weight decay) and the L-constraint. It shows that L2 regularization helps the model satisfy the L-constraint, thereby reducing the model's sensitivity to input perturbations and enhancing its generalization performance.</p>
+
+    <h2>Spectral Norm</h2>
+
+    <h3>Principal Eigenvalue</h3>
+
+    <p>In this section, we officially confront the spectral norm $\Vert W\Vert_2$. This is part of linear algebra and is quite theoretical.</p>
+
+    <p>In fact, <strong>the spectral norm $\Vert W\Vert_2$ is equal to the square root of the largest eigenvalue (principal eigenvalue) of $W^{\top}W$. If $W$ is a square matrix, then $\Vert W\Vert_2$ is equal to the absolute value of the largest eigenvalue of $W$.</strong></p>
+
+    <blockquote>
+    Note: For readers interested in the theoretical proof, here is a rough outline. According to the definition $\eqref{eq:m-norm}$, we have:
+    $$\Vert W\Vert_2^2 = \max_{x\neq 0}\frac{x^{\top}W^{\top} Wx}{x^{\top} x} = \max_{\Vert x\Vert=1}x^{\top}W^{\top} Wx$$
+    Assume $W^{\top} W$ is diagonalized as $\text{diag}(\lambda_1,\dots,\lambda_n)$, i.e., $W^{\top} W=U^{\top}\text{diag}(\lambda_1,\dots,\lambda_n)U$, where $\lambda_i$ are its eigenvalues (all non-negative) and $U$ is an orthogonal matrix. Since the product of an orthogonal matrix and a unit vector is still a unit vector, then:
+    $$\begin{aligned}\Vert W\Vert_2^2 =& \max_{\Vert x\Vert=1}x^{\top}\text{diag}(\lambda_1,\dots,\lambda_n) x \\
+    =& \max_{\Vert x\Vert=1} \lambda_1 x_1^2 + \dots + \lambda_n x_n^2\\
+    \leq & \max\{\lambda_1,\dots,\lambda_n\} (x_1^2 + \dots + x_n^2)\quad(\text{note that }\Vert x\Vert=1)\\
+    =&\max\{\lambda_1,\dots,\lambda_n\}\end{aligned}$$
+    Thus $\Vert W\Vert_2^2$ is equal to the largest eigenvalue of $W^{\top} W$.
+    </blockquote>
+
+    <h3>Power Iteration</h3>
+
+    <p>Some readers might be getting impatient: "Who cares if it's an eigenvalue? I care about how to calculate this damn norm!!"</p>
+
+    <p>In fact, the previous content, though seemingly vague, is the basis for calculating $\Vert W\Vert_2$. The previous section told us that $\Vert W\Vert_2^2$ is the largest eigenvalue of $W^{\top}W$. Thus, the problem becomes finding the largest eigenvalue of $W^{\top}W$, which can be solved via the <a href="https://en.wikipedia.org/wiki/Power_iteration">"Power Iteration"</a> method.</p>
+
+    <p>The so-called "Power Iteration" refers to the following iteration format:
+    \begin{equation}u \leftarrow \frac{(W^{\top}W)u}{\Vert (W^{\top}W)u\Vert}\end{equation}
+    After repeating this several times, the norm is finally obtained via:
+    \begin{equation}\Vert W\Vert_2^2 \approx u^{\top}W^{\top}Wu\end{equation}
+    (i.e., obtaining an approximate value for the largest eigenvalue). It can be equivalently rewritten as:
+    \begin{equation}v\leftarrow \frac{W^{\top}u}{\Vert W^{\top}u\Vert},\,u\leftarrow \frac{Wv}{\Vert Wv\Vert},\quad \Vert W\Vert_2 \approx u^{\top}Wv\label{eq:m-norm-iter}\end{equation}
+    In this way, after initializing $u, v$ (using a vector of all ones), you can iterate a few times to get $u, v$, and then plug them into $u^{\top}Wv$ to calculate the approximate value of $\Vert W\Vert_2$.</p>
+
+    <blockquote>
+    Note: For readers interested in the proof, here is a simple proof of why this iteration works.
+    <br><br>
+    Let $A=W^{\top}W$, and start with an initial $u^{(0)}$. Assuming $A$ is diagonalizable and its eigenvalues $\lambda_1, \dots, \lambda_n$ satisfy the condition that the largest eigenvalue is strictly greater than the others (if not, it means the largest eigenvalue is a repeated root; this requires more specialized proofs. From a numerical computing perspective, almost no two numbers are exactly equal, so we can assume repeated roots won't appear in experiments), then the eigenvectors $\eta_1, \dots, \eta_n$ of $A$ form a complete basis. Thus, we can write:
+    $$u^{(0)} = c_1 \eta_1 + \dots + c_n \eta_n$$
+    Each iteration involves $Au/\Vert Au\Vert$, where the denominator only changes the magnitude. Looking at the repeated action of $A$:
+    $$A^r u^{(0)} = c_1 A^r \eta_1 + \dots + c_n A^r \eta_n$$
+    Note that for eigenvectors, $A\eta = \lambda \eta$, thus:
+    $$A^r u^{(0)} = c_1 \lambda_1^r \eta_1 + \dots + c_n \lambda_n^r \eta_n$$
+    Without loss of generality, let $\lambda_1$ be the largest eigenvalue. Then:
+    $$\frac{A^r u^{(0)}}{\lambda_1^r} = c_1 \eta_1 + c_2 \left(\frac{\lambda_2}{\lambda_1}\right)^r + \dots + c_n \left(\frac{\lambda_n}{\lambda_1}\right)^r \eta_n$$
+    Since $\lambda_2/\lambda_1, \dots, \lambda_n/\lambda_1$ are all less than 1, as $r \to \infty$, they all tend toward zero. When $r$ is large enough, they can be ignored:
+    $$\frac{A^r u^{(0)}}{\lambda_1^r} \approx c_1 \eta_1$$
+    Disregarding the magnitude, this result shows that for sufficiently large $r$, $A^r u^{(0)}$ provides the approximate direction of the eigenvector corresponding to the largest eigenvalue. Each normalization step is simply to prevent overflow. Thus, $u = A^r u^{(0)}/\Vert A^r u^{(0)}\Vert$ is the corresponding unit eigenvector, i.e.:
+    $$Au = \lambda_1 u$$
+    Therefore:
+    $$u^{\top}Au = \lambda_1 u^\top u = \lambda_1$$
+    This calculates the square of the spectral norm.
+    </blockquote>
+
+    <h3>Spectral Regularization</h3>
+
+    <p>Earlier, we showed the relationship between the Frobenius norm and L2 regularization. We also explained that the Frobenius norm is a stronger (coarser) condition, while the spectral norm is more accurate. Although the spectral norm is not as easy to calculate as the Frobenius norm, it can still be approximated in a few steps using equation $\eqref{eq:m-norm-iter}$.</p>
+
+    <p>Thus, we can propose the concept of "Spectral Norm Regularization," which uses the square of the spectral norm as an additional regularization term, replacing simple L2 regularization. That is, equation $\eqref{eq:l2-regular}$ becomes:
+    \begin{equation}loss = loss(y, f_w(x)) + \lambda \Vert W\Vert_2^2\end{equation}
+    The paper <a href="https://papers.cool/arxiv/1705.10941">"Spectral Norm Regularization for Improving the Generalizability of Deep Learning"</a> performed several experiments showing that "Spectral Regularization" improves model performance across multiple tasks.</p>
+
+    <p>In Keras, the spectral norm can be calculated with the following code:</p>
+
+<pre><code>def spectral_norm(w, r=5):
+    w_shape = K.int_shape(w)
+    in_dim = np.prod(w_shape[:-1]).astype(int)
+    out_dim = w_shape[-1]
+    w = K.reshape(w, (in_dim, out_dim))
+    u = K.ones((1, in_dim))
+    for i in range(r):
+        v = K.l2_normalize(K.dot(u, w))
+        u = K.l2_normalize(K.dot(v, K.transpose(w)))
+    return K.sum(K.dot(K.dot(u, w), K.transpose(v)))
+</code></pre>
+
+    <h2>Generative Models</h2>
+
+    <h3>WGAN</h3>
+
+    <p>If the L-constraint is just "the icing on the cake" in ordinary supervised training, it is a crucial, indispensable step in the WGAN discriminator. The optimization objective of the WGAN discriminator is:
+    \begin{equation}W(P_r,P_g)=\sup_{\|f\|_L = 1}\mathbb{E}_{x\sim P_r}[f(x)] - \mathbb{E}_{x\sim P_g}[f(x)]\end{equation}
+    where $P_r, P_g$ are the real and generated distributions respectively, and $\|f\|_L = 1$ refers to satisfying the specific L-constraint $\|f(x_1) - f(x_2)\| \leq \Vert x_1 - x_2\Vert$ (where $C=1$). The meaning of this objective is to pick the $f$ that maximizes $\mathbb{E}_{x\sim P_r}[f(x)] - \mathbb{E}_{x\sim P_g}[f(x)]$ among all functions satisfying this L-constraint—that is the ideal discriminator. Written in loss form, it is:
+    \begin{equation}\min_{\|f\|_L = 1} \mathbb{E}_{x\sim P_g}[f(x)] - \mathbb{E}_{x\sim P_r}[f(x)]\end{equation}</p>
+
+    <h3>Gradient Penalty</h3>
+
+    <p>Currently, an effective approach is the gradient penalty. Since $\Vert f'(x)\Vert = 1$ is a sufficient condition for $\|f\|_L = 1$, we can add this as a penalty term to the discriminator's loss:
+    \begin{equation}\min_{f} \mathbb{E}_{x\sim P_g}[f(x)] - \mathbb{E}_{x\sim P_r}[f(x)] + \lambda (\Vert f'(x_{inter})\Vert-1)^2\end{equation}
+    Actually, I think adding a $relu(x)=\max(x,0)$ is better:
+    \begin{equation}\min_{f} \mathbb{E}_{x\sim P_g}[f(x)] - \mathbb{E}_{x\sim P_r}[f(x)] + \lambda \max(\Vert f'(x_{inter})\Vert-1, 0)^2\end{equation}
+    where $x_{inter}$ is sampled using random interpolation:
+    \begin{equation}\begin{aligned}&x_{inter} = \varepsilon x_{real} + (1 - \varepsilon) x_{fake}\\
+    &\varepsilon\sim U[0,1],\quad x_{real}\sim P_r,\quad x_{fake}\sim P_g
+    \end{aligned}\end{equation}
+    Gradient penalty cannot guarantee $\Vert f'(x)\Vert = 1$, but intuitively it vibrates around 1, so $\|f\|_L$ theoretically also stays near 1, thus approximately achieving the L-constraint.</p>
+
+    <p>This scheme works well in many cases, but it performs poorly when the real sample classes are numerous (especially in conditional generation). The problem lies in random interpolation: in principle, the L-constraint should be satisfied throughout the entire space, but gradient penalty through linear interpolation can only guarantee it within a small region. If this small region happens to be the space between real and generated samples, it might be sufficient. However, if there are many classes, interpolating between different classes often lands in unknown territory, resulting in the L-condition not being met where it matters. Thus, the discriminator fails.</p>
+
+    <blockquote>
+    Thinking: Can gradient penalty be used directly as a regularization term for supervised models? Interested readers can give it a try.
+    </blockquote>
+
+    <h3>Spectral Normalization</h3>
+
+    <p>The problem with gradient penalty is that it is just a penalty and only works locally. A truly brilliant scheme is the constructive method: build a special $f$ such that regardless of its parameters, $f$ always satisfies the L-constraint.</p>
+
+    <p>In fact, when WGAN was first proposed, it used weight clipping—clipping all parameters to not exceed a certain constant. In this way, the Frobenius norm of the parameters won't exceed a certain value, so $\|f\|_L$ won't exceed a certain constant. Although this doesn't accurately implement $\|f\|_L=1$, it only scales the loss by a constant factor, which doesn't affect optimization results. Weight clipping is a constructive method, but it is not very optimization-friendly.</p>
+
+    <p>Looking at it simply, the clipping scheme has a lot of room for optimization. For example, change it to clipping the Frobenius norm of all weights to not exceed a constant; this provides more flexibility than direct weight clipping. If clipping is too crude, parameter penalty is also an option—imposing a heavy penalty whenever the norm exceeds the Frobenius norm. I've tried this, and it generally works, but the convergence speed is slow.</p>
+
+    <p>However, these schemes are just approximations. Now that we have the spectral norm, we can use the most accurate scheme: <strong>replace all parameters $w$ in $f$ with $w/\Vert w\Vert_2$</strong>. This is Spectral Normalization, proposed and experimented with in <a href="https://papers.cool/arxiv/1802.05957">"Spectral Normalization for Generative Adversarial Networks"</a>. Consequently, if the absolute value of the derivative of the activation functions used in $f$ does not exceed 1, then we have $\|f\|_L\leq 1$, achieving the required L-constraint with the most precise method.</p>
+
+    <blockquote>
+    Note: "The derivative of activation functions does not exceed 1" is usually satisfied. However, if the discriminator uses residual structures, the activation function is equivalent to $x + relu(Wx+b)$, in which case its derivative may exceed 1. But regardless, it will not exceed a constant, so it does not affect optimization.
+    </blockquote>
+
+    <p>I have tried using spectral normalization in WGAN myself (without gradient penalty; see below for reference code) and found that the final convergence speed (epochs required for the same effect) is faster than WGAN-GP, and the effect is even better. Moreover, there is another reason affecting speed: the execution time per epoch using gradient penalty is longer than using spectral normalization. This is because with gradient penalty, the second-order gradient must be calculated during descent, requiring the entire forward pass to be executed twice, which is slow.</p>
+
+    <h3>Keras Implementation</h3>
+
+    <p>In Keras, implementing spectral normalization is both easy and not easy.</p>
+
+    <p>By easy, I mean you only need to pass a <code>kernel_constraint</code> parameter to every convolutional and fully connected layer of the discriminator, and <code>gamma_constraint</code> to BN layers. The constraint can be written as:</p>
+
+<pre><code>def spectral_normalization(w):
+    return w / spectral_norm(w)
+</code></pre>
+
+    <p>Reference Code: <a href="https://github.com/bojone/gan/blob/master/keras/wgan_sn_celeba.py">https://github.com/bojone/gan/blob/master/keras/wgan_sn_celeba.py</a></p>
+
+    <p>By not easy, I mean that in the current Keras (version 2.2.4), <code>kernel_constraint</code> does not actually change the kernel; it only adjusts the kernel value after the gradient descent step. This is different from the <code>spectral_normalization</code> approach in the paper. If used this way, you will find that the gradients become inaccurate later on, and the generation quality is poor. To truly modify the kernel, we either have to redefine all layers (Convolution, Dense, BN, etc.) that include matrix multiplication, or modify the source code. Modifying the source is the easiest solution. Modify the <code>add_weight</code> method of the <code>Layer</code> object in <code>keras/engine/base_layer.py</code>. Originally (starting from line 222):</p>
+
+<pre><code> def add_weight(self,
+                name,
+                shape,
+                dtype=None,
+                initializer=None,
+                regularizer=None,
+                trainable=True,
+                constraint=None):
+     """Adds a weight variable to the layer.
+     # Arguments
+         name: String, the name for the weight variable.
+         shape: The shape tuple of the weight.
+         dtype: The dtype of the weight.
+         initializer: An Initializer instance (callable).
+         regularizer: An optional Regularizer instance.
+         trainable: A boolean, whether the weight should
+             be trained via backprop or not (assuming
+             that the layer itself is also trainable).
+         constraint: An optional Constraint instance.
+     # Returns
+         The created weight variable.
+     """
+     initializer = initializers.get(initializer)
+     if dtype is None:
+         dtype = K.floatx()
+     weight = K.variable(initializer(shape),
+                        dtype=dtype,
+                        name=name,
+                        constraint=constraint)
+     if regularizer is not None:
+         with K.name_scope('weight_regularizer'):
+             self.add_loss(regularizer(weight))
+     if trainable:
+         self._trainable_weights.append(weight)
+     else:
+         self._non_trainable_weights.append(weight)
+     return weight
+</code></pre>
+
+    <p>Change it to:</p>
+
+<pre><code> def add_weight(self,
+                name,
+                shape,
+                dtype=None,
+                initializer=None,
+                regularizer=None,
+                trainable=True,
+                constraint=None):
+     """Adds a weight variable to the layer.
+     # Arguments
+         name: String, the name for the weight variable.
+         shape: The shape tuple of the weight.
+         dtype: The dtype of the weight.
+         initializer: An Initializer instance (callable).
+         regularizer: An optional Regularizer instance.
+         trainable: A boolean, whether the weight should
+             be trained via backprop or not (assuming
+             that the layer itself is also trainable).
+         constraint: An optional Constraint instance.
+     # Returns
+         The created weight variable.
+     """
+     initializer = initializers.get(initializer)
+     if dtype is None:
+         dtype = K.floatx()
+     weight = K.variable(initializer(shape),
+                        dtype=dtype,
+                        name=name,
+                        constraint=None)
+     if regularizer is not None:
+         with K.name_scope('weight_regularizer'):
+             self.add_loss(regularizer(weight))
+     if trainable:
+         self._trainable_weights.append(weight)
+     else:
+         self._non_trainable_weights.append(weight)
+     if constraint is not None:
+         return constraint(weight)
+     return weight
+</code></pre>
+
+    <p>That is, change <code>constraint</code> in <code>K.variable</code> to <code>None</code> and execute <code>constraint</code> at the end. <strong>Note: don't complain that Keras is too encapsulated or inflexible just because you have to change the source. If you use other frameworks, the modification required would likely be many times more complex (relative to the amount of change for a GAN without spectral normalization).</strong></p>
+
+    <p>(Update: a new implementation that doesn't require modifying the source code is <a href="translation_6311.html">here</a>.)</p>
+
+    <h2>Summary</h2>
+
+    <p>This article is a summary of the Lipschitz constraint, mainly introducing how to make models satisfy the Lipschitz constraint, which relates to the model's generalization ability. The more difficult concept is the spectral norm, involving many theories and formulas.</p>
+
+    <p>Overall, the content related to the spectral norm is quite refined, and the relevant conclusions further show that linear algebra is closely linked to machine learning. Many "advanced" linear algebra concepts can find their corresponding applications in machine learning.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6051.html" style="color: #005fcc;">https://kexue.fm/archives/6051</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

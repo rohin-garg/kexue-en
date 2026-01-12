@@ -1,0 +1,386 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/8847">CoSENT (1): A More Effective Sentence Vector Scheme than Sentence-BERT</a></h1>
+
+    <p>By 苏剑林 | January 06, 2022</p>
+
+
+<p>Approaches for learning sentence vectors can generally be divided into two categories: unsupervised and supervised. Among supervised sentence vector schemes, the mainstream approach was "InferSent" proposed by Facebook, followed by "Sentence-BERT," which further confirmed its effectiveness on top of BERT. However, both InferSent and Sentence-BERT remain theoretically somewhat confusing. Although they are effective, they suffer from an inconsistency between training and prediction; furthermore, if one directly optimizes the prediction target (the cosine value), the performance is usually particularly poor.</p>
+
+<p>Recently, I reconsidered this issue. After nearly a week of analysis and experimentation, I have roughly determined the reasons why InferSent is effective and why direct optimization of the cosine value fails. I have proposed a new scheme for optimizing cosine values called <strong>CoSENT</strong> (<strong>Co</strong>sine <strong>SENT</strong>ence). Experiments show that CoSENT generally outperforms both InferSent and Sentence-BERT in terms of convergence speed and final performance.</p>
+
+<h2>Naive Idea</h2>
+<p>The scenario in this article involves utilizing annotated text matching data to construct a sentence vector model. The annotated data used consists of common sentence pair samples, where each sample follows the format "(Sentence 1, Sentence 2, Label)." These can be broadly classified into three types: "Binary," "NLI," and "Scoring," as discussed in the "Categorization" section of the article <a href="translation_8569.html">"Enhancing RoFormer-Sim with Open-Source Manually Annotated Data."</a></p>
+
+<h2>Ineffective Cosine</h2>
+<p>For simplicity, let's first consider "Binary" type data, i.e., samples of "(Sentence 1, Sentence 2, Is Similar)." Suppose two sentences are encoded by a model to obtain vectors $u, v$. Since the retrieval phase calculates the cosine similarity $\cos(u,v)=\frac{\langle u,v\rangle}{\Vert u\Vert \Vert v\Vert}$, a natural idea is to design a loss function based on $\cos(u,v)$, such as:</p>
+
+\begin{align}
+t\cdot (1 - \cos(u, v)) + (1 - t) \cdot (1 + \cos(u,v))\label{eq:cos-1}\\ 
+t\cdot (1 - \cos(u, v))^2 + (1 - t) \cdot \cos^2(u,v)\label{eq:cos-2} 
+\end{align}
+
+<p>where $t\in\{0,1\}$ indicates whether the pair is similar. Many similar losses can be written, all aiming to make the similarity of positive pairs as large as possible and negative pairs as small as possible. However, experimental results of directly optimizing these targets are often very poor (at least significantly worse than InferSent); in some cases, they are even worse than random initialization.</p>
+
+<h2>Difficult Thresholds</h2>
+<p>This is because negative pairs annotated in text matching datasets are usually "hard negatives"—typically sentences with different semantics but significant literal overlap. In such cases, if we use Eq. $\eqref{eq:cos-1}$ as the loss function, the target for positive pairs is 1 and the target for negative pairs is -1. If we use Eq. $\eqref{eq:cos-2}$, the target for positive pairs is 1 and the target for negative pairs is 0. Regardless, the target for negative pairs is "too low." For "hard negatives," even though the semantics differ, they are still "similar" to some degree; the similarity shouldn't be as low as 0 or -1. Forcing them toward 0 or -1 usually leads to over-optimization, causing a loss of generalization ability, or making optimization so difficult that the model fails to learn at all.</p>
+
+<p>Verifying this conclusion is simple: just replace the negative samples in the training set with randomly sampled pairs (viewed as weaker negative pairs) and train using the above losses; you will find that the results actually improve. If we do not change the negative pairs, one way to mitigate this is to set a higher threshold for negative pairs, such as:</p>
+
+\begin{equation}t\cdot (1 - \cos(u, v)) + (1 - t) \cdot \max(\cos(u,v),0.7)\end{equation}
+
+<p>In this way, as long as the similarity of negative pairs is lower than 0.7, they are no longer optimized, making it less prone to over-learning. However, this is only a mitigation, it is difficult to reach optimal performance, and choosing the right threshold remains a difficult problem.</p>
+
+<h2>InferSent</h2>
+<p>What is amazing is that InferSent and Sentence-BERT, which have inconsistent training and prediction phases, perform well on this problem. Taking Sentence-BERT as an example, its training phase concatenates $u,v,|u−v|$ (where $|u−v|$ is a vector where each element is the absolute value of the difference) as features, followed by a fully connected layer for 2-way classification (or 3-way if it's an NLI dataset). In the prediction phase, it functions like a normal sentence vector model: calculate the sentence vectors first, then use cosine similarity.</p>
+
+<p style="text-align:center;">
+<img src="https://files.kexue.fm/illustrate/cosent/sbert_train.png" alt="Sentence-BERT training phase" style="max-width:100%;"><br>
+<em>Training phase of Sentence-BERT</em><br>
+<img src="https://files.kexue.fm/illustrate/cosent/sbert_predict.png" alt="Sentence-BERT prediction phase" style="max-width:100%;"><br>
+<em>Prediction phase of Sentence-BERT</em>
+</p>
+
+<h2>Revisiting the Drawing Board</h2>
+<p>Why do InferSent and Sentence-BERT work? In the "Building a Cart Behind Closed Doors" section of <a href="translation_8569.html">"Enhancing RoFormer-Sim with Open-Source Manually Annotated Data,"</a> I gave an explanation based on fault tolerance. After some reflection, I have a new understanding of this problem, which I'll share here.</p>
+
+<p>In general, even if negative samples are "hard negatives," the literal similarity of positive pairs is usually greater than that of negative pairs. Consequently, even for an initial model, the distance $\Vert u-v\Vert$ for positive pairs is generally smaller, while for negative pairs it is larger. We can imagine that $u-v$ for positive pairs is mainly distributed near a sphere with a smaller radius, while $u-v$ for negative pairs is distributed near a sphere with a larger radius. That is to say, $u-v$ itself has a clustering tendency at the initial stage. We just need to use label information to strengthen this clustering tendency, ensuring positive pairs' $u-v$ remain smaller and negative pairs' $u-v$ remain larger. A direct approach would be adding a Dense classifier after $u-v$. However, conventional classifiers are based on inner products; they cannot distinguish between two categories distributed on different spheres. Thus, we apply the absolute value to get $|u-v|$, which transforms the spheres into local caps (or transforms the sphere into a cone), allowing a Dense layer to classify them. This is what I believe to be the origin of $|u-v|$.</p>
+
+<p>As for the concatenation of $u,v$, I believe it is used to eliminate anisotropy. Sentence vector models like "BERT + [CLS]" suffer from severe anisotropy in the initial stage, which has a significant negative impact on sentence vector effectiveness. $|u-v|$ only represents the relative gap and cannot significantly improve this anisotropy. By concatenating $u,v$ followed by a Dense layer, and since the classifier's weights are randomly initialized, it effectively gives $u$ and $v$ a random optimization direction, forcing them to "spread out" and move away from the current anisotropic state.</p>
+
+<h2>Potential Problems</h2>
+<p>Although InferSent and Sentence-BERT are effective, they have obvious drawbacks.</p>
+
+<p>First, as mentioned, their effectiveness relies on the "initial clustering tendency," where label training merely reinforces this info. This means the result is highly dependent on the initial model. For example, "BERT + mean pooling" results are generally better than "BERT + [CLS]" because the former has better initial discriminative power.</p>
+
+<p>Furthermore, because InferSent and Sentence-BERT have inconsistent training and prediction schemes, there is a certain probability of "training collapse." This is manifested as the training loss decreasing and training accuracy increasing, while evaluation metrics based on cosine values (such as Spearman correlation) drop significantly, even on the training set. This indicates that while training is proceeding, it has drifted away from the logic that "positive pairs have smaller $u-v$ and negative pairs have larger $u-v$," causing the cosine values to fail.</p>
+
+<p>InferSent and Sentence-BERT also suffer from difficult tuning. Because of the inconsistency, it is hard to determine which adjustments in the training process will lead to positive benefits in the prediction results.</p>
+
+<h2>CoSENT</h2>
+<p>In short, InferSent and Sentence-BERT are usable schemes but contain many uncertainties. Does this mean optimizing cosine values is a dead end? Of course not. The earlier SimCSE actually has a supervised version that directly optimizes cosine values, but it requires triplet data in the format "(original sentence, similar sentence, dissimilar sentence)." The CoSENT proposed here further improves this logic so that only sentence pair samples are needed during training.</p>
+
+<h2>New Loss Function</h2>
+<p>Let $\Omega_{pos}$ be the set of all positive sample pairs and $\Omega_{neg}$ the set of all negative sample pairs. We hope that for any positive pair $(i,j)\in \Omega_{pos}$ and any negative pair $(k,l)\in \Omega_{neg}$, we have:</p>
+
+\begin{equation}\cos(u_i,u_j) > \cos(u_k, u_l)\end{equation}
+
+<p>where $u_i, u_j, u_k, u_l$ are their respective sentence vectors. Simply put, we only want the similarity of positive pairs to be greater than that of negative pairs; by how much is up to the model. In fact, the Spearman correlation, a common metric for semantic similarity, also depends only on the relative order of the predicted results and not on specific values.</p>
+
+<p>In <a href="translation_7359.html">"Generalizing 'Softmax + Cross Entropy' to Multi-label Classification,"</a> we introduced an effective solution for this type of requirement, which is formula (1) in Circle Loss theory:</p>
+
+\begin{equation}\log \left(1 + \sum\limits_{i\in\Omega_{neg},j\in\Omega_{pos}} e^{s_i-s_j}\right)\end{equation}
+
+<p>Simply put, if you want to achieve $s_i < s_j$, you add $e^{s_i-s_j}$ to the $\log$. Corresponding to our scenario, we obtain the loss function:</p>
+
+\begin{equation}\log \left(1 + \sum\limits_{(i,j)\in\Omega_{pos},(k,l)\in\Omega_{neg}} e^{\lambda(\cos(u_k, u_l) - \cos(u_i, u_j))}\right)\label{eq:cosent}\end{equation}
+
+<p>where $\lambda > 0$ is a hyperparameter; in the subsequent experiments, $\lambda$ is set to 20. This is the core of CoSENT: a new loss function for optimizing cosine values.</p>
+
+<h2>Universal Ranking</h2>
+<p>Some readers might wonder: even if Eq. $\eqref{eq:cosent}$ is usable, isn't it only for binary classification? What about 3-way classification like NLI?</p>
+
+<p>In fact, Eq. $\eqref{eq:cosent}$ is essentially a loss function designed for ranking. It can be written more generally as:</p>
+
+\begin{equation}\log \left(1 + \sum\limits_{\text{sim}(i,j) > \text{sim}(k,l)} e^{\lambda(\cos(u_k, u_l) - \cos(u_i, u_j))}\right)\label{eq:cosent-2}\end{equation}
+
+<p>That is, as long as we believe the true similarity of pair $(i,j)$ should be greater than that of $(k,l)$, we can add $e^{\lambda(\cos(u_k, u_l) - \cos(u_i, u_j))}$ into the $\log$. In other words, as long as we can design an order for the pairs, we can use Eq. $\eqref{eq:cosent-2}$.</p>
+
+<p>For NLI data, it has three labels: "entailment," "neutral," and "contradiction." We can naturally assume that the similarity of an "entailment" pair is greater than a "neutral" pair, and a "neutral" pair is greater than a "contradiction" pair. Based on these three labels, we can rank the NLI sentence pairs. Once we have this ranking, NLI data can also be used to train with CoSENT. Similarly, scoring data like STS-B is even more suitable for CoSENT because the scoring labels themselves provide ranking information.</p>
+
+<p>Of course, if there is no such ordinal relationship between multiple categories, CoSENT cannot be used. However, I am skeptical whether InferSent and Sentence-BERT can produce reasonable sentence vector models for multi-class sentence pair data where no ordinal relationship can be constructed. I haven't seen such datasets, so I can't verify this.</p>
+
+<h2>Excellent Results</h2>
+<p>I conducted experiments with CoSENT on multiple Chinese datasets, comparing training on the original task training set and training on NLI datasets. Most experimental results show that CoSENT is significantly better than Sentence-BERT. The test datasets are the same as those in <a href="translation_8348.html">"Which Unsupervised Semantic Similarity is Strongest? A Comprehensive Evaluation."</a> Each dataset was divided into train, valid, and test sets. The evaluation metric is the Spearman correlation between predicted values and labels.</p>
+
+<p>Below are the results on the <strong>test</strong> sets after training on their respective <strong>train</strong> sets:</p>
+
+<table border="1" style="border-collapse: collapse; width: 100%; text-align: center;">
+<thead>
+<tr>
+<th></th>
+<th>ATEC</th>
+<th>BQ</th>
+<th>LCQMC</th>
+<th>PAWSX</th>
+<th>STS-B</th>
+<th>Avg</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BERT+CoSENT</td>
+<td><strong>49.74</strong></td>
+<td><strong>72.38</strong></td>
+<td>78.69</td>
+<td><strong>60.00</strong></td>
+<td><strong>80.14</strong></td>
+<td><strong>68.19</strong></td>
+</tr>
+<tr>
+<td>Sentence-BERT</td>
+<td>46.36</td>
+<td>70.36</td>
+<td><strong>78.72</strong></td>
+<td>46.86</td>
+<td>66.41</td>
+<td>61.74</td>
+</tr>
+<tr>
+<td colspan="7" style="background-color:#eee;"></td>
+</tr>
+<tr>
+<td>RoBERTa+CoSENT</td>
+<td><strong>50.81</strong></td>
+<td><strong>71.45</strong></td>
+<td><strong>79.31</strong></td>
+<td><strong>61.56</strong></td>
+<td><strong>81.13</strong></td>
+<td><strong>68.85</strong></td>
+</tr>
+<tr>
+<td>Sentence-RoBERTa</td>
+<td>48.29</td>
+<td>69.99</td>
+<td>79.22</td>
+<td>44.10</td>
+<td>72.42</td>
+<td>62.80</td>
+</tr>
+</tbody>
+</table>
+
+<p>Below are the results on the <strong>test</strong> sets of each task after training on open-source <strong>NLI</strong> data:</p>
+
+<table border="1" style="border-collapse: collapse; width: 100%; text-align: center;">
+<thead>
+<tr>
+<th></th>
+<th>ATEC</th>
+<th>BQ</th>
+<th>LCQMC</th>
+<th>PAWSX</th>
+<th>STS-B</th>
+<th>Avg</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BERT+CoSENT</td>
+<td><strong>28.93</strong></td>
+<td>41.84</td>
+<td><strong>66.07</strong></td>
+<td><strong>20.49</strong></td>
+<td>73.91</td>
+<td><strong>46.25</strong></td>
+</tr>
+<tr>
+<td>Sentence-BERT</td>
+<td>28.19</td>
+<td><strong>42.73</strong></td>
+<td>64.98</td>
+<td>15.38</td>
+<td><strong>74.88</strong></td>
+<td>45.23</td>
+</tr>
+<tr>
+<td colspan="7" style="background-color:#eee;"></td>
+</tr>
+<tr>
+<td>RoBERTa+CoSENT</td>
+<td>31.84</td>
+<td><strong>46.65</strong></td>
+<td><strong>68.43</strong></td>
+<td><strong>20.89</strong></td>
+<td><strong>74.37</strong></td>
+<td><strong>48.43</strong></td>
+</tr>
+<tr>
+<td>Sentence-RoBERTa</td>
+<td><strong>31.87</strong></td>
+<td>45.60</td>
+<td>67.89</td>
+<td>15.64</td>
+<td>73.93</td>
+<td>46.99</td>
+</tr>
+</tbody>
+</table>
+
+<p>As can be seen, CoSENT shows significant improvements in most tasks, and the slight decreases in a few tasks are very small (within 1%). The average improvement for native training is over 6%, and for NLI training, it is around 1%.</p>
+
+<p>Additionally, CoSENT has faster convergence. For example, in the "BERT+CoSENT+ATEC" native training, the first epoch's valid result is 48.78, while "Sentence-BERT+ATEC" is only 41.54. In "RoBERTa+CoSENT+PAWSX" native training, the first epoch's valid result is 57.66, whereas "Sentence-RoBERTa+PAWSX" is only 10.84.</p>
+
+<h2>Connections and Differences</h2>
+<p>Some readers might ask how Eq. $\eqref{eq:cosent}$ or Eq. $\eqref{eq:cosent-2}$ differs from SimCSE or Contrastive Learning. In terms of the loss function form, they share some similarities, but the meaning is completely different.</p>
+
+<p>Standard SimCSE only requires positive pairs (constructed via Dropout or manual annotation) and then treats all other samples in the batch as negative samples. The supervised version of SimCSE requires triplet data; it essentially adds hard negatives to the standard SimCSE. That is, negative samples include not only other samples in the batch but also annotated hard negatives. Meanwhile, it still requires positive pairs, hence the "(original sentence, similar sentence, dissimilar sentence)" triplet format.</p>
+
+<p>As for CoSENT, it only uses annotated positive/negative pairs and does not involve constructing negative samples by sampling other items in the batch. We can understand it as contrastive learning, but it is contrastive learning of "sample pairs" rather than SimCSE's contrastive learning of "samples." That is to say, its "unit" is a pair of sentences rather than a single sentence.</p>
+
+<h2>Conclusion</h2>
+<p>This article proposes a new supervised sentence vector scheme, CoSENT (Cosine Sentence). Compared to InferSent and Sentence-BERT, its training process is closer to prediction. Experiments show that CoSENT generally outperforms InferSent and Sentence-BERT in terms of convergence speed and final performance.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8847.html" style="color: #005fcc;">https://kexue.fm/archives/8847</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

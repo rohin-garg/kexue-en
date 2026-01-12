@@ -1,0 +1,372 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/9512">Tiger: An "Ultra-Stingy" Optimizer</a></h1>
+    <p>By 苏剑林 | March 07, 2023</p>
+
+    <p>Recently, I have been experimenting with the Lion optimizer introduced in <a href="translation_9473.html">"Google's Newly Discovered Lion Optimizer: A 'Training Lion' that Achieves Both Efficiency and Effectiveness."</a> My interest in Lion stems from the fact that it aligns with some of my previous thoughts regarding an ideal optimizer. While I was unable to tune it to achieve good results at the time, Lion has succeeded.</p>
+
+    <p>Compared to the standard Lion, I am more interested in its special case where $\beta_1 = \beta_2$, which I refer to here as "<strong>Tiger</strong>." Tiger uses only momentum to construct the update. According to the conclusions in <a href="translation_8634.html">"Hidden Gradient Accumulation in Momentum: Better Results with Fewer Updates?"</a>, we can implement gradient accumulation "seamlessly" without adding an extra set of parameters! This means that when there is a need for gradient accumulation, Tiger reaches the theoretical lower bound for memory usage, which is the origin of the name "Tiger" (<strong>Tig</strong>ht-fisted Optimiz<strong>er</strong>, a stingy optimizer unwilling to spend a single extra bit of VRAM).</p>
+
+    <p>In addition, Tiger incorporates some of our hyperparameter tuning experiences and proposes a simple strategy to prevent models from encountering NaN (especially under mixed-precision training). Our preliminary experiments show that these modifications in Tiger allow for more developer-friendly training of models (especially large models).</p>
+
+    <h2 id="基本形式">Basic Form</h2>
+    <p>The update rule for Tiger is:</p>
+
+    \begin{equation}
+    \text{Tiger}:=\left\{\begin{aligned}
+    &\boldsymbol{m}_t = \beta \boldsymbol{m}_{t-1} + \left(1 - \beta\right) \boldsymbol{g}_t \\
+    &\boldsymbol{\theta}_t = \boldsymbol{\theta}_{t-1} - \eta_t \left[\text{sign}(\boldsymbol{m}_t) \color{skyblue}{ + \lambda_t \boldsymbol{\theta}_{t-1}}\right] \\
+    \end{aligned}\right.
+    \end{equation}
+
+    <p>Compared to Lion, it simply chooses parameters $\beta_1 = \beta_2 = \beta$; compared to <a href="https://papers.cool/arxiv/1802.04434">SignSGD</a>, it adds momentum and weight decay.</p>
+
+    <p>Reference implementation: <strong><a href="https://github.com/bojone/tiger">Tiger: https://github.com/bojone/tiger</a></strong></p>
+
+    <p>The following table compares the update rules of Tiger, Lion, and AdamW:</p>
+
+    <table style="width:100%; border-collapse: collapse; border: 1px solid black;">
+        <thead>
+            <tr style="border-bottom: 1px solid black;">
+                <th style="padding: 10px; border-right: 1px solid black;">Tiger</th>
+                <th style="padding: 10px; border-right: 1px solid black;">Lion</th>
+                <th style="padding: 10px;">AdamW</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td style="padding: 10px; border-right: 1px solid black;">
+                    \[\begin{aligned}
+                    &\boldsymbol{m}_t = \beta \boldsymbol{m}_{t-1} + \left(1 - \beta\right) \boldsymbol{g}_t \\
+                    &\boldsymbol{\theta}_t = \boldsymbol{\theta}_{t-1} - \eta_t \left[\text{sign}(\boldsymbol{m}_t) \color{skyblue}{ + \lambda_t \boldsymbol{\theta}_{t-1}}\right] \\
+                    \end{aligned}\]
+                </td>
+                <td style="padding: 10px; border-right: 1px solid black;">
+                    \[\begin{aligned}
+                    &\boldsymbol{u}_t = \text{sign}\big(\beta_1 \boldsymbol{m}_{t-1} + \left(1 - \beta_1\right) \boldsymbol{g}_t\big) \\
+                    &\boldsymbol{\theta}_t = \boldsymbol{\theta}_{t-1} - \eta_t (\boldsymbol{u}_t \color{skyblue}{ + \lambda_t \boldsymbol{\theta}_{t-1}}) \\
+                    &\boldsymbol{m}_t = \beta_2 \boldsymbol{m}_{t-1} + \left(1 - \beta_2\right) \boldsymbol{g}_t
+                    \end{aligned}\]
+                </td>
+                <td style="padding: 10px;">
+                    \[\begin{aligned}
+                    &\boldsymbol{m}_t = \beta_1 \boldsymbol{m}_{t-1} + \left(1 - \beta_1\right) \boldsymbol{g}_t\\
+                    &\boldsymbol{v}_t = \beta_2 \boldsymbol{v}_{t-1} + \left(1 - \beta_2\right) \boldsymbol{g}_t^2\\
+                    &\hat{\boldsymbol{m}}_t = \boldsymbol{m}_t\left/\left(1 - \beta_1^t\right)\right.\\
+                    &\hat{\boldsymbol{v}}_t = \boldsymbol{v}_t\left/\left(1 - \beta_2^t\right)\right.\\
+                    &\boldsymbol{u}_t = \hat{\boldsymbol{m}}_t\left/\left(\sqrt{\hat{\boldsymbol{v}}_t} + \epsilon\right)\right.\\
+                    &\boldsymbol{\theta}_t = \boldsymbol{\theta}_{t-1} - \eta_t (\boldsymbol{u}_t \color{skyblue}{ + \lambda_t \boldsymbol{\theta}_{t-1}})
+                    \end{aligned}\]
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+    <p>Clearly, Tiger is the most minimalist among the three.</p>
+
+    <h2 id="超参设置">Hyperparameter Settings</h2>
+    <p>Although Tiger is significantly simplified, there are still several hyperparameters to set: the moving average rate $\beta$, the learning rate $\eta_t$, and the weight decay rate $\lambda_t$. Let us discuss the choices for these parameters separately.</p>
+
+    <h3 id="滑动率">Moving Average Rate</h3>
+    <p>The decay rate $\beta$ for the moving average is relatively straightforward. We know that in its basic form, Tiger is equivalent to Lion when $\beta_1 = \beta_2 = \beta$. An intuitive guess is that Tiger should take $\beta = \frac{1}{2}(\beta_1 + \beta_2)$. In the original Lion paper, for CV tasks, $\beta_1=0.9, \beta_2=0.99$, so we suggest $\beta = 0.945$ for CV tasks. For NLP tasks, the original values are $\beta_1=0.95, \beta_2=0.98$, so we suggest $\beta = 0.965$ for NLP tasks.</p>
+
+    <h3 id="学习率">Learning Rate</h3>
+    <p>For the learning rate, Tiger draws inspiration from works like <a href="translation_9344.html">Amos</a> and <a href="https://kexue.fm/archives/7094#层自适应">LAMB</a>, setting the learning rate based on two conditions. The first includes bias terms of linear layers and beta/gamma parameters of Normalization. These parameters are characterized by element-wise operations, and we suggest taking the learning rate as half of the global relative learning rate $\alpha_t$. The second mainly includes the kernel matrices of linear layers. These parameters operate via matrix multiplication with vectors; we suggest setting the learning rate to the global relative learning rate $\alpha_t$ multiplied by the parameter's own $\text{RMS}$ (Root Mean Square):</p>
+
+    \begin{equation}
+    \eta_t = \left\{\begin{aligned}
+    &\alpha_t \times 0.5, &\boldsymbol{\theta} \in \{bias, beta, gamma\}\\[5pt]
+    &\alpha_t \times \text{RMS}(\boldsymbol{\theta}_{t-1}), &\boldsymbol{\theta} \notin \{bias, beta, gamma\}
+    \end{aligned}\right.
+    \end{equation}
+
+    <p>Where:</p>
+
+    \begin{equation}\text{RMS}(\boldsymbol{\theta})=\sqrt{\frac{1}{k}\sum_{i=1}^k \theta_i^2},\quad \boldsymbol{\theta}=(\theta_1,\theta_2,\cdots,\theta_k)\end{equation}
+
+    <p>The advantage of this setting is that the scale of the parameters is decoupled, allowing the control of the learning rate to be handled by a more universal "global relative learning rate" $\alpha_t$. This can be roughly understood as the relative magnitude of the update per step, a quantity that is not particularly sensitive to the model scale.</p>
+
+    <p>In other words, the $\alpha_t$ we tune on a base version of the model can essentially be applied to the large version without modification. Note that $\alpha_t$ has a subscript $t$, as it includes the entire learning rate schedule, including warmup and decay strategies. My experience is to set $\max(\alpha_t) \in [0.001, 0.002]$. As for how to warmup and decay, that is something users should set according to their specific tasks. The Tiger implementation I provide includes a built-in piecewise linear learning rate strategy, which theoretically can simulate any $\alpha_t$.</p>
+
+    <h3 id="衰减率">Weight Decay Rate</h3>
+    <p>Finally, regarding the weight decay rate $\lambda_t$, the Lion paper provides some reference settings on its last page. Generally, $\lambda_t$ is set as a constant; I commonly use 0.01. Notably, it is not recommended to apply weight decay to the bias, beta, and gamma parameters mentioned earlier; or if it must be done, $\lambda_t$ should be at least an order of magnitude lower. From a prior distribution perspective, weight decay corresponds to a Gaussian prior on the parameters, where $\lambda_t$ is inversely proportional to the parameter variance. Clearly, the variance of bias, beta, and gamma is larger than that of kernel matrices, so their $\lambda_t$ should be smaller.</p>
+
+    \begin{equation}
+    \lambda_t = \left\{\begin{aligned}
+    &0, &\boldsymbol{\theta} \in \{bias, beta, gamma\}\\[5pt]
+    &constant > 0, &\boldsymbol{\theta} \notin \{bias, beta, gamma\}
+    \end{aligned}\right.
+    \end{equation}
+
+    <h2 id="梯度累积">Gradient Accumulation</h2>
+    <p>For many readers with limited computing power, using gradient accumulation to increase the batch size is an unavoidable step when training large models. Standard gradient accumulation requires an additional set of parameters to buffer historical gradients. This means that under gradient accumulation, Adam adds 3 sets of parameters, Lion adds 2 sets, and even <a href="translation_7302.html">AdaFactor</a> (without momentum) has 1.x sets (though AdaFactor converges much slower without momentum, so for speed, adding momentum makes it 2.x sets).</p>
+
+    <p>For Tiger, the update amount only uses the momentum and the original parameters. According to <a href="translation_8634.html">"Hidden Gradient Accumulation in Momentum: Better Results with Fewer Updates?"</a>, we can integrate gradient accumulation into Tiger via the following modification:</p>
+
+    \begin{equation}
+    \text{Tiger}:=\left\{\begin{aligned} &\boldsymbol{m}_t = \big[(\beta - 1)\chi_{(t-1)/k} + 1\big] \boldsymbol{m}_{t-1} + \frac{1}{k}\left(1 - \beta\right) \boldsymbol{g}_t \\ &\boldsymbol{\theta}_t = \boldsymbol{\theta}_{t-1} - \chi_{t/k}\eta_t \left[\text{sign}(\boldsymbol{m}_t) \color{skyblue}{ + \lambda_t \boldsymbol{\theta}_{t-1}}\right] \\ \end{aligned}\right.
+    \end{equation}
+
+    <p>Here $\chi_{t/k}$ is the indicator function determining if $t$ is divisible by $k$:</p>
+
+    \begin{equation}
+    \chi_{t/k} = \left\{ \begin{aligned}&1,\quad t \equiv 0\,(\text{mod}\, k) \\
+    &0,\quad t \not\equiv 0\,(\text{mod}\, k)
+    \end{aligned}\right.
+    \end{equation}
+
+    <p>As we can see, this merely equivalent to modifying the moving average rate $\beta$ and the learning rate $\eta_t$, adding almost zero memory overhead. The whole process is completely "seamless," which I believe is Tiger's greatest charm.</p>
+
+    <p>It should be noted that although Lion and Tiger are very similar, Lion cannot achieve this because when $\beta_1 \neq \beta_2$, Lion’s update requires both momentum and the current batch gradient. These two quantities need to be buffered with different parameters. Tiger's update only uses momentum, thus satisfying this condition. Similarly, the SGDM optimizer can also achieve this, but it lacks the $\text{sign}$ operation, which means its adaptive capability is not good enough, and its performance on models like Transformer is usually unsatisfactory (refer to <a href="https://papers.cool/arxiv/1912.03194">"Why are Adaptive Methods Good for Attention Models?"</a>).</p>
+
+    <h2 id="全半精度">Full Half-Precision</h2>
+    <p>For large models, mixed-precision training is another commonly used "tool" (refer to <a href="translation_9059.html">"Using Mixed Precision and XLA to Accelerate Training in bert4keras"</a>). Mixed precision, simply put, uses FP16 for the model's computation part while using FP32 for the storage and update of model parameters. The reason parameter updates use FP32 is the concern that the update magnitude during the process may be too small, underflowing the representation range of FP16 (roughly $6 \times 10^{-8} \sim 65504$), leading to some parameters not updating for a long time, causing slow progress or failure in model training.</p>
+
+    <p>However, Tiger (and Lion as well) applies the $\text{sign}$ operation to the update magnitude, which theoretically allows us to use half-precision for everything! The analysis is not difficult. First, by appropriately scaling the Loss, we can ensure the gradient $\boldsymbol{g}_t$ does not overflow the FP16 range. Momentum $\boldsymbol{m}_t$ is just a moving average of gradients; if the gradient overflows, it won't overflow either. $\text{sign}(\boldsymbol{m}_t)$ can only be $\pm 1$, which definitely won't overflow. Thereafter, we only need to ensure the learning rate is not smaller than $6 \times 10^{-8}$, and the update magnitude will not underflow. In practice, we would not tune the learning rate to be that small. Therefore, Tiger's entire update process stays within the FP16 representation range, so theoretically we can train directly in full FP16 without worrying about underflow/overflow updates.</p>
+
+    <h2 id="防止NaN">Preventing NaN</h2>
+    <p>However, I found that for the same configuration, training might be normal in FP32, but switch to mixed-precision or half-precision and training occasionally fails. Specifically, the loss first decreases, then rises, and finally reaches NaN, a phenomenon we discussed in <a href="translation_9059.html">"Using Mixed Precision and XLA to Accelerate Training in bert4keras."</a> Although there are directions for troubleshooting and improvement (such as adjusting epsilon, infinity values, loss scaling, etc.), sometimes even with all checks done, this still happens.</p>
+
+    <p>After debugging, I found that when this occurs, it is mainly because the gradient becomes NaN for certain batches, while the model's parameters and forward calculations are still normal. So, I thought of a simple counterstrategy: when a gradient becomes NaN, skip this update step and perform a slight contraction of the parameters, as follows:</p>
+
+    \begin{equation}
+    \text{Tiger}:=\left\{\begin{aligned}
+    &\boldsymbol{m}_t = \boldsymbol{m}_{t-1} \\
+    &\boldsymbol{\theta}_t = (\boldsymbol{\theta}_{t-1} - c)\times s+ c \\
+    \end{aligned}\right. \quad \text{if}\,\,\boldsymbol{g}_t = \text{NaN}
+    \end{equation}
+
+    <p>Where $s \in (0, 1)$ represents the contraction rate (I use $s=0.99$), and $c$ is the parameter initialization center, typically 1 for gamma and 0 for others. After this treatment, the model's loss will rise slightly, but it usually recovers to normal training instead of requiring a restart from scratch. My experimental results show that this treatment can mitigate some NaN issues.</p>
+
+    <p>Of course, this trick is generally used in scenarios where FP32 training is normal under the same configuration, and checks for epsilon and infinity in mixed-precision have already been done—it is a last resort. If the model's hyperparameters themselves are problematic (e.g., the learning rate is too high) such that even FP32 results in NaN, then do not expect this trick to solve the problem. Additionally, interested readers can try to improve this trick, such as adding a bit of noise after contraction to increase parameter diversity.</p>
+
+    <h2 id="实验结果">Experimental Results</h2>
+    <p>Disregarding the VRAM optimization provided by gradient accumulation, Tiger is a special case of Lion. One can predict that Tiger's best performance will definitely not exceed Lion's best performance. So, is the performance drop within an acceptable range? Synthesizing multiple experimental results so far, the temporary conclusion I have reached is:</p>
+
+    $$\begin{aligned}
+    &\text{Effect}\color{red}{(\uparrow)}\text{:}\quad\text{Lion} \geq \text{Tiger} \geq \text{AdamW} \approx \text{LAMB} \\
+    &\text{VRAM}\color{red}{(\downarrow)}\text{:}\quad\text{Tiger} < \text{Lion} < \text{AdamW} = \text{LAMB} \\
+    \end{aligned}$$
+
+    <p>In other words, considering effectiveness, Lion is optimal; considering VRAM usage, Tiger is optimal (when gradient accumulation is enabled). In terms of effectiveness, Tiger is not inferior to AdamW, so replacing AdamW with Tiger is not a problem.</p>
+
+    <p>Specific experimental results include several parts. The first part of the experiments comes from the Lion paper <a href="https://papers.cool/arxiv/2302.06675">"Symbolic Discovery of Optimization Algorithms."</a> Figure 12 in the paper compares Lion, Tiger, and AdamW on language models of different sizes:</p>
+
+    <div style="text-align: center;">
+        <img src="https://kexue.fm/usr/uploads/2023/03/3440751919.png" alt="Comparison of Lion, Tiger, and AdamW on language model tasks" style="max-width: 100%;">
+        <p><em>Comparison of Lion, Tiger (Ablation), and AdamW on language model tasks</em></p>
+    </div>
+
+    <p>Here, Ablation0.95 and Ablation0.98 refer to Tiger with $\beta$ at 0.95 and 0.98, respectively. As seen, for small models, the two Tigers are on par with AdamW, while on middle and large models, both Tigers outperform AdamW. However, as mentioned earlier, taking the mean of 0.965 for $\beta$ might yield further improvements.</p>
+
+    <p>In CV tasks, the original paper provides Table 7:</p>
+
+    <div style="text-align: center;">
+        <img src="https://kexue.fm/usr/uploads/2023/03/524855422.png" alt="Comparison of Lion, Tiger, and AdamW on image classification tasks" style="max-width: 100%;">
+        <p><em>Comparison of Lion, Tiger (Ablation), and AdamW on image classification tasks</em></p>
+    </div>
+
+    <p>Similarly, Ablation0.9 and Ablation0.99 here refer to Tiger with $\beta$ taking 0.9 and 0.99. In this table, Tiger shows a noticeable gap compared to AdamW. However, considering the authors only experimented with 0.9 and 0.99 for $\beta$, and I recommended $\beta=0.945$, I contacted the original authors to request supplementary experiments. Their replied result was: "When $\beta$ is taken as 0.92, 0.95, and 0.98, the ImageNet results on ViT-B/16 are all around 80.0%." Comparing this to the table above, it is certain that with a fine-tuned $\beta$, Tiger should be able to match AdamW in CV tasks as well.</p>
+
+    <p>Finally, there are my own experiments. I frequently use the LAMB optimizer, whose performance is basicially on par with AdamW but is relatively more stable and adapts better to different initializations. Therefore, I prefer using LAMB. Notably, LAMB's learning rate settings can be ported to Tiger without any changes. I retrained my previous base version <a href="translation_9052.html">GAU-α</a> model with Tiger, and the comparison of the training curves is as follows:</p>
+
+    <div style="text-align: center;">
+        <img src="https://kexue.fm/usr/uploads/2023/03/3052210860.png" alt="Author's comparison experiment on GAU-alpha (loss curve)" style="max-width: 100%;">
+        <p><em>My comparison experiment on GAU-α (loss curve)</em></p>
+        <img src="https://kexue.fm/usr/uploads/2023/03/2456578007.png" alt="Author's comparison experiment on GAU-alpha (accuracy curve)" style="max-width: 100%;">
+        <p><em>My comparison experiment on GAU-α (accuracy curve)</em></p>
+    </div>
+
+    <p>As can be seen, Tiger can indeed achieve better performance than LAMB.</p>
+
+    <h2 id="未来工作">Future Work</h2>
+    <p>Is there still room for improvement in Tiger? Definitely. There are many ideas, but I haven't had time to verify them one by one; those interested can help carry them forward.</p>
+
+    <p>In <a href="translation_9473.html">"Google's Newly Discovered Lion Optimizer: A 'Training Lion' that Achieves Both Efficiency and Effectiveness"</a>, my evaluation of the $\text{sign}$ operation was:</p>
+
+    <blockquote>
+        Lion treats every component equally through the $\text{sign}$ operation, allowing the model to fully utilize the role of every component, thus resulting in better generalization performance. In SGD, the update magnitude is proportional to the gradient. However, some components having small gradients might just be because they weren't initialized well, not because they are unimportant. So, Lion's $\text{sign}$ operation provides an opportunity for every parameter to "restore vitality" or even "create new glory."
+    </blockquote>
+
+    <p>However, upon closer reflection, there is room for improvement here. "Treating every component equally" is very reasonable at the beginning of training, as it preserves as much possibility for the model as possible. However, if a parameter's gradient stays very small for a long time, it's quite likely that this parameter is truly "unreformable mud that can't stick to a wall"—meaning it has already been optimized to its limit. At this point, if one still "treats every component equally," it is unfair to the "high-achieving" components whose gradients are still large, and it might likely lead to model oscillations.</p>
+
+    <p>An intuitive idea is that the optimizer should gradually degenerate from Tiger to SGD as training progresses. To this end, we could consider setting the update amount to:</p>
+
+    \begin{equation}\boldsymbol{u}_t = \text{sign}(\boldsymbol{m}_t) \times \|\boldsymbol{m}_t\|^{1-\gamma_t}\end{equation}
+
+    <p>Here, the absolute value and power operations are element-wise, and $\gamma_t$ is a monotonically decreasing function from 1 to 0. When $\gamma_t = 1$, it corresponds to Tiger; when $\gamma_t = 0$, it corresponds to SGDM.</p>
+
+    <p>Readers might complain that this adds yet another hyperparameter schedule $\gamma_t$ to adjust, making things much more complex. That is true. If it is tuned independently, it would indeed introduce too much complexity. But let us recall carefully: excluding the Warmup phase, isn't the relative learning rate $\alpha_t$ usually a monotonically decreasing function to zero? Could we use $\alpha_t$ to design $\gamma_t$? For instance, doesn't $\alpha_t/\alpha_0$ happen to be a monotonically decreasing function from 1 to 0? Could it be used as $\gamma_t$? Of course, $(\alpha_t/\alpha_0)^2$ or $\sqrt{\alpha_t/\alpha_0}$ might be better, providing some room for tuning, but at least we wouldn't have to redesign a schedule spanning the entire training process from scratch.</p>
+
+    <p>More divergently, since we sometimes use non-monotonic schedules for learning rates (like cosine annealing with restarts), could we also use a non-monotonic one for $\gamma_t$ (equivalent to repeatedly switching between Tiger and SGDM)? These ideas await verification.</p>
+
+    <h2 id="文章小结">Summary</h2>
+    <p>In this article, we proposed a new optimizer named Tiger (<strong>Tig</strong>ht-fisted Optimiz<strong>er</strong>), which simplifies Lion and incorporates some of our hyperparameter experiences. Particularly in scenarios requiring gradient accumulation, Tiger can reach the theoretical optimal (stingy) solution for memory usage!</p>
+
+    <p><i><strong>Translated from:</strong> <a href="translation_9512.html">https://kexue.fm/archives/9512</a></i></p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9512.html" style="color: #005fcc;">https://kexue.fm/archives/9512</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

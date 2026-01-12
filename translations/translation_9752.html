@@ -1,0 +1,303 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/9752">BytePiece: A Purer, Higher Compression Ratio Tokenizer</a></h1>
+
+    <p>By 苏剑林 | September 07, 2023</p>
+
+    <p>Currently, the most popular Tokenizer in LLMs is likely Google's <a href="https://github.com/google/sentencepiece" target="_blank">SentencePiece</a>. It aligns with several ideal properties for a tokenizer, such as being language-agnostic and data-driven. Because it is written in C++, its realization (tokenization) speed is very fast, making it highly suitable for efficiency-critical scenarios. However, it also has some obvious drawbacks, such as slow training speeds (for the BPE algorithm) and high memory consumption. Furthermore, because it is written in C++, it often acts as a "black box" for most users, making it difficult to study or perform secondary development. In fact, training a tokenizer is equivalent to the traditional task of "new word discovery." Given the author's prior work on <a href="translation_3913.html" target="_blank">Chinese word segmentation</a> and the <a href="translation_3160.html" target="_blank">Minimum Entropy</a> series, I have accumulated considerable experience in new word discovery. Consequently, I have long wanted to write my own version of a tokenizer. These past few days, I finally found the time to complete the initial version. Emulating SentencePiece, I have named it "BytePiece."</p>
+
+    <h3>Ideal Characteristics</h3>
+    <p>Since we are rewriting a tokenizer, we must consider what an ideal tokenizer should look like to determine if the result meets expectations. In my view, a tokenizer should possess at least the following basic characteristics:</p>
+    <ol>
+        <li><strong>Lossless Reconstruction</strong>: The tokenization result should be capable of being restored to the input without any loss.</li>
+        <li><strong>High Compression Ratio</strong>: For a given vocabulary size, the number of tokens for the same dataset should be as small as possible.</li>
+        <li><strong>Language Agnostic</strong>: Based on statistics, neither the training nor the tokenization process should introduce language-specific features.</li>
+        <li><strong>Data Driven</strong>: It should be possible to perform unsupervised training directly on raw corpora.</li>
+        <li><strong>Training Friendly</strong>: The training process should be completed within a reasonable timeframe and on reasonable hardware configurations.</li>
+    </ol>
+    <p>Finally, there are some "bonus points," such as fast tokenization speed, readable code, and convenience for secondary extension. While these are desirable, I believe they are not strictly part of the "basic characteristics."</p>
+
+    <p>For me, the biggest complaints about SentencePiece are "lossless reconstruction" and "training friendliness." First, SentencePiece defaults to <code>NFKC normalization</code>, which leads to irreversible changes like converting full-width commas to half-width commas. Thus, by default, it doesn't even satisfy "lossless reconstruction." For a long time, it wasn't on my candidate list until I discovered that adding the parameter <code>--normalization_rule_name=identity</code> during training prevents any conversion. So SentencePiece <i>can</i> support lossless reconstruction, but it requires specific settings.</p>
+
+    <p>As for training, it can be quite frustrating. SentencePiece supports two main algorithms: BPE and Unigram. The Unigram training speed is acceptable, but its compression ratio is slightly lower. BPE has a higher compression ratio, but its training speed is an order of magnitude slower than Unigram! Moreover, regardless of whether BPE or Unigram is used, the training process is extremely memory-intensive. In short, training a SentencePiece model on a large corpus is not a pleasant experience.</p>
+
+    <h3>Model Concept</h3>
+    <p>The construction of a new tokenizer can be decomposed into three parts: 1) basic unit; 2) tokenization algorithm; 3) training algorithm. Once these three parts are determined, the rest is just a matter of programming technique. Below is an introduction to the thinking behind BytePiece regarding these issues.</p>
+
+    <h4>Basic Unit</h4>
+    <p>We know that Python 3's default string type is Unicode. If we use Unicode as the basic unit, we call it Char-based. Char-based is intuitive and convenient; a Chinese character is represented as a single character of length 1. However, the number of Chars in different languages is far too large. Even just covering individual characters requires a massive <code>vocab_size</code>, not to mention introducing multi-character words. Therefore, like mainstream tokenizers, BytePiece uses the <strong>Byte</strong> as the basic unit.</p>
+    <p>Returning to bytes makes many problems "clear as day." Since there are only 256 different single bytes, as long as the vocabulary contains these 256 single bytes, OOV (Out of Vocabulary) issues can be eliminated. This is an obvious advantage. Furthermore, we know the average information entropy of Chinese characters is greater than that of English letters. If we choose Char-based, although each Char appears to be length 1, their "internal" granularity is different, leading to biased statistical results. In contrast, the information entropy of each byte is more uniform (for example, most Chinese characters correspond to 3 bytes in UTF-8 encoding, and the average information entropy of a Chinese character is exactly 2 to 3 times that of an English letter, which corresponds to one byte). Thus, statistical results based on bytes will be more unbiased, making the model more "language agnostic."</p>
+    <p>In terms of being Byte-based, BytePiece is more thorough than SentencePiece. SentencePiece first processes with Char-based logic and only handles OOV using Byte-based logic. BytePiece, however, converts text to bytes via <code>text.encode()</code> at the very beginning before any subsequent operations. This makes it much purer.</p>
+
+    <h4>Tokenization Algorithm</h4>
+    <p>There are only a few algorithms for tokenization based on a dictionary, such as maximum matching, shortest path, and maximum probability path. Readers interested in the history can refer to <a href="http://www.matrix67.com/blog/archives/427" target="_blank">"A Chat on Chinese Automatic Segmentation and Semantic Recognition"</a> by Matrix67. Like <code>jieba</code> and other Chinese segmentation tools, BytePiece chooses <strong>maximum probability path segmentation</strong>, also known as the "Unigram language model." This choice is based on three considerations: first, the maximum probability of Unigram is, in other words, maximum likelihood, which is more consistent with the training objective of LLMs; second, from a compression perspective, maximum probability actually corresponds to the shortest encoding length (also called minimum description length), embodying the maximization of compression ratio, which aligns with the belief that "compression is intelligence"; third, the optimal tokenization scheme for Unigram can be found via the Viterbi algorithm in linear complexity, which is theoretical optimal complexity.</p>
+    <p>Of course, while there is a "one-gram (Unigram) model," there are naturally more complex "bigram models" and "trigram models." However, the increase in their complexity far outweighs the benefits they bring, so we generally do not consider these higher-order models.</p>
+
+    <h4>Training Algorithm</h4>
+    <p>The reason for discussing the tokenization algorithm before the training algorithm is that the optimization goal for training can only be determined once the tokenization algorithm is fixed. As mentioned at the beginning, tokenizer training is essentially the old "new word discovery." I have previously proposed several new word discovery algorithms, such as <a href="translation_3386.html" target="_blank">"Segmentation-based New Word Discovery"</a>, <a href="translation_3956.html" target="_blank">"Unsupervised Segmentation Based on Language Models"</a>, and <a href="translation_4338.html" target="_blank">"Better New Word Discovery Algorithms."</a> It now seems that the most compatible and potential algorithm for Unigram tokenization is <a href="translation_3956.html" target="_blank">"Unsupervised Segmentation Based on Language Models."</a> BytePiece's training is implemented based on it, here referred to as <strong>Byte-based N-gram Language Model (BNLM)</strong>.</p>
+    <p>Specifically, for Unigram tokenization, if a byte string $c_1, c_2, \dots, c_l$ of length $l$ has an optimal tokenization result $w_1, w_2, \dots, w_m$, then the product of probabilities $p(w_1)p(w_2)\dots p(w_m)$ should be the maximum among all possible segmentations. Let the lengths of $w_1, w_2, \dots, w_m$ be $l_1, l_2, \dots, l_m$. Then, according to the conditional decomposition formula:</p>
+
+\begin{equation}\prod_{i=1}^m p(w_i) = \prod_{i=1}^m \prod_{j=L_{i-1} + 1}^{j=L_{i-1} + l_i} p(c_j|c_{L_{i-1} + 1},\dots,c_{j-1})\end{equation}
+
+    <p>Here $L_i=l_1+l_2+\dots+l_i$. Considering only the $n$-gram model, for $j > L_{i-1} + n$, we approximate $p(c_j|c_{L_{i-1} + 1},\dots,c_{j-1})$ with $p(c_j|c_{j - n + 1},\dots,c_{j-1})$. Thus, Unigram tokenization is transformed into a character (byte) labeling problem, and Tokenizer training is transformed into $n$-gram language model training (recommended $n=6$), which can be completed directly via unsupervised learning. For a more detailed introduction, please refer to the original article <a href="translation_3956.html" target="_blank">"Unsupervised Segmentation Based on Language Models."</a></p>
+    <p>(Note: $n=6$ only means that BytePiece's statistical information goes up to 6-gram, but it does not mean it can only generate pieces of length at most 6. Since we approximate conditional probabilities for $n$-grams where $n > 6$ using the 6-gram model, it can theoretically be of any order and generate pieces of arbitrary length.)</p>
+
+    <h3>Code Implementation</h3>
+    <p>Once the principles were determined, the rest was tedious development work. Fortunately, I managed to write a set of usable code: <a href="https://github.com/bojone/bytepiece" target="_blank">https://github.com/bojone/bytepiece</a>.</p>
+    <p>The code is simple, contained in a single file, with two main classes: <code>Trainer</code> and <code>Tokenizer</code>, corresponding to the two parts of tokenization. Tokenization uses <code>pyahocorasick</code> to build an AC automaton to speed things up a bit; it's usable, but still much slower than SentencePiece, as pure Python cannot compare with C++ in terms of speed. Training is divided into four main steps: 1) $n$-gram counting; 2) $n$-gram pruning; 3) pre-segmentation; 4) pre-segmentation result pruning. Among these, steps 1, 3, and 4 are computationally intensive and parallelizable, so corresponding multi-processing implementations were written. With enough processes (I used 64 processes, and each process was basically at full utilization), the training speed can rival that of SentencePiece's Unigram training.</p>
+    <p>I should specifically mention the result pruning. The most basic criteria for pruning are frequency and <code>vocab_size</code>, but this is not enough. Sometimes $p(w_1)p(w_2) > p(w_1 \circ w_2)$ (where $w_1 \circ w_2$ denotes the concatenation of two words) occurs while $w_1, w_2, w_1 \circ w_2$ all exist in the vocabulary. In such cases, the word $w_1 \circ w_2$ will never be segmented out, so keeping it in the vocabulary is a pure waste of space. Therefore, the pruning process also includes the exclusion of such results.</p>
+
+    <h3>Performance Testing</h3>
+    <p>Now for the part everyone loves—testing. First, let's do a small-scale test. We randomly sampled 100,000 entries from the previously open-sourced WuDao dataset as the training set (the exported file is about 330MB), and another 1,000 entries as the test set. We trained a vocabulary with <code>vocab_size=50k</code>. The comparison results are as follows:</p>
+
+    <table border="1" cellpadding="5" style="border-collapse: collapse; text-align: center;">
+        <thead>
+            <tr>
+                <th>Method</th>
+                <th>Training Time $\downarrow$</th>
+                <th>Max Memory Usage $\downarrow$</th>
+                <th>Compression Ratio $\uparrow$</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>SP-BPE</td>
+                <td>55.3 min</td>
+                <td>5.2 GB</td>
+                <td>4.80</td>
+            </tr>
+            <tr>
+                <td>SP-Unigram</td>
+                <td>1.6 min</td>
+                <td>2.5 GB</td>
+                <td>4.73</td>
+            </tr>
+            <tr>
+                <td>BytePiece</td>
+                <td>6.5 min</td>
+                <td>4.3 GB</td>
+                <td>5.05</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <p>To clarify, SP-BPE and SP-Unigram refer to SentencePiece with <code>model_type</code> set to BPE and Unigram, respectively. The training codes were:</p>
+    <pre><code>spm.SentencePieceTrainer.train('--input=wudao.txt --model_prefix=wudao_m --vocab_size=50000 --model_type=bpe --train_extremely_large_corpus=true --normalization_rule_name=identity')
+spm.SentencePieceTrainer.train('--input=wudao.txt --model_prefix=wudao_m2 --vocab_size=50000 --model_type=unigram --train_extremely_large_corpus=true --normalization_rule_name=identity')</code></pre>
+    <p>The unit for the compression ratio is "bytes/token," i.e., the average number of bytes corresponding to each token. It is evident that BytePiece achieves the highest compression ratio with a relatively balanced training time and memory usage.</p>
+
+    <p>Next, we conducted a larger-scale test. From a mixed Chinese-English corpus with a ratio of roughly 3:5, we extracted 100,000 samples to train a Tokenizer with <code>vocab_size=100k</code>. The texts in this corpus are quite long, so the exported file for these 100,000 entries was already 13GB. The test set consisted of two parts: one part was 1,000 entries sampled from the same corpus (homogeneous), and the other was the 1,000 entries from the WuDao dataset sampled earlier (heterogeneous). The results are as follows:</p>
+
+    <table border="1" cellpadding="5" style="border-collapse: collapse; text-align: center;">
+        <thead>
+            <tr>
+                <th>Method</th>
+                <th>Training Time $\downarrow$</th>
+                <th>Max Memory Usage $\downarrow$</th>
+                <th>Comp. Ratio (Homog.) $\uparrow$</th>
+                <th>Comp. Ratio (Hetero.) $\uparrow$</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>SP-BPE</td>
+                <td>19.21 hours</td>
+                <td>97 GB</td>
+                <td>4.52</td>
+                <td>4.46</td>
+            </tr>
+            <tr>
+                <td>SP-Unigram</td>
+                <td>2.02 hours</td>
+                <td>384 GB</td>
+                <td>4.51</td>
+                <td>4.48</td>
+            </tr>
+            <tr>
+                <td>BytePiece</td>
+                <td>2.24 hours</td>
+                <td>51 GB</td>
+                <td>5.39</td>
+                <td>4.51</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <p>Whether in terms of training time, memory, or compression ratio, it seems that the larger the training data, the more advantageous BytePiece becomes!</p>
+
+    <h3>To Be Continued</h3>
+    <p>Based on current results, BytePiece has certain advantages in training, and the tokenization effect is also decent. However, being written in pure Python, its tokenization speed is only about 1/10 that of SentencePiece. This is one of the future directions for optimization, and I hope C/C++ experts can get involved to help improve BytePiece's tokenization speed.</p>
+    <p><i>(Note: Starting from version 0.2.0, the tokenization function has been accelerated using Cython. BytePiece's tokenization speed is now close to BPE, and it can outperform BPE when the text is sufficiently long.)</i></p>
+
+    <p>In fact, if techniques such as random sampling and dynamic pruning are adopted, the training speed and memory of BytePiece can be further optimized. Currently, to ensure deterministic results, BytePiece does not perform pruning until all statistics are gathered, which ensures consistency across single-process or multi-process runs. If the input is randomly shuffled and pruning is performed at intervals, memory usage can be further controlled and statistical speed increased, with minimal expected impact on the final result. This part of the work will be introduced later based on user feedback.</p>
+
+    <p>Beyond these points, there are many details in BytePiece that need refinement, and there may be undiscovered bugs. I ask for your understanding and feedback.</p>
+
+    <h3>Summary</h3>
+    <p>This article introduced BytePiece, a Tokenizer I developed myself. It is a Byte-based Unigram tokenizer, implemented in pure Python, making it more readable and easier to extend. Because it adopts a new training algorithm, its compression ratio is typically higher than existing tokenizers, and it supports multi-process accelerated training. Furthermore, it directly operates on the UTF-8 bytes of text, performing almost no preprocessing, making it purer and language-agnostic.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_9752.html" style="color: #005fcc;">https://kexue.fm/archives/9752</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

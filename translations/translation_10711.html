@@ -1,0 +1,271 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<h1><a href="https://kexue.fm/archives/10711">Discussions on Generative Diffusion Models (29): Discrete Encoding with DDPM</a></h1>
+
+    <p>By 苏剑林 | February 14, 2025</p>
+
+
+<p>A couple of days ago, I came across a new paper on arXiv titled <a href="https://arxiv.org/abs/2502.02331">"Compressed Image Generation with Denoising Diffusion Codebook Models"</a>. I was truly amazed by the author's imaginative approach and couldn't help but share it with everyone. As the title of this post suggests, the author proposed an idea called DDCM (Denoising Diffusion Codebook Models). It restricts the noise sampling of DDPM to a finite set, which achieves some wonderful effects, such as encoding samples into discrete ID sequences and reconstructing them back, similar to VQ-VAE. Note that all these operations are performed on a pre-trained DDPM without any additional training.</p>
+
+<h2>Finite Sets</h2>
+
+<p>Since DDCM only requires a pre-trained DDPM model to perform sampling, we will not repeat the model details of DDPM here. Readers who are not yet familiar with DDPM can review the <a href="translation_9119.html">(1)</a>, <a href="translation_9164.html">(2)</a>, and <a href="translation_9189.html">(3)</a> parts of our "Discussions on Generative Diffusion Models" series.</p>
+
+<p>We know that the generative sampling of DDPM starts from $\boldsymbol{x}_T\sim\mathcal{N}(\boldsymbol{0},\boldsymbol{I})$ and iterates to $\boldsymbol{x}_0$ using the following formula:
+\begin{equation}\boldsymbol{x}_{t-1} = \boldsymbol{\mu}(\boldsymbol{x}_t) + \sigma_t \boldsymbol{\varepsilon}_t,\quad \boldsymbol{\varepsilon}_t\sim\mathcal{N}(\boldsymbol{0},\boldsymbol{I})\label{eq:ddpm-g}\end{equation}
+For DDPM, a noise vector needs to be sampled at each iteration step. Since $\boldsymbol{x}_T$ itself is also sampled noise, a total of $T+1$ noise vectors are passed in during the process of generating $\boldsymbol{x}_0$ through $T$ iterations. Assuming $\boldsymbol{x}_t\in\mathbb{R}^d$, the sampling process of DDPM is essentially a mapping from $\mathbb{R}^{d\times (T+1)}\mapsto \mathbb{R}^d$.</p>
+
+<p>The first brilliant idea of DDCM is to replace the noise sampling space with a finite set (Codebook):
+\begin{equation}\boldsymbol{x}_{t-1} = \boldsymbol{\mu}(\boldsymbol{x}_t) + \sigma_t \boldsymbol{\varepsilon}_t,\quad \boldsymbol{\varepsilon}_t\sim\mathcal{C}_t\label{eq:ddcm-g}\end{equation}
+as well as $\boldsymbol{x}_T\sim \mathcal{C}_{T+1}$, where $\mathcal{C}_t$ is a set of $K$ noise vectors pre-sampled from $\mathcal{N}(\boldsymbol{0},\boldsymbol{I})$. In other words, before sampling starts, $K$ vectors are sampled from $\mathcal{N}(\boldsymbol{0},\boldsymbol{I})$ and fixed. Every subsequent sampling step draws uniformly from these $K$ vectors. In this way, the generation process becomes a mapping from $\{1,2,\cdots,K\}^{T+1}\mapsto \mathbb{R}^d$.</p>
+
+<p>What is the loss in generation quality for doing this? DDCM conducted experiments and found that the loss is very small:</p>
+
+<p style="text-align:center;">
+After changing the noise sampling space to a finite set, the FID of the generation results does not deteriorate significantly.
+</p>
+
+<p>It can be seen that when $K = 64$, the FID basically levels off with the baseline. Upon closer observation, even at $K=2$, not much is lost. This indicates that finitizing the sampling space can maintain the generative power of DDPM. Note a detail here: $\mathcal{C}_t$ at each step is independent, meaning there are $(T+1)K$ noise vectors in total across all codebooks, rather than sharing $K$ noise vectors. I performed a simple reproduction and found that if they are shared, $K\geq 8192$ is required to maintain similar effects.</p>
+
+<h2>Discrete Encoding</h2>
+
+<p>Now we consider an inverse problem: finding the discrete encoding for a given $\boldsymbol{x}_0$, i.e., finding the corresponding sequence $\boldsymbol{\varepsilon}_T\in \mathcal{C}_T,\cdots,\boldsymbol{\varepsilon}_1\in \mathcal{C}_1$ such that the $\boldsymbol{x}_0$ generated by iterating $\boldsymbol{x}_{t-1} = \boldsymbol{\mu}(\boldsymbol{x}_t) + \sigma_t \boldsymbol{\varepsilon}_t$ is as close as possible to the given sample.</p>
+
+<p>Since the FID does not change significantly after finitizing the sampling space, we can assume that all samples from the same distribution can be generated via Equation $\eqref{eq:ddcm-g}$. Therefore, a solution to the aforementioned inverse problem theoretically exists. But how do we find it? An intuitive idea is to work backward from $\boldsymbol{x}_0$, but upon closer thought, we find it difficult to operate. For example, in the first step $\boldsymbol{x}_0 = \boldsymbol{\mu}(\boldsymbol{x}_1) + \sigma_1 \boldsymbol{\varepsilon}_1$, both $\boldsymbol{x}_1$ and $\boldsymbol{\varepsilon}_1$ are unknown, making it hard to determine them simultaneously.</p>
+
+<p>At this point, the second brilliant idea of DDCM comes into play: it treats the discrete encoding of $\boldsymbol{x}_0$ as a conditional controlled generation problem! Specifically, starting from a fixed $\boldsymbol{x}_T$, we choose $\boldsymbol{\varepsilon}_t$ in the following way:
+\begin{equation}\boldsymbol{x}_{t-1} = \boldsymbol{\mu}(\boldsymbol{x}_t) + \sigma_t \boldsymbol{\varepsilon}_t,\quad \boldsymbol{\varepsilon}_t = \mathop{\text{argmax}}_{\boldsymbol{\varepsilon}\in\mathcal{C}_t} \boldsymbol{\varepsilon}\cdot(\boldsymbol{x}_0-\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t))\label{eq:ddcm-eg}\end{equation}
+where $\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)$ is the model that predicts $\boldsymbol{x}_0$ using $\boldsymbol{x}_t$. Its relationship with $\boldsymbol{\mu}(\boldsymbol{x}_t)$ is:
+\begin{equation}\boldsymbol{\mu}(\boldsymbol{x}_t) = \frac{\alpha_t\bar{\beta}_{t-1}^2}{\bar{\beta}_t^2}\boldsymbol{x}_t + \frac{\bar{\alpha}_{t-1}\beta_t^2}{\bar{\beta}_t^2}\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)\end{equation}
+If readers have forgotten this part, you can review it in <a href="translation_9189.html">"Discussions on Generative Diffusion Models (3): DDPM = Bayesian + Denoising"</a>.</p>
+
+<p>We will discuss the detailed derivation in the next section. For now, let's look at Equation $\eqref{eq:ddcm-eg}$. Its only difference from the random generation Equation $\eqref{eq:ddcm-g}$ is that it uses $\text{argmax}$ to select the optimal $\boldsymbol{\varepsilon}_t$. The metric is the dot product similarity between $\boldsymbol{\varepsilon}$ and the residual $\boldsymbol{x}_0-\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)$. Explicitly, the intuition is to let $\boldsymbol{\varepsilon}$ compensate as much as possible for the gap between the current $\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)$ and the target $\boldsymbol{x}_0$. Through the iteration of Equation $\eqref{eq:ddcm-eg}$, an image is equivalently converted into $T-1$ integers ($\sigma_1$ is usually set to zero).</p>
+
+<p>The rules seem very simple, but how is the actual reconstruction effect? Below is a figure taken from the original paper. It can be seen that it is quite stunning. The original paper has more result images. I also tried it on my own model and found that I could basically reproduce similar effects, so the method is quite reliable.</p>
+
+<p style="text-align:center;">
+Discrete encoding reconstruction results of DDCM
+</p>
+
+<h2>Conditional Generation</h2>
+
+<p>Just now we said that DDCM treats the encoding process as a conditional controlled generation process. How should we understand this? Let's start from DDPM's Equation $\eqref{eq:ddpm-g}$, which can be equivalently written as:
+\begin{equation}p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t) = \mathcal{N}(\boldsymbol{x}_{t-1};\boldsymbol{\mu}(\boldsymbol{x}_t),\sigma_t^2\boldsymbol{I})\end{equation}
+Now, what we want to do is regulate the generation process given the knowledge of $\boldsymbol{x}_0$. So we add an extra condition $\boldsymbol{x}_0$ to the above distribution, changing it to $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t,\boldsymbol{x}_0)$. In fact, in DDPM, $p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t,\boldsymbol{x}_0)$ has an analytical solution, which we derived in <a href="translation_9189.html">"Discussions on Generative Diffusion Models (3): DDPM = Bayesian + Denoising"</a>:
+\begin{equation}p(\boldsymbol{x}_{t-1}|\boldsymbol{x}_t, \boldsymbol{x}_0) = \mathcal{N}\left(\boldsymbol{x}_{t-1};\frac{\alpha_t\bar{\beta}_{t-1}^2}{\bar{\beta}_t^2}\boldsymbol{x}_t + \frac{\bar{\alpha}_{t-1}\beta_t^2}{\bar{\beta}_t^2}\boldsymbol{x}_0,\frac{\bar{\beta}_{t-1}^2\beta_t^2}{\bar{\beta}_t^2} \boldsymbol{I}\right)\end{equation}
+Or written as:
+\begin{equation}\begin{aligned} 
+\boldsymbol{x}_{t-1} =&\, \frac{\alpha_t\bar{\beta}_{t-1}^2}{\bar{\beta}_t^2}\boldsymbol{x}_t + \frac{\bar{\alpha}_{t-1}\beta_t^2}{\bar{\beta}_t^2}\boldsymbol{x}_0 + \frac{\bar{\beta}_{t-1}\beta_t}{\bar{\beta}_t}\boldsymbol{\varepsilon}_t \\ 
+=&\, \underbrace{\frac{\alpha_t\bar{\beta}_{t-1}^2}{\bar{\beta}_t^2}\boldsymbol{x}_t + \frac{\bar{\alpha}_{t-1}\beta_t^2}{\bar{\beta}_t^2}\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)}_{\boldsymbol{\mu}(\boldsymbol{x}_t)} + \frac{\bar{\alpha}_{t-1}\beta_t^2}{\bar{\beta}_t^2}(\boldsymbol{x}_0 - \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)) + \underbrace{\frac{\bar{\beta}_{t-1}\beta_t}{\bar{\beta}_t}}_{\sigma_t}\boldsymbol{\varepsilon}_t 
+\end{aligned}\label{eq:ddcm-eg0}\end{equation}
+where $\boldsymbol{\varepsilon}_t\sim\mathcal{N}(\boldsymbol{0},\boldsymbol{I})$. Compared to Equation $\eqref{eq:ddpm-g}$, the above equation has an additional $\boldsymbol{x}_0 - \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)$ term, which is used to guide the generation result toward $\boldsymbol{x}_0$. But don't forget that our task is to discretely encode $\boldsymbol{x}_0$, so the generation process cannot have $\boldsymbol{x}_0$ explicitly involved; otherwise, it would be "putting the cart before the horse." To this end, we hope that the $\boldsymbol{x}_0 - \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)$ term can be compensated for by $\boldsymbol{\varepsilon}_t$, so we adjust the selection rule for $\boldsymbol{\varepsilon}_t$ to:
+\begin{equation}\boldsymbol{\varepsilon}_t = \mathop{\text{argmin}}_{\boldsymbol{\varepsilon}\in\mathcal{C}_t} \left\Vert\frac{\bar{\alpha}_{t-1}\beta_t^2}{\bar{\beta}_t^2}(\boldsymbol{x}_0 - \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)) - \frac{\bar{\beta}_{t-1}\beta_t}{\bar{\beta}_t}\boldsymbol{\varepsilon}\right\Vert\label{eq:ddcm-eps0}\end{equation}
+Since the vectors in $\mathcal{C}_t$ are pre-sampled from $\mathcal{N}(\boldsymbol{0},\boldsymbol{I})$, similar to the "Unit Norm Lemma" in <a href="translation_7070.html">"The Amazing Johnson-Lindenstrauss Lemma: Theoretical Part"</a>, we can assume that the magnitudes of the vectors in $\mathcal{C}_t$ are roughly the same. Under this assumption, the above equation is also equivalent to:
+\begin{equation}\boldsymbol{\varepsilon}_t = \mathop{\text{argmax}}_{\boldsymbol{\varepsilon}\in\mathcal{C}_t} \boldsymbol{\varepsilon}\cdot(\boldsymbol{x}_0-\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t))\end{equation}
+This gives us DDCM's Equation $\eqref{eq:ddcm-eg}$.</p>
+
+<h2>Importance Sampling</h2>
+
+<p>In the above derivation, we used the explanation "hoping that the $\boldsymbol{x}_0 - \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)$ term can be compensated for by $\boldsymbol{\varepsilon}_t$, so the selection rule for $\boldsymbol{\varepsilon}_t$ is changed to Equation $\eqref{eq:ddcm-eps0}$." While this looks intuitive, it is not mathematically rigorous, or even strictly speaking, incorrect. In this section, we will make this part more rigorous.</p>
+
+<p>Looking back at Equation $\eqref{eq:ddcm-eg0}$ again, the derivation up to $\eqref{eq:ddcm-eg0}$ is rigorous. The lack of rigor lies in how the connection between $\eqref{eq:ddcm-eg0}$ and $\mathcal{C}_t$ is established. Imagine what happens if we select $\boldsymbol{\varepsilon}_t$ according to $\eqref{eq:ddcm-eps0}$ as $K\to\infty$. At this point, we can consider that $\mathcal{C}_t$ has covered the entire $\mathbb{R}^d$, so $\frac{\bar{\alpha}_{t-1}\beta_t^2}{\bar{\beta}_t^2}(\boldsymbol{x}_0 - \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)) = \frac{\bar{\beta}_{t-1}\beta_t}{\bar{\beta}_t}\boldsymbol{\varepsilon}_t$. This means Equation $\eqref{eq:ddcm-eg0}$ becomes a deterministic transformation:
+\begin{equation}\boldsymbol{x}_{t-1} = \frac{\alpha_t\bar{\beta}_{t-1}^2}{\bar{\beta}_t^2}\boldsymbol{x}_t + \frac{\bar{\alpha}_{t-1}\beta_t^2}{\bar{\beta}_t^2}\bar{\boldsymbol{\mu}}(\boldsymbol{x}_t) + \frac{\bar{\alpha}_{t-1}\beta_t^2}{\bar{\beta}_t^2}(\boldsymbol{x}_0 - \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)) = \frac{\alpha_t\bar{\beta}_{t-1}^2}{\bar{\beta}_t^2}\boldsymbol{x}_t + \frac{\bar{\alpha}_{t-1}\beta_t^2}{\bar{\beta}_t^2}\boldsymbol{x}_0\end{equation}
+In other words, when $K\to\infty$, the original random sampling trajectory cannot be recovered, which is not scientifically sound. We believe that the finitization of the sampling space should be an approximation of the continuous sampling space. When $K\to\infty$, it should return to the continuous sampling trajectory, so that each step of discretization has a theoretical guarantee. To use a more mathematical expression, we believe a necessary condition is:
+\begin{equation}\lim_{K\to\infty} \text{DDCM} = \text{DDPM}\end{equation}
+Changing from Equation $\eqref{eq:ddpm-g}$ to Equation $\eqref{eq:ddcm-eg0}$, we can also think of it as the noise distribution changing from $\mathcal{N}(\boldsymbol{0},\boldsymbol{I})$ to $\mathcal{N}(\frac{\bar{\alpha}_{t-1}\beta_t^2}{\bar{\beta}_t^2\sigma_t}(\boldsymbol{x}_0 - \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)),\boldsymbol{I})$. However, due to the requirement for encoding, we cannot sample directly from the latter; we can only sample from the finite set $\mathcal{C}_t$. To satisfy the necessary condition—that is, to make the sampling result closer to sampling from $\mathcal{N}(\frac{\bar{\alpha}_{t-1}\beta_t^2}{\bar{\beta}_t^2\sigma_t}(\boldsymbol{x}_0 - \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t)),\boldsymbol{I})$—we can weight $\boldsymbol{\varepsilon}\in\mathcal{C}_t$ using its probability density function:
+\begin{equation}p(\boldsymbol{\varepsilon})\propto \exp\left(-\frac{1}{2}\left\Vert\boldsymbol{\varepsilon} - \frac{\bar{\alpha}_{t-1}\beta_t^2}{\bar{\beta}_t^2\sigma_t}(\boldsymbol{x}_0 - \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t))\right\Vert^2\right),\quad \boldsymbol{\varepsilon}\in\mathcal{C}_t\label{eq:ddcm-p}\end{equation}
+That is to say, the most reasonable way should be to apply Softmax to $-\frac{1}{2}\left\Vert\boldsymbol{\varepsilon} - \frac{\bar{\alpha}_{t-1}\beta_t^2}{\bar{\beta}_t^2\sigma_t}(\boldsymbol{x}_0 - \bar{\boldsymbol{\mu}}(\boldsymbol{x}_t))\right\Vert^2$ and perform importance sampling according to the probabilities, rather than directly taking the $\text{argmax}$. However, when $K$ is small, the distribution after Softmax will approach a one-hot distribution, so sampling by probability is approximately equal to $\text{argmax}$.</p>
+
+<h2>General Form</h2>
+
+<p>We can also generalize the above results to Classifier-Guidance generation. According to the derivation in <a href="translation_9281.html">"Discussions on Generative Diffusion Models (9): Results of Conditional Controlled Generation"</a>, the result after adding Classifier-Guidance to Equation $\eqref{eq:ddpm-g}$ is:
+\begin{equation}\boldsymbol{x}_{t-1} = \boldsymbol{\mu}(\boldsymbol{x}_t) + \sigma_t^2 \nabla_{\boldsymbol{x}_t} \log p(\boldsymbol{y}|\boldsymbol{x}_t) + \sigma_t\boldsymbol{\varepsilon}_t,\quad \boldsymbol{\varepsilon}_t\sim \mathcal{N}(\boldsymbol{0},\boldsymbol{I})\end{equation}
+That is, $\sigma_t^2 \nabla_{\boldsymbol{x}_t} \log p(\boldsymbol{y}|\boldsymbol{x}_t)$ is added, where $p(\boldsymbol{y}|\boldsymbol{x}_t)$ is a classifier for noisy samples. If we only have a classifier for clean samples $p_o(\boldsymbol{y}|\boldsymbol{x})$, we can let $p(\boldsymbol{y}|\boldsymbol{x}_t) = p_{o}(\boldsymbol{y}|\boldsymbol{\mu}(\boldsymbol{x}_t))$.</p>
+
+<p>Under the same derivation, we can obtain a selection rule similar to Equation $\eqref{eq:ddcm-eps0}$:
+\begin{equation}\boldsymbol{\varepsilon}_t = \mathop{\text{argmax}}_{\boldsymbol{\varepsilon}\in\mathcal{C}_t} \boldsymbol{\varepsilon}\cdot\nabla_{\boldsymbol{x}_t} \log p(\boldsymbol{y}|\boldsymbol{x}_t)\end{equation}
+Or constructed as a sampling distribution according to Equation $\eqref{eq:ddcm-p}$:
+\begin{equation}p(\boldsymbol{\varepsilon})\propto \exp\left(-\frac{1}{2}\left\Vert\boldsymbol{\varepsilon} - \sigma_t\nabla_{\boldsymbol{x}_t} \log p(\boldsymbol{y}|\boldsymbol{x}_t)\right\Vert^2\right),\quad \boldsymbol{\varepsilon}\in\mathcal{C}_t\end{equation}
+These are all simple generalizations of the previous results.</p>
+
+<h2>Personal Review</h2>
+
+<p>At this point, our introduction to DDCM is basically complete. For more details, please refer to the original paper. The author has not yet released the source code; here I provide my own reference implementation: [Link/Implementation details would go here].</p>
+
+<p>If you already have some understanding of diffusion models and have a functioning diffusion model at hand, I highly recommend trying it yourself. In fact, the principles of DDCM are easy to understand and the code is not difficult to write, but only by trying it personally can you experience that stunning sense of amazement. The last time I had the same feeling was with the <a href="translation_10570.html">Upsample Guidance</a> technique introduced in Part (23), which similarly reflects the author's ingenious conception.</p>
+
+<p>However, in terms of long-term influence, I believe Upsample Guidance is still not as significant as DDCM. Because discrete encoding of images is one of the mainstream routes for multimodal LLMs—it acts as the "Image Tokenizer," which is a crucial link—and DDCM can be said to have opened up a brand new route alongside VQ and FSQ. Therefore, it might have deeper potential influence. In the original paper, DDCM only defined itself as a compression method, which almost seems like an "undervaluation."</p>
+
+<p>As a discrete encoding model, DDCM also has a very prominent advantage: its discrete encoding is naturally 1D, unlike VQ, FSQ, and other schemes where the encoding results usually retain the 2D characteristics of the image (except for models like <a href="https://arxiv.org/abs/2306.03122">TiTok</a> that use Q-Former ideas to convert to 1D). This means that when using these encodings for autoregressive generation, we no longer need to consider the "ordering" problem (refer to <a href="translation_10390.html">"A Humble Discussion on Multimodal Ideas (2): Autoregression"</a>), which makes things much simpler.</p>
+
+<p>Of course, there is still room for improvement. For example, the current encoding and generation are carried out simultaneously, which means that however slow the DDPM sampling is, the DDCM encoding will be equally slow. This is currently not very acceptable. Furthermore, we cannot easily apply accelerated sampling techniques because accelerated sampling means reducing $T$, and reducing $T$ means shortening the encoding length, i.e., increasing the compression rate, which will significantly increase the reconstruction loss.</p>
+
+<p>In summary, I believe DDCM is a very interesting discrete encoding method with potential waiting to be tapped and also waiting for further optimization.</p>
+
+<h2>Summary</h2>
+
+<p>This article introduced a new idea in diffusion models. It restricts the noise in the DDPM generation process to a finite set and, combined with conditional generation ideas, transforms DDPM into a discrete autoencoder similar to VQ-VAE without additional training.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_10711.html" style="color: #005fcc;">https://kexue.fm/archives/10711</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

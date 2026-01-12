@@ -1,0 +1,342 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/8209">T5 PEGASUS: Open-sourcing a Chinese Generative Pre-trained Model</a></h1>
+
+    <p>By 苏剑林 | March 03, 2021</p>
+
+    <p>Last year, in the article <a href="translation_7867.html">"That leaderboard-topping T5 model is now playable in Chinese,"</a> we introduced Google's multilingual version of the T5 model (mT5) and provided examples of using mT5 for Chinese text generation tasks. While mT5 is a viable solution for Chinese generation, the lack of a model trained entirely on Chinese corpora felt somewhat unsatisfactory, so I decided to develop one.</p>
+
+    <p>After repeated consideration and testing, we decided to use the mT5 architecture and initial weights as a base, first improving the Tokenizer based on Chinese characteristics, and then mimicking <a href="https://papers.cool/arxiv/1912.08777">PEGASUS</a> to construct pre-training tasks. This resulted in a new version of the T5 model, which we are open-sourcing today as T5 PEGASUS.</p>
+
+    <h2 id="Tokenizer">Tokenizer</h2>
+
+    <p>First, let's look at our improvements to the Tokenizer. The Tokenizer used by mT5 is <a href="https://github.com/google/sentencepiece">sentencepiece</a>, a subword tokenization library written in C++. It is efficient and lightweight, but unfortunately, it is not particularly friendly to Chinese, mainly manifesting in:</p>
+
+    <blockquote>
+        1. sentencepiece forcibly converts certain full-width symbols into half-width symbols, which is unacceptable in certain scenarios and may affect task evaluation results;<br><br>
+        2. Although its built-in algorithms can segment Chinese words, it is still not "intelligent" enough for Chinese word segmentation;<br><br>
+        3. sentencepiece is written in C++. While it is open-source, for those accustomed to Python, C++ is essentially a black box—difficult to read and hard to modify.
+    </blockquote>
+
+    <p>These factors led us to switch the Tokenizer back to the BERT Tokenizer. However, simply replacing it with the original Chinese BERT Tokenizer was insufficient. Firstly, our previous work <a href="translation_7758.html">"Boosting Speed without Dropping Performance: Word-level Chinese WoBERT"</a> showed that word-level generation models achieve better results. Secondly, even focusing only on characters, the <code>vocab.txt</code> of the original Chinese BERT is quite incomplete, missing common punctuation (such as double quotes) and many Chinese characters (such as "琊"). Therefore, we decided to add word segmentation capability to the BERT tokenizer and further refine the <code>vocab.txt</code>.</p>
+
+    <p>Specifically, we added the top 200,000 words from Jieba segmentation to the original Chinese BERT <code>token_dict</code>, and then modified the Tokenizer logic so that it could segment those words. These changes are already built into <code>bert4keras</code> and can be called directly. Next, we used this modified Tokenizer to traverse and segment the pre-training corpus we prepared, counted the frequency of each token, and finally kept only the 50,000 most frequent tokens to construct our final <code>vocab.txt</code> for the Tokenizer.</p>
+
+    <p>In addition to using this new Tokenizer for training T5 PEGASUS, we also used it to retrain a version of the WoBERT model (WoBERT+), which readers are welcome to try (<a href="https://github.com/ZhuiyiTechnology/WoBERT">Link</a>).</p>
+
+    <h2 id="预训练任务">Pre-training Task</h2>
+
+    <p>For the pre-training task, we wanted it to be closer to natural language generation (rather than just predicting masked parts like the standard T5) and as practical as possible. Thus, we looked at PEGASUS from the paper <a href="https://papers.cool/arxiv/1912.08777">"PEGASUS: Pre-training with Extracted Gap-sentences for Abstractive Summarization"</a>. PEGASUS claims in its paper to be a model specifically tailored for summarization, but in our view, it can also serve as a general generative pre-training task. The general idea of PEGASUS is to use the Longest Common Subsequence (LCS) to construct summary-like data pairs. T5 PEGASUS does not fully replicate the PEGASUS method but borrows the PEGASUS concept for corpus construction.</p>
+
+    <p>Specifically, suppose a document has $n$ sentences. We pick about $n/4$ sentences (not necessarily contiguous) such that the text formed by concatenating these $n/4$ sentences has the longest possible LCS with the text formed by the remaining $3n/4$ sentences. We then treat the $3n/4$ sentences as the source and the $n/4$ sentences as the summary, creating a "(source, summary)" pseudo-summary data pair to train the Seq2Seq model. Note that if there are no duplicate sentences in the document, there is no overlap between the sentences in the source and the summary. Therefore, the generation task is not simply a copy of the source, making it sufficiently challenging.</p>
+
+    <p>The search algorithm uses a greedy approach to find sentences until the length requirement is met:</p>
+
+    <blockquote>
+        1. First, find one sentence that has the longest LCS with the remaining $n-1$ sentences combined.<br><br>
+        2. Suppose $k$ sentences have already been found. Continue to find the $(k+1)$-th sentence such that the concatenation of these $k+1$ sentences has the longest LCS with the remaining $n-k-1$ sentences.
+    </blockquote>
+
+    <h2 id="参数与配置">Parameters and Configuration</h2>
+
+    <p>The currently open-sourced T5 PEGASUS is the base version, with a total of 275 million parameters. The maximum length during training was 512, the <code>batch_size</code> was 96, and the learning rate was $10^{-4}$. It was trained for 1 million steps using 6 NVIDIA 3090 GPUs, taking about 13 days. The data consisted of over 30GB of finely processed general corpus. The training accuracy reached approximately 47%, and the training loss was about 2.97. The model was written, trained, and tested using <a href="https://kexue.fm/bert4keras">bert4keras</a>.</p>
+
+    <blockquote>
+        <strong>Github Address: <a href="https://github.com/ZhuiyiTechnology/t5-pegasus">https://github.com/ZhuiyiTechnology/t5-pegasus</a></strong>
+    </blockquote>
+
+    <h2 id="实验与评测">Experiments and Evaluation</h2>
+
+    <p>On the CSL and LCSTS text generation tasks, T5 PEGASUS is the SOTA among all models we are aware of:</p>
+
+    \[
+    \begin{array}{c}
+    \text{CSL Summarization Experimental Results}\\
+    {\begin{array}{c|c|cccc}
+    \hline
+    & \text{beam size} & \text{Rouge-L} & \text{Rouge-1} & \text{Rouge-2} & \text{BLEU} \\
+    \hline
+    \text{BERT} & 1 & 63.81 & 65.45 & 54.91 & 45.52 \\
+    \text{WoBERT} & 1 & 66.38 & 68.22 & 57.83 & 47.76 \\
+    \text{mT5} & 1 & 66.96 & 69.00 & 58.74 & \textbf{49.79} \\
+    \text{T5 PEGASUS} & 1 & \textbf{67.68} & \textbf{69.87} & \textbf{59.8} & 49.37 \\
+    \hline
+    \text{BERT} & 2 & 64.44 & 66.09 & 55.75 & 46.39 \\
+    \text{WoBERT} & 2 & 66.65 & 68.68 & 58.5 & 48.4 \\
+    \text{mT5} & 2 & 67.25 & 69.19 & 59.10 & \textbf{50.17} \\
+    \text{T5 PEGASUS} & 2 & \textbf{68.26} & \textbf{70.45} & \textbf{60.57} & 50.06 \\
+    \hline
+    \text{BERT} & 3 & 64.75 & 66.34 & 56.06 & 46.7 \\
+    \text{WoBERT} & 3 & 66.83 & 68.81 & 58.67 & 48.6 \\
+    \text{mT5} & 3 & 67.17 & 69.11 & 59.05 & 50.13 \\
+    \text{T5 PEGASUS} & 3 & \textbf{68.39} & \textbf{70.54} & \textbf{60.69} & \textbf{50.19} \\
+    \hline
+    \end{array}}\\
+    \\
+    \text{LCSTS Summarization Experimental Results}\\
+    {\begin{array}{c|c|cccc}
+    \hline
+    & \text{beam size} & \text{Rouge-L} & \text{Rouge-1} & \text{Rouge-2} & \text{BLEU} \\
+    \hline
+    \text{BERT} & 1 & 27.99 & 29.57 & 18.04 & 11.72 \\
+    \text{WoBERT} & 1 & \textbf{31.51} & 32.90 & 21.13 & 13.74 \\
+    \text{mT5} & 1 & 28.92 & 30.75 & 19.54 & 13.21 \\
+    \text{T5 PEGASUS} & 1 & 31.21 & \textbf{33.53} & \textbf{21.54} & \textbf{14.47} \\
+    \hline
+    \text{BERT} & 2 & 29.20 & 30.70 & 19.17 & 12.64 \\
+    \text{WoBERT} & 2 & \textbf{31.91} & 33.35 & 21.55 & 14.13 \\
+    \text{mT5} & 2 & 29.96 & 31.67 & 20.40 & 13.84 \\
+    \text{T5 PEGASUS} & 2 & 31.47 & \textbf{34.00} & \textbf{21.98} & \textbf{14.75} \\
+    \hline
+    \text{BERT} & 3 & 29.45 & 30.95 & 19.50 & 12.93 \\
+    \text{WoBERT} & 3 & \textbf{32.19} & 33.72 & 21.81 & 14.29 \\
+    \text{mT5} & 3 & 30.15 & 31.97 & 20.72 & 14.05 \\
+    \text{T5 PEGASUS} & 3 & 31.78 & \textbf{34.12} & \textbf{22.23} & \textbf{14.96} \\
+    \hline
+    \end{array}}
+    \end{array}
+    \]
+
+    <p>More importantly, T5 PEGASUS possesses exceptional few-shot learning capabilities:</p>
+
+    \[
+    \begin{array}{c}
+    \text{CSL Summarization Experimental Results (Few-shot, beam size=1)}\\
+    {\begin{array}{c|c|cccc}
+    \hline
+    & \text{Samples} & \text{Rouge-L} & \text{Rouge-1} & \text{Rouge-2} & \text{BLEU} \\
+    \hline
+    \text{WoBERT} & 10000 & 66.38 & 68.22 & 57.83 & 47.76 \\
+    \text{mT5} & 10000 & 66.96 & 69.00 & 58.74 & \textbf{49.79} \\
+    \text{T5 PEGASUS} & 10000 & \textbf{67.68} & \textbf{69.87} & \textbf{59.8} & 49.37 \\
+    \hline
+    \text{WoBERT} & 1000 & 59.34 & 60.42 & 49.07 & 37.87 \\
+    \text{mT5} & 1000 & 59.91 & 61.52 & 50.38 & 40.87 \\
+    \text{T5 PEGASUS} & 1000 & \textbf{63.12} & \textbf{65.28} & \textbf{54.54} & \textbf{43.55} \\
+    \hline
+    \text{WoBERT} & 100 & 55.68 & 55.33 & 43.10 & 31.55 \\
+    \text{mT5} & 100 & 55.33 & 54.62 & 42.78 & 32.50 \\
+    \text{T5 PEGASUS} & 100 & \textbf{60.87} & \textbf{62.78} & \textbf{52.30} & \textbf{41.40} \\
+    \hline
+    \text{WoBERT} & 10 & 26.32 & 20.99 & 12.29 & 5.76 \\
+    \text{mT5} & 10 & 26.62 & 27.00 & 17.95 & 13.11 \\
+    \text{T5 PEGASUS} & 10 & \textbf{55.85} & \textbf{57.66} & \textbf{47.52} & \textbf{35.97} \\
+    \hline
+    \end{array}}
+    \end{array}
+    \]
+
+    <p>Even when the number of annotated samples is reduced to 10, T5 PEGASUS can still fine-tune a summarization (title) generation model that significantly outperforms other models. Similar few-shot learning effects were observed on LCSTS, but since the non-T5 PEGASUS models performed so poorly, I did not organize those results into a table here.</p>
+
+    <h2 id="小样本演示">Few-Shot Demonstration</h2>
+
+    <p>Below are demonstrations of generation results from a model trained with only 10 annotated samples:</p>
+
+    <blockquote>
+        <strong>Input:</strong> Addressing the issue of precise measurement of reliability and fault tolerance in multiprocessor systems modeled on hypercube networks, combined with the feature that structural failures often occur when multiprocessor systems suffer computer virus attacks, the structural connectivity and substructural connectivity evaluation problems of n-dimensional hypercube networks were studied. First, an upper bound for the 3-path structural connectivity of n-dimensional hypercube networks was obtained using a 3-way structural cut construction method. Then, a lower bound for the 3-path structural sub-connectivity was obtained using equivalent transformation or reduction transformation methods on the 3-path substructure sets. Finally, using the property that the 3-path structural connectivity of any network is not less than the 3-path substructure connectivity, it was confirmed that both the 3-path structural connectivity and substructural connectivity of the hypercube network are equal to the dimension of the network.<br>
+        <strong>Title:</strong> 3-way structural connectivity and substructural connectivity of hypercube networks <br>
+        <strong>Prediction:</strong> Research on structural connectivity and substructural connectivity evaluation based on n-dimensional hypercube networks<br><br>
+        
+        <strong>Input:</strong> Aiming at the problems of low prediction accuracy, high computational complexity, and high energy consumption of traditional Wireless Body Area Network (WBAN) prediction models for sensing data, an adaptive triple exponential smoothing algorithm based on a penalty error matrix is proposed. First, a lightweight prediction model is established between sensing nodes and routing nodes; second, a carpet search method is used for parameter optimization of the prediction model; finally, the penalty error matrix is used for further fine-grained processing of the prediction model parameters. Experimental results show that compared with the ZigBee protocol, the proposed method saves about 12% energy within a 1000 time-slot range; compared with carpet search using the penalty error matrix, the prediction accuracy increases by 3.306%. The proposed method effectively reduces computational complexity while further lowering WBAN energy consumption.<br>
+        <strong>Title:</strong> WBAN energy-saving method based on synchronous prediction with penalty error matrix <br>
+        <strong>Prediction:</strong> Adaptive triple exponential smoothing algorithm based on penalty error matrix<br><br>
+        
+        <strong>Input:</strong> Aiming at the problems of low message transmission efficiency and high network resource overhead in the Internet of Vehicles (IoV) environment, a routing algorithm based on cognitive interaction of vehicle nodes suitable for urban traffic scenarios is proposed. First, the concept of node cognitive interaction degree is proposed based on trust theory, and vehicle nodes in the IoV are classified and given initial cognitive interaction values; meanwhile, influence factors such as vehicle node interaction time, interaction frequency, physical distance between vehicle nodes, interval hops, and message survival time are introduced to build a vehicle node cognitive interaction evaluation model. The cognitive interaction degree of nodes is calculated and updated based on this model, and neighbor nodes with relatively higher cognitive interaction degrees are selected as relay nodes for message forwarding.<br>
+        <strong>Title:</strong> Routing algorithm based on node cognitive interaction in IoV environment <br>
+        <strong>Prediction:</strong> Routing algorithm based on vehicle node cognitive interaction<br><br>
+        
+        <strong>Input:</strong> For the joint estimation problem of Direction of Arrival (DOA) and range of near-field sources, a Near-Field Iterative Adaptive Algorithm (NF-IAA) is proposed. First, the possible positions of all sources in the near-field region are represented by dividing a two-dimensional grid, where each position is viewed as a potential source incident on the array, and the array output data model is represented. Then, the covariance matrix of the signal is constructed using the spectral estimation results from the previous iteration, and the inverse of the covariance matrix is used as a weighting matrix to estimate the potential source energy at each position. Finally, a three-dimensional energy spectrum is drawn. Since only the energy of actual existing sources is non-zero, the positions corresponding to the spectrum peaks are the locations of the real sources. Simulation experiments show that under 10 snapshot conditions, the DOA resolution probability of NF-IAA reaches 9...<br>
+        <strong>Title:</strong> Joint estimation of 2D parameters for near-field sources based on iterative adaptive method <br>
+        <strong>Prediction:</strong> Near-field iterative adaptive algorithm based on NF-IAA<br><br>
+        
+        <strong>Input:</strong> Aiming at the problem that existing software crowdsourcing worker selection mechanisms consider insufficient coordination development among workers, a software crowdsourcing worker selection mechanism based on active time grouping is proposed based on the bidding mode. First, crowdsourcing workers are divided into multiple collaborative groups based on active time; then, collaborative workgroup weights are calculated based on intra-group worker development capabilities and collaborative factors; finally, the collaborative workgroup with the largest weight is selected as the optimal workgroup, and the most suitable worker is selected for each task module from that group according to module complexity. Experimental results show that compared with the capability-priority selection method, this mechanism has only a 0.57% difference in average worker capability, while reducing project risk by 32% on average due to guaranteed worker collaboration, effectively guiding crowdsourcing software tasks requiring multi-person collaboration...<br>
+        <strong>Title:</strong> Software crowdsourcing worker selection mechanism based on active time grouping <br>
+        <strong>Prediction:</strong> Software crowdsourcing worker selection mechanism based on active time grouping
+    </blockquote>
+
+    <p>As can be seen, even with very few annotated samples, the model provides highly readable generation results. This is thanks to the PEGASUS-style pseudo-summarization pre-training, which is very close to downstream tasks.</p>
+
+    <h2 id="简单的总结">A Simple Summary</h2>
+
+    <p>In this article, we shared our Chinese generative pre-trained model T5 PEGASUS. Based on mT5 and using PEGASUS-style pseudo-summary pre-training on Chinese corpora, it demonstrates excellent performance in text generation, especially remarkable few-shot learning capabilities. We welcome readers with text generation needs to use it.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_8209.html" style="color: #005fcc;">https://kexue.fm/archives/8209</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

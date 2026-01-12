@@ -1,0 +1,279 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']],
+      tags: 'ams',
+      packages: {'[+]': ['ams']}
+    },
+    options: {
+      renderActions: {
+        findScript: [10, function (doc) {
+          for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+            const display = !!node.type.match(/; *mode=display/);
+            const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+            const text = document.createTextNode('');
+            node.parentNode.replaceChild(text, node);
+            math.start = {node: text, delim: '', n: 0};
+            math.end = {node: text, delim: '', n: 0};
+            doc.math.push(math);
+          }
+        }, '']
+      }
+    }
+  };
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/5887">Variational Autoencoders (IV): A One-Stop Clustering Scheme</a></h1>
+    <p>By 苏剑林 | September 17, 2018</p>
+
+    <p>Since VAEs contain both an encoder and a decoder (generator), and the distribution of latent variables is approximated as a standard normal distribution, a VAE is both a generative model and a feature extractor. In the field of images, because VAE-generated images tend to be blurry, people are usually more interested in the role of the VAE as an image feature extractor. Feature extraction is done to prepare for subsequent tasks, which can include many types, such as classification or clustering. This article focuses on the "clustering" task.</p>
+
+    <p>Generally speaking, using AE or VAE for clustering is done in steps: first, train an ordinary VAE, then obtain the latent variables of the original data, and then apply K-Means or GMM to these latent variables. However, this approach clearly lacks a sense of overall integration, and the choice of clustering method can be perplexing. This article introduces a "one-stop" clustering idea based on VAE, which allows us to complete clustering and conditional generation simultaneously in an unsupervised manner.</p>
+
+    <h2 id="theory">Theory</h2>
+
+    <h3 id="general-framework">General Framework</h3>
+
+    <p>Recalling the loss of VAE (if you don't remember, please refer to <a href="translation_5343.html">"Variational Autoencoders (II): Starting from the Bayesian Perspective"</a>):</p>
+    $$KL\Big(p(x,z)\Big\Vert q(x,z)\Big) = \iint p(z|x)\tilde{p}(x)\ln \frac{p(z|x)\tilde{p}(x)}{q(x|z)q(z)} dzdx\tag{1}$$
+    <p>Usually, we assume that $q(z)$ is the standard normal distribution, and $p(z|x), q(x|z)$ are conditional normal distributions. By substituting these and calculating, we obtain the loss for an ordinary VAE.</p>
+
+    <p>However, no one stipulates that latent variables must be continuous, right? Here, we define the latent variables as $(z, y)$, where $z$ is a continuous variable representing the encoding vector, and $y$ is a discrete variable representing the category. Directly replacing $z$ in $(1)$ with $(z, y)$, we get:</p>
+    $$KL\Big(p(x,z,y)\Big\Vert q(x,z,y)\Big) = \sum_y \iint p(z,y|x)\tilde{p}(x)\ln \frac{p(z,y|x)\tilde{p}(x)}{q(x|z,y)q(z,y)} dzdx\tag{2}$$
+    <p>This is the loss for a VAE used for clustering.</p>
+
+    <h3 id="stepwise-hypotheses">Step-by-step Hypotheses</h3>
+
+    <p>Wait, is that it? Well, yes, if we only consider the generalized framework, $(2)$ indeed covers it.</p>
+
+    <p>However, when it comes to practice, $(2)$ can have many different implementation schemes. Here, we introduce a simpler one. First, we must clarify that in $(2)$, we only know $\tilde{p}(x)$ (the empirical distribution given by a batch of data); everything else is not explicitly defined. To solve $(2)$, we need to set some forms. One selection scheme is:</p>
+    $$p(z,y|x)=p(y|z)p(z|x),\quad q(x|z,y)=q(x|z),\quad q(z,y)=q(z|y)q(y)\tag{3}$$
+    <p>Substituting into $(2)$, we get:</p>
+    $$KL\Big(p(x,z,y)\Big\Vert q(x,z,y)\Big) = \sum_y \iint p(y|z)p(z|x)\tilde{p}(x)\ln \frac{p(y|z)p(z|x)\tilde{p}(x)}{q(x|z)q(z|y)q(y)} dzdx\tag{4}$$
+    <p>Equation $(4)$ is actually quite intuitive; it describes the encoding and generation processes separately:</p>
+
+    <blockquote>
+        <p>1. Sample $x$ from the original data, then obtain the encoding feature $z$ through $p(z|x)$, and then classify the encoding feature using the classifier $p(y|z)$ to obtain the category;</p>
+        <p>2. Select a category $y$ from the distribution $q(y)$, then select a random latent variable $z$ from the distribution $q(z|y)$, and finally decode it into an original sample through the generator $q(x|z)$.</p>
+    </blockquote>
+
+    <h3 id="concrete-model">Concrete Model</h3>
+
+    <p>Equation $(4)$ is already quite specific. We only need to follow the previous VAE approach: $p(z|x)$ is generally assumed to be a normal distribution with mean $\mu(x)$ and variance $\sigma^2(x)$; $q(x|z)$ is generally assumed to be a normal distribution with mean $G(z)$ and constant variance (equivalent to using MSE as the loss); $q(z|y)$ can be assumed to be a normal distribution with mean $\mu_y$ and variance 1. As for the remaining $q(y)$ and $p(y|z)$, $q(y)$ can be assumed to be a uniform distribution (it's just a constant), which is hoping that each class is roughly balanced, and $p(y|z)$ is a classifier for the latent variables, which can be fitted using any softmax network.</p>
+
+    <p>Finally, $(4)$ can be vividly rewritten as:</p>
+    $$\mathbb{E}_{x\sim\tilde{p}(x)}\Big[-\log q(x|z) + \sum_y p(y|z) \log \frac{p(z|x)}{q(z|y)} + KL\big(p(y|z)\big\Vert q(y)\big)\Big],\quad z\sim p(z|x) \tag{5}$$
+    <p>where $z\sim p(z|x)$ is the reparameterization operation, and the three loss terms in the brackets each have their own meaning:</p>
+
+    <blockquote>
+        <p>1. $-\log q(x|z)$ hopes that the reconstruction error is as small as possible, meaning $z$ preserves complete information as much as possible;</p>
+        <p>2. $\sum_y p(y|z) \log \frac{p(z|x)}{q(z|y)}$ hopes that $z$ can align as much as possible with the "exclusive" normal distribution of a certain category; this is the step that performs clustering;</p>
+        <p>3. $KL\big(p(y|z)\big\Vert q(y)\big)$ hopes that the distribution of each class is as balanced as possible, avoiding cases where two classes almost overlap (collapsing into one class). Of course, sometimes this prior requirement may not be necessary, in which case this term can be removed.</p>
+    </blockquote>
+
+    <h2 id="experiments">Experiments</h2>
+
+    <p>The experimental code was naturally completed using Keras (^_^). Experiments were conducted on MNIST and Fashion-MNIST, and the performance was quite good. Experimental environment: Keras 2.2 + TensorFlow 1.8 + Python 2.7.</p>
+
+    <h3 id="code-implementation">Code Implementation</h3>
+
+    <p>Code is located at: <a href="https://github.com/bojone/vae/blob/master/vae_keras_cluster.py">https://github.com/bojone/vae/blob/master/vae_keras_cluster.py</a></p>
+
+    <p>Actually, the comments should be quite clear, and it doesn't deviate much from a standard VAE. What might be slightly difficult is how to implement $\sum_y p(y|z) \log \frac{p(z|x)}{q(z|y)}$. First, we substitute:</p>
+    \begin{equation}
+    \begin{aligned}
+    p(z|x)&=\frac{1}{\prod\limits_{i=1}^d\sqrt{2\pi\sigma_i^2(x)}}\exp\left\{-\frac{1}{2}\left\Vert\frac{z - \mu(x)}{\sigma(x)}\right\Vert^2\right\}\\
+    q(z|y)&=\frac{1}{(2\pi)^{d/2}}\exp\left\{-\frac{1}{2}\left\Vert z - \mu_y\right\Vert^2\right\}
+    \end{aligned}\tag{6}
+    \end{equation}
+    <p>to get</p>
+    $$\log \frac{p(z|x)}{q(z|y)}=-\frac{1}{2}\sum_{i=1}^d \log \sigma_i^2(x)-\frac{1}{2}\left\Vert\frac{z - \mu(x)}{\sigma(x)}\right\Vert^2 + \frac{1}{2}\left\Vert z - \mu_y\right\Vert^2 \tag{7}$$
+    <p>Note that the second term is actually redundant because the reparameterization operation tells us $z = \varepsilon\otimes \sigma(x) + \mu(x),\, \varepsilon\sim \mathcal{N}(0,1)$, so the second term is actually just $-\Vert \varepsilon\Vert^2/2$, which is independent of the parameters. Therefore:</p>
+    $$\log \frac{p(z|x)}{q(z|y)}\sim -\frac{1}{2}\sum_{i=1}^d \log \sigma_i^2(x) + \frac{1}{2}\left\Vert z - \mu_y\right\Vert^2 \tag{8}$$
+    <p>Since $y$ is discrete, $\sum_y p(y|z) \log \frac{p(z|x)}{q(z|y)}$ is essentially a matrix multiplication (multiplying and then summing over a common variable is the general form of matrix multiplication), which is implemented using <code>K.batch_dot</code>.</p>
+
+    <p>As for the rest, readers should be familiar with the implementation process of standard VAEs before reading the content and code of this article; otherwise, they might be quite confused.</p>
+
+    <h3 id="mnist">MNIST</h3>
+
+    <p>Here are the experimental results for MNIST, including intra-class samples and per-class sampling. Finally, I made a simple estimation: if the most frequent ground-truth label in each class is taken as the class label, the final test accuracy is about 83%. Compared to the results in the paper <a href="https://papers.cool/arxiv/1511.06335">"Unsupervised Deep Embedding for Clustering Analysis"</a> (which also peaks at around 84%), this feels very good.</p>
+
+    <h4>Clustering Visualization</h4>
+    <p>Clustering Category_0, Clustering Category_1, ..., Clustering Category_9.</p>
+
+    <h4>Per-Class Sampling</h4>
+    <p>Category Sampling_0, Category Sampling_1, ..., Category Sampling_9.</p>
+
+    <h3 id="fashion-mnist">Fashion-MNIST</h3>
+
+    <p>Here are the experimental results for <a href="https://github.com/zalandoresearch/fashion-mnist">Fashion-MNIST</a>, including intra-class samples and per-class sampling. The final test accuracy is approximately 58.5%.</p>
+
+    <h4>Clustering Visualization</h4>
+    <p>Clustering Category_0, Clustering Category_1, ..., Clustering Category_9.</p>
+
+    <h4>Per-Class Sampling</h4>
+    <p>Category Sampling_0, Category Sampling_1, ..., Category Sampling_9.</p>
+
+    <h2 id="conclusion">Conclusion</h2>
+
+    <p>This article briefly implemented a clustering algorithm based on VAE. The characteristic of the algorithm is its "one-stop" nature, completing the three tasks of "encoding," "clustering," and "generation" simultaneously. The core idea is the generalization of the VAE loss.</p>
+
+    <p>There is still room for improvement. For example, Equation $(4)$ is just one example of Equation $(2)$, and more general cases could be considered. The encoder and decoder in the code have not been carefully tuned; they were merely used to verify the idea.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_5887.html" style="color: #005fcc;">https://kexue.fm/archives/5887</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

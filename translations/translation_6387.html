@@ -1,0 +1,237 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <h1><a href="https://kexue.fm/archives/6387">Cleverly Stopping Gradients: Implementing GAN Models with a Single Loss</a></h1>
+    <p>By 苏剑林 | February 22, 2019</p>
+
+    <p>We know that for ordinary models, we simply build the architecture, define the loss, and throw it to the optimizer for training. However, GANs are different; generally, they involve two different losses that need to be optimized alternately. The current mainstream approach is to train the discriminator and the generator in a 1:1 alternating frequency (each trained once, with different learning rates aka TTUR if necessary). Alternating optimization means we need to pass data twice (from memory to GPU), and perform forward and backward propagation twice.</p>
+
+    <p>If we could combine these two steps into one single optimization step, it would definitely save time. This is known as the synchronous training of GANs.</p>
+
+    <p>(Note: This article is not introducing a new type of GAN, but rather a new way to write GANs. This is a programming problem, not an algorithmic one~)</p>
+
+    <h2 id="如果在TF中">If in TensorFlow</h2>
+    <p>If you are using TensorFlow, implementing synchronous training is not difficult because we have already defined the training ops for the discriminator and the generator (let's assume they are <code>D_solver</code> and <code>G_solver</code>). We can then simply execute:</p>
+
+<pre><code class="language-python">sess.run([D_solver, G_solver], feed_dict={...})
+</code></pre>
+
+    <p>This is possible because we can individually obtain the parameters for the discriminator and the generator and directly manipulate <code>sess.run</code>.</p>
+
+    <h2 id="更通用的方法">A More Universal Method</h2>
+    <p>But what if we are using Keras? Keras has already encapsulated the workflow, and generally, we cannot manipulate it with such fine granularity. Therefore, below we introduce a universal trick: we only need to define a single loss and pass it to the optimizer to achieve GAN training. At the same time, from this trick, we can learn how to manipulate losses more flexibly to control gradients.</p>
+
+    <h3 id="判别器的优化">Discriminator Optimization</h3>
+    <p>Let's take the hinge loss of a GAN as an example. Its form is:</p>
+
+    \begin{equation}\begin{aligned}D =& \mathop{\text{argmin}}_D \mathbb{E}_{x\sim p(x)}\big[\max\big(0, 1 + D(x)\big)\big]+\mathbb{E}_{z\sim q(z)}\big[\max\big(0, 1 - D(G(z))\big)\big]\\
+    G =& \mathop{\text{argmin}}_G \mathbb{E}_{z\sim q(z)}\big[D(G(z))\big]
+    \end{aligned}\end{equation}
+
+    <p>Note that $\mathop{\text{argmin}}_D$ implies that $G$ should be fixed, because $G$ itself has optimizable parameters. If it weren't fixed, it would be $\mathop{\text{argmin}}_{D,G}$.</p>
+
+    <p>To fix $G$, besides the method of "removing $G$'s parameters from the optimizer," we can also use <code>stop_gradient</code> to manually fix it:</p>
+
+    \begin{equation}D,G = \mathop{\text{argmin}}_{D,G} \mathbb{E}_{x\sim p(x)}\big[\max\big(0, 1 + D(x)\big)\big]+\mathbb{E}_{z\sim q(z)}\big[\max\big(0, 1 - D(G_{ng}(z))\big)\big]\label{eq:dg-d}\end{equation}
+
+    <p>Here,</p>
+
+    \begin{equation}G_{ng}(z)=\text{stop\_gradient}(G(z))\end{equation}
+
+    <p>As a result, in Eq. \eqref{eq:dg-d}, although we have allowed both $D$ and $G$ weights to be updated, by continuously optimizing Eq. \eqref{eq:dg-d}, only $D$ will change, while $G$ will not. This is because we use a gradient-descent-based optimizer, and $G$'s gradient has been stopped. In other words, we can understand it as $G$'s gradient being forced to $0$, so its update amount is always $0$.</p>
+
+    <h3 id="生成器的优化">Generator Optimization</h3>
+    <p>Now that the optimization of $D$ is solved, what about $G$? <code>stop_gradient</code> can easily let us fix the gradients of the inner parts (like $G(z)$ in $D(G(z))$), but the optimization of $G$ requires us to fix the outer $D$, for which there is no direct function. However, do not be discouraged; we can use a mathematical trick to transform it.</p>
+
+    <p>First, we must be clear: we want the gradient of $G$ inside $D(G(z))$, and we do not want the gradient of $D$. If we directly take the gradient of $D(G(z))$, we get gradients for both $D$ and $G$. What if we take the gradient of $D(G_{ng}(z))$? We only get the gradient of $D$, because $G$ has been stopped. Now, here is the important part: by subtracting these two, don't we get purely the gradient of $G$!</p>
+
+    \begin{equation}D,G = \mathop{\text{argmin}}_{D,G} \mathbb{E}_{z\sim q(z)}\big[D(G(z)) - D(G_{ng}(z))\big]\label{eq:dg-g}\end{equation}
+
+    <p>Now, by optimizing Eq. \eqref{eq:dg-g}, $D$ will not change, but $G$ will change.</p>
+
+    <blockquote>
+        Note: This formulation should not be understood through the chain rule, but through the inherent meaning of <code>stop_gradient</code> itself. For $L(D,G)$, regardless of the relationship between $G$ and $D$, the full gradient is $(\nabla_D L, \nabla_G L)$. When $G$'s gradient is stopped, it's as if $G$'s gradient is forced to $0$; that is, the gradient of $L(D,G_{ng})$ is actually $(\nabla_D L, 0)$. Therefore, the gradient of $L(D,G) - L(D,G_{ng})$ is $(\nabla_D L, \nabla_G L) - (\nabla_D L, 0) = (0, \nabla_G L)$.
+    </blockquote>
+
+    <p>It is worth mentioning that the output of this expression is always identically $0$ because the two parts are the same, and subtracting them naturally results in $0$. However, its gradient is not $0$. That is to say, this is a loss that is identically zero, but its gradient is not identically zero.</p>
+
+    <h3 id="合成单一loss">Synthesizing a Single Loss</h3>
+    <p>Alright, now Eq. \eqref{eq:dg-d} and Eq. \eqref{eq:dg-g} both allow $D$ and $G$ to be optimized simultaneously, and both are $\text{argmin}$ problems. Therefore, we can merge these two steps into a single loss:</p>
+
+    \begin{equation}\begin{aligned}D,G = \mathop{\text{argmin}}_{D,G}&\,\mathbb{E}_{x\sim p(x)}\big[\max\big(0, 1 + D(x)\big)\big]+\mathbb{E}_{z\sim q(z)}\big[\max\big(0, 1 - D(G_{ng}(z))\big)\big]\\
+    &\, + \lambda\, \mathbb{E}_{z\sim q(z)}\big[D(G(z)) - D(G_{ng}(z))\big]\label{eq:dg-dg}\end{aligned}\end{equation}
+
+    <p>By writing out this loss, we can simultaneously complete the optimization of the discriminator and the generator without alternating training. The effect is basically equivalent to 1:1 alternating training. The role of introducing $\lambda$ is equivalent to making the ratio of the learning rates between the discriminator and the generator $1:\lambda$.</p>
+
+    <p><strong>Reference Code:</strong> <a href="https://github.com/bojone/gan/blob/master/gan_one_step_with_hinge_loss.py">https://github.com/bojone/gan/blob/master/gan_one_step_with_hinge_loss.py</a></p>
+
+    <h2 id="文章小结">Summary</h2>
+    <p>This article introduced a small trick for implementing GANs, which allows us to write only a single model and use a single loss to achieve GAN training. It essentially uses the <code>stop_gradient</code> skill to manually control gradients, which could also be applicable in other tasks.</p>
+
+    <p>So, from now on, I will use this method to write GANs—it saves effort and time. Of course, theoretically, this method might consume more GPU memory, which can be seen as sacrificing space for time.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="translation_6387.html" style="color: #005fcc;">https://kexue.fm/archives/6387</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>
