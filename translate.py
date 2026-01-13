@@ -1138,6 +1138,15 @@ if __name__ == "__main__":
         # Re-run postprocessing on all files
         postprocess_all()
     else:
-        # Original behavior: translate a single URL
-        url = "https://kexue.fm/archives/11033"
-        save_translation(url)
+        print("Usage: python translate.py <command> [args]")
+        print()
+        print("Commands:")
+        print("  add <url_or_id> [--force]  Add and translate a new article")
+        print("  cache                      Run caching and estimation")
+        print("  firecrawl                  Retry failed articles with Firecrawl")
+        print("  translate <id>             Translate a specific cached article")
+        print("  translate-all              Translate all cached articles")
+        print("  retry-failed               Retry failed translations")
+        print("  postprocess <id>...        Post-process specific translation(s)")
+        print("  postprocess-all            Re-run postprocessing on all files")
+        sys.exit(1)
