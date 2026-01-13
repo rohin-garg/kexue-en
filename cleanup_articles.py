@@ -5,6 +5,29 @@ import re
 from pathlib import Path
 
 
+def add_back_button(content: str) -> str:
+    """Add a back button to the index page if not already present."""
+    back_button_html = '''<nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+'''
+    # Check if back button already exists
+    if 'Back to Index' in content:
+        return content
+
+    # Find the h1 tag and insert back button before it (allowing for leading whitespace)
+    h1_match = re.search(r'^(\s*)<h1>', content, re.MULTILINE)
+    if h1_match:
+        insert_pos = h1_match.start()
+        indent = h1_match.group(1)  # Preserve the indentation
+        content = content[:insert_pos] + indent + back_button_html.strip() + '\n\n' + content[insert_pos:]
+
+    return content
+
+
 def cleanup_article(content: str) -> str:
     """Clean up various non-standard elements from an article."""
 
@@ -187,7 +210,8 @@ def main():
     fixed_count = 0
     for html_file in sorted(translations_dir.glob('translation_*.html')):
         content = html_file.read_text(encoding='utf-8')
-        new_content = cleanup_article(content)
+        new_content = add_back_button(content)
+        new_content = cleanup_article(new_content)
 
         if new_content != content:
             html_file.write_text(new_content, encoding='utf-8')
