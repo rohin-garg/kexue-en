@@ -2,13 +2,17 @@ import os
 import re
 import time
 from typing import Any
+from pathlib import Path
 from dotenv import load_dotenv
 from exa_py import Exa
 from firecrawl import FirecrawlApp
 import requests
 import json
 
-load_dotenv()
+# Set up paths relative to this script
+SCRIPT_DIR = Path(__file__).parent
+ROOT_DIR = SCRIPT_DIR.parent
+load_dotenv(ROOT_DIR / '.env')
 exa = Exa(api_key = os.getenv("EXA_API_KEY"))
 firecrawl = FirecrawlApp(api_key=os.getenv("FIRECRAWL_API_KEY"))
 
@@ -230,7 +234,9 @@ def get_translation(url: str) -> str:
     result = response.json()["choices"][0]["message"]["content"]
     return result
 
-def save_translation(url: str, path = 'translations'):
+def save_translation(url: str, path = None):
+    if path is None:
+        path = ROOT_DIR / 'translations'
     result = get_translation(url)
     full_html = CSS_STYLES + "\n\n" + result
 
@@ -786,8 +792,10 @@ def postprocess_html(html: str, article_id: str) -> str:
 
     return html
 
-def postprocess_translation_file(article_id: str, path='translations'):
+def postprocess_translation_file(article_id: str, path=None):
     """Post-process an existing translation file."""
+    if path is None:
+        path = ROOT_DIR / 'translations'
     filepath = f"{path}/translation_{article_id}.html"
 
     if not os.path.exists(filepath):
@@ -864,8 +872,10 @@ def translate_from_cache(article_id: str, timeout: int = 300, max_retries: int =
 
     raise Exception(f"Failed after {max_retries + 1} attempts: {last_error}")
 
-def save_translation_from_cache(article_id: str, path='translations'):
+def save_translation_from_cache(article_id: str, path=None):
     """Translate and save an article from cache."""
+    if path is None:
+        path = ROOT_DIR / 'translations'
     result = translate_from_cache(article_id)
     full_html = CSS_STYLES + "\n\n" + result
 
@@ -880,13 +890,15 @@ def save_translation_from_cache(article_id: str, path='translations'):
     print(f"Saved translation to {output_path}")
     return output_path
 
-def translate_all(path='translations', skip_existing=True):
+def translate_all(path=None, skip_existing=True):
     """Translate all cached articles.
 
     Args:
         path: Output directory for translations
         skip_existing: If True, skip articles that already have translations
     """
+    if path is None:
+        path = ROOT_DIR / 'translations'
     ensure_cache_dirs()
     os.makedirs(path, exist_ok=True)
 
@@ -949,8 +961,10 @@ def translate_all(path='translations', skip_existing=True):
     return results
 
 
-def retry_failed_translations(path='translations'):
+def retry_failed_translations(path=None):
     """Retry all failed translations from the progress file."""
+    if path is None:
+        path = ROOT_DIR / 'translations'
     progress_file = f"{CACHE_DIR}/translation_progress.json"
 
     if not os.path.exists(progress_file):
@@ -1000,8 +1014,10 @@ def retry_failed_translations(path='translations'):
     return {"success": retried_success, "failed": retried_failed}
 
 
-def postprocess_all(path='translations'):
+def postprocess_all(path=None):
     """Re-run postprocessing on all translation files."""
+    if path is None:
+        path = ROOT_DIR / 'translations'
     import glob
 
     files = glob.glob(f"{path}/translation_*.html")
@@ -1046,7 +1062,7 @@ def add_new_post(url_or_id: str, force: bool = False):
     print()
 
     # Step 1: Check if already translated
-    translation_path = f"translations/translation_{article_id}.html"
+    translation_path = ROOT_DIR / f"translations/translation_{article_id}.html"
     if os.path.exists(translation_path) and not force:
         print(f"Translation already exists: {translation_path}")
         print("Use --force to re-translate")

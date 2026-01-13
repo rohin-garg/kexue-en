@@ -81,8 +81,9 @@ def build_index(translations_dir, exclude_files=None):
 
 def main():
     script_dir = Path(__file__).parent
-    translations_dir = script_dir / 'translations'
-    output_file = script_dir / 'search-index.js'
+    root_dir = script_dir.parent
+    translations_dir = root_dir / 'translations'
+    output_file = root_dir / 'search-index.js'
 
     # Exclude 2009 and 2014 articles
     exclude = [

@@ -32,7 +32,8 @@ def extract_info(filepath):
     return title, date, date_str
 
 def main():
-    translations_dir = Path(__file__).parent / "translations"
+    root_dir = Path(__file__).parent.parent
+    translations_dir = root_dir / "translations"
     articles = []
     missing = []
 
@@ -377,7 +378,7 @@ def main():
 </html>
 '''
 
-    output_path = Path(__file__).parent / "index.html"
+    output_path = root_dir / "index.html"
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(html)
 

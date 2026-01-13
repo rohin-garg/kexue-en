@@ -205,7 +205,8 @@ def cleanup_article(content: str) -> str:
 
 
 def main():
-    translations_dir = Path(__file__).parent / 'translations'
+    root_dir = Path(__file__).parent.parent
+    translations_dir = root_dir / 'translations'
 
     fixed_count = 0
     for html_file in sorted(translations_dir.glob('translation_*.html')):
