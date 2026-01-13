@@ -52,11 +52,14 @@ def main():
     # Sort by date, most recent first
     articles.sort(key=lambda x: x['date'], reverse=True)
 
-    # Group by year
+    # Group by year, excluding 2009 and 2014
     from collections import defaultdict
+    excluded_years = {2009, 2014}
     by_year = defaultdict(list)
     for article in articles:
-        by_year[article['date'].year].append(article)
+        year = article['date'].year
+        if year not in excluded_years:
+            by_year[year].append(article)
 
     # Get sorted years for navigation
     years = sorted(by_year.keys(), reverse=True)
@@ -87,10 +90,22 @@ def main():
         }
         .subtitle {
             color: #555;
-            margin-bottom: 2.5em;
+            margin-bottom: 1em;
             font-size: 1.05em;
         }
         .subtitle a {
+            color: #2563eb;
+        }
+        .description {
+            color: #666;
+            font-size: 0.95em;
+            margin-bottom: 2em;
+            padding: 1em;
+            background: #fff;
+            border-left: 3px solid #2563eb;
+            border-radius: 4px;
+        }
+        .description a {
             color: #2563eb;
         }
         h2 {
@@ -234,6 +249,7 @@ def main():
 <body>
     <h1>Scientific Spaces</h1>
     <p class="subtitle">English translations of articles from <a href="https://kexue.fm">kexue.fm</a> by Su Jianlin (苏剑林)</p>
+    <p class="description">This is an unofficial translation project created by <a href="https://github.com/rohin-garg">Rohin Garg</a>. Articles are translated using AI (Gemini 3 Flash) and may contain errors. For the authoritative version, please refer to the <a href="https://kexue.fm">original Chinese articles</a>.</p>
 
     <div class="search-container">
         <input type="text" class="search-box" id="search" placeholder="Search articles..." autocomplete="off">
