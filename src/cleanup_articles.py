@@ -120,9 +120,27 @@ def cleanup_article(content: str) -> str:
     for pattern in cite_patterns:
         content = re.sub(pattern, '', content, flags=re.IGNORECASE)
 
+    # ========== SHARE/DONATE REQUESTS ==========
+
+    # 5b. Remove "If you find this article helpful, share/donate" paragraphs
+    share_patterns = [
+        # <p><strong>If you find this article helpful...share...donate...</strong></p>
+        r'<p>\s*<strong>\s*If\s+you\s+find\s+this\s+article\s+helpful.*?</strong>\s*</p>\s*',
+    ]
+    for pattern in share_patterns:
+        content = re.sub(pattern, '', content, flags=re.IGNORECASE | re.DOTALL)
+
     # 6. Remove citation paragraphs (Su Jianlin. (date). "title"...)
     content = re.sub(
         r'<p>\s*Su\s+Jianlin\.\s*\([^)]+\)\.\s*"[^"]+"\s*(?:\[Blog\s+post\])?\.\s*(?:Retrieved\s+from\s*)?(?:<a[^>]*>[^<]*</a>|https?://[^\s<]+)\s*</p>\s*',
+        '',
+        content,
+        flags=re.IGNORECASE | re.DOTALL
+    )
+
+    # 6b. Remove Chinese citation paragraphs (苏剑林. (date). 《title》...)
+    content = re.sub(
+        r'<p>\s*苏剑林\.\s*\([^)]+\)\.\s*《[^》]+》\s*(?:\[Blog\s+post\])?\.\s*(?:Retrieved\s+from\s*)?(?:<a[^>]*>[^<]*</a>|https?://[^\s<]+)\s*</p>\s*',
         '',
         content,
         flags=re.IGNORECASE | re.DOTALL
