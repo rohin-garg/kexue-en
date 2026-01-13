@@ -1,0 +1,348 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+
+<h1><a href="https://kexue.fm/archives/11530">Making Alchemizing More Scientific (Part 5): Fine-tuning Learning Rate Based on Gradients</a></h1>
+
+<p>By 苏剑林 | January 09, 2026</p>
+
+<p>In the previous four articles, we explored a series of convergence conclusions for SGD, moving from bounded to unbounded domains and from average loss to final loss. Perhaps some readers feel that, at the end of the day, we are still talking about SGD—results that might seem like they belong to the "ancient era"? That is certainly not the case! For instance, the core identity relied upon in the fourth article, <a href="translation_11494.html">"Making Alchemizing More Scientific (Part 4): New Identity, New Learning Rate,"</a> comes from the not-so-distant year of 2023. The conclusions of the third article, <a href="translation_11480.html">"Making Alchemizing More Scientific (Part 3): Convergence of Final Loss in SGD,"</a> are only slightly earlier, dating back to 2020.</p>
+
+<p>Also in the fourth article, we derived the common practical learning rate strategy "linear decay," which shows that this series of theoretical derivations is not just "armchair theorizing" but can provide effective guidance for practice. Next, we will discuss more refined gradient-based learning rate strategies. These help us understand the principles of learning rate scheduling and serve as the foundation for various adaptive learning rate optimizers.</p>
+
+<h2>Initial Starting Point</h2>
+
+<p>Upon careful review of the previous proofs, we find that the starting point for this entire series of conclusions is a seemingly unremarkable identity:</p>
+
+\begin{equation}\begin{aligned}
+\Vert\boldsymbol{\theta}_{t+1} - \boldsymbol{\varphi}\Vert^2=&\, \Vert\boldsymbol{\theta}_t - \eta_t \boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)- \boldsymbol{\varphi}\Vert^2 \\
+=&\, \Vert\boldsymbol{\theta}_t - \boldsymbol{\varphi}\Vert^2 - 2\eta_t (\boldsymbol{\theta}_t- \boldsymbol{\varphi})\cdot\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t) + \eta_t^2\Vert\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)\Vert^2
+\end{aligned}\label{eq:begin}\end{equation}
+
+<p>The reason I say it is "unremarkable" is that it is so trivial—any competent high school student can understand and prove it. Yet, it is precisely this simple identity that supports a series of conclusions in stochastic optimization, reminding us of the profound truth that "the greatest truths are the simplest."</p>
+
+<p>To understand this identity, we must pay attention to two forms of "arbitrariness." First, $\boldsymbol{\varphi}$ is arbitrary. In most cases, we set it to the theoretical optimal solution $\boldsymbol{\theta}^*$ to obtain the most valuable results, but this does not change the inherent arbitrariness of $\boldsymbol{\varphi}$. We already know from <a href="translation_11480.html">Part 3</a> and <a href="translation_11494.html">Part 4</a> that one of the keys to the derivations was substituting $\boldsymbol{\varphi}=\boldsymbol{\theta}_{T-k}$ and $\boldsymbol{\varphi}=\boldsymbol{\theta}_k$.</p>
+
+<p>Second, $\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)$ is arbitrary. This might seem surprising at first, because previous articles defaulted to $\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)$ being the gradient of the loss function $\nabla_{\boldsymbol{\theta}_t}L(\boldsymbol{x}_t,\boldsymbol{\theta}_t)$. However, in reality, the only purpose of setting it as the gradient is to combine it with the convexity of $L$ to obtain:</p>
+
+\begin{equation}L(\boldsymbol{x}_t,\boldsymbol{\theta}_t) - L(\boldsymbol{x}_t,\boldsymbol{\varphi}) \leq (\boldsymbol{\theta}_t- \boldsymbol{\varphi})\cdot\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)\end{equation}
+
+<p>thereby linking the identity to the loss function. If we do not need this point, or if we have another way to achieve it, then it is not strictly necessary. This arbitrariness is crucial; it allows us to construct more complex update rules and is the key to generalizing the results to non-SGD optimizers later on.</p>
+
+<h2>Classical Results</h2>
+
+<p>Slightly rearranging Equation $\eqref{eq:begin}$ gives:</p>
+
+\begin{equation}2\eta_t (\boldsymbol{\theta}_t- \boldsymbol{\varphi})\cdot\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)= \Vert\boldsymbol{\theta}_t - \boldsymbol{\varphi}\Vert^2 - \Vert\boldsymbol{\theta}_{t+1} - \boldsymbol{\varphi}\Vert^2 + \eta_t^2\Vert\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)\Vert^2 \label{eq:begin-2}\end{equation}
+
+<p>The "old-school" approach from here is to first divide both sides by $2\eta_t$ and then sum over $t$ from $1 \sim T$. The advantage of this is that the left side can directly establish an inequality relationship with the loss via convexity. The disadvantage is the need to introduce assumptions of a bounded domain and non-increasing learning rates to reasonably bound the right side. So far, we have only used this "old-school" method in <a href="translation_9902.html">Part 1</a>, where the final result was:</p>
+
+\begin{equation}\frac{1}{T}\sum_{t=1}^T L(\boldsymbol{x}_t,\boldsymbol{\theta}_t) - \frac{1}{T}\sum_{t=1}^T L(\boldsymbol{x}_t,\boldsymbol{\theta}^*)\leq \frac{R^2}{2T\eta_T} + \frac{1}{2T}\sum_{t=1}^T\eta_t\Vert\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)\Vert^2\label{leq:old-avg}\end{equation}
+
+<p>In this instance, we have explicitly kept $\Vert\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)\Vert$ without assuming $\Vert\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)\Vert \leq G$ for further simplification. Since we assume a non-increasing learning rate, we have:</p>
+
+\begin{equation}\frac{R^2}{2T\eta_T} + \frac{1}{2T}\sum_{t=1}^T\eta_t\Vert\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)\Vert^2\geq \frac{R^2}{2T\eta_T} + \frac{\eta_T}{2T}\sum_{t=1}^T\Vert\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)\Vert^2 \geq \frac{R}{T}\sqrt{\sum_{t=1}^T\Vert\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)\Vert^2}\label{leq:old-avg-optimal}\end{equation}
+
+<p>Let $V_t = \sum_{k=1}^t\Vert\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)\Vert^2$; the condition for equality is $\eta_1 = \eta_2 = \cdots = \eta_T = R/\sqrt{V_T}$. In other words, the right side of inequality $\eqref{leq:old-avg}$ Reaches its minimum at a constant learning rate $R/\sqrt{V_T}$, which is the learning rate for the fastest convergence. However, this result violates causality; at time $t$, we cannot "foresee" the gradient magnitudes of future time steps. One way to modify this into a form that respects causality is:</p>
+
+\begin{equation}\eta_t = \frac{R}{\sqrt{V_t}} = \frac{R}{\sqrt{\sum_{k=1}^t\Vert\boldsymbol{g}(\boldsymbol{x}_k,\boldsymbol{\theta}_k)\Vert^2}}\label{eq:adagrad-mini}\end{equation}
+
+<p>After modification, we need to prove it again:</p>
+
+\begin{equation}\sum_{t=1}^T\eta_t\Vert\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)\Vert^2 = R\sum_{t=1}^T\frac{V_t - V_{t-1}}{\sqrt{V_t}}\leq 2R\sum_{t=1}^T\frac{V_t - V_{t-1}}{\sqrt{V_t} + \sqrt{V_{t-1}}} = 2R\sum_{t=1}^T (\sqrt{V_t} - \sqrt{V_{t-1}}) = 2R\sqrt{V_T}\end{equation}
+
+<p>Substituting back into inequality $\eqref{leq:old-avg}$ gives:</p>
+
+\begin{equation}\frac{1}{T}\sum_{t=1}^T L(\boldsymbol{x}_t,\boldsymbol{\theta}_t) - \frac{1}{T}\sum_{t=1}^T L(\boldsymbol{x}_t,\boldsymbol{\theta}^*)\leq \frac{3R}{2T}\sqrt{\sum_{t=1}^T\Vert\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)\Vert^2}\end{equation}
+
+<p>The result is only 50% larger than the ideal case in $\eqref{leq:old-avg-optimal}$, which is quite good. Crucially, it does not violate causality and is a practically feasible learning rate strategy. It is also the prototype of the <a href="https://jmlr.org/papers/v12/duchi11a.html">AdaGrad</a> optimizer. By applying the form of Equation $\eqref{eq:adagrad-mini}$ element-wise to each component, we obtain the standard version of AdaGrad, which we will return to later.</p>
+
+<h2>Careful with Expectation</h2>
+
+<p>Starting from <a href="translation_11469.html">Part 2</a>, we used a "new-school" treatment, which directly sums both sides of Equation $\eqref{eq:begin-2}$:</p>
+
+\begin{equation}\begin{aligned}
+\sum_{t=1}^T 2\eta_t (\boldsymbol{\theta}_t- \boldsymbol{\varphi})\cdot\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t) =&\, \Vert\boldsymbol{\theta}_1 - \boldsymbol{\varphi}\Vert^2 - \Vert\boldsymbol{\theta}_{T+1} - \boldsymbol{\varphi}\Vert^2 + \sum_{t=1}^T \eta_t^2\Vert\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)\Vert^2 \\
+\leq &\, \Vert\boldsymbol{\theta}_1 - \boldsymbol{\varphi}\Vert^2 + \sum_{t=1}^T \eta_t^2\Vert\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)\Vert^2
+\end{aligned}\end{equation}
+
+<p>Obviously, the advantage of the "new-school" method is that it does not assume learning rate monotonicity, nor does it require a bounded domain; the $\Vert\boldsymbol{\theta}_t - \boldsymbol{\varphi}\Vert^2$ terms on the right naturally cancel out. The cost is that the summation on the left has an extra weight $\eta_t$. For SGD, this weight isn't a huge problem, but for adaptive learning rate optimizers, it is almost fatal. Thus, even though the new-school method has many subtle advantages, it almost never generalizes to adaptive learning rate optimizers; at that point, we must revert to the "old-school" method.</p>
+
+<p>Without wandering too far, let's return to the SGD analysis. Using convexity on the left side of the above equation gives:</p>
+
+\begin{equation}\sum_{t=1}^T \eta_t [L(\boldsymbol{x}_t,\boldsymbol{\theta}_t) - L(\boldsymbol{x}_t,\boldsymbol{\varphi})]\leq \frac{\Vert\boldsymbol{\theta}_1 - \boldsymbol{\varphi}\Vert^2}{2} + \frac{1}{2}\sum_{t=1}^T \eta_t^2\Vert\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)\Vert^2\end{equation}
+
+<p>In the first three articles, the step following this was to take the mathematical expectation $\mathbb{E}$ on both sides. But here, we must be very careful! Because the expectation is taken over all $\boldsymbol{x}_1,\boldsymbol{x}_2,\dots,\boldsymbol{x}_T$, and in the first three articles, we assumed the learning rate $\eta_t$ was independent of the data, so that $\mathbb{E}[\eta_t [L(\boldsymbol{x}_t,\boldsymbol{\theta}_t) - L(\boldsymbol{x}_t,\boldsymbol{\varphi})]] = \eta_t\mathbb{E} [L(\boldsymbol{x}_t,\boldsymbol{\theta}_t) - L(\boldsymbol{x}_t,\boldsymbol{\varphi})] = \eta_t\mathbb{E} [L(\boldsymbol{\theta}_t) - L(\boldsymbol{\varphi})]$ holds, establishing the link between the left side and the target loss. However, this article considers gradient-dependent learning rates, so $\eta_t$ cannot be simply pulled out.</p>
+
+<p>A relatively simple remedy is to assume that $\eta_t$ is at most dependent on $\boldsymbol{x}_1,\boldsymbol{x}_2,\dots,\boldsymbol{x}_{t-1}$, in which case the expectation of $\boldsymbol{x}_t$ can be taken separately, such as $\mathbb{E}[\eta_t L(\boldsymbol{x}_t,\boldsymbol{\theta}_t)] = \mathbb{E}[\eta_t \mathbb{E}_{\boldsymbol{x}_t}[L(\boldsymbol{x}_t,\boldsymbol{\theta}_t)]] = \mathbb{E}[\eta_t L(\boldsymbol{\theta}_t)]$. But this feels a bit restrictive. So, we might as well assume $\eta_t$ is data-independent. Does this mean we cannot implement gradient-adjusted learning rates? Not at all. It just means we can only implement adjustments based on the expected gradient $G_t = \sqrt{\mathbb{E}[\Vert\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)\Vert^2]}$, namely:</p>
+
+\begin{equation}\sum_{t=1}^T \eta_t \mathbb{E}[L(\boldsymbol{\theta}_t) - L(\boldsymbol{\varphi})]\leq \frac{\mathbb{E}[\Vert\boldsymbol{\theta}_1 - \boldsymbol{\varphi}\Vert^2]}{2} + \frac{1}{2}\sum_{t=1}^T \eta_t^2\underbrace{\mathbb{E}[\Vert\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)\Vert^2]}_{G_t^2}\label{leq:E-L}\end{equation}
+
+<h2>Still the Old Ones</h2>
+
+<p>With inequality $\eqref{leq:E-L}$, the subsequent derivations are fairly standard. We will generalize the conclusions from the second, third, and fourth articles one by one to see what new inspirations they provide for learning rate adjustment. <a href="translation_11469.html">Part 2</a> has two conclusions. The first conclusion assumes the non-increasing property of the learning rate; $\eta_t$ on the left side is uniformly replaced by $\eta_T$, and we substitute $\boldsymbol{\varphi}=\boldsymbol{\theta}^*$:</p>
+
+\begin{equation}\frac{1}{T}\sum_{t=1}^T \mathbb{E}[L(\boldsymbol{\theta}_t) - L(\boldsymbol{\theta}^*)] \leq \frac{R^2}{2T\eta_T} + \frac{1}{2T\eta_T}\sum_{t=1}^T \eta_t^2 G_t^2\end{equation}
+
+<p>Here $R = \Vert\boldsymbol{\theta}_1 - \boldsymbol{\theta}^*\Vert$. Since the learning rate is non-increasing, it is easy to prove that the right side also reaches its minimum at a constant learning rate, where:</p>
+
+\begin{equation}\eta_t = \frac{R}{ \sqrt{\sum_{k=1}^T G_k}}\end{equation}
+
+<p>Naturally, this result also violates causality. So we can only modify it to:</p>
+
+\begin{equation}\eta_t = \frac{R}{\sqrt{\sum_{k=1}^t G_k^2}} = \frac{R}{ \sqrt{\sum_{k=1}^t \mathbb{E}[\Vert\boldsymbol{g}(\boldsymbol{x}_k,\boldsymbol{\theta}_k)\Vert^2]}}\end{equation}
+
+<p>But the $\mathbb{E}$ in the denominator is also impractical; it would mean we have to run many repetitions to take the average. We simply remove $\mathbb{E}$ as an approximation of the above formula, or assume the variance of $\Vert\boldsymbol{g}(\boldsymbol{x}_k,\boldsymbol{\theta}_k)\Vert^2$ is very small, so a single sample is accurate enough. For future results, we default to this operation. In short, after removing the expectation $\mathbb{E}$, the result is essentially the same as $\eqref{eq:adagrad-mini}$, providing no new inspiration for now.</p>
+
+<h2>Inverse Gradient</h2>
+
+<p>The second conclusion of <a href="translation_11469.html">Part 2</a> is an inequality in the form of a weighted average:</p>
+
+\begin{equation}\frac{\sum_{t=1}^T \eta_t \mathbb{E}[L(\boldsymbol{\theta}_t) - L(\boldsymbol{\theta}^*)]}{\sum_{t=1}^T \eta_t}\leq \frac{R^2}{2\sum_{t=1}^T \eta_t} + \frac{\sum_{t=1}^T \eta_t^2 G_t^2}{2\sum_{t=1}^T \eta_t}\label{leq:avg-weighted}\end{equation}
+
+<p>Using the Cauchy-Schwarz inequality, we have:</p>
+
+\begin{equation}\sum_{t=1}^T \eta_t^2 G_t^2 = \frac{\sum_{t=1}^T (\eta_t G_t)^2 \sum_{t=1}^T G_t^{-2}}{\sum_{t=1}^T G_t^{-2}} \geq \frac{\left(\sum_{t=1}^T \eta_t G_t G_t^{-1}\right)^2}{\sum_{t=1}^T G_t^{-2}} = \frac{\left(\sum_{t=1}^T \eta_t\right)^2}{\sum_{t=1}^T G_t^{-2}}\end{equation}
+
+<p>The condition for equality is $\eta_t G_t \propto G_t^{-1}$, which means $\eta_t \propto G_t^{-2}$. Substituting this into the right side of $\eqref{leq:avg-weighted}$, we have:</p>
+
+\begin{equation}\frac{R^2}{2\sum_{t=1}^T \eta_t} + \frac{\sum_{t=1}^T \eta_t^2 G_t^2}{2\sum_{t=1}^T \eta_t} \geq \frac{R^2}{2\sum_{t=1}^T \eta_t} + \frac{\sum_{t=1}^T \eta_t}{2\sum_{t=1}^T G_t^{-2}}\geq \frac{R}{\sqrt{\sum_{t=1}^T G_t^{-2}}}\end{equation}
+
+<p>The total condition for equality is $\eta_t = R G_t^{-2}/\sqrt{Q_T}$, where $Q_t = \sum_{k=1}^t G_k^{-2}$. The most unique aspect of this result is that it tells us the learning rate should be inversely proportional to the square of the gradient magnitude. This can be used to explain the necessity of Warmup, because at the beginning of training, the gradient magnitude is usually large, eventually decreasing and remaining approximately constant for a long time. Modifying it to a form that respects causality:</p>
+
+\begin{equation}\eta_t = \frac{R G_t^{-2}}{\sqrt{Q_t}} = \frac{R G_t^{-2}}{\sqrt{\sum_{k=1}^t G_k^{-2}}}\end{equation}
+
+<p>After the modification, we need to prove it again:</p>
+
+\begin{gather}\sum_{t=1}^T \eta_t = \sum_{t=1}^T \frac{R(Q_t - Q_{t-1})}{\sqrt{Q_t}} \geq \sum_{t=1}^T \frac{R(Q_t - Q_{t-1})}{\sqrt{Q_t} + \sqrt{Q_{t-1}}} = \sum_{t=1}^T R(\sqrt{Q_t} - \sqrt{Q_{t-1}}) = R \sqrt{Q_T} \\
+\sum_{t=1}^T \eta_t^2 G_t^2 = \sum_{t=1}^T \frac{R^2(Q_t - Q_{t-1})}{Q_t} = R^2 + \sum_{t=2}^T \frac{R^2(Q_t - Q_{t-1})}{Q_t} \leq R^2 + R^2\sum_{t=2}^T \ln \frac{Q_t}{Q_{t-1}}= R^2+ R^2\ln \frac{Q_T}{Q_1}\end{gather}
+
+<p>Substituting these two results into $\eqref{leq:avg-weighted}$ gives:</p>
+
+\begin{equation}\frac{\sum_{t=1}^T \eta_t \mathbb{E}[L(\boldsymbol{\theta}_t) - L(\boldsymbol{\theta}^*)]}{\sum_{t=1}^T \eta_t}\leq \frac{R}{\sqrt{Q_T}}\left(1 + \frac{1}{2}\ln \frac{Q_T}{Q_1}\right)\end{equation}
+
+<p>The core difference compared to the optimal solution is an extra logarithmically growing factor $\ln (Q_T/Q_1)$, which is a common phenomenon when changing static learning rates to dynamic ones.</p>
+
+<h2>Focus on the Present</h2>
+
+<p>From <a href="translation_11480.html">Part 3</a> onwards, our conclusions began to focus on the convergence of final loss. Generalizing the core conclusion of that article to dynamic gradients results in:</p>
+
+\begin{equation}\mathbb{E}[L(\boldsymbol{\theta}_T) - L(\boldsymbol{\theta}^*)] \leq \frac{R^2}{2T\eta_T} + \frac{1}{2\eta_T}\sum_{t=1}^{T}\frac{\eta_t^2 G_t^2}{\max(1,\,T-t)}\label{leq:last-1}\end{equation}
+
+<p>Since this result also requires a non-increasing learning rate, it is easy to prove that the right side's minimum value is $R\sqrt{V_T/T}$, reached at a constant learning rate:</p>
+
+\begin{equation}\eta_t = \frac{R}{\sqrt{T V_T}},\qquad V_t = \sum_{k=1}^t\frac{G_k^2}{\max(1,\,t-k)}\end{equation}
+
+<p>This learning rate is also very interesting. It has a denominator similar to the "mini version" of the AdaGrad learning rate in $\eqref{eq:adagrad-mini}$; both $V_t$ are in the form of summing squared gradients. The difference is that here the gradient at time $k$ is weighted by $1/\max(1,\,t-k)$, which means more focus is placed on the current gradient. This is a new characteristic brought about by moving from average loss to final loss convergence. It is already very close to the way RMSProp, Adam, etc., update second moments via EMA.</p>
+
+<p>Intuitively, the causal version is $\eta_t = R/\sqrt{t V_t}$, but this is not precise enough. The correct version should be $\eta_t = R/\sqrt{T V_t}$. Substituting into the right side of Equation $\eqref{leq:last-1}$ gives:</p>
+
+\begin{equation}\begin{aligned}
+\frac{R^2}{2T\eta_T} + \frac{1}{2\eta_T}\sum_{t=1}^{T}\frac{\eta_t^2 G_t^2}{\max(1,\,T-t)} =&\, \frac{R}{2}\sqrt{\frac{V_T}{T}}\left(1 + \sum_{t=1}^{T}\frac{G_t^2/V_t}{\max(1,\,T-t)}\right) \\
+\leq&\, \frac{R}{2}\sqrt{\frac{V_T}{T}}\left(1 + \sum_{t=1}^{T}\frac{1}{\max(1,\,T-t)}\right) \\
+\leq&\, \frac{R}{2}\sqrt{\frac{V_T}{T}} (3 + \ln T)\\
+\end{aligned}\end{equation}
+
+<p>Here we utilized $G_t^2 \leq V_t$. Compared to the optimal solution, an extra logarithmically growing factor $\ln T$ also appears.</p>
+
+<h2>The Masterpiece</h2>
+
+<p>In <a href="translation_11494.html">Part 4</a>, we obtained the strongest final loss convergence result to date. Generalizing it to dynamic gradients yields the "masterpiece" combining Equation $\eqref{leq:avg-weighted}$ and Equation $\eqref{leq:last-1}$:</p>
+
+\begin{equation}\mathbb{E}[L(\boldsymbol{\theta}_T) - L(\boldsymbol{\theta}^*)] \leq \frac{R^2}{2\eta_{1:T}} + \frac{1}{2}\sum_{t=1}^T\frac{\eta_t^2 G_t^2}{\eta_{\min(t+1, T):T}}\label{leq:last-2}\end{equation}
+
+<p>This result looks simple but is actually quite complex; at the very least, we cannot intuitively see under what learning rate pattern the minimum value of the right side is reached. However, in the previous article, I provided a thought: after continuous approximation, solve it using the calculus of variations. Let's try it again here: let $S_t = \eta_{\min(t+1, T):T}$, then for $t < T-1$ we have $\eta_t = S_{t-1} - S_t \approx -\dot{S}_t$. Uniformly approximating $\eta_t$ with $-\dot{S}_t$ and summations with integrals, the right side of the above equation is approximately (substituting $S_t = W_t^2$):</p>
+
+\begin{equation}\frac{R^2}{2S_0} + \frac{1}{2}\int_0^T \frac{\dot{S}_t^2 G_t^2}{S_t}dt = \frac{R^2}{2W_0^2} + 2\int_0^T \dot{W}_t^2 G_t^2 dt \label{eq:int-approx}\end{equation}
+
+<p>According to the definition $W_T=0$, and fixing $W_0$, the integral part becomes a variational problem with fixed boundaries. The <a href="https://en.wikipedia.org/wiki/Euler%E2%80%93Lagrange_equation">Euler-Lagrange equation</a> gives $\frac{d}{dt}(\dot{W}_t G_t^2)=0$, hence $\dot{W}_t \propto G_t^{-2}$. Integrating both ends and combining with $W_T=0$ gives $W_t = W_0\int_t^T G_s^{-2} ds/\int_0^T G_s^{-2} ds$. Substituting back into $\eqref{eq:int-approx}$ gives $R^2/2W_0^2 + 2 W_0^2 / \int_0^T G_s^{-2} ds$, the minimum of which is reached at $2W_0^2 = R(\int_0^T G_s^{-2} ds)^{1/2}$. Finally, based on the approximation $\eta_t \approx -\dot{S}_t = -2W_t\dot{W}_t$, we obtain:</p>
+
+\begin{equation}\eta_t \approx \frac{R G_t^{-2} \int_t^T G_s^{-2}ds}{(\int_0^T G_s^{-2}ds)^{3/2}}\end{equation}
+
+<p>If we restore discretization, we can guess the optimal learning rate is roughly in the following form:</p>
+
+\begin{equation}\eta_t = \frac{R G_t^{-2} (Q_T - Q_t)}{Q_T^{3/2}} = \frac{R G_t^{-2}}{\sqrt{Q_T}} (1 - Q_t/Q_T)\label{eq:last-2-opt-lr}\end{equation}
+
+<p>where $Q_t$ is the $\sum_{k=1}^t G_k^{-2}$ defined earlier. In fact, this "guess" is the correct answer! However, verifying it by substituting back into Equation $\eqref{leq:last-2}$ is very tedious, because the denominator of Equation $\eqref{leq:last-2}$ is $\eta_{t+1:T}$ rather than $\eta_{t:T}$, so there is no guarantee that $\eta_t / \eta_{t+1:T}$ is bounded, making the bounding process particularly difficult. I tried for a week without success. We don't intend to keep trying here, but will wait for the next article to prove it via a more ingenious construction.</p>
+
+<p>Now let's appreciate Equation $\eqref{eq:last-2-opt-lr}$. Note that $R G_t^{-2}/\sqrt{Q_T}$ is exactly the optimal learning rate for $\eqref{leq:avg-weighted}$, characterized by being proportional to $G_t^{-2}$, which as mentioned before can explain Warmup. Equation $\eqref{eq:last-2-opt-lr}$ adds an extra factor of $1 - Q_t/Q_T$ on top of this, which is monotonically decreasing; under appropriate assumptions, it is a linear decay. Thus, this factor can be used to explain Decay. Therefore, Equation $\eqref{eq:last-2-opt-lr}$ corresponds exactly to the classic "Warmup-Decay" type learning rate strategy.</p>
+
+<p>Even more interesting is that the optimal learning rate $\eqref{leq:last-1}$ from the previous section tells us to focus more on the current gradient, whereas the result $\eqref{eq:last-2-opt-lr}$ is more extreme: it only depends on the current and future gradients, completely independent of historical gradients. This is undoubtedly a violation of causality. How can we modify it to respect causality? $\sqrt{Q_T}$ could be considered to be replaced by $\sqrt{Q_t}$. As for $Q_T$ in $Q_t/Q_T$, it can be written as $(Q_T/T)\times T$, and then we consider replacing $Q_T/T$ with $Q_t/t$, thus obtaining:</p>
+
+\begin{equation}\eta_t = \frac{R G_t^{-2}}{\sqrt{Q_t}} (1 - t/T)\end{equation}
+
+<p>It looks reasonable, but proving it is truly effective by substituting it back into Equation $\eqref{leq:last-2}$ is also not an easy task.</p>
+
+<h2>Conclusion</h2>
+
+<p>Starting with this article, we consider gradient-based learning rate scheduling. It helps us understand the principles behind learning rate strategies such as Warmup and Decay, and can also provide useful references for various adaptive learning rate optimizers.</p>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/11530" style="color: #005fcc;">https://kexue.fm/archives/11530</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>
