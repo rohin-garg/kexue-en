@@ -219,6 +219,28 @@ def cleanup_article(content: str) -> str:
     # 15. Clean up whitespace before footer
     content = re.sub(r'\n{3,}(<hr>\s*\n\s*<footer)', r'\n\n\1', content)
 
+    # ========== LATEX FIXES ==========
+
+    # 16. Fix double-escaped \text commands (\\text -> \text) but NOT inside <script> tags
+    # Split content by script tags, only fix non-script parts
+    def fix_text_outside_scripts(content):
+        parts = re.split(r'(<script>.*?</script>)', content, flags=re.DOTALL)
+        fixed_parts = []
+        for part in parts:
+            if part.startswith('<script>'):
+                fixed_parts.append(part)  # Leave script content unchanged
+            else:
+                fixed_parts.append(re.sub(r'\\\\text\{', r'\\text{', part))
+        return ''.join(fixed_parts)
+
+    content = fix_text_outside_scripts(content)
+
+    # 17. Remove \nolimits from custom macros (not supported by MathJax macros)
+    # Pattern: \macro\nolimits_ -> \macro_
+    content = re.sub(r'\\([a-zA-Z]+)\\nolimits([_^])', r'\\\1\2', content)
+    # Pattern: }\nolimits_ -> }_ (for \mathop{...}\nolimits_)
+    content = re.sub(r'\}\\nolimits([_^])', r'}\1', content)
+
     return content
 
 
