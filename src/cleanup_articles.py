@@ -213,15 +213,22 @@ def cleanup_article(content: str) -> str:
     # 13. Remove empty paragraphs
     content = re.sub(r'<p>\s*</p>\s*', '', content)
 
-    # 14. Remove excessive blank lines (more than 2 consecutive)
+    # 14. Remove duplicate author/date lines (By 苏剑林 | DATE)
+    content = re.sub(
+        r'(<p>By 苏剑林 \| [^<]+</p>)\s*(?:<p>By 苏剑林 \| [^<]+</p>\s*)+',
+        r'\1\n\n',
+        content
+    )
+
+    # 15. Remove excessive blank lines (more than 2 consecutive)
     content = re.sub(r'\n{4,}', '\n\n\n', content)
 
-    # 15. Clean up whitespace before footer
+    # 16. Clean up whitespace before footer
     content = re.sub(r'\n{3,}(<hr>\s*\n\s*<footer)', r'\n\n\1', content)
 
     # ========== LATEX FIXES ==========
 
-    # 16. Fix double-escaped \text commands (\\text -> \text) but NOT inside <script> tags
+    # 17. Fix double-escaped \text commands (\\text -> \text) but NOT inside <script> tags
     # Split content by script tags, only fix non-script parts
     def fix_text_outside_scripts(content):
         parts = re.split(r'(<script>.*?</script>)', content, flags=re.DOTALL)
@@ -235,7 +242,7 @@ def cleanup_article(content: str) -> str:
 
     content = fix_text_outside_scripts(content)
 
-    # 17. Remove \nolimits from custom macros (not supported by MathJax macros)
+    # 18. Remove \nolimits from custom macros (not supported by MathJax macros)
     # Pattern: \macro\nolimits_ -> \macro_
     content = re.sub(r'\\([a-zA-Z]+)\\nolimits([_^])', r'\\\1\2', content)
     # Pattern: }\nolimits_ -> }_ (for \mathop{...}\nolimits_)
