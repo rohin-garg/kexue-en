@@ -1,0 +1,293 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['base', 'ams', 'noerrors', 'noundefined']}
+  },
+  options: {
+    ignoreHtmlClass: 'tex2jax_ignore',
+    processHtmlClass: 'tex2jax_process'
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script type="text/javascript" id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+    <h1><a href="https://kexue.fm/archives/11605">Above MuP: 2. Linear Layers and Steepest Descent</a></h1>
+    
+    <p>By 苏剑林 | Feb 15, 2026</p>
+
+    <p>In the previous article <a href="translation_11340.html">"Above MuP: 1. Three Characteristics of a Good Model"</a>, we proposed three core metrics: forward stability, dependence stability, and update stability, and provided their corresponding mathematical definitions. Meanwhile, we proposed characterizing the quality of a model by whether these metrics satisfy $\Theta(1)$, which will serve as the theoretical foundation for our subsequent analysis and calculation. Next, we will combine these with the idea of steepest descent to customize "stable yet fast" update rules for each parameter.</p>
+
+    <p>We take the linear layer as the first example. The result should be familiar to some readers; it is the Muon optimizer that has gradually gained popularity since last year. Of course, our goal is not to rediscover Muon, but to demonstrate the process of designing models and optimizers from first principles, providing a unified methodology for our subsequent handling of other parameters.</p>
+
+    <h2>Linear Transformation</h2>
+
+    <p>For a linear layer, the input is a vector $\boldsymbol{x}\in\mathbb{R}^{d_{in}}$, the parameter is a matrix $\boldsymbol{W}\in\mathbb{R}^{d_{in}\times d_{out}}$, and the model is $\boldsymbol{f}(\boldsymbol{x};\boldsymbol{W})=\boldsymbol{x}\boldsymbol{W}$. Note that in the definitions of the three metrics, we did not limit $\boldsymbol{x}$ to be bounded, so for a naive linear layer, the three metrics do not necessarily exist. For instance, $\max_{\boldsymbol{x}}\Vert\boldsymbol{x}\boldsymbol{W}\Vert_{RMS}$ is generally infinite. To address this, we simply supplement the model with some operations to make the results bounded, such as:</p>
+
+    \begin{align} \newcommand{Norm}{\mathop{\text{Norm}}}
+    &\text{In Norm:}\quad \Norm(\boldsymbol{x})\boldsymbol{W} \\[5pt]
+    &\text{Out Norm:}\quad \Norm(\boldsymbol{x}\boldsymbol{W})
+    \end{align}
+
+    <p>Where $\Norm(\boldsymbol{x}) = \boldsymbol{x} / \Vert\boldsymbol{x}\Vert_{RMS}$. Here, the gamma parameter carried by RMS Norm is omitted, assuming its influence is secondary. We know that residuals have two common usages, Pre Norm and Post Norm. Pre Norm clearly corresponds to In Norm, but it should be pointed out here that Post Norm is actually also In Norm:</p>
+
+    \begin{align} \newcommand{Norm}{\mathop{\text{Norm}}}
+    &\text{Pre Norm:}\quad \boldsymbol{x}_{t+1} = \boldsymbol{x}_t + \boldsymbol{F}_t(\Norm(\boldsymbol{x}_t)) \\[5pt]
+    &\text{Post Norm:} \quad \boldsymbol{x}_{t+1} = \Norm(\underbrace{\boldsymbol{x}_t + \boldsymbol{F}_t(\boldsymbol{x}_t)}_{\text{denoted as }\boldsymbol{y}_{t+1}}) \quad \Rightarrow\quad \boldsymbol{y}_{t+1} = \Norm(\boldsymbol{y}_t) + \boldsymbol{F}_t(\Norm(\boldsymbol{y}_t))
+    \end{align}
+
+    <p>So Post Norm is merely substituting $\boldsymbol{x}_t + \boldsymbol{F}_t(\Norm(\boldsymbol{x}_t))$ with $\Norm(\boldsymbol{y}_t) + \boldsymbol{F}_t(\Norm(\boldsymbol{y}_t))$. For $\boldsymbol{F}_t$, both are In Norm; this article also takes In Norm as an example.</p>
+
+    <p>Compared to Out Norm, In Norm has the further advantage of greater speedup potential. Because $(\boldsymbol{x} / \Vert\boldsymbol{x}\Vert_{RMS})\boldsymbol{W}=\boldsymbol{x}\boldsymbol{W} / \Vert\boldsymbol{x}\Vert_{RMS}$, theoretically $\boldsymbol{x}\boldsymbol{W}$ and $\Vert\boldsymbol{x}\Vert_{RMS}$ can be calculated in parallel and then divided, reducing latency. This idea is reflected in works such as <a href="https://papers.cool/arxiv/2407.09577">"FlashNorm: fast normalization for LLMs"</a>, <a href="https://papers.cool/arxiv/2505.07829">"Block-level AI Operator Fusion"</a>, and <a href="https://mirage-project.readthedocs.io/en/latest/tutorials/rms-norm-linear.html">"Superoptimizing RMSNorm and Linear"</a>.</p>
+
+    <h2>Initial Variance</h2>
+
+    <p>Based on the discussion in the previous section, assuming we only consider linear layers with In Norm, we can calculate the three metrics using the definition of the spectral norm:</p>
+
+    \begin{align}
+    &\text{Forward Stability:}\quad\max_{\Vert\boldsymbol{x}\Vert_{RMS}=1} \Vert \boldsymbol{x}\boldsymbol{W}\Vert_{RMS} = \sqrt{\frac{d_{in}}{d_{out}}}\Vert\boldsymbol{W}\Vert_2 \\[5pt]
+    &\text{Dependence Stability:}\quad\max_{\Vert\boldsymbol{x}_1\Vert_{RMS}=\Vert\boldsymbol{x}_2\Vert_{RMS}=1} \Vert \boldsymbol{x}_1\boldsymbol{W} - \boldsymbol{x}_2\boldsymbol{W}\Vert_{RMS} = 2\sqrt{\frac{d_{in}}{d_{out}}}\Vert\boldsymbol{W}\Vert_2 \\[5pt]
+    &\text{Update Stability:}\quad\max_{\Vert\boldsymbol{x}\Vert_{RMS}=1} \Vert \boldsymbol{x}(\boldsymbol{W} + \Delta\boldsymbol{W}) - \boldsymbol{x}\boldsymbol{W}\Vert_{RMS} = \sqrt{\frac{d_{in}}{d_{out}}}\Vert\Delta\boldsymbol{W}\Vert_2
+    \end{align}
+
+    <p>Where $\Vert\cdot\Vert_2$ for a matrix denotes the spectral norm of that matrix. It can be seen that all three metrics are variants of the spectral norm, or more accurately, the three metrics proposed by the author are generalizations derived from the spectral norm.</p>
+
+    <p>The first two metrics are functions of $\boldsymbol{W}$, differing only by a factor of 2; they are essentially the same. If we want them to be $\Theta(1)$, then we have $\Vert\boldsymbol{W}\Vert_2 = \Theta(\sqrt{d_{out}/d_{in}})$, which at least imposes a requirement on the initialization of $\boldsymbol{W}$. According to <a href="translation_11335.html">"Fast Estimation of the Spectral Norm of Random Matrices"</a>, for a standard normal matrix of size $d_{in}\times d_{out}$, its spectral norm is approximately $\sqrt{d_{in}} + \sqrt{d_{out}}$. Therefore, for the initialization to satisfy $\Vert\boldsymbol{W}\Vert_2 = \Theta(\sqrt{d_{out}/d_{in}})$, the initial variance $\sigma^2$ should satisfy:</p>
+
+    \begin{equation}\sigma = \Theta\left(\sqrt{\frac{d_{out}}{d_{in}}}\frac{1}{\sqrt{d_{in}} + \sqrt{d_{out}}}\right)\end{equation}
+
+    <p>Furthermore, we can consider continuously constraining $\Vert\boldsymbol{W}\Vert_2$ during the optimization process. This has inspired some work, such as <a href="translation_11241.html">"Steepest Descent on Manifolds: 4. Muon + Spectral Sphere"</a> and <a href="https://papers.cool/arxiv/2601.08393">"Controlled LLM Training on Spectral Sphere"</a>, which we will discuss later.</p>
+
+    <h2>Steepest Descent</h2>
+
+    <p>Next, we primarily look at the "update stability" metric $\sqrt{d_{in}/d_{out}}\Vert\Delta\boldsymbol{W}\Vert_2$, which is a spectral norm variant of the parameter increment $\Delta\boldsymbol{W}$. As is well known, the update amount is determined by the optimizer, so this part provides guidance for the optimizer. According to the "stable yet fast" principle, "stability" is already established; so when is it fastest?</p>
+
+    <p>This is the question that steepest descent aims to answer. We have had related discussions in previous articles such as <a href="translation_10739.html">"Muon Sequel: Why did we choose to try Muon?"</a>, <a href="translation_11196.html">"Steepest Descent on Manifolds: 1. SGD + Hypersphere"</a>, and <a href="translation_11215.html">"Steepest Descent on Manifolds: 2. Muon + Orthogonality"</a>, but for the completeness of this series, we will repeat it once more. Steepest descent refers to the update amount that makes the loss decrease fastest under a certain constraint, formally defined as:</p>
+
+    \begin{equation}\min_{\Delta \boldsymbol{W}} \mathcal{L}(\boldsymbol{W} +\Delta\boldsymbol{W}) \qquad \text{s.t.}\qquad \rho(\Delta\boldsymbol{W})\leq \eta\end{equation}
+
+    <p>Where $\mathcal{L}$ is the loss function and $\rho(\Delta\boldsymbol{W})$ is the stability metric of the increment $\Delta\boldsymbol{W}$, which we already have here: $\sqrt{d_{in}/d_{out}}\Vert\Delta\boldsymbol{W}\Vert_2$. However, solving this problem directly is still too complex. We need to replace $\mathcal{L}(\boldsymbol{W} +\Delta\boldsymbol{W})$ with its first-order approximation $\mathcal{L}(\boldsymbol{W}) + \langle \boldsymbol{G}, \Delta\boldsymbol{W}\rangle_F$ to make the solution feasible. At this point, the problem is equivalent to:</p>
+
+    \begin{equation}\newcommand{tr}{\mathop{\text{tr}}}\min_{\Delta \boldsymbol{W}} \tr(\boldsymbol{G}^{\top}\Delta\boldsymbol{W}) \qquad \text{s.t.}\qquad \Vert\Delta\boldsymbol{W}\Vert_2\leq\eta \sqrt{\frac{d_{out}}{d_{in}}}\end{equation}
+
+    <p>Where $\boldsymbol{G}=\nabla_{\boldsymbol{W}}\mathcal{L}(\boldsymbol{W})$ is the gradient of the loss function, and we utilized the identity $\langle \boldsymbol{G}, \Delta\boldsymbol{W}\rangle_F=\tr(\boldsymbol{G}^{\top}\Delta\boldsymbol{W})$.</p>
+
+    <h2>Solving Process</h2>
+
+    <p>Furthermore, we let $\Delta\boldsymbol{W}=-\kappa \boldsymbol{\Phi}$ and rewrite the optimization objective as:</p>
+
+    \begin{equation}\max_{\kappa,\boldsymbol{\Phi}}\kappa\tr(\boldsymbol{G}^{\top}\boldsymbol{\Phi}) \qquad \text{s.t.}\qquad 0\leq \kappa \leq \eta\sqrt{\frac{d_{out}}{d_{in}}}, \quad\Vert\boldsymbol{\Phi}\Vert_2=1\end{equation}
+
+    <p>Clearly, the optimization of $\kappa$ can be completed independently. The maximum is reached at $\kappa = \eta\sqrt{d_{out}/d_{in}}$, so we only need to solve:</p>
+
+    \begin{equation}\max_{\boldsymbol{\Phi}} \tr(\boldsymbol{G}^{\top}\boldsymbol{\Phi}) \qquad \text{s.t.}\qquad \Vert\boldsymbol{\Phi}\Vert_2=1\end{equation}
+
+    <p>Next, suppose $\boldsymbol{G}$ can be SVD-ed into $\boldsymbol{U}\boldsymbol{\Sigma}\boldsymbol{V}^{\top} = \sum_{i=1}^r \sigma_i \boldsymbol{u}_i \boldsymbol{v}_i^{\top}$, where $r$ is the rank of $\boldsymbol{G}$. We have:</p>
+
+    \begin{equation}\tr(\boldsymbol{G}^{\top}\boldsymbol{\Phi})=\tr\left(\sum_{i=1}^r \sigma_i \boldsymbol{v}_i \boldsymbol{u}_i^{\top}\boldsymbol{\Phi}\right) = \sum_{i=1}^r \sigma_i \boldsymbol{u}_i^{\top}\boldsymbol{\Phi}\boldsymbol{v}_i\end{equation}
+
+    <p>By definition, when $\Vert\boldsymbol{\Phi}\Vert_2=1$, $\Vert\boldsymbol{\Phi}\boldsymbol{v}_i\Vert_2 \leq \Vert\boldsymbol{v}_i\Vert_2=1$, hence $\boldsymbol{u}_i^{\top}\boldsymbol{\Phi}\boldsymbol{v}_i \leq 1$. Therefore:</p>
+
+    \begin{equation}\tr(\boldsymbol{G}^{\top}\boldsymbol{\Phi})\leq \sum_{i=1}^r \sigma_i = \Vert \boldsymbol{G}\Vert_*\end{equation}
+
+    <p>Where $\Vert\cdot\Vert_*$ is called the <a href="https://en.wikipedia.org/wiki/Schatten_norm">Nuclear Norm</a> of the matrix. The equality holds when all $\boldsymbol{u}_i^{\top}\boldsymbol{\Phi}\boldsymbol{v}_i$ are equal to 1, at which point:</p>
+
+    \begin{equation}\newcommand{msign}{\mathop{\text{msign}}}\boldsymbol{\Phi} = \sum_{i=1}^r \boldsymbol{u}_i \boldsymbol{v}_i^{\top} = \boldsymbol{U}_{[:,:r]}\boldsymbol{V}_{[:,:r]}^{\top} = \msign(\boldsymbol{G})\end{equation}
+
+    <h2>Summary of Results</h2>
+
+    <p>Briefly summarizing, so far, starting from the three stability metrics, we have obtained at least two conclusions. First, the initial variance $\sigma^2$ of parameter $\boldsymbol{W}$ should satisfy:</p>
+
+    \begin{equation}\sigma = \Theta\left(\sqrt{\frac{d_{out}}{d_{in}}}\frac{1}{\sqrt{d_{in}} + \sqrt{d_{out}}}\right)\end{equation}
+
+    <p>Second, its increment $\Delta\boldsymbol{W}$ should take the following form:</p>
+
+    \begin{equation}\Delta\boldsymbol{W} = -\eta\sqrt{\frac{d_{out}}{d_{in}}}\msign(\boldsymbol{G})\end{equation}
+
+    <p>This is exactly the MuP version of Muon (refer to <a href="translation_11416.html">"Muon Optimizer Guide: Quick Start and Key Details"</a> for the differences between several versions; standard Muon replaces $\boldsymbol{G}$ with its momentum, which can be seen as a smoother gradient estimate). In addition, for the constraints on $\boldsymbol{W}$, we still have some work to do, which we will explore in future articles.</p>
+
+    <p>Since we have already provided several blog posts with thorough introductions to MuP and Muon, neither of these two results is new. Therefore, this article merely serves as the first case study to demonstrate the rationality of the metrics in Eq. \eqref{eq:c1}, \eqref{eq:c2}, and \eqref{eq:c3} (implied). They will provide unified stability metric formulas for parameters and their increments in arbitrary layers, thereby generalizing the conclusions of Muon.</p>
+
+    <h2>Residual Issues</h2>
+
+    <p>Before generalizing, there is one more question we need to answer: all the previous derivations were based on In Norm design. Does that mean we need to add In Norm to every linear layer? Can we still use Muon if there is no In Norm? To answer this, let's borrow a passage from the previous article:</p>
+
+    <blockquote>The $\boldsymbol{f}(\boldsymbol{x};\boldsymbol{\omega})$ here can be a layer, a block composed of several layers, or even the entire model. Theoretically, the coarser the granularity, the looser or more accurate the resulting constraints, but the solving for $\max$ also becomes more difficult, so it depends on our ability to calculate $\max$.</blockquote>
+
+    <p>Simply put, the calculation of stability metrics should be as accurate as possible, but approximations are allowed. Therefore, without In Norm, the extent to which Muon remains usable depends on the extent to which "$\Vert\boldsymbol{x}\Vert_{RMS} = \text{some constant}$" holds. For example, in an FFN layer $\boldsymbol{y}=\phi(\boldsymbol{x}\boldsymbol{W}_{up})\boldsymbol{W}_{down}$, if we assume the Lipschitz constant of the activation function $\phi$ is 1, then the following still holds:</p>
+
+    \begin{equation}\Vert\boldsymbol{y}\Vert_{RMS} \leq \Vert\boldsymbol{x}\Vert_{RMS} \times \sqrt{\frac{d_{in}}{d_{mid}}}\Vert\boldsymbol{W}_{up}\Vert_2 \times \sqrt{\frac{d_{mid}}{d_{out}}}\Vert\boldsymbol{W}_{down}\Vert_2\end{equation}
+
+    <p>Where $\boldsymbol{W}_{up}\in\mathbb{R}^{d_{in}\times d_{mid}}, \boldsymbol{W}_{down}\in\mathbb{R}^{d_{mid}\times d_{out}}$. Thus, even if we only add RMS Norm to $\boldsymbol{x}$, for the second parameter $\boldsymbol{W}_{down}$, the same stability metric holds approximately, making Muon usable.</p>
+
+    <p>Similarly, even if no RMS Norm is added at all, if we still believe that "$\Vert\boldsymbol{x}\Vert_{RMS} = \text{some constant}$" can hold to some degree, then for the subsequent linear layers, we can still attempt to use the Muon optimizer.</p>
+
+    <h2>Conclusion</h2>
+
+    <p>Using the three stability metrics from the previous article as a starting point, this post demonstrated the process of "reproducing" the conclusions related to MuP and Muon for linear layers. Next, we will use this methodology to "customize" initialization and optimizers for parameters beyond linear layers.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/11605" style="color: #005fcc;">https://kexue.fm/archives/11605</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

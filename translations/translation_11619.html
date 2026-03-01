@@ -1,0 +1,355 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams', 'newcommand']},
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  },
+  loader: {load: ['[tex]/ams', '[tex]/newcommand']}
+};
+</script>
+<script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+    <h1><a href="https://kexue.fm/archives/11619">MoE World Tour: 6. Optimal Allocation for Equilibrium</a></h1>
+    <p>By 苏剑林 | February 22, 2026</p>
+
+    <p>We know that Load Balance is a fundamental and critical part of the MoE (Mixture-of-Experts) architecture, directly affecting the efficiency and performance of the model. This series has already introduced two mainstream ideas for achieving load balancing: the classic Aux Loss scheme introduced in <a href="translation_10735.html">"MoE World Tour: 2. Not Worried about Scarcity but Inequality"</a>, and the Loss-Free scheme proposed by DeepSeek in <a href="translation_10757.html">"MoE World Tour: 3. A Different Way to Allocate"</a>. Both have their strengths and limitations.</p>
+
+    <p>This article will explore a third approach: <strong>Optimal Allocation</strong>, which treats load balancing as a linear programming problem under equality constraints. From the final form, it still belongs to the Loss-Free category, but it is based on a completely different principle, providing more accurate updates without hyperparameters.</p>
+
+    <h2>Method Review</h2>
+    <p>Among existing methods, the idea of Aux Loss is relatively simple, with the core being "punish wherever it is unstable," applying a penalty to load imbalance through a regularization term. However, Aux Loss has two problems: first, the penalty coefficient is difficult to tune—if it's too large, it interferes with the optimization of the main Loss; if it's too small, the balancing effect is poor. Second, Aux Loss relies on the <a href="https://kexue.fm/archives/6760#%E8%87%AA%E8%A1%8C%E8%AE%BE%E8%AE%A1%E6%A2%AF%E5%BA%A6">STE (Straight-Through Estimator)</a>, which means its gradient is suboptimal and may bring unknown impacts beyond load balancing.</p>
+
+    <p>To address this, DeepSeek proposed the second scheme, Loss-Free, which introduces an additional bias term to assist in sorting, as shown in the following formula:</p>
+    $$y = \sum_{i \in \text{argtop}_k \rho} \rho_i e_i \to y = \sum_{i \in \text{argtop}_k \rho + b} \rho_i e_i$$
+    <p>Note that $b$ is only used to adjust the sorting of Experts; the value multiplied into the Expert is still $\rho_i$, so it does not directly participate in the model's computation and does not generate interfering gradients. However, the fact that $b$ has no gradient also means we need to customize an update rule for it. The logic is quite intuitive: the larger $b_i$ is, the greater the probability that the $i$-th Expert will be selected. Therefore, it first calculates the current load distribution $F$. If $F_i$ exceeds the expected value $1/n$, $b_i$ is decreased; otherwise, $b_i$ is increased, i.e.,</p>
+    \begin{equation}
+    \newcommand{sign}{\mathop{\text{sign}}}\boldsymbol{b} \leftarrow \boldsymbol{b} - \gamma\sign(\boldsymbol{F} - 1/n)
+    \end{equation}
+    <p>Overall, Loss-Free has less "intrusion" into the model and is indeed more concise and elegant, but it is not perfect. Although it does not have the penalty coefficient of Aux Loss, it still has a $\gamma$ parameter to tune, which acts as the learning rate for $\boldsymbol{b}$. The paper recommends $\gamma=10^{-3}$, which is actually tightly coupled with the use of Sigmoid activation for $\boldsymbol{\rho}$. Once the activation function is changed, $\gamma$ needs to be retuned.</p>
+    <p>Furthermore, even if we use Sigmoid activation, the distribution of $\boldsymbol{\rho}$ in some layers might be "deformed," making the model sensitive to $\gamma$; a constant $\gamma$ would then make it difficult to achieve load balance. This situation is not rare. For example, if MoE is used in the first few layers of a model, it is often not easy to balance, leading to the "first_k_dense" operation. Another example is when the model is very large or the total number of Experts $n$ is large, some layers may easily become difficult to balance.</p>
+
+    <h2>Linear Programming</h2>
+    <p>Let's describe the problem to be solved more accurately: Suppose there are $m$ Tokens, and the Router score for the $i$-th Token for $n$ Experts is $\boldsymbol{s}_i = (s_{i,1}, s_{i,2}, \cdots, s_{i,n})$. Thus, there are $mn$ total scores. These scores may be positive or negative and are not necessarily within a predefined range. We hope to formulate an allocation plan based on these scores to decide which Experts each Token should activate.</p>
+    <p>We agree that each Token chooses $k$ Experts. A basic plan is to select the $k$ Experts with the highest scores, but this may cause load imbalance—some Experts might be activated significantly more or less than others. Therefore, we further stipulate that each Expert is activated exactly $mk/n$ times. Under these two constraints, we seek the allocation plan with the highest total score, formalized as:</p>
+    \begin{equation}
+    \max_{x_{i,j}\in\{0,1\}} \sum_{i,j} x_{i,j}s_{i,j} \qquad\text{s.t.}\qquad \sum_j x_{i,j} = k,\quad \sum_i x_{i,j} = \frac{mk}{n}
+    \label{eq:target}
+    \end{equation}
+    <p>Where $x_{i,j}=1$ indicates that the $i$-th Token selected the $j$-th Expert, and $x_{i,j}=0$ indicates it did not. Also, note that $mk/n$ must be an integer for the two equality constraints to hold strictly; we assume this is the case for now. Here, every Expert is activated strictly $mk/n$ times, which is the most ideal absolute uniform state. In practice, this can be relaxed, but we use strict constraints in theoretical derivation.</p>
+    <p>In the above equation, $x_{i,j}$ can only take values 0 or 1, which is an integer programming problem. Discrete optimization is usually difficult, so we consider its relaxation:</p>
+    \begin{equation}
+    \max_{x_{i,j}\in[0,1]} \sum_{i,j} x_{i,j}s_{i,j} \qquad\text{s.t.}\qquad \sum_j x_{i,j} = k,\quad \sum_i x_{i,j} = \frac{mk}{n}
+    \label{eq:relax}
+    \end{equation}
+    <p>Now $x_{i,j}$ can be any real number in $[0,1]$, while other conditions remain unchanged. Since $x_{i,j}$ is linear with respect to both the objective function and the constraint equations, this is a linear programming problem within a bounded region.</p>
+
+    <h2>Minimax</h2>
+    <p>Constrained optimization is also not easy, so we consider the $\max$-$\min$ form by removing the constraints (i.e., the "<a href="https://en.wikipedia.org/wiki/Lagrange_multiplier">Lagrange Multiplier Method</a>"):</p>
+    \begin{equation}
+    \max_{x_{i,j}\in[0,1]}\min_{\alpha_i,\beta_j} \sum_{i,j} x_{i,j}s_{i,j} - \sum_i \alpha_i\left(\sum_j x_{i,j} - k\right) - \sum_j \beta_j\left(\sum_i x_{i,j} - \frac{mk}{n}\right)
+    \label{eq:relax-max-min}
+    \end{equation}
+    <p>If $\sum_j x_{i,j} = k$ and $\sum_i x_{i,j} = mk/n$, then the above equation is equivalent to Eq. \eqref{eq:relax}, and the maximum is a finite value. However, if either is not satisfied, the $\min$ step can reach negative infinity, and the maximum will be negative infinity. Obviously, negative infinity is not as large as a finite value, so only the former case is possible, meaning it is equivalent to Eq. \eqref{eq:relax}.</p>
+    <p>The objective \eqref{eq:relax-max-min} is linear with respect to $x_{i,j}, \alpha_i, \beta_j$. A linear function is both convex and concave, and $[0,1]$ is a convex set, so it satisfies the conditions of the <a href="https://en.wikipedia.org/wiki/Minimax_theorem">Minimax theorem</a>. We can swap the order of $\max$ and $\min$, making it equal to:</p>
+    \begin{equation}
+    \min_{\alpha_i,\beta_j} \max_{x_{i,j}\in[0,1]} \sum_{i,j} x_{i,j}(s_{i,j} - \alpha_i - \beta_j) + k\sum_i \alpha_i + \frac{mk}{n}\sum_j \beta_j
+    \label{eq:relax-min-max}
+    \end{equation}
+    <p>In the above equation, we have separated the terms for $x_{i,j}, \alpha_i, \beta_j$. Observing closely, we can see that the $\max$ step can be solved directly: when $s_{i,j} - \alpha_i - \beta_j > 0$, we set $x_{i,j}=1$ to maximize the target; when it is less than 0, we set $x_{i,j}=0$; when it equals 0, any value for $x_{i,j}$ gives the same result. That is:</p>
+    \begin{equation}
+    \left\{\begin{aligned}&\,x_{i,j}^* = 1, &\, s_{i,j} - \alpha_i - \beta_j > 0 \\
+    &\,x_{i,j}^* = 0, &\, s_{i,j} - \alpha_i - \beta_j < 0 \\
+    &\,x_{i,j}^* \in [0,1], &\, s_{i,j} - \alpha_i - \beta_j = 0
+    \end{aligned}\right.
+    \end{equation}
+    <p>The condition $s_{i,j} - \alpha_i - \beta_j = 0$ is a special case. Assuming the probability of its occurrence is negligible, $x_{i,j}^*$ is either 0 or 1. Even if $s_{i,j} - \alpha_i - \beta_j = 0$, due to the arbitrariness of $x_{i,j}^*$, we can still set $x_{i,j}^*$ to 0 or 1 according to the constraints. Thus, although the form \eqref{eq:relax} relaxes the original problem \eqref{eq:target}, its optimal solution is also the optimal solution to the original problem; the two are completely equivalent.</p>
+
+    <h2>Divide and Conquer</h2>
+    <p>Substituting the above $x_{i,j}^*$ into Eq. \eqref{eq:relax-min-max}, we get $x_{i,j}^*(s_{i,j} - \alpha_i - \beta_j) = \max(0, s_{i,j} - \alpha_i - \beta_j)$, so the optimization objective \eqref{eq:relax-min-max} can be simplified to:</p>
+    \begin{equation}
+    \min_{\alpha_i,\beta_j} \sum_{i,j} \max(0, s_{i,j} - \alpha_i - \beta_j) + k\sum_i \alpha_i + \frac{mk}{n}\sum_j \beta_j
+    \end{equation}
+    <p>We will use coordinate descent (alternating minimization) to solve it: first fix $\beta_j$ to solve for $\alpha_i$, then fix $\alpha_i$ to solve for $\beta_j$, and alternate. Since $\alpha_i$ and $\beta_j$ have obvious symmetry, these two steps are essentially the same problem. Let's look at fixing $\beta_j$ to solve for $\alpha_i$; the problem is equivalent to:</p>
+    \begin{equation}
+    \min_{\alpha_i} \sum_{i,j} \max(0, s_{i,j} - \alpha_i - \beta_j) + k\sum_i \alpha_i
+    \end{equation}
+    <p>We can also observe that each term $\alpha_i$ is summed up independently, so we can decompose it into $m$ independent sub-optimization problems. This means we can temporarily omit the subscript $i$ and simplify the problem further to:</p>
+    \begin{equation}
+    \min_{\alpha} k\alpha + \sum_j \max(0, s_j - \beta_j - \alpha)
+    \end{equation}
+    <p>Arrange all $s_j - \beta_j$ in descending order as $s_{\sigma_1} - \beta_{\sigma_1} \geq s_{\sigma_2} - \beta_{\sigma_2} \geq \cdots \geq s_{\sigma_n} - \beta_{\sigma_n}$, i.e., the $j$-th largest element is $s_{\sigma_j} - \beta_{\sigma_j}$. Suppose we know $s_{\sigma_l} - \beta_{\sigma_l} \geq \alpha \geq s_{\sigma_{l+1}} - \beta_{\sigma_{l+1}}$, then the objective function is:</p>
+    \begin{equation}
+    k\alpha + \sum_{j=1}^l (s_{\sigma_j} - \beta_{\sigma_j} - \alpha) = \left\{\begin{aligned}
+    &\,\sum_{j=1}^k (s_{\sigma_j} - \beta_{\sigma_j}) + \sum_{j=k+1}^l \underbrace{(s_{\sigma_j} - \beta_{\sigma_j} - \alpha)}_{\geq 0},&\, l \geq k \\
+    &\,\sum_{j=1}^k (s_{\sigma_j} - \beta_{\sigma_j}) - \sum_{j=l+1}^k \underbrace{(s_{\sigma_j} - \beta_{\sigma_j} - \alpha)}_{\leq 0},&\, l \leq k \\
+    \end{aligned}\right.
+    \end{equation}
+    <p>This shows that whether $l > k$ or $l < k$, the objective function is increased. Thus, the minimum can only be achieved at $l=k$. At this point, the result does not depend on the specific value of $\alpha$, i.e., $\alpha^*$ can be any value between the $k$-th and $(k+1)$-th largest elements of $s_j - \beta_j$. For the sake of convention, we take $\alpha^*$ as the $(k+1)$-th largest element.</p>
+
+    <h2>Alternating Iteration</h2>
+    <p>Restoring the subscript $i$, we get: for any given $i$, $\alpha_i^*$ is the $(k+1)$-th element after arranging all $s_{i,j} - \beta_j$ in descending order. Similarly, the result of fixing $\alpha_i$ to find $\beta_j$ is: for any given $j$, $\beta_j^*$ is the $(mk/n+1)$-th element after arranging all $s_{i,j} - \alpha_i$ in descending order. We alternate these two steps as the final solving algorithm.</p>
+    <p>Assuming we have obtained sufficiently accurate $\boldsymbol{\alpha}^*$ and $\boldsymbol{\beta}^*$, then according to the previous analysis, $x_{i,j}^*$ will automatically satisfy the 0/1 condition and the constraints. The condition $x_{i,j}^*=1$ corresponds to $s_{i,j} - \alpha_i^* - \beta_j^* > 0$. Combined with the constraint $\sum_j x_{i,j}^* = k$, it can be concluded that for each Token $i$, the Expert it selects must be the Top-$k$ of $\boldsymbol{s}_i - \boldsymbol{\beta}^*$.</p>
+    <p>This tells us that in the inference stage, only $\boldsymbol{\beta}^*$ is needed; $\boldsymbol{\alpha}^*$ is just an intermediate variable in the solving process and can be ignored once training is complete. This point is crucial because the size of $\boldsymbol{\beta}$ is fixed at $n$, while the size of $\boldsymbol{\alpha}$ is $m$, where $m$ is the global Batch Size, which changes dynamically and is therefore not a scientific format for inference. The solving process utilizing this feature is shown in the figure below, where $\mathop{\text{des\_sort}}$ represents descending sort.</p>
+
+    <table border="1" cellpadding="4" cellspacing="0" style="width: 100%; border-collapse: collapse;">
+        <tr><td><strong>Quantile Balancing (QB): Alternating solving algorithm for problem \eqref{eq:target}</strong></td></tr>
+        <tr><td>
+            Input: Score matrix $\boldsymbol{s}\in\mathbb{R}^{m\times n}$ <br>
+            Output: Allocation scheme $\boldsymbol{x}\in\{0,1\}^{m\times n}$ <br><br>
+            1: Initialize $\boldsymbol{\beta} = \boldsymbol{0}_{1\times n}$ <br>
+            2: <strong>For</strong> $t=1,2,\cdots,T$ <strong>do</strong> <br>
+            3: $\qquad \boldsymbol{\alpha} \leftarrow \mathop{\text{des\_sort}}(\boldsymbol{s} - \boldsymbol{\beta}, \text{axis=1})_{[:, k:k+1]}$ <br>
+            4: $\qquad \boldsymbol{\beta} \leftarrow \mathop{\text{des\_sort}}(\boldsymbol{s} - \boldsymbol{\alpha}, \text{axis=0})_{[mk/n:mk/n+1]}$ <br>
+            5: Output $x_{i,j}=1$ if $j\in\mathop{\text{argtop}}_k \boldsymbol{s}_i - \boldsymbol{\beta}$ else 0
+        </td></tr>
+    </table>
+
+    <p>One improvement is that we can use the concept of "Quantile" to unify "the $(k+1)$-th largest element among $n$" and "the $(mk/n+1)$-th largest element among $m$." They are both essentially the "1-k/n quantile" of their respective dimensions. Numerical frameworks like Numpy, Jax, and Torch have `quantile` function implementations. Using them can avoid full sorting operations and save some complexity.</p>
+    <p>Precisely for this reason, we call this algorithm "<strong>Quantile Balancing (QB)</strong>."</p>
+
+    <h2>Beware of Traps</h2>
+    <p>But wait, it's not time to celebrate yet. There is a subtle trap here—falling into it could lead to fundamentally incorrect results, so caution is needed.</p>
+    <p>As mentioned, QB inference only uses $\boldsymbol{\beta}$, and storing $\boldsymbol{\beta}$ in training is enough. Thus, from a Loss-Free perspective, QB provides a new Bias update method, which could be called "Quantile Bias." Whether it's the original SignSGD or the Quantile method in this article, they both depend on the scores of all Tokens. Therefore, the order must not be confused: the old $\boldsymbol{\beta}$ must be used to select Experts for the current batch of data, and then $\boldsymbol{\beta}$ is updated. This ensures there is no information leakage.</p>
+    <p>Some readers might wonder: what can a Bias vector that doesn't participate in forward computation leak? True, intuitively very little information can be leaked, but the risk exists. We might try the leaked version when training small models, but we shouldn't take the risk with large models. Because they are large and powerful, they can amplify any tiny bug. Therefore, maintaining training-inference consistency and eliminating any risk of information leakage is a basic awareness when training large models.</p>
+    <p>Combining with actual training scenarios, QB can be further adjusted. Instead of zero-initialization and iterating $T$ times, we can start from the Bias of the previous step and iterate only once per step. This avoids overfitting to the current batch and reduces computation.</p>
+
+    <table border="1" cellpadding="4" cellspacing="0" style="width: 100%; border-collapse: collapse;">
+        <tr><td><strong>Quantile Balancing (QB) Practical Form</strong></td></tr>
+        <tr><td>
+            Input: Score matrix $\boldsymbol{s}\in\mathbb{R}^{m\times n}$, previous step $\boldsymbol{\beta}\in\mathbb{R}^n$ <br>
+            Output: Allocation scheme $\boldsymbol{x}\in\{0,1\}^{m\times n}$, new $\boldsymbol{\beta}\in\mathbb{R}^n$ <br><br>
+            1: $x_{i,j}=1$ if $j\in\mathop{\text{argtop}}_k \boldsymbol{s}_i - \boldsymbol{\beta}$ else 0 <br>
+            2: $\boldsymbol{\alpha} \leftarrow \mathop{\text{des\_sort}}(\boldsymbol{s} - \boldsymbol{\beta}, \text{axis=1})_{[:, k:k+1]}$ <br>
+            3: $\boldsymbol{\beta} \leftarrow \mathop{\text{des\_sort}}(\boldsymbol{s} - \boldsymbol{\alpha}, \text{axis=0})_{[mk/n:mk/n+1]}$ <br>
+            4: Output $\boldsymbol{x}, \boldsymbol{\beta}$
+        </td></tr>
+    </table>
+
+    <p>However, even with only one iteration, this added step is relatively expensive. It requires finding the $(mk/n+1)$-th largest element among $m$ elements, where $m$ equals "global samples × sequence length," usually starting in the millions. Under various parallel strategies and gradient accumulation, exact implementation is often unacceptable. A compromise is to divide the samples into the largest mini-batches we can accept, calculate a $\boldsymbol{\beta}$ for each mini-batch according to the formula, and then average them as the final result.</p>
+    <p>After solving these issues, QB has almost only advantages. First, it has no hyperparameters like learning rate to tune. Second, it balances very quickly and is particularly good at handling extreme cases. For example, using it to train a full MoE model, the first layer of MoE also becomes particularly balanced. However, for layers where original SignSGD rules can already balance, QB usually does not show a significant advantage.</p>
+    <p><img src="https://kexue.fm/usr/uploads/2026/02/3461539179.png" alt="Comparison of MaxVio in the first layer of MoE" title="Click to view original image"></p>
+    <p align="center">Comparison of MaxVio in the first layer of MoE</p>
+
+    <h2>Related Work</h2>
+    <p>Treating MoE load balancing from the perspective of optimal allocation first appeared in the paper <a href="https://papers.cool/arxiv/2103.16716">"BASE Layers: Simplifying Training of Large, Sparse Models"</a>, but the formal general solution was likely proposed in <a href="https://papers.cool/arxiv/2502.15451">"Binary-Integer-Programming Based Algorithm for Expert Load Balancing in Mixture-of-Experts Models"</a> (referred to as BIP), and QB is indeed an improvement on BIP.</p>
+    <p>Compared to QB's objective \eqref{eq:target}, BIP changes equality constraints to inequality constraints:</p>
+    \begin{equation}
+    \max_{x_{i,j}\in\{0,1\}} \sum_{i,j} x_{i,j}s_{i,j} \qquad\text{s.t.}\qquad \sum_j x_{i,j} \leq k,\quad \sum_i x_{i,j} \leq \frac{mk}{n}
+    \label{eq:target-leq}
+    \end{equation}
+    <p>Then, repeating the previous series of derivations, in the $\max$-$\min$ step, an $\alpha_i \geq 0, \beta_j \geq 0$ constraint appears, meaning we consider:</p>
+    \begin{equation}
+    \max_{x_{i,j}\in[0,1]}\min_{\alpha_i\geq 0,\beta_j\geq 0} \sum_{i,j} x_{i,j}s_{i,j} - \sum_i \alpha_i\left(\sum_j x_{i,j} - k\right) - \sum_j \beta_j\left(\sum_i x_{i,j} - \frac{mk}{n}\right)
+    \end{equation}
+    <p>To make it equivalent to the relaxed version of problem \eqref{eq:target-leq}. Next, $\max$ and $\min$ can still be swapped, repeating similar derivation processes. Eventually, the iteration rules for $\boldsymbol{\alpha}, \boldsymbol{\beta}$ will have an additional $\max(0,\cdot)$ truncation operation to ensure they are non-negative:</p>
+    \begin{equation}\begin{aligned}
+    \boldsymbol{\alpha} \leftarrow &\, \max(0, \mathop{\text{des\_sort}}(\boldsymbol{s} - \boldsymbol{\beta}, \text{axis=1})_{[:, k:k+1]}) \\
+    \boldsymbol{\beta} \leftarrow &\, \max(0, \mathop{\text{des\_sort}}(\boldsymbol{s} - \boldsymbol{\alpha}, \text{axis=0})_{[mk/n:mk/n+1]})
+    \end{aligned}\end{equation}
+    <p>However, the author's tests found that this truncation operation significantly reduces the speed of load balancing. It often results in "robbing the rich" (highly frequent experts are suppressed) but failing to "help the poor" (rarely frequent experts cannot be saved), indicating that this truncation is a complete anti-optimization. Therefore, QB directly changes the original problem to equality constraints, which eliminates the non-negative constraints on $\boldsymbol{\alpha}$ and $\boldsymbol{\beta}$ and simplifies the solution.</p>
+    <p>Furthermore, BIP seems to have committed the error mentioned in the previous section: its method is to update $\boldsymbol{\beta}$ first and then select Top-$k$, which violates causality (leaking future information) and training-inference consistency (cross-samples). Nevertheless, the complete analysis BIP provides for load balancing from an optimal allocation perspective remains highly illuminating.</p>
+    <p>After searching, the author found that after BIP, some works explored this direction further. They have some overlap with this article but are not completely consistent. They will not be discussed in detail here:</p>
+    <blockquote>
+        <a href="https://papers.cool/arxiv/2508.12801">"Maximum Score Routing For Mixture-of-Experts"</a><br>
+        <a href="https://papers.cool/arxiv/2511.08972">"Selective Sinkhorn Routing for Improved Sparse Mixture of Experts"</a><br>
+        <a href="https://papers.cool/arxiv/2511.16947">"MicroMoE: Fine-Grained Load Balancing for Mixture-of-Experts with Token Scheduling"</a><br>
+        <a href="https://papers.cool/arxiv/2512.03915">"A Theoretical Framework for Auxiliary-Loss-Free Load Balancing of Sparse Mixture-of-Experts in Large-Scale AI Models"</a>
+    </blockquote>
+
+    <h2>Gradient Descent</h2>
+    <p>Finally, we introduce a solution between Loss-Free and QB. We know that in QB's iterative format, the calculation of $\boldsymbol{\alpha}$ is relatively cheap; the truly expensive part is the calculation of $\boldsymbol{\beta}$, which requires some sort of sorting across all tokens. Given $\boldsymbol{\alpha}$, the optimization objective for $\boldsymbol{\beta}$ is:</p>
+    \begin{equation}
+    \min_{\beta_j} \underbrace{\sum_{i,j} \max(0, s_{i,j} - \alpha_i - \beta_j) + \frac{mk}{n}\sum_j \beta_j}_{\text{denoted as } \ell}
+    \end{equation}
+    <p>Besides using Quantile to find its optimal solution, is there a cheaper scheme to find an approximate solution? Yes! Clearly, the objective function $\ell$ is differentiable, so we can consider gradient descent. Its gradient is:</p>
+    \begin{equation}
+    \frac{\partial\ell}{\partial\beta_j} = \frac{mk}{n} - \sum_{i=1}^m \chi(s_{i,j} - \alpha_i - \beta_j > 0)
+    \end{equation}
+    <p>Where $\chi$ is the indicator function ($\chi(\text{True})=1, \chi(\text{False})=0$). Obviously, calculating this gradient is relatively cheap. With the gradient, we can perform gradient descent. To align with Loss-Free, we consider SignSGD:</p>
+    \begin{equation}
+    \beta_j \leftarrow \beta_j - \gamma\sign\left(\frac{\partial\ell}{\partial\beta_j}\right)
+    \end{equation}
+    <p>Using this to replace the Quantile update of $\boldsymbol{\beta}$ in QB can achieve a cost similar to Loss-Free, with performance between the two (using the same $\gamma$ and Sigmoid activation as Loss-Free).</p>
+
+    <h2>Summary</h2>
+    <p>In this article, we explored MoE's load balancing from the perspective of optimal allocation and derived a new load balancing algorithm without Aux Loss called Quantile Balancing. It is more stable and accurate than existing Loss-Free schemes, applicable to Router Scores with any range, and has no additional hyperparameters to tune.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/11619" style="color: #005fcc;">https://kexue.fm/archives/11619</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>
