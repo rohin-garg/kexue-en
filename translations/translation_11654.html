@@ -1,0 +1,363 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    tags: 'ams',
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="MathJax-script" async></script>
+
+<article>
+    <nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+    <h1><a href="https://kexue.fm/archives/11654">Muon Implementation Based on Streaming Power Iteration: 1. Initial Encounter</a></h1>
+    
+    <p>By 苏剑林 | March 12, 2026</p>
+
+    <p>The core operation of <a href="translation_10592.html">Muon</a> is <code>msign</code>, and the current standard implementation is the <a href="translation_10996.html">Newton-Schulz iteration</a>. It must be said that this is indeed a very efficient and GPU-friendly algorithm; a large part of Muon's popularity is arguably due to this algorithm. However, this algorithm also gives a sense of being "exclusive with no substitutes," as it seems limited strictly to calculating <code>msign</code>. Once we want to modify Muon (for example, replacing <code>msign</code> with <code>mclip</code> as discussed <a href="translation_11059.html">here</a>), the corresponding calculations become cumbersome.</p>
+
+    <p>This article proposes a new implementation approach—approximating SVD through Streaming Power Iteration. This is not a entirely new idea, as it has appeared in some previous optimizer works, but here we extract it as a standalone algorithm for use.</p>
+
+    <h2>Review of Content <a name="Review" href="https://kexue.fm/archives/11654#%E5%86%85%E5%AE%B9%E5%9B%9E%E9%A1%BE">#</a></h2>
+
+    <p>We won't go into the specifics of Muon here; readers can refer to previous articles such as <a href="translation_10592.html">"Appreciating the Muon Optimizer: The Essential Leap from Vectors to Matrices"</a>, <a href="translation_10739.html">"Muon Sequel: Why Do We Choose to Try Muon?"</a>, and <a href="translation_11416.html">"Muon Optimizer Guide: Quick Start and Key Details"</a>. Here, we directly provide its formulas:</p>
+
+    \begin{equation}
+    \begin{aligned}
+    \boldsymbol{M}_t =&\, \beta\boldsymbol{M}_{t-1} + \boldsymbol{G}_t \\[5pt]
+    \boldsymbol{W}_t =&\, \boldsymbol{W}_{t-1} - \eta_t [\text{msign}(\boldsymbol{M}_t) + \lambda \boldsymbol{W}_{t-1}] \\
+    \end{aligned}
+    \end{equation}
+
+    <p>where $\text{msign}$ is defined as:</p>
+
+    \begin{equation}
+    \text{msign}(\boldsymbol{M})=\boldsymbol{M}(\boldsymbol{M}^{\top}\boldsymbol{M})^{-1/2}=\boldsymbol{U}_{[:, :r]}\boldsymbol{V}_{[:, :r]}^{\top}
+    \end{equation}
+
+    <p>Here $\boldsymbol{M}\in\mathbb{R}^{n\times m}$. Without loss of generality, we assume $n\geq m$, and for simplicity, we mostly assume $r=m$ (full rank), discussing rank-deficiency only when strictly necessary.</p>
+
+    <p>Since SVD is expensive, in most cases we use Newton-Schulz iteration to calculate <code>msign</code>, which we have discussed in detail in <a href="translation_10922.html">"Newton-Schulz Iteration for the msign Operator (Part 1)"</a> and <a href="translation_10996.html">"Newton-Schulz Iteration for the msign Operator (Part 2)"</a>. Overall, Newton-Schulz iteration is very clever and is the main contributor to Muon's success, but its extensibility is relatively weak.</p>
+
+    <p>To expand the application scenarios of Newton-Schulz iteration, I previously did some work, such as <a href="translation_11006.html">"Calculating Singular Value Clipping mclip via msign (Part 1)"</a>, <a href="translation_11059.html">"Calculating Singular Value Clipping mclip via msign (Part 2)"</a>, <a href="translation_11158.html">"Efficient Calculation of Matrix Square Root and Inverse Square Root"</a>, and <a href="translation_11175.html">"Efficient Calculation of Matrix r-th Root and Inverse r-th Root"</a>. However, what can be achieved remains overall quite limited.</p>
+
+    <p>Obviously, the once-and-for-all method is to directly solve for the SVD, which is the approach we will focus on next.</p>
+
+    <h2>Power Iteration <a name="PowerIteration" href="https://kexue.fm/archives/11654#%E5%B9%82%E4%B9%8B%E8%BF%AD%E4%BB%A3">#</a></h2>
+
+    <p>In articles like <a href="translation_6051.html">"Lipschitz Constraint in Deep Learning: Generalization and Generative Models"</a> and <a href="translation_10648.html">"Reflections from Spectral Norm Gradients to New Forms of Weight Decay"</a>, we have briefly encountered <a href="https://en.wikipedia.org/wiki/Power_iteration">Power Iteration</a>. We use it to find the dominant eigenvector of $\boldsymbol{M}^{\top}\boldsymbol{M}$, or the dominant right singular vector of $\boldsymbol{M}$, with the following iteration format:</p>
+
+    \begin{equation}
+    \boldsymbol{v}_1^{(t)} = \frac{\boldsymbol{M}^{\top}\boldsymbol{M}\boldsymbol{v}_1^{(t-1)}}{\Vert\boldsymbol{M}^{\top}\boldsymbol{M}\boldsymbol{v}_1^{(t-1)}\Vert_2}
+    \end{equation}
+
+    <p>Assuming we have obtained the dominant eigenvector $\boldsymbol{v}_1$, we can add orthogonalization to the power iteration to find the next eigenvector:</p>
+
+    \begin{equation}
+    \boldsymbol{v}_2^{(t)} = \frac{\tilde{\boldsymbol{v}}_2^{(t)} - \langle\tilde{\boldsymbol{v}}_2^{(t)},\boldsymbol{v}_1\rangle\boldsymbol{v}_1}{\Vert\tilde{\boldsymbol{v}}_2^{(t)} - \langle\tilde{\boldsymbol{v}}_2^{(t)},\boldsymbol{v}_1\rangle\boldsymbol{v}_1\Vert_2},\qquad \tilde{\boldsymbol{v}}_2^{(t)} = \boldsymbol{M}^{\top}\boldsymbol{M}\boldsymbol{v}_2^{(t-1)}
+    \end{equation}
+
+    <p>By ensuring orthogonality with $\boldsymbol{v}_1$, this will converge to the second eigenvector $\boldsymbol{v}_2$. Similarly, assuming $\boldsymbol{v}_1, \boldsymbol{v}_2, \dots, \boldsymbol{v}_{k-1}$ are known, we can use Gram-Schmidt orthogonalization to find the $(k)$-th eigenvector:</p>
+
+    \begin{equation}
+    \boldsymbol{v}_k^{(t)} = \frac{\tilde{\boldsymbol{v}}_k^{(t)} - \langle\tilde{\boldsymbol{v}}_k^{(t)},\boldsymbol{v}_1\rangle\boldsymbol{v}_1 - \cdots - \langle\tilde{\boldsymbol{v}}_k^{(t)},\boldsymbol{v}_{k-1}\rangle\boldsymbol{v}_{k-1}}{\Vert\tilde{\boldsymbol{v}}_k^{(t)} - \langle\tilde{\boldsymbol{v}}_k^{(t)},\boldsymbol{v}_1\rangle\boldsymbol{v}_1 - \cdots - \langle\tilde{\boldsymbol{v}}_k^{(t)},\boldsymbol{v}_{k-1}\rangle\boldsymbol{v}_{k-1}\Vert_2},\qquad \tilde{\boldsymbol{v}}_k^{(t)} = \boldsymbol{M}^{\top}\boldsymbol{M}\boldsymbol{v}_k^{(t-1)}
+    \label{eq:vk-pi}
+    \end{equation}
+
+    <p>In practice, we don't need to wait for $\boldsymbol{v}_1, \boldsymbol{v}_2, \dots, \boldsymbol{v}_{k-1}$ to be calculated before calculating $\boldsymbol{v}_k$; the entire $\boldsymbol{V}=[\boldsymbol{v}_1, \boldsymbol{v}_2, \dots, \boldsymbol{v}_m]$ can be iterated in parallel. Specifically, starting from an existing approximation $\boldsymbol{V}_{t-1}$, we batch calculate $\boldsymbol{M}^{\top} \boldsymbol{M} \boldsymbol{V}_{t-1}$, and then re-orthogonalize the column vectors (e.g., using QR decomposition). This yields a better approximation, which we denote as $\boldsymbol{V}_t$. Repeated iteration will ultimately converge to our target $\boldsymbol{V}$:</p>
+
+    \begin{equation}
+    \newcommand{QR}{\mathop{\text{QR}}}\boldsymbol{V}_t = \QR(\boldsymbol{M}^{\top}\boldsymbol{M}\boldsymbol{V}_{t-1})
+    \end{equation}
+
+    <p>Here $\text{QR}$ refers to the orthogonal matrix obtained after QR decomposition. Once we have $\boldsymbol{V}$, it is clear that $\newcommand{ColNorm}{\mathop{\text{ColNorm}}}\boldsymbol{U} = \ColNorm(\boldsymbol{M}\boldsymbol{V})$, where $\text{ColNorm}$ means performing L2 normalization on each column (axis=0), and $\newcommand{diag}{\mathop{\text{diag}}}\boldsymbol{\Sigma}=\diag(\boldsymbol{U}^{\top}\boldsymbol{M}\boldsymbol{V})$. This gives us an approximate SVD scheme based on power iteration and QR decomposition. Of course, when $n > m$, it only yields an incomplete decomposition where $\boldsymbol{U}\in\mathbb{R}^{n\times m}$ and $\boldsymbol{\Sigma}, \boldsymbol{V}\in\mathbb{R}^{m \times m}$, but it is sufficient.</p>
+
+    <h2>Streaming Update <a name="StreamingUpdate" href="https://kexue.fm/archives/11654#%E6%B5%81%E5%BC%8F%E6%9B%B4%E6%96%B0">#</a></h2>
+
+    <p>However, the actual efficiency of using power iteration to calculate SVD is extremely low—far lower than directly calling the SVD function provided by the framework—making it impractical. However, considering that training itself is a long-term iterative process, we can assume that $\boldsymbol{V}$ does not change significantly at each step. Thus, we can store $\boldsymbol{V}$ from the previous step as the initialization for the current step and perform only one power iteration per step, i.e.,</p>
+
+    \begin{equation}
+    \begin{aligned}
+    \boldsymbol{M}_t =&\, \beta\boldsymbol{M}_{t-1} + \boldsymbol{G}_t \\[5pt]
+    \boldsymbol{V}_t =&\, \QR(\boldsymbol{M}_t^{\top}\boldsymbol{M}_t\boldsymbol{V}_{t-1}) \\[5pt]
+    \boldsymbol{U}_t =&\, \ColNorm(\boldsymbol{M}_t\boldsymbol{V}_t) \\[5pt]
+    \boldsymbol{W}_t =&\, \boldsymbol{W}_{t-1} - \eta_t (\boldsymbol{U}_t\boldsymbol{V}_t^{\top} + \lambda \boldsymbol{W}_{t-1}) \\
+    \end{aligned}
+    \label{eq:muon-qr}
+    \end{equation}
+
+    <p>where $\boldsymbol{V}_0=\boldsymbol{I}$. Empirical tests show that Muon implemented via this streaming power iteration produces an LM Loss convergence curve nearly overlapping with the Newton-Schulz version. This indicates it is indeed a viable scheme. This is largely due to the momentum mechanism and small learning rates, allowing the assumption that "$\boldsymbol{V}$ change is small at each step" to approximately hold, thereby permitting the cost of power iteration to be "amortized" across steps.</p>
+
+    <p>Thanks to the direct approximate calculation of SVD, we can also perform operations on singular values and incorporate them into the optimizer, for example:</p>
+
+    \begin{equation}
+    \begin{aligned}
+    \boldsymbol{M}_t =&\, \beta\boldsymbol{M}_{t-1} + \boldsymbol{G}_t \\[5pt]
+    \boldsymbol{V}_t =&\, \QR(\boldsymbol{M}_t^{\top}\boldsymbol{M}_t \boldsymbol{V}_{t-1}) \\[5pt]
+    \boldsymbol{U}_t =&\, \ColNorm(\boldsymbol{M}_t\boldsymbol{V}_t) \\[5pt]
+    \boldsymbol{\Sigma}_t =&\, \diag(\boldsymbol{U}_t^{\top}\boldsymbol{M}_t\boldsymbol{V}_t) \\[5pt]
+    \boldsymbol{W}_t =&\, \boldsymbol{W}_{t-1} - \eta_t (\boldsymbol{U}_t f(\boldsymbol{\Sigma}_t)\boldsymbol{V}_t^{\top} + \lambda \boldsymbol{W}_{t-1}) \\
+    \end{aligned}
+    \end{equation}
+
+    <p>In this way, implementing <code>mclip</code> or Muon variants based on general <a href="https://en.wikipedia.org/wiki/Schatten_norm">Schatten norms</a> becomes much easier. In short, having explicit results for $\boldsymbol{U}_t, \boldsymbol{\Sigma}_t, \boldsymbol{V}_t$ (even if only approximate) allows us to easily experiment with small modifications, significantly enhancing extensibility and playability.</p>
+
+    <h2>Accelerating Decomposition <a name="Accelerating" href="https://kexue.fm/archives/11654#%E5%8A%A0%E9%80%9F%E5%88%86%E8%A7%A3">#</a></h2>
+
+    <p>The pressure now shifts to the QR decomposition. The most time-consuming step in Eq. $\eqref{eq:muon-qr}$ is the QR decomposition. The standard implementation is Householder QR, which, while already much faster than SVD, is still slower than the <code>msign</code> calculated via Newton-Schulz iteration (which uses polynomial iterations and allows BF16 multiplication—practically "cheating"). Therefore, to enhance the competitiveness of this new scheme, we need to speed up the QR decomposition.</p>
+
+    <p>For a given matrix $\boldsymbol{A}\in\mathbb{R}^{n\times m}$ ($n\geq m$), QR decomposition aims to find an orthogonal matrix $\boldsymbol{Q}\in\mathbb{R}^{n\times m}$ and an upper triangular matrix $\boldsymbol{R}\in\mathbb{R}^{m\times m}$ such that $\boldsymbol{A}=\boldsymbol{Q}\boldsymbol{R}$ (here the orthogonal matrix only needs to satisfy $\boldsymbol{Q}^{\top}\boldsymbol{Q}=\boldsymbol{I}$, more accurately called a Stiefel matrix). Note that $\boldsymbol{A}^{\top}\boldsymbol{A}=\boldsymbol{R}^{\top}\boldsymbol{R}$, which means we only need to decompose $\boldsymbol{A}^{\top}\boldsymbol{A}$ into a product of a lower triangular matrix and its transpose to obtain $\boldsymbol{R}$—and this is exactly what <a href="https://en.wikipedia.org/wiki/Cholesky_decomposition">Cholesky decomposition</a> does!</p>
+
+    <p>Cholesky decomposition is extremely efficient. So, as a first step, we can use it to get $\boldsymbol{R}$, and then solve the equation $\boldsymbol{Q}\boldsymbol{R}=\boldsymbol{A}$ to get $\boldsymbol{Q}$. The equation can also be written as $\boldsymbol{R}^{\top}\boldsymbol{Q}^{\top}=\boldsymbol{A}^{\top}$, which can be solved using <a href="https://docs.jax.dev/en/latest/_autosummary/jax.scipy.linalg.solve_triangular.html">solve_triangular</a>, which is also very efficient. Combining these two steps constitutes the QR decomposition algorithm known as "Cholesky QR." Disregarding numerical stability, it is perhaps the fastest QR decomposition method.</p>
+
+    <p>Unfortunately, compared to standard QR decomposition, Cholesky QR is very unstable; it is extremely sensitive to the <a href="https://en.wikipedia.org/wiki/Condition_number">condition number</a> of $\boldsymbol{A}^{\top}\boldsymbol{A}$. To address this, <a href="https://papers.cool/arxiv/1809.11085">"Shifted CholeskyQR for computing the QR factorization of ill-conditioned matrices"</a> (abbreviated as "SCQR") proposes adding $\lambda \boldsymbol{I}$ ($\lambda=\epsilon \Vert\boldsymbol{A}^{\top}\boldsymbol{A}\Vert_F$) to $\boldsymbol{A}^{\top}\boldsymbol{A}$ to mitigate this issue. However, this is a double-edged sword: the larger $\epsilon$ is, the more stable SCQR becomes, but the less orthogonal the resulting $\boldsymbol{Q}$ will be, leading to worse final performance.</p>
+
+    <p>Furthermore, even with $\epsilon$, there is no guarantee that SCQR will always succeed, so we need an extra detection step to fall back to standard QR if it fails.</p>
+
+    <h2>Reference Implementation <a name="Reference" href="https://kexue.fm/archives/11654#%E5%8F%82%E8%80%83%E5%AE%9E%E7%8E%B0">#</a></h2>
+
+    <p>A simple reference implementation based on Jax is as follows:</p>
+
+<pre><code class="language-python">import jax.numpy as jnp
+from jax.scipy.linalg import solve_triangular
+from jax import lax
+
+
+def scqr(A, eps=1e-9):
+    """先按Shifted Cholesky QR算，失败则回退到默认QR
+    """
+    B, I = A.mT @ A, jnp.eye(A.shape[-1])
+    B += eps * jnp.linalg.matrix_norm(B, keepdims=True) * I
+    R = jnp.linalg.cholesky(B, upper=True)
+    Q = solve_triangular(R.mT, A.mT, lower=True).mT
+    return lax.cond(jnp.isfinite(Q).all(), lambda: Q, lambda: jnp.linalg.qr(A)[0])
+</code></pre>
+
+    <p>Simple tests show that if executed successfully, the efficiency of SCQR is comparable to the Newton-Schulz version of <code>msign</code>. However, to ensure approximation quality, the value of $\epsilon$ cannot be too small, or performance drops significantly. Empirical tests usually require $\epsilon=10^{-9}$ for guaranteed performance, at which point SCQR still has a relatively high probability of falling back to standard QR, causing the final speed to still lag behind Newton-Schulz iteration.</p>
+
+    <p>Besides improving the QR decomposition algorithm itself, there are other acceleration techniques, such as keeping only the top $k$ eigenvectors. In that case, $\boldsymbol{V}$ only needs to be initialized as $m \times k$ instead of $m \times m$, which also reduces computation. Further acceleration of QR decomposition is left for everyone to explore; I won't expand on it further here.</p>
+
+    <h2>Other Details <a name="Details" href="https://kexue.fm/archives/11654#%E5%85%B6%E4%BB%96%E7%BB%86%E8%8A%82">#</a></h2>
+
+    <p>Additionally, there are some details to pay special attention to, as they are closely related to training stability and final performance.</p>
+
+    <p>First, according to the convention $\boldsymbol{M}_t\in\mathbb{R}^{n\times m}$, we need to ensure $n\geq m$, otherwise transpose it. If $n < m$, the matrix $\boldsymbol{M}_t^{\top}\boldsymbol{M}_t \boldsymbol{V}_{t-1}$ is inherently rank-deficient. Performing QR decomposition on a rank-deficient matrix is ill-posed, and SCQR in particular is prone to various pathological phenomena, reducing effectiveness. Therefore, ensuring $n\geq m$ guarantees numerical stability, improves performance, and accelerates computation—achieving multiple benefits at once.</p>
+
+    <p>Second, empirical tests found that adding an extra <code>ColNorm</code> to the $\text{QR}$ step is very helpful for performance:</p>
+
+    \begin{equation}
+    \boldsymbol{V}_t = \QR(\boldsymbol{M}_t^{\top}\boldsymbol{M}_t\boldsymbol{V}_{t-1}) \qquad\to\qquad \boldsymbol{V}_t = \QR(\boldsymbol{M}_t^{\top}\ColNorm(\boldsymbol{M}_t\boldsymbol{V}_{t-1}))
+    \end{equation}
+
+    <p>This is merely equivalent to changing $\tilde{\boldsymbol{v}}_k^{(t)} = \boldsymbol{M}^{\top}\boldsymbol{M}\boldsymbol{v}_k^{(t-1)}$ in Eq. $\eqref{eq:vk-pi}$ to $\tilde{\boldsymbol{v}}_k^{(t)} = \boldsymbol{M}^{\top}(\boldsymbol{M}\boldsymbol{v}_k^{(t-1)} / \Vert\boldsymbol{M}\boldsymbol{v}_k^{(t-1)}\Vert_2)$, which does not change the convergence of the power iteration itself. However, experiments show that this extra <code>ColNorm</code> step significantly helps training performance, especially under SCQR, narrowing the gap between it and standard QR.</p>
+
+    <p>It can be proven that this operation theoretically does not change the power iteration and only affects the numerical calculation of QR. According to experimental observation, it actually makes SCQR fall back to standard QR more frequently (but not by much, so it won't be significantly slower), and slightly helps standard QR as well, so it seems to improve the properties of the matrix to be decomposed, resulting in better QR quality.</p>
+
+    <h2>Related Work <a name="RelatedWork" href="https://kexue.fm/archives/11654#%E7%9B%B8%E5%85%B3%E5%B7%A5%E4%BD%9C">#</a></h2>
+
+    <p>As mentioned at the beginning, the concept of streaming power iteration has appeared several times in various optimizer works, such as <a href="https://papers.cool/arxiv/2405.18144">"4-bit Shampoo for Memory-Efficient Network Training"</a>, <a href="https://papers.cool/arxiv/2409.11321">"SOAP: Improving and Stabilizing Shampoo using Adam"</a>, <a href="https://papers.cool/arxiv/2502.17410">"COSMOS: A Hybrid Adaptive Optimizer for Memory-Efficient Training of LLMs"</a>, and <a href="https://papers.cool/arxiv/2504.05295">"Dion: Distributed Orthonormalized Updates"</a>.</p>
+
+    <p>In fact, taking an algorithm that requires multiple iterations to converge and, combining it with the long-term update nature of model training, turning it into a streaming version with one iteration per step to amortize costs is not a difficult idea to conceive. We previously tried this in <a href="translation_11388.html">"Steepest Descent on Manifolds: 5. Dual Gradient Descent"</a>. Therefore, the existence of so much related work is not surprising.</p>
+
+    <p>This article mainly references the paper <a href="https://papers.cool/arxiv/2602.09006">"ARO: A New Lens On Matrix Optimization For Large Models"</a> released last month. This paper essentially covers most of the content of this article and generalizes it. The generalization idea is also worth considering; note that the current Muon update can be written as:</p>
+
+    \begin{equation}
+    \ColNorm(\boldsymbol{M}_t\boldsymbol{V}_t)\boldsymbol{V}_t^{\top}
+    \end{equation}
+
+    <p>where $\ColNorm(\boldsymbol{M}_t)$ can be considered a base optimizer that simply does column normalization on momentum, lacking competitiveness. Thus, we find a new set of orthogonal bases $\boldsymbol{V}_t$ for it, apply the base optimizer under the new basis, and then transform back. Now we know this is Muon, and it is significantly stronger than simple $\ColNorm$. So the next logical thought is: can $\ColNorm$ be replaced with other base optimizers? To this, ARO proposes a general optimizer framework (Rotation Steepest Descent):</p>
+
+    \begin{equation}
+    \begin{aligned}
+    \boldsymbol{M}_t =&\, \beta\boldsymbol{M}_{t-1} + \boldsymbol{G}_t \\[5pt]
+    \boldsymbol{R}_t =&\, \QR(\boldsymbol{M}_t^{\top}f(\boldsymbol{M}_t\boldsymbol{R}_{t-1})) \\[5pt]
+    \boldsymbol{W}_t =&\, \boldsymbol{W}_{t-1} - \eta_t (f(\boldsymbol{M}_t\boldsymbol{R}_t)\boldsymbol{R}_t^{\top} + \lambda \boldsymbol{W}_{t-1}) \\
+    \end{aligned}
+    \end{equation}
+
+    <p>where $f$ represents any matrix function, and the original notation $\boldsymbol{V}$ is replaced by $\boldsymbol{R}$ (Rotation). We will discuss more about Rotation Steepest Descent when the opportunity arises.</p>
+
+    <h2>Summary <a name="Summary" href="https://kexue.fm/archives/11654#%E6%96%87%E7%AB%A0%E5%B0%8F%E7%BB%93">#</a></h2>
+
+    <p>This article mainly introduced the idea of implementing Muon by calculating SVD via Streaming Power Iteration. It only requires one QR decomposition per step. Compared to the standard Newton-Schulz iteration implementation, this approach offers more flexible extensibility.</p>
+
+    <p><strong>If you found this article worthwhile, feel free to share it or leave a tip. The tip is not meant to generate income; it is simply a way for me to know how much genuine attention Scientific Spaces has received. Of course, ignoring it will not affect your reading. Thank you again for reading and for your support.</strong></p>
+
+    </article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/11654" style="color: #005fcc;">https://kexue.fm/archives/11654</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

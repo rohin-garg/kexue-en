@@ -1,0 +1,372 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['base', 'ams', 'amsmath', 'amsfonts', 'amssymb', 'noerrors', 'noundefined']}
+  },
+  loader: {load: ['[tex]/ams']}
+};
+</script>
+<script type="text/javascript" id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+  <nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+  <h1><a href="https://kexue.fm/archives/11647">Beyond MuP: 3. Special Cases, Special Treatment</a></h1>
+  
+  <p>By 苏剑林 | March 02, 2026</p>
+
+  <p>After several blog posts on the subject, many readers are likely familiar with the Muon optimizer—even if the theoretical details aren't perfectly clear, you probably have the impression that it is an "optimizer specifically customized for matrix parameters." However, this statement isn't entirely accurate. For example, for the input-side Embedding layer and the output-side LM Head, although their parameters are matrices, they are not suitable for Muon (see <a href="translation_11416.html">"Muon Optimizer Guide: Quick Start and Key Details"</a>).</p>
+
+  <p>Why should they be "treated differently"? This article will follow the three stability indicators proposed in the first post to explore the initialization patterns of different types of layers and their corresponding steepest descent directions, thereby answering this question.</p>
+
+  <h2>Previous Review</h2>
+
+  <p>In the first article <a href="translation_11340.html">"Beyond MuP: 1. Three Characteristics of a Good Model"</a>, we proposed three stability indicators:</p>
+
+  <ul>
+    <li>Forward Stability: $\max_{\boldsymbol{x}} \text{RMS}[\boldsymbol{f}(\boldsymbol{x};\boldsymbol{\omega})]$</li>
+    <li>Dependency Stability: $\max_{\boldsymbol{x}_1, \boldsymbol{x}_2} \text{RMS}[\boldsymbol{f}(\boldsymbol{x}_1;\boldsymbol{\omega}) - \boldsymbol{f}(\boldsymbol{x}_2;\boldsymbol{\omega})]$</li>
+    <li>Update Stability: $\max_{\boldsymbol{x}} \text{RMS}[\boldsymbol{f}(\boldsymbol{x};\boldsymbol{\omega}+\Delta\boldsymbol{\omega}) - \boldsymbol{f}(\boldsymbol{x};\boldsymbol{\omega})]$</li>
+  </ul>
+
+  <p>The three indicators have a unified format: take the RMS of the output, then take the $\max$ over the input. Here $\boldsymbol{x}$ represents the input, $\boldsymbol{\omega}$ represents the parameters, and $\boldsymbol{f}(\boldsymbol{x};\boldsymbol{\omega})$ can represent a layer, a block, or even the entire model, depending on our ability to solve for the $\max$.</p>
+
+  <p>Since the range of $\boldsymbol{x}$ is not restricted, the maximum value does not always exist. Therefore, sometimes we need to add certain operations to the model, which in turn guides the model's design. For instance, in the previous article <a href="translation_11605.html">"Beyond MuP: 2. Linear Layers and Steepest Descent"</a>, to calculate the stability indicators for a linear layer, we added Input Normalization (In Norm). Additionally, combined with the idea of steepest descent, we reproduced the derivation of the Muon optimizer.</p>
+
+  <p>Steepest descent is not a new concept; it answers the question of "what optimizer to use given stability indicators." The core contribution of the "Beyond MuP" series is answering the question of "what stability indicators should be used," providing a calculation formula for stability indicators applicable to any layer.</p>
+
+  <h2>The Embedding Layer</h2>
+
+  <p>Now we consider the Embedding layer, which is arguably the simplest layer. The input is an index $i$, and the output is the corresponding vector, i.e., $\boldsymbol{f}(i; \boldsymbol{E}) = \boldsymbol{E}_i$, where $\boldsymbol{E}$ is a $|V| \times d$ matrix and $\boldsymbol{E}_i \triangleq \boldsymbol{E}_{i,:}$ denotes the $i$-th row of $\boldsymbol{E}$. It is easy to calculate:</p>
+
+  \begin{align}
+  &\text{Forward Stability:}\quad\max_i \Vert\boldsymbol{E}_i\Vert_{RMS} = \Theta(1)\\[5pt]
+  &\text{Dependency Stability:}\quad\max_{i,j} \Vert\boldsymbol{E}_i - \boldsymbol{E}_j\Vert_{RMS} = \Theta(1) \\[5pt]
+  &\text{Update Stability:}\quad\max_i \Vert \Delta \boldsymbol{E}_i\Vert_{RMS} = \Theta(1) \label{eq:ec3}
+  \end{align}
+
+  <p>Note that $\max_{i,j} \Vert\boldsymbol{E}_i - \boldsymbol{E}_j\Vert_{RMS} \leq 2 \max_i \Vert\boldsymbol{E}_i\Vert_{RMS}$, so they are essentially both the maximum row norm of $\boldsymbol{E}$ or $\Delta\boldsymbol{E}$ (multiplied by $1/\sqrt{d}$). Forward stability and dependency stability are only used to guide initialization; they tell us to initialize $\boldsymbol{E}$ with zero mean and $\Theta(1)$ variance.</p>
+
+  <p>As for update stability, equation \eqref{eq:ec3} tells us that although it is a matrix, the metric for "stability" for the Embedding layer should not be the spectral norm, but rather the maximum row norm. This results in its steepest descent direction not being Muon. To find the steepest descent for the Embedding layer, we need to solve the optimization problem:</p>
+
+  \begin{equation}\min_{\Delta \boldsymbol{E}} \langle\boldsymbol{G},\Delta\boldsymbol{E}\rangle \qquad \text{s.t.}\qquad \max_i \underbrace{\Vert\Delta\boldsymbol{E}_i\Vert_{RMS}}_{\Vert\Delta\boldsymbol{E}_i\Vert_2/\sqrt{d}}\leq\eta\end{equation}
+
+  <p>This problem is not difficult to solve; we just need to use the Cauchy-Schwarz inequality:</p>
+
+  \begin{equation}\langle\boldsymbol{G},\Delta\boldsymbol{E}\rangle = \sum_{i=1}^{|V|}\langle\boldsymbol{G}_i,\Delta\boldsymbol{E}_i\rangle \geq -\sum_{i=1}^{|V|}\Vert\boldsymbol{G}_i\Vert_2 \times \Vert\Delta\boldsymbol{E}_i\Vert_2 \geq -\eta\sqrt{d}\sum_{i=1}^{|V|}\Vert\boldsymbol{G}_i\Vert_2\end{equation}
+
+  <p>Equality holds when $\Delta\boldsymbol{E}_i = - \eta\boldsymbol{G}_i / \Vert\boldsymbol{G}_i\Vert_{RMS}$. That is to say, the steepest descent applicable to the Embedding layer is to perform row-wise RMS Norm on the gradient (Normalized SGD).</p>
+
+  <h2>The Output Head</h2>
+
+  <p>Next, let's look at the LM Head. On the surface, this is also a linear layer: the input is $\boldsymbol{x}\in\mathbb{R}^d$, the weights are $\boldsymbol{W}\in\mathbb{R}^{d\times |V|}$, and the output is $\boldsymbol{x}\boldsymbol{W}\in\mathbb{R}^{|V|}$. $\boldsymbol{x}$ usually also carries an RMS Norm. In every respect, it looks like a linear layer, so why is it not suitable for Muon?</p>
+
+  <h3>Responsible for the Loss</h3>
+
+  <p>The answer is that the LM Head needs to be "responsible" for the Loss.</p>
+
+  <p>It is important to note that steepest descent serves training. From an inference perspective, the model takes several tokens to predict the next token; however, from a training perspective, the true "model" is: input several tokens and the next token to calculate the Loss. That is to say, the data and labels are both inputs, and the true output is actually the Loss. For previous layers, we can ignore the labels and Loss, but the LM Head, being the final layer "adjacent" to the Loss, must consider the influence of labels and Loss.</p>
+
+  <p>So, the input of the LM Head becomes $\boldsymbol{x}$ and the index of the next token $t$, and the output becomes the cross-entropy loss, namely:</p>
+
+  \begin{equation}\ell(\boldsymbol{x},t;\boldsymbol{W}) = \log\sum_{i=1}^{|V|} e^{\langle \boldsymbol{x},\boldsymbol{w}_i\rangle} - \langle \boldsymbol{x},\boldsymbol{w}_t\rangle = \log\sum_{i=1}^{|V|} e^{\langle \boldsymbol{x},\boldsymbol{w}_i - \boldsymbol{w}_t\rangle}\end{equation}
+
+  <p>Where $\boldsymbol{w}_i\triangleq \boldsymbol{W}_{:, i}$ is the $i$-th column of $\boldsymbol{W}$. Since $\ell$ is a complex non-linear function of $\boldsymbol{x}, t, \boldsymbol{W}$, its three indicators cannot be calculated exactly; our goal is to find a reasonably tight upper bound.</p>
+
+  <h3>Forward Stability</h3>
+
+  <p>First is the relatively simple forward stability. By a simple relaxation:</p>
+
+  \begin{equation}\begin{aligned}
+  \ell(\boldsymbol{x},t;\boldsymbol{W}) = \log\sum_{i=1}^{|V|} e^{\langle \boldsymbol{x},\boldsymbol{w}_i - \boldsymbol{w}_t\rangle} \leq&\, \log \left(|V| \max_i e^{\langle \boldsymbol{x},\boldsymbol{w}_i - \boldsymbol{w}_t\rangle}\right) \\
+  =&\, \log |V| + \max_i \langle \boldsymbol{x},\boldsymbol{w}_i - \boldsymbol{w}_t\rangle \\
+  \leq &\, \log |V| + \max_i \Vert\boldsymbol{x}\Vert_2 \Vert\boldsymbol{w}_i - \boldsymbol{w}_t\Vert_2
+  \end{aligned}\end{equation}
+
+  <p>Therefore:</p>
+
+  \begin{equation}\begin{aligned}
+  \text{Forward Stability:}\quad\max_{t, \Vert\boldsymbol{x}\Vert_{RMS}=1} \ell(\boldsymbol{x},t;\boldsymbol{W}) \leq&\, \log |V| + d\max_{i,t} \Vert\boldsymbol{w}_i - \boldsymbol{w}_t\Vert_{RMS} \\
+  \leq&\, \log |V| + 2d\max_i \Vert\boldsymbol{w}_i\Vert_{RMS}
+  \end{aligned}\end{equation}
+
+  <p>If the constant $\log|V|$ is removed, it becomes a lower bound, so this bound is quite tight in the asymptotic sense. To make it $\Theta(1)$, the initialization variance of the LM Head should be chosen as $\Theta(1/d^2)$.</p>
+
+  <h3>An Important Inequality</h3>
+
+  <p>As for the remaining two indicators, since they involve differences, the calculation becomes more complex. We first prove an inequality we will need:</p>
+
+  \begin{equation}\left\|\log\sum_{i=1}^n e^{a_i} - \log\sum_{i=1}^n e^{b_i}\right\| \leq \max_i |a_i - b_i|\label{leq:lse-ab}\end{equation}
+
+  <p>The proof is not difficult but requires a trick: denote the right side as $M$. Then, by the monotonicity of $\log, \sum, \exp$:</p>
+
+  \begin{equation}\log\sum_{i=1}^n e^{a_i} = \log\sum_{i=1}^n e^{(a_i - b_i)+b_i} \leq \log\sum_{i=1}^n e^{M + b_i} = M + \log\sum_{i=1}^n e^{b_i}\end{equation}
+
+  <p>This proves that:</p>
+
+  \begin{equation}\log\sum_{i=1}^n e^{a_i} - \log\sum_{i=1}^n e^{b_i} \leq M\end{equation}
+
+  <p>By symmetry, swapping $a_i$ and $b_i$ also holds, thus proving the original inequality.</p>
+
+  <h3>Dependency Stability</h3>
+
+  <p>Using inequality \eqref{leq:lse-ab} and Cauchy-Schwarz:</p>
+
+  \begin{equation}\begin{aligned}
+  |\ell(\boldsymbol{x}_1,t_1;\boldsymbol{W}) - \ell(\boldsymbol{x}_2,t_2;\boldsymbol{W})| \leq&\, \max_i |\langle \boldsymbol{x}_1,\boldsymbol{w}_i - \boldsymbol{w}_{t_1}\rangle - \langle \boldsymbol{x}_2,\boldsymbol{w}_i - \boldsymbol{w}_{t_2}\rangle| \\
+  \leq&\, \max_i (\Vert\boldsymbol{x}_1\Vert_2 \Vert\boldsymbol{w}_i - \boldsymbol{w}_{t_1}\Vert_2 + \Vert\boldsymbol{x}_2\Vert_2 \Vert\boldsymbol{w}_i - \boldsymbol{w}_{t_2}\Vert_2) \\
+  =&\, d\max_i (\Vert\boldsymbol{x}_1\Vert_{RMS} \Vert\boldsymbol{w}_i - \boldsymbol{w}_{t_1}\Vert_{RMS} + \Vert\boldsymbol{x}_2\Vert_{RMS} \Vert\boldsymbol{w}_i - \boldsymbol{w}_{t_2}\Vert_{RMS}) \\
+  \end{aligned}\end{equation}
+
+  <p>Therefore:</p>
+
+  \begin{equation}\begin{aligned}
+  \text{Dependency Stability:}\quad\max_{\begin{gathered}t_1, t_2, \\ \Vert\boldsymbol{x}_1\Vert_{RMS}=1 \\ \Vert\boldsymbol{x}_2\Vert_{RMS}=1\end{gathered}} |\ell(\boldsymbol{x}_1,t_1;\boldsymbol{W}) - \ell(\boldsymbol{x}_2,t_2;\boldsymbol{W})| \leq&\, d\max_{i,t_1,t_2} (\Vert\boldsymbol{w}_i - \boldsymbol{w}_{t_1}\Vert_{RMS} + \Vert\boldsymbol{w}_i - \boldsymbol{w}_{t_2}\Vert_{RMS}) \\
+  \leq&\, 4d\max_i \Vert\boldsymbol{w}_i\Vert_{RMS}
+  \end{aligned}\end{equation}
+
+  <p>This result mirrors the forward stability calculation.</p>
+
+  <h3>Update Stability</h3>
+
+  <p>Finally, for update stability, again using inequality \eqref{leq:lse-ab} and Cauchy-Schwarz:</p>
+
+  \begin{equation}\begin{aligned}
+  |\ell(\boldsymbol{x},t;\boldsymbol{W} + \Delta\boldsymbol{W}) - \ell(\boldsymbol{x},t;\boldsymbol{W})| \leq&\, \max_i |\langle \boldsymbol{x},\boldsymbol{w}_i + \Delta\boldsymbol{w}_i - \boldsymbol{w}_t - \Delta\boldsymbol{w}_t\rangle - \langle \boldsymbol{x},\boldsymbol{w}_i - \boldsymbol{w}_t\rangle| \\
+  =&\, \max_i |\langle \boldsymbol{x},\Delta\boldsymbol{w}_i - \Delta\boldsymbol{w}_t\rangle| \\
+  \leq &\, d \max_i \Vert\boldsymbol{x}\Vert_{RMS} \Vert\Delta\boldsymbol{w}_i - \Delta\boldsymbol{w}_t\Vert_{RMS}
+  \end{aligned}\end{equation}
+
+  <p>Therefore:</p>
+
+  \begin{equation}\begin{aligned}
+  \text{Update Stability:}\quad\max_{t,\Vert\boldsymbol{x}\Vert_{RMS}=1} |\ell(\boldsymbol{x},t;\boldsymbol{W} + \Delta\boldsymbol{W}) - \ell(\boldsymbol{x},t;\boldsymbol{W})| \leq&\, d \max_{i, t} \Vert\Delta\boldsymbol{w}_i - \Delta\boldsymbol{w}_t\Vert_{RMS} \\
+  \leq&\, 2d\max_i \Vert\Delta\boldsymbol{w}_i\Vert_{RMS}
+  \end{aligned}\end{equation}
+
+  <p>It is not hard to find that the three stability indicators of the LM Head are essentially the same as those of the Embedding layer: they are the maximum row/column norm of the parameter matrix or its increment. This means the steepest descent for the LM Head is also Normalized SGD, with the difference that the LM Head is Normalized column-wise. Furthermore, the three indicators for the LM Head all include a factor of $d$, so its initialization standard deviation and learning rate scale by $\Theta(1/d)$, while the Embedding layer scales by $\Theta(1)$. This means they will differ slightly during cross-width migration.</p>
+
+  <h2>Other Modules</h2>
+
+  <p>Besides linear layers, Embeddings, and LM Heads, common Transformer models usually contain other parameters or layers that require individual analysis. Let's go through them one by one.</p>
+
+  <h3>Hadamard Product</h3>
+
+  <p>We know that after RMS Norm, there is usually a multiplication by a $\boldsymbol{\gamma}$ vector (Hadamard product), i.e., $(\boldsymbol{x} / \Vert\boldsymbol{x}\Vert_{RMS}) \odot \boldsymbol{\gamma}$, to adjust the output scale. This parameter is not a matrix, so it is not suitable for the aforementioned Muon or Normalized SGD.</p>
+
+  <p>We could follow the original definitions to calculate the three stability indicators for $\boldsymbol{\gamma}$ and then analyze its initialization and steepest descent, but there is a cleverer way: note that $\newcommand{diag}{\mathop{\text{diag}}}\boldsymbol{x} \odot \boldsymbol{\gamma} = \boldsymbol{x} \diag(\boldsymbol{\gamma})$. That is, the Hadamard product of $\boldsymbol{x}$ and $\boldsymbol{\gamma}$ is equal to the matrix multiplication of $\boldsymbol{x}$ and the diagonal matrix $\diag(\boldsymbol{\gamma})$. This turns it into a special linear layer where $\boldsymbol{W} = \diag(\boldsymbol{\gamma})$, and we can reuse the conclusions for linear layers.</p>
+
+  <p>According to the previous article, the initial spectral norm of $\boldsymbol{W}$ should be $\Theta(\sqrt{d_{out}/d_{in}})$. Since $\boldsymbol{W}$ is square here, it is exactly $\Theta(1)$. Since $\boldsymbol{W}$ is a diagonal matrix, we can simply initialize $\boldsymbol{W}$ as the identity matrix to satisfy this requirement, which corresponds to initializing $\boldsymbol{\gamma}$ as all-ones.</p>
+
+  <p>As for the optimizer, if the gradient of $\boldsymbol{\gamma}$ is $\boldsymbol{g}$, then the gradient of $\boldsymbol{W}$ is $\boldsymbol{G} = \diag(\boldsymbol{g})$. We know the steepest descent direction for a linear layer is Muon, namely $\newcommand{msign}{\mathop{\text{msign}}}\Delta\boldsymbol{W} = -\eta\msign(\boldsymbol{G})$. For a diagonal matrix, $\newcommand{sign}{\mathop{\text{sign}}}\msign(\boldsymbol{G}) = \sign(\boldsymbol{G}) = \diag(\sign(\boldsymbol{g}))$. Thus, the steepest descent for the $\boldsymbol{\gamma}$ parameter is SignSGD.</p>
+
+  <h3>Linear Biases</h3>
+
+  <p>Traditional linear layers usually have a bias vector $\boldsymbol{b}$, i.e., the complete linear operation is $\boldsymbol{f}(\boldsymbol{x};\boldsymbol{W},\boldsymbol{b}) = \boldsymbol{x}\boldsymbol{W}+\boldsymbol{b}$. However, in recent years, open-source models have mostly removed the bias term, so it has little presence. For completeness, we include its discussion here.</p>
+
+  <p>With the bias vector included, the three stability indicators are:</p>
+
+  \begin{align}
+  &\text{Forward Stability:}\quad\max_{\Vert\boldsymbol{x}\Vert_{RMS}=1} \Vert \boldsymbol{x}\boldsymbol{W} + \boldsymbol{b}\Vert_{RMS} \\[5pt]
+  &\text{Dependency Stability:}\quad\max_{\Vert\boldsymbol{x}_1\Vert_{RMS}=\Vert\boldsymbol{x}_2\Vert_{RMS}=1} \Vert \boldsymbol{x}_1\boldsymbol{W} - \boldsymbol{x}_2\boldsymbol{W}\Vert_{RMS}\\[5pt]
+  &\text{Update Stability:}\quad\max_{\Vert\boldsymbol{x}\Vert_{RMS}=1} \Vert \boldsymbol{x} \Delta\boldsymbol{W} + \Delta\boldsymbol{b}\Vert_{RMS}
+  \end{align}
+
+  <p>The dependency stability is the same as without a bias, so we only need to look at forward and update stability. For simplicity, using the inequality $\Vert \boldsymbol{x}\boldsymbol{W} + \boldsymbol{b}\Vert_{RMS} \leq \Vert \boldsymbol{x}\boldsymbol{W}\Vert_{RMS} + \Vert\boldsymbol{b}\Vert_{RMS}$. Assuming $\boldsymbol{W}$ follows the original initialization, the $\Vert \boldsymbol{x}\boldsymbol{W}\Vert_{RMS}$ part already achieves $\Theta(1)$, so we only need $\Vert\boldsymbol{b}\Vert_{RMS}=\mathcal{O}(1)$. In practice, $\boldsymbol{b}$ is usually initialized to zero.</p>
+
+  <p>Similarly, $\Vert \boldsymbol{x}\Delta\boldsymbol{W} + \Delta\boldsymbol{b}\Vert_{RMS} \leq \Vert \boldsymbol{x}\Delta\boldsymbol{W}\Vert_{RMS} + \Vert\Delta\boldsymbol{b}\Vert_{RMS}$. If we let $\Vert\Delta\boldsymbol{b}\Vert_{RMS} = \mathcal{O}(1)$, the bias parameter $\boldsymbol{b}$ will follow steepest descent based on $\Vert\Delta\boldsymbol{b}\Vert_{RMS}$ as the stability indicator, which again results in Normalized SGD.</p>
+
+  <h3>Attention Scaling</h3>
+
+  <p>Using the forward stability indicator, we can also re-derive the scaling factor of the Attention mechanism. Let $\boldsymbol{q}=\boldsymbol{x}\boldsymbol{W}_q, \boldsymbol{k}=\boldsymbol{x}\boldsymbol{W}_k$. If $\boldsymbol{W}_q, \boldsymbol{W}_k$ are treated as linear layers, we can assume $\Vert\boldsymbol{q}\Vert_{RMS}=\Theta(1)$ and $\Vert\boldsymbol{k}\Vert_{RMS}=\Theta(1)$ have been achieved. Then, according to Cauchy-Schwarz:</p>
+
+  \begin{equation}|\langle\boldsymbol{q},\boldsymbol{k}\rangle| \leq \Vert\boldsymbol{q}\Vert_2 \Vert\boldsymbol{k}\Vert_2 = d\Vert\boldsymbol{q}\Vert_{RMS} \Vert\boldsymbol{k}\Vert_{RMS} \end{equation}
+
+  <p>Here $d$ is the dimension of $\boldsymbol{q}$ and $\boldsymbol{k}$, i.e., Head Dim. Clearly, the above expression is $\Theta(d)$. To make it $\Theta(1)$, one must multiply $\boldsymbol{q}\cdot\boldsymbol{k}$ by a scaling factor on the order of $\Theta(1/d)$, which differs from the previous $1/\sqrt{d}$ (refer to <a href="translation_8620.html">"On Initialization, Parameterization, and Standardization of Transformers"</a>).</p>
+
+  <p>Which one is correct? Actually, both are. $1/\sqrt{d}$ is the average result under random initialization, whereas $\Theta(1/d)$ is the limit value applicable throughout the training process. It doesn't mean we must directly change the scaling factor to $1/d$; rather, scaling inversely with $d$ might bring better transferability. The two can be compatible. For example, if using $1/\sqrt{128}$ as the scaling factor works well when $d=128$, then when migrating to $d=256$, one might consider changing the scaling factor to $1/2\sqrt{128}$ instead of $1/\sqrt{256}$.</p>
+
+  <p>In fact, limited by Flash Attention, the choice of Head Dim is not very flexible—usually 128, and generally only up to 256. Therefore, in practice, there is almost no issue of parameter transfer across Head Dims, making this result more theoretical.</p>
+
+  <h2>Article Summary</h2>
+
+  <p>Finally, the main results of these two articles are summarized below:</p>
+
+  \begin{array}{|c|c|c|c|c|c|}
+  \hline
+  & \text{Input} & \text{Parameter} & \text{Output} & \text{Initial Variance} & \text{Steepest Descent} \\
+  \hline
+  \text{Linear} & \boldsymbol{x} & \begin{aligned}\boldsymbol{W}\in&\,\mathbb{R}^{d_{in}\times d_{out}} \\ \boldsymbol{b}\in&\,\mathbb{R}^{d_{out}} \end{aligned} & \boldsymbol{x}\boldsymbol{W} + \boldsymbol{b} & \begin{aligned} \boldsymbol{W}:&\, \small{\sqrt{\frac{d_{out}}{d_{in}}}\frac{1}{\sqrt{d_{in}} + \sqrt{d_{out}}}} \\ \boldsymbol{b}:&\, 0\end{aligned}& \begin{aligned} \Delta\boldsymbol{W} =&\, \small{-\eta\sqrt{\frac{d_{out}}{d_{in}}}\msign(\boldsymbol{G})} \\ \Delta\boldsymbol{b} =&\, \small{-\eta \frac{\boldsymbol{g}}{\Vert\boldsymbol{g}\Vert_{RMS}}}\end{aligned} \\
+  \hline
+  \text{Embedding} & i & \boldsymbol{E} \in\mathbb{R}^{|V|\times d} & \boldsymbol{E}_{i,:} & 1 & \Delta\boldsymbol{E}_{i,:} = -\eta \frac{\boldsymbol{G}_{i,:}}{\Vert\boldsymbol{G}_{i,:} \Vert_{RMS}} \\
+  \hline
+  \text{LM Head} & \boldsymbol{x}, t & \boldsymbol{W} \in\mathbb{R}^{d \times |V|} & \log\sum\limits_{i=1}^{|V|} e^{\langle \boldsymbol{x},\boldsymbol{W}_{:,i} - \boldsymbol{W}_{:,t}\rangle} & \frac{1}{d^2} & \Delta\boldsymbol{W}_{:,i} = -\frac{\eta}{d} \frac{\boldsymbol{G}_{:,i}}{\Vert\boldsymbol{G}_{:,i}\Vert_{RMS}} \\
+  \hline
+  \text{RMS Norm} & \boldsymbol{x} & \boldsymbol{\gamma} \in\mathbb{R}^d & \frac{\boldsymbol{x}}{\Vert\boldsymbol{x}\Vert_{RMS}}\odot\boldsymbol{\gamma} & 1 & \Delta\boldsymbol{\gamma} = -\eta \sign(\boldsymbol{g})\\
+  \hline
+  \end{array}
+
+  <p>Among these, the steepest descent directions for the Embedding and LM Head are row/column-wise Normalized SGD, respectively, which is consistent with works like <a href="https://papers.cool/arxiv/2502.07529">Scion</a>. As for the transfer laws of variance and learning rate, they are consistent with the conclusions of <a href="translation_10795.html">MuP</a>. In these two articles, they are derived based on our proposed "three stability indicators," which shows that we have indeed found a unified form of stability measurement for arbitrary layers.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/11647" style="color: #005fcc;">https://kexue.fm/archives/11647</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

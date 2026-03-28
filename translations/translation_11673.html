@@ -1,0 +1,345 @@
+
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    tags: 'ams',
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="MathJax-script" async></script>
+
+<article>
+    <nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+    <h1><a href="https://kexue.fm/archives/11673">Muon Implementation Based on Streaming Power Iteration: 2. Acceleration</a></h1>
+    
+    <p>By 苏剑林 | March 26, 2026</p>
+
+    <p>In the first article <a href="translation_11654.html">"Muon Implementation Based on Streaming Power Iteration: 1. Initial Contact"</a>, I separately abstracted Streaming Power Iteration as a new way to implement Muon. Since the new scheme directly approximates SVD, it has richer expansion space compared to the standard implementation based on Newton-Schulz iteration, making it worthy of continued study.</p>
+
+    <p>From a computational perspective, the main change in the new scheme is replacing Newton-Schulz iteration with \(\newcommand{QR}{\mathop{\text{QR}}}\QR\) decomposition, which introduces some slowdown. In the previous post, we discussed some basic acceleration methods, but they have not yet caught up to the standard implementation. In this article, we continue to research the acceleration of \(\QR\) in an effort to close the gap as much as possible.</p>
+
+    <h2>Streaming Iteration</h2>
+
+    <p>We will follow all concepts and notations from the first article; readers with related doubts should refer back to it first. First, the Muon update formula is:</p>
+
+    \begin{equation}
+    \newcommand{msign}{\mathop{\text{msign}}}
+    \begin{aligned}
+    \boldsymbol{M}_t =&\, \beta\boldsymbol{M}_{t-1} + \boldsymbol{G}_t \\[5pt]
+    \boldsymbol{W}_t =&\, \boldsymbol{W}_{t-1} - \eta_t [\msign(\boldsymbol{M}_t) + \lambda \boldsymbol{W}_{t-1}] \\
+    \end{aligned}
+    \end{equation}
+
+    <p>where the standard implementation of \(\msign\) is <a href="translation_10996.html">Newton-Schulz iteration</a>, which is also the most expensive calculation in the Muon optimizer. In contrast, the update formulas for the Streaming Power Iteration scheme are:</p>
+
+    \begin{equation}
+    \newcommand{ColNorm}{\mathop{\text{ColNorm}}}
+    \begin{aligned}
+    \boldsymbol{M}_t =&\, \beta\boldsymbol{M}_{t-1} + \boldsymbol{G}_t \\[5pt]
+    \boldsymbol{V}_t =&\, \QR(\boldsymbol{M}_t^{\top}\boldsymbol{M}_t\boldsymbol{V}_{t-1}) \\[5pt]
+    \boldsymbol{U}_t =&\, \ColNorm(\boldsymbol{M}_t\boldsymbol{V}_t) \\[5pt]
+    \boldsymbol{W}_t =&\, \boldsymbol{W}_{t-1} - \eta_t (\boldsymbol{U}_t\boldsymbol{V}_t^{\top} + \lambda \boldsymbol{W}_{t-1}) \\
+    \end{aligned}
+    \end{equation}
+
+    <p>If we repeatedly execute $\boldsymbol{V}_t = \QR(\boldsymbol{M}_t^{\top}\boldsymbol{M}_t\boldsymbol{V}_{t-1})$, it becomes the standard power iteration, and the result will converge to the right singular matrix of $\boldsymbol{M}_t$, thereby achieving the SVD of $\boldsymbol{M}_t$ and subsequently calculating $\msign$. However, performing full power iteration at every step is too costly, so we instead cache the result from the previous step $\boldsymbol{V}_{t-1}$ and perform only one iteration of $\QR$ as an approximation per step; this is the meaning of "streaming."</p>
+
+    <p>Now the most expensive operation becomes the $\QR$ decomposition. Use of the built-in QR function is the most naive implementation; its underlying principle is the Householder transform, which has good stability but is quite slow.</p>
+
+    <h2>First Speedup</h2>
+
+    <p>To accelerate, in the previous post, we introduced Cholesky QR, which divides the QR decomposition of matrix $\boldsymbol{A}$ into two steps: 1. Perform Cholesky decomposition on $\boldsymbol{A}^{\top}\boldsymbol{A}$ to obtain an upper triangular matrix $\boldsymbol{R}$; 2. Solve the equation $\boldsymbol{Q}\boldsymbol{R}=\boldsymbol{A}$ to obtain the orthogonal matrix $\boldsymbol{Q}$. Theoretically, both steps are very efficient, but in practice, the calculation will fail if the condition number is too large. For this, we introduced the <a href="https://papers.cool/arxiv/1809.11085">Shift technique</a>, which adds $\lambda \boldsymbol{I}$ ($\lambda=\epsilon \Vert\boldsymbol{A}^{\top}\boldsymbol{A}\Vert_F$) to $\boldsymbol{A}^{\top}\boldsymbol{A}$ to reduce the condition number.</p>
+
+    <p>The combination of the two is simply referred to as "SCQR (Shifted Cholesky QR)." A reference implementation based on Jax is as follows:</p>
+
+    <pre><code class="language-python">import jax.numpy as jnp
+from jax.scipy.linalg import solve_triangular
+from jax import lax
+
+
+def scqr(A, eps=1e-9):
+    """先按Shifted Cholesky QR算，失败则回退到默认QR
+    """
+    B, I = A.mT @ A, jnp.eye(A.shape[-1])
+    B += eps * jnp.linalg.matrix_norm(B, keepdims=True) * I
+    R = jnp.linalg.cholesky(B, upper=True)
+    Q = solve_triangular(R.mT, A.mT, lower=True).mT
+    return lax.cond(jnp.isfinite(Q).all(), lambda: Q, lambda: jnp.linalg.qr(A)[0])
+</code></pre>
+
+    <p>Note that the smaller $\lambda$ is, the more likely SCQR is to fail, while the larger $\lambda$ is, the more the result deviates from orthogonality, leading to worse effects. Therefore, $\lambda$ must be "just right," which means this scheme still has a high probability of falling back to standard QR. Additionally, the previous post mentioned that adding $\ColNorm$ to the power iteration (i.e., changing it to $\boldsymbol{V}_t = \QR(\boldsymbol{M}_t^{\top}\ColNorm(\boldsymbol{M}_t\boldsymbol{V}_{t-1}))$) can stabilize training effects, an effect which is even more pronounced under SCQR.</p>
+
+    <h2>Full Precision Enabled</h2>
+
+    <p>The above basically covers the entirety of the first article; it proved the feasibility of running the full process, and SCQR provided some acceleration compared to calling the framework's built-in QR decomposition directly. However, the speed was still significantly slower than the $\msign$ implemented via Newton-Schulz iteration, so we must find ways to speed it up.</p>
+
+    <p>This section introduces the first acceleration trick—<strong>enabling "full" FP32 precision matrix multiplication</strong>. First, it should be noted that the new steps in streaming power iteration are calculated in FP32 precision. However, starting from the introduction of the TF32 format with the A100, some frameworks (like Jax, which the author uses for small experiments, or certain versions of Torch) will convert FP32 arrays to TF32 format for acceleration by default during matrix multiplication. One must manually enable it to achieve true FP32 precision multiplication.</p>
+
+    <p>Readers might wonder: shouldn't increasing multiplication precision slow things down? This is indeed counter-intuitive, but it's not hard to understand. Reducing matrix precision often increases its condition number, thereby increasing the probability of SCQR failure and the chance of falling back to standard QR, which increases time consumption; conversely, increasing precision increases the success rate of SCQR, and standard QR is precisely the most time-consuming part. Thus, the total time consumption actually becomes shorter.</p>
+
+    <p>Data shows that Jax has always defaulted to TF32 for FP32 multiplication, so it must be manually enabled via <code>jax.config.update('jax_default_matmul_precision', 'highest')</code>. Torch is more complex; versions 1.7 to 1.11 defaulted to TF32 multiplication, but starting from 1.12, they defaulted back to FP32 multiplication. Considering Torch is now version 2.11, it is estimated that most users don't need to enable it manually.</p>
+
+    <h2>Double Orthogonalization</h2>
+
+    <p>The second acceleration trick I thought of is changing the power iteration step to:</p>
+
+    \begin{equation}
+    \boldsymbol{V}_t = \QR(\boldsymbol{M}_t^{\top}\QR(\boldsymbol{M}_t\boldsymbol{V}_{t-1}))
+    \end{equation}
+
+    <p>This step is also very counter-intuitive. By adding an extra $\QR$, the speed actually becomes faster in the end. The reason is similar to the previous section: it reduces the condition number of the matrix to be decomposed, thereby increasing the success rate of SCQR. Since SCQR itself is very fast, executing it twice doesn't add much time and significantly increases speed by greatly reducing the number of fallbacks to standard QR.</p>
+
+    <p>Understanding this trick involves two parts: first, that adding this $\QR$ step theoretically does not change the power iteration; second, that it indeed reduces the condition number. The first part is easy to understand: if $\boldsymbol{A}=\boldsymbol{Q}\boldsymbol{R}$, then $\boldsymbol{Q}=\boldsymbol{A}\boldsymbol{R}^{-1}$, where $\boldsymbol{R}^{-1}$ is also an upper triangular matrix. That is, QR decomposition can be written as right-multiplying by an upper triangular matrix, then:</p>
+
+    \begin{equation}
+    \boldsymbol{M}_t^{\top}\QR(\boldsymbol{M}_t\boldsymbol{V}_{t-1}) = \boldsymbol{M}_t^{\top}(\boldsymbol{M}_t\boldsymbol{V}_{t-1}\times \text{some upper triangular matrix}) = \boldsymbol{M}_t^{\top}\boldsymbol{M}_t\boldsymbol{V}_{t-1}\times \text{some upper triangular matrix}
+    \end{equation}
+
+    <p>Due to the uniqueness of QR decomposition, right-multiplying by an upper triangular matrix does not change the result of \(\QR\), so it is theoretically equivalent to $\QR(\boldsymbol{M}_t^{\top}\boldsymbol{M}_t\boldsymbol{V}_{t-1})$.</p>
+
+    <p>As for the condition number, it is the ratio of the maximum singular value to the minimum singular value. With a single $\QR$, the Cholesky decomposition matrix is $\boldsymbol{V}_{t-1}^{\top}(\boldsymbol{M}_t^{\top}\boldsymbol{M}_t)^2\boldsymbol{V}_{t-1}$. Note that orthogonal transforms do not change singular values and thus do not change the condition number, so the condition number of the matrix to be decomposed reaches the 4th power of the condition number of $\boldsymbol{M}_t$! If two $\QR$s are performed, then the matrix for Cholesky decomposition will be $\boldsymbol{Q}_t^{\top}(\boldsymbol{M}_t\boldsymbol{M}_t^{\top})\boldsymbol{Q}_t$, where $\boldsymbol{Q}_t$ is the orthogonal matrix from the first $\QR$. At this point, the condition number is only the square of that of $\boldsymbol{M}_t$, which is significantly lower.</p>
+
+    <h2>Translation Invariance</h2>
+
+    <p>The third acceleration trick was derived during a discussion with <a href="https://x.com/YouJiacheng">@YouJiacheng</a>; it utilizes the translation invariance of the characteristic matrix. We know that the power iteration $\boldsymbol{V}_t = \QR(\boldsymbol{M}_t^{\top}\boldsymbol{M}_t\boldsymbol{V}_{t-1})$ can also be understood as seeking the characteristic matrix of the positive definite matrix $\boldsymbol{M}_t^{\top}\boldsymbol{M}_t$, and positive definite matrices have a property—adding a multiple of the identity matrix to them does not change the characteristic matrix.</p>
+
+    <p>In other words, $\boldsymbol{M}_t^{\top}\boldsymbol{M}_t$ and $\boldsymbol{M}_t^{\top}\boldsymbol{M}_t + \lambda \boldsymbol{I}$ have the same characteristic matrix, so we can change the power iteration to:</p>
+
+    \begin{equation}
+    \boldsymbol{V}_t = \QR((\boldsymbol{M}_t^{\top}\boldsymbol{M}_t + \lambda \boldsymbol{I})\boldsymbol{V}_{t-1}) = \QR(\boldsymbol{M}_t^{\top}\boldsymbol{M}_t\boldsymbol{V}_{t-1} + \lambda \boldsymbol{V}_{t-1})
+    \end{equation}
+
+    <p>without changing the convergence result of the power iteration. What is the benefit of adding $\lambda \boldsymbol{I}$ to $\boldsymbol{M}_t^{\top}\boldsymbol{M}_t$? The answer is again to reduce the condition number, since $(\sigma_{\max} + \lambda)/(\sigma_{\min} + \lambda) < \sigma_{\max}/\sigma_{\min}$, so it can also improve the success rate of Cholesky QR. Note that we are talking about Cholesky QR here rather than SCQR, because setting an appropriate $\lambda$ externally ensures the condition number, making the Shift unnecessary, and the resulting output will definitely be orthogonal, which is also a good property.</p>
+
+    <p>But don't celebrate too early. While a larger $\lambda$ naturally makes Cholesky QR more likely to succeed, it also reduces the convergence speed of the power iteration! This is because the convergence speed of the power iteration depends on the ratio of adjacent singular values; the smaller $\sigma_{i+1}/\sigma_i$ is, the faster the convergence (with singular values sorted from largest to smallest). Since $(\sigma_{i+1} + \lambda)/(\sigma_i + \lambda) > \sigma_{i+1}/\sigma_i$, the larger $\lambda$ is, the slower the power iteration converges, and the final effect will worsen.</p>
+
+    <p>Therefore, we must carefully adjust the value of $\lambda$ to balance the success rate of Cholesky QR and the convergence speed of the power iteration. My tests found that taking $\lambda = \epsilon\Vert\boldsymbol{M}_t^{\top}\boldsymbol{M}_t\Vert_F$ with $\epsilon=10^{-4}$ achieves relatively good results. Another approach is to use a larger $\lambda$ to guarantee the Cholesky QR success rate and then perform two iterations to improve convergence speed, i.e.:</p>
+
+    \begin{equation}
+    \boldsymbol{V}_t = \QR(\boldsymbol{M}_t^{\top}\boldsymbol{M}_t\tilde{\boldsymbol{V}}_t + \lambda \tilde{\boldsymbol{V}}_t),\qquad \tilde{\boldsymbol{V}}_t = \QR(\boldsymbol{M}_t^{\top}\boldsymbol{M}_t\boldsymbol{V}_{t-1} + \lambda \boldsymbol{V}_{t-1})
+    \end{equation}
+
+    <p>This simultaneously accounts for both Cholesky QR and the power iteration, with the cost naturally being two $\QR$s per step.</p>
+
+    <h2>Multi-step Correction</h2>
+
+    <p>The fourth acceleration trick is called "SCQR2," which is a general correction technique for SCQR. Let's review the two steps of SCQR (given a matrix $\boldsymbol{A}$ to be decomposed):</p>
+
+    \begin{align}
+    1) &\, \boldsymbol{R}^{\top}\boldsymbol{R}= \boldsymbol{A}^{\top}\boldsymbol{A} + \lambda \boldsymbol{I} \quad (\text{Cholesky decomposition of } \boldsymbol{A}^{\top}\boldsymbol{A}+\lambda\boldsymbol{I}) \\[5pt]
+    2) &\, \boldsymbol{Q} = \boldsymbol{A}\boldsymbol{R}^{-1} \quad (\text{Solve the triangular linear equation } \boldsymbol{Q}\boldsymbol{R}=\boldsymbol{A})
+    \end{align}
+
+    <p>The problem with SCQR is that the larger $\lambda$ is, the easier Cholesky decomposition becomes, but the less orthogonal $\boldsymbol{Q} = \boldsymbol{A}\boldsymbol{R}^{-1}$ becomes. The idea of SCQR2 is to first perform SCQR with a large $\lambda$; although the result is not orthogonal, it is closer to orthogonal compared to the original $\boldsymbol{A}$, implying the condition number has been reduced. At this point, one can perform SCQR again on the result using a smaller $\lambda$ to correct the orthogonality. A rough implementation is as follows:</p>
+
+    <pre><code class="language-python">def scqr(A, eps=1e-9):
+    """Shifted Cholesky QR
+    """
+    B, I = A.mT @ A, jnp.eye(A.shape[-1])
+    B += eps * jnp.linalg.matrix_norm(B, keepdims=True) * I
+    R = jnp.linalg.cholesky(B, upper=True)
+    return solve_triangular(R.mT, A.mT, lower=True).mT
+
+
+def scqr2(A, eps1=1e-4, eps2=1e-8):
+    """SCQR两次，失败则回退到默认QR
+    """
+    Q = scqr(scqr(A, eps1), eps2)
+    return lax.cond(jnp.isfinite(Q).all(), lambda: Q, lambda: jnp.linalg.qr(A)[0])
+</code></pre>
+
+    <p>In principle, we need to understand why dual correction is feasible. Suppose the first SCQR results in $\boldsymbol{Q}_1 = \boldsymbol{A}\boldsymbol{R}_1^{-1}$. Although it deviates from orthogonality, it maintains the form of "$\boldsymbol{A}\times \text{upper triangular matrix}$." As mentioned earlier, right-multiplying by an upper triangular matrix does not change the result of QR, allowing us to perform another SCQR on top of the first one. Of course, in principle, we could perform even more correction steps.</p>
+
+    <h2>Method Summary</h2>
+
+    <p>We have discussed four acceleration tricks; here is a brief summary of their characteristics.</p>
+
+    <p>The first trick—increasing FP32 matrix multiplication precision—is universal; Jax requires manual enabling while newer versions of Torch have it enabled by default. The second, third, and fourth tricks are isolated and cannot be overlaid with each other. Intuitively, the upper bound of the second trick is higher because the third and fourth tricks take $\boldsymbol{M}_t^{\top}\boldsymbol{M}_t\boldsymbol{V}_{t-1}$ as input, meaning the condition number has already been amplified and they are attempting to remedy it, whereas the second method modifies the input to $\boldsymbol{M}_t^{\top}\QR(\boldsymbol{M}_t\boldsymbol{V}_{t-1})$, reducing the condition number from the source.</p>
+
+    <p>Interestingly, tricks two, three, and four all seem to point toward two $\QR$ iterations. Except for trick three, which can use a single $\QR$ if $\lambda$ is carefully adjusted, the rest require at least two $\QR$s. It seems this is indeed the most reliable choice. In terms of speed, trick three is the fastest if it can be adjusted to use only one $\QR$; otherwise, it is as fast as trick two. Trick four is somewhat unstable; performing SCQR2 on $\boldsymbol{M}_t^{\top}\boldsymbol{M}_t\boldsymbol{V}_{t-1}$ is fast but ineffective, while changing it to $\boldsymbol{M}_t^{\top}\ColNorm(\boldsymbol{M}_t\boldsymbol{V}_{t-1})$ guarantees effectiveness but reduces speed.</p>
+
+    <p>I recommend the combination of tricks one and two, as it provides guarantees in both effectiveness and efficiency. Tested separately, its speed is about half that of the Newton-Schulz iteration for $\msign$. Some readers might think, "all that effort for only half the speed?" This is actually quite ideal, considering we are calculating in FP32 and performing two \(\QR\)s. Furthermore, the computation time for the $\msign$ step accounts for only about 1% of the end-to-end time; doubling it only adds another 1% to the total time, which is acceptable.</p>
+
+    <p>Additionally, the efficiency of Newton-Schulz iteration depends on the number of iteration steps. If coefficients from <a href="translation_10996.html">Polar Express</a> are used to further increase the number of steps to improve accuracy, then the speed gap between it and our method will further narrow. In short, streaming power iteration is indeed slower, but it results in richer and more accurate information (SVD), allowing for more possibilities.</p>
+
+    <h2>Conclusion</h2>
+
+    <p>This article introduced further tricks for streaming power iteration, the essence of which is attempting to reduce the matrix condition number to improve the success rate of Cholesky QR.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/11673" style="color: #005fcc;">https://kexue.fm/archives/11673</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>
