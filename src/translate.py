@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import html as html_utils
 from typing import Any
 from pathlib import Path
 from dotenv import load_dotenv
@@ -16,7 +17,7 @@ load_dotenv(ROOT_DIR / '.env')
 exa = Exa(api_key = os.getenv("EXA_API_KEY"))
 firecrawl = FirecrawlApp(api_key=os.getenv("FIRECRAWL_API_KEY"))
 
-PROMPT = \
+MAIN_BODY_PROMPT = \
 """
     Can you translate this to English? 
 
@@ -58,6 +59,73 @@ PROMPT = \
 
     Ensure all `\\label{...}`, `\\ref{...}`, and `\\eqref{...}` in the original content remain unchanged and resolve correctly under MathJax.
     """
+
+COMMENTS_PROMPT = """
+Translate each of the comments in this text into English.
+There might be no comments.
+
+## How to identify comments and replies
+
+Each comment begins with a header like:
+
+    [NAME](some-user-identifier-link)
+    Month Day, Year
+
+- If the word "发表于" appears immediately after the user identifier link (before the date),
+  then this comment is a REPLY (set "is_reply": true).
+- Otherwise it is a top-level comment (set "is_reply": false).
+
+## Output format
+
+Return ONLY valid JSON with this structure:
+{
+  "has_comments": true/false,
+  "comments": [
+    {
+      "index": 1,
+      "author": "name or null",
+      "date": "date string or null",
+      "is_reply": false,
+      "original": "original comment text",
+      "translated": "english translation"
+    },
+    {
+      "index": 2,
+      "author": "name or null",
+      "date": "date string or null",
+      "is_reply": true,
+      "original": "original reply text",
+      "translated": "english translation"
+    }
+  ]
+}
+
+## Rules
+- "comments" is a flat array of ALL comments and replies in their original order.
+- Do not nest replies inside other comments.
+- Include only actual comments — no article body or site chrome.
+- If there are no comments, set "has_comments" to false and "comments" to [].
+- Do not use markdown fences.
+
+## Math preservation
+
+The page uses MathJax v3. Preserve ALL math exactly in the "translated" field.
+
+- Inline math: `$...$` or `\(...\)`
+- Display math: `\begin{equation}...\end{equation}`, `\begin{align}...\end{align}`, `$$...$$`, or `\[...\]`
+
+IMPORTANT: Do NOT nest display math wrappers.
+- If using AMS environments (`equation`, `align`, `gather`, etc.), write them directly — do NOT wrap them inside `$$..$$` or `\[...\]`.
+- If NOT using an AMS environment, wrap with `$$...$$` or `\[...\]`.
+
+In other words:
+- Use `$$ ... $$` / `\[ ... \]` for plain display math (no `\begin{equation}` / `\begin{align}` inside).
+- Use `\begin{equation}...\end{equation}` or `\begin{align}...\end{align}` directly (not inside `$$` or `\[...\]`).
+
+In the JSON string, backslashes must be escaped as `\\`, so `\begin{equation}` becomes `\\begin{equation}`, `\theta` becomes `\\theta`, etc.
+
+Do NOT convert math to plain text or Unicode symbols. Keep it in LaTeX form.
+"""
 
 # MODEL = "xiaomi/mimo-v2-flash:free"
 # MODEL = "nvidia/nemotron-3-nano-30b-a3b:free"
@@ -203,7 +271,7 @@ CSS_STYLES = \
     </style>
     """
 
-def get_translation(url: str) -> str:
+def get_translation_main_body(url: str) -> str:
     result = exa.get_contents(
         [url],
         text = True
@@ -221,7 +289,7 @@ def get_translation(url: str) -> str:
             "messages": [
                 {
                     "role": "user",
-                    "content": result + "\n\n" + PROMPT
+                    "content": result + "\n\n" + MAIN_BODY_PROMPT
                 }
             ],
             "reasoning": {
@@ -234,14 +302,76 @@ def get_translation(url: str) -> str:
     result = response.json()["choices"][0]["message"]["content"]
     return result
 
-def save_translation(url: str, path = None):
+def save_translation_main_body(url: str, path = None):
     if path is None:
         path = ROOT_DIR / 'translations'
-    result = get_translation(url)
+    result = get_translation_main_body(url)
     full_html = CSS_STYLES + "\n\n" + result
 
     with open(f"{path}/translation_{url.split('/')[-1]}.html", "w") as f:
         f.write(full_html)
+
+def _normalize_comment(comment: Any) -> dict[str, Any]:
+    """Normalize one comment entry."""
+    if not isinstance(comment, dict):
+        comment = {}
+
+    return {
+        "index": comment.get("index"),
+        "author": comment.get("author"),
+        "date": comment.get("date"),
+        "is_reply": bool(comment.get("is_reply", False)),
+        "original": comment.get("original") or "",
+        "translated": comment.get("translated") or "",
+    }
+
+def get_translation_comments(id: int) -> dict[str, Any]:
+    """Translate comment section content loaded from the raw directory and return structured JSON."""
+    
+    source_text = ""
+    cache_path = SCRIPT_DIR / f"{RAW_DIR}/{id}.txt"
+    if not os.path.exists(cache_path):
+        raise ValueError(f"No cached content found for article ID {id} at {cache_path}")
+    with open(cache_path, 'r') as f:
+        source_text = f.read()
+    
+    print("=== LOADED CONTENT FOR COMMENTS ===")
+
+    response = requests.post(
+        url="https://openrouter.ai/api/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
+        },
+        data=json.dumps({
+            "model": MODEL,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": source_text + "\n\n" + COMMENTS_PROMPT
+                }
+            ],
+            "response_format": {"type": "json_object"},
+            "reasoning": {
+                "effort": "none"
+            }
+        })
+    )
+    print("=== DONE GETTING COMMENTS TRANSLATION ===")
+
+    response.raise_for_status()
+    content = response.json()["choices"][0]["message"]["content"]
+    parsed = json.loads(content)
+
+    # Ensure a predictable shape even if model omits fields.
+    if "comments" not in parsed or not isinstance(parsed["comments"], list):
+        parsed["comments"] = []
+    parsed["comments"] = [_normalize_comment(comment) for comment in parsed["comments"]]
+    if "has_comments" not in parsed:
+        parsed["has_comments"] = len(parsed["comments"]) > 0
+    if "source_url" not in parsed:
+        parsed["source_url"] = f"https://kexue.fm/archives/{id}"
+
+    return parsed
 
 # ============== Caching Infrastructure ==============
 
@@ -625,7 +755,6 @@ def inject_author_date_from_cache(html: str, article_id: str) -> str:
 
     return html
 
-
 def standardize_author_date(html: str) -> str:
     """Standardize the author/date line to a consistent format.
 
@@ -668,7 +797,6 @@ def standardize_author_date(html: str) -> str:
                 continue
 
     return html
-
 
 def remove_translated_citation(html: str) -> str:
     """Remove the translated citation block from the original Chinese page.
@@ -713,7 +841,6 @@ def remove_translated_citation(html: str) -> str:
     )
 
     return html
-
 
 def postprocess_html(html: str, article_id: str) -> str:
     """Post-process translated HTML to add source link and citation.
@@ -843,7 +970,7 @@ def translate_from_cache(article_id: str, timeout: int = 300, max_retries: int =
                     "messages": [
                         {
                             "role": "user",
-                            "content": content + "\n\n" + PROMPT
+                            "content": content + "\n\n" + MAIN_BODY_PROMPT
                         }
                     ],
                     "reasoning": {
@@ -960,7 +1087,6 @@ def translate_all(path=None, skip_existing=True):
 
     return results
 
-
 def retry_failed_translations(path=None):
     """Retry all failed translations from the progress file."""
     if path is None:
@@ -1013,7 +1139,6 @@ def retry_failed_translations(path=None):
 
     return {"success": retried_success, "failed": retried_failed}
 
-
 def postprocess_all(path=None):
     """Re-run postprocessing on all translation files."""
     if path is None:
@@ -1042,7 +1167,6 @@ def postprocess_all(path=None):
             print(f"  Error on {article_id}: {e}")
 
     print(f"Done! Postprocessed {len(files)} files.")
-
 
 def add_new_post(url_or_id: str, force: bool = False):
     """Add a new blog post: fetch, cache, translate, and update index."""
@@ -1117,6 +1241,91 @@ def add_new_post(url_or_id: str, force: bool = False):
     print(f"  Translation: {translation_path}")
     print(f"  Original: {url}")
 
+def add_comments(url_or_id: str, force: bool = False):
+    """Add or refresh translated comments for an existing translated article."""
+    # Extract article ID from URL or use directly
+    if url_or_id.startswith('http'):
+        article_id = url_or_id.rstrip('/').split('/')[-1]
+        url = url_or_id
+    else:
+        article_id = url_or_id
+        url = f"https://kexue.fm/archives/{article_id}"
+
+    translation_path = ROOT_DIR / f"translations/translation_{article_id}.html"
+    if not os.path.exists(translation_path):
+        print(f"Translation not found: {translation_path}")
+        return
+
+    with open(translation_path, 'r') as f:
+        html = f.read()
+
+    # Check if comments section already exists
+    if re.search(r'<section id="comments-link"[^>]*>', html) and not force:
+        print(f"Comments section already exists: {translation_path}")
+        print("Use --force to re-generate comments")
+        return
+
+    comments_data = get_translation_comments(article_id)
+    comments = comments_data.get("comments", [])
+
+    def render_comment_node(comment: dict[str, Any]) -> str:
+        author = html_utils.escape(str(comment.get("author") or "Anonymous"))
+        date = comment.get("date")
+        date_text = html_utils.escape(str(date)) if date else None
+        translated = str(comment.get("translated") or "")
+        index = comment.get("index")
+        is_reply = comment.get("is_reply", False)
+
+        meta = f"{index}. {author}" if index is not None else author
+        if date_text:
+            meta += f" | {date_text}"
+        if is_reply:
+            meta += " ↩ reply"
+
+        margin_left = 18 if is_reply else 0
+        return f'''
+    <article style="padding: 0.9em 1em; border: 1px solid #e6e6e6; border-radius: 6px; margin: 0 0 0.8em {margin_left}px; background: #fff;">
+        <p style="margin: 0 0 0.45em 0; color: #666; font-size: 0.9em;">{meta}</p>
+        <div style="margin: 0 0 0.6em 0;">{translated}</div>
+    </article>'''
+
+    if comments:
+        comments_html = "\n".join(render_comment_node(comment) for comment in comments)
+        total_comments = len(comments)
+        comments_intro = f'<p style="margin: 0 0 0.8em 0; color: #555;">{total_comments} translated comment{"s" if total_comments != 1 else ""} (including replies).</p>'
+    else:
+        comments_html = '<p style="margin: 0 0 0.8em 0; color: #666;">No comments were found for this article.</p>'
+        comments_intro = ''
+
+    comments_block = f'''
+<section id="comments-link" style="margin-top: 2.5em; padding: 1.2em; background: #f7f7f7; border-radius: 8px;">
+    <p style="margin: 0 0 0.6em 0;"><strong>Comments</strong></p>
+    {comments_intro}
+    {comments_html}
+    <p style="margin: 0;">
+        For discussion and comments on the original article, visit:
+        <a href="{url}#comments" style="color: #005fcc;">{url}#comments</a>
+    </p>
+</section>
+'''
+
+    # Remove existing comments section (if any) before inserting updated content.
+    html = re.sub(
+        r'\s*<section id="comments-link"[^>]*>.*?</section>\s*',
+        '\n',
+        html,
+        flags=re.DOTALL
+    )
+
+    if '</body>' in html:
+        html = html.replace('</body>', comments_block + '\n</body>')
+    else:
+        html = html + comments_block
+
+    with open(translation_path, 'w') as f:
+        f.write(html)
+
+    print(f"Added comments section: {translation_path}")
 
 if __name__ == "__main__":
     import sys
@@ -1130,6 +1339,15 @@ if __name__ == "__main__":
             sys.exit(1)
         force = "--force" in sys.argv
         add_new_post(sys.argv[2], force=force)
+    elif len(sys.argv) > 1 and sys.argv[1] == "addcomments":
+        # Add comments section link to an existing translated article
+        if len(sys.argv) < 3:
+            print("Usage: python translate.py addcomments <url_or_id> [--force]")
+            print("Example: python translate.py addcomments https://kexue.fm/archives/12345")
+            print("Example: python translate.py addcomments 12345 --force")
+            sys.exit(1)
+        force = "--force" in sys.argv
+        add_comments(sys.argv[2], force=force)
     elif len(sys.argv) > 1 and sys.argv[1] == "cache":
         # Run caching and estimation
         run_cache_and_estimate()
@@ -1158,6 +1376,7 @@ if __name__ == "__main__":
         print()
         print("Commands:")
         print("  add <url_or_id> [--force]  Add and translate a new article")
+        print("  addcomments <url_or_id> [--force]  Add comments to an existing translation")
         print("  cache                      Run caching and estimation")
         print("  firecrawl                  Retry failed articles with Firecrawl")
         print("  translate <id>             Translate a specific cached article")
