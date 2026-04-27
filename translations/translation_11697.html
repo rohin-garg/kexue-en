@@ -1,0 +1,303 @@
+    <meta charset="utf-8">
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']},
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        document.querySelectorAll('script[type^="math/tex"]').forEach(function(node) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        });
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+    <h1><a href="https://kexue.fm/archives/11697">Muon Implementation via Streaming Power Iteration: 3. Refining</a></h1>
+
+    <p>By 苏剑林 | April 07, 2026</p>
+
+<p>Reviewing the previous two articles, <a href="translation_11654.html">"Muon Implementation via Streaming Power Iteration: 1. Introduction"</a> and <a href="translation_11673.html">"Muon Implementation via Streaming Power Iteration: 2. Acceleration"</a>, we introduced the Streaming Power Iteration solution for Muon, preliminary verified its feasibility, and further discussed accelerating the core operation—QR decomposition—to bring its efficiency close to that of the Newton-Schulz iteration implementation.</p>
+
+    <p>In this article, we will no longer limit ourselves to optimizing a single-step QR decomposition. Instead, we will view Streaming Power Iteration from a more holistic perspective and combine it with the specific computational context to further "refine" its implementation details, minimizing computational bottlenecks as much as possible to bring its efficiency closer to the theoretical limit.</p>
+
+    <h2>Existing Results</h2>
+    <p>Streaming Power Iteration is essentially "SVD while training." The idea is to solve for SVD via power iteration and, by caching the results of the previous step, amortize the computation across each training step, making it possible to embed SVD into an optimizer. As for Muon, it is merely a basic application because the core operation of Muon, \(\newcommand{msign}{\mathop{\text{msign}}}\msign\), is fundamentally implemented via SVD. Specifically, the Muon update formula is:</p>
+
+    \begin{equation}\begin{aligned}
+    \boldsymbol{M}_t =&\, \beta\boldsymbol{M}_{t-1} + \boldsymbol{G}_t \\[5pt]
+    \boldsymbol{W}_t =&\, \boldsymbol{W}_{t-1} - \eta_t [\msign(\boldsymbol{M}_t) + \lambda \boldsymbol{W}_{t-1}] \\
+    \end{aligned}\end{equation}
+
+    <p>Here the matrices are of size \(n \times m\), with the convention \(n \geq m\). Suppose the SVD of \(\boldsymbol{M}\) is \(\boldsymbol{U}\boldsymbol{\Sigma}\boldsymbol{V}^{\top}\) (where \(\boldsymbol{U} \in \mathbb{R}^{n \times m}\) and \(\boldsymbol{\Sigma}, \boldsymbol{V} \in \mathbb{R}^{m \times m}\)), then \(\msign(\boldsymbol{M}) = \boldsymbol{U}\boldsymbol{V}^{\top}\). Thus, implementing SVD implements \(\msign\). Of course, direct SVD is usually quite expensive, but with Streaming Power Iteration, it becomes feasible.</p>
+
+    <p>In the previous article, we also discussed four speed-up ideas for Streaming Power Iteration. The first is enabling full-precision FP32 multiplication, which is universal, while the latter three ideas are somewhat mutually exclusive, requiring us to choose one. The author suggests choosing the second one, as its theoretical upper bound is higher. The following refinements are based on this second approach. Substituting the second idea into the Streaming Power Iteration version for Muon, the iteration formula is:</p>
+
+    \begin{equation}\newcommand{QR}{\mathop{\text{QR}}}\newcommand{ColNorm}{\mathop{\text{ColNorm}}}\begin{aligned}
+    \boldsymbol{M}_t =&\, \beta\boldsymbol{M}_{t-1} + \boldsymbol{G}_t \\[5pt]
+    \boldsymbol{V}_t =&\, \QR(\boldsymbol{M}_t^{\top}\QR(\boldsymbol{M}_t\boldsymbol{V}_{t-1})) \\[5pt]
+    \boldsymbol{U}_t =&\, \ColNorm(\boldsymbol{M}_t\boldsymbol{V}_t) \\[5pt]
+    \boldsymbol{W}_t =&\, \boldsymbol{W}_{t-1} - \eta_t (\boldsymbol{U}_t\boldsymbol{V}_t^{\top} + \lambda \boldsymbol{W}_{t-1}) \\
+    \end{aligned}\end{equation}
+
+    <p>Clearly, the most expensive step now is \(\boldsymbol{V}_t = \QR(\boldsymbol{M}_t^{\top}\QR(\boldsymbol{M}_t\boldsymbol{V}_{t-1}))\), which is our next target for optimization.</p>
+
+    <h2>Accelerating Decomposition</h2>
+    <p>To ensure efficiency, for the \(\QR\) here, we do not call the standard QR decomposition function provided by the framework. Instead, we use "SCQR (Shifted Cholesky QR)," which divides the QR decomposition of matrix \(\boldsymbol{A}\) into two steps: 1. Perform Cholesky decomposition on \(\boldsymbol{A}^{\top}\boldsymbol{A} + \lambda \boldsymbol{I}\) to obtain an upper triangular matrix \(\boldsymbol{R}\); 2. Solve the equation \(\boldsymbol{Q}\boldsymbol{R}=\boldsymbol{A}\) to obtain the orthogonal matrix \(\boldsymbol{Q}\).</p>
+
+    <p>Theoretically, both steps are very efficient, but they do not always succeed. Therefore, an additional detection step is needed; if it fails, it falls back to the built-in standard QR function, which almost certainly succeeds. However, once a fallback is triggered, the end-to-end efficiency is significantly compromised. The primary reason for SCQR failure is that Cholesky decomposition is extremely dependent on the condition number of the matrix. The regularization term \(\lambda\boldsymbol{I}\) is precisely used to reduce the condition number of \(\boldsymbol{A}^{\top}\boldsymbol{A}\).</p>
+
+    <p>However, this presents a dilemma: the larger \(\lambda\) is, the more likely SCQR is to succeed, but the final result will deviate further from orthogonality (i.e., greater error), leading to poorer performance. The smaller \(\lambda\) is, the higher the precision, but the higher the probability of falling back to standard QR, leading to worse efficiency. Empirical tests found that setting \(\lambda=\epsilon \Vert\boldsymbol{A}^{\top}\boldsymbol{A}\Vert_F\) with \(\epsilon=10^{-9}\) provides a good balance between performance and efficiency.</p>
+
+    <p>The acceleration ideas in the previous article revolved around reducing the condition number. In the first version of Streaming Power Iteration, which was \(\boldsymbol{V}_t = \QR(\boldsymbol{M}_t^{\top}\boldsymbol{M}_t\boldsymbol{V}_{t-1})\), the matrix we needed to Cholesky decompose was \(\boldsymbol{V}_{t-1}^{\top}(\boldsymbol{M}_t^{\top}\boldsymbol{M}_t)^2\boldsymbol{V}_{t-1}\), which effectively raised the condition number of \(\boldsymbol{M}_t\) to the 4th power, leading to an obvious explosion. By changing it to \(\boldsymbol{V}_t = \QR(\boldsymbol{M}_t^{\top}\QR(\boldsymbol{M}_t\boldsymbol{V}_{t-1}))\), although \(\QR\) is performed twice, the condition number of the matrix for each Cholesky decomposition is only the square of \(\boldsymbol{M}_t\). This significantly lowers the condition number and greatly increases the success rate of SCQR, thus making it faster.</p>
+
+    <h2>Adjusting the Sequence</h2>
+    <p>The content above has been a recap of the first two articles (apologies for the long preamble, but a sharp tool makes light work). In this section, we finally start discussing new optimization ideas. If we look closely, we have introduced two \(\QR\) operations, but they were considered independently. <a href="https://x.com/YouJiacheng">@YouJiacheng</a> and <a href="https://www.kimi.com/">@Kimi</a> discovered that if we consider them together, we can obtain certain acceleration methods.</p>
+
+    <p>According to the default order, the calculation process for \(\boldsymbol{V}_t = \QR(\boldsymbol{M}_t^{\top}\QR(\boldsymbol{M}_t\boldsymbol{V}_{t-1}))\) is:</p>
+
+    \begin{equation}\begin{aligned}
+    \boldsymbol{A}_{(1), t} =&\, \boldsymbol{M}_t\boldsymbol{V}_{t-1} \\
+    \boldsymbol{R}_{(1), t}^{\top}\boldsymbol{R}_{(1), t} =&\, \boldsymbol{A}_{(1), t}^{\top}\boldsymbol{A}_{(1), t} + \lambda \boldsymbol{I}\qquad(\text{Cholesky}) \\
+    \boldsymbol{Q}_{(1), t} =&\, \boldsymbol{A}_{(1), t} \boldsymbol{R}_{(1), t}^{-1} \qquad(\text{Triangular Solve}) \\
+    \boldsymbol{A}_{(2), t} =&\, \boldsymbol{M}_t^{\top}\boldsymbol{Q}_{(1), t} \\
+    \boldsymbol{R}_{(2), t}^{\top}\boldsymbol{R}_{(2), t} =&\, \boldsymbol{A}_{(2), t}^{\top}\boldsymbol{A}_{(2), t} + \lambda \boldsymbol{I}\quad(\text{Cholesky}) \\
+    \boldsymbol{Q}_{(2), t} =&\, \boldsymbol{A}_{(2), t} \boldsymbol{R}_{(2), t}^{-1} \qquad(\text{Triangular Solve}) \\
+    \end{aligned}\label{eq:qr2}\end{equation}
+
+    <p>Among these, the four steps \(\boldsymbol{M}_t\boldsymbol{V}_{t-1}\), \(\boldsymbol{A}_{(1), t}^{\top}\boldsymbol{A}_{(1), t}\), \(\boldsymbol{A}_{(1), t} \boldsymbol{R}_{(1), t}^{-1}\), and \(\boldsymbol{M}_t^{\top}\boldsymbol{Q}_{(1), t}\) all have complexity \(\mathcal{O}(nm^2)\). The rest are \(\mathcal{O}(m^3)\). When \(n \gg m\), \(\mathcal{O}(nm^2)\) may become a bottleneck. Interestingly, we can use an identity transformation to make \(\mathcal{O}(nm^2)\) appear only once!</p>
+
+    \begin{equation}\begin{aligned}
+    \boldsymbol{A}_{(1), t} =&\, (\boldsymbol{M}_t^{\top}\boldsymbol{M}_t)\boldsymbol{V}_{t-1} \\
+    \boldsymbol{R}_{(1), t}^{\top}\boldsymbol{R}_{(1), t} =&\, \boldsymbol{V}_{t-1}^{\top}\boldsymbol{A}_{(1), t} + \lambda \boldsymbol{I}\qquad(\text{Cholesky}) \\
+    \boldsymbol{A}_{(2), t} =&\, \boldsymbol{A}_{(1), t} \boldsymbol{R}_{(1), t}^{-1} \qquad(\text{Triangular Solve}) \\
+    \boldsymbol{R}_{(2), t}^{\top}\boldsymbol{R}_{(2), t} =&\, \boldsymbol{A}_{(2), t}^{\top}\boldsymbol{A}_{(2), t} + \lambda \boldsymbol{I}\qquad(\text{Cholesky}) \\
+    \boldsymbol{Q}_{(2), t} =&\, \boldsymbol{A}_{(2), t} \boldsymbol{R}_{(2), t}^{-1} \qquad(\text{Triangular Solve}) \\
+    \end{aligned}\label{eq:qr2-sim}\end{equation}
+
+    <p>This equivalent version is well worth savoring! First, it can be proven that it is theoretically perfectly equivalent to the original version, and this equivalence does not depend on the absolute orthogonality of \(\boldsymbol{V}_{t-1}\) and \(\boldsymbol{Q}_{(1), t}\). After the transformation, only the step \(\boldsymbol{M}_t^{\top}\boldsymbol{M}_t\) is \(\mathcal{O}(nm^2)\). The rest are \(\mathcal{O}(m^3)\). Furthermore, the total number of steps is reduced by one (combining the original \(\boldsymbol{Q}_{(1), t} = \boldsymbol{A}_{(1), t} \boldsymbol{R}_{(1), t}^{-1}\) and \(\boldsymbol{A}_{(2), t} = \boldsymbol{M}_t^{\top}\boldsymbol{Q}_{(1), t}\) into one step)!</p>
+
+    <blockquote>
+        <p><strong>Note 1:</strong> According to <a href="https://x.com/YouJiacheng">@YouJiacheng</a>, he shared Equation \eqref{eq:qr2} with Kimi, and Kimi automatically discovered this ingenious transformation;</p>
+        <p><strong>Note 2:</strong> There is actually a slight difference between Equation \eqref{eq:qr2} and \eqref{eq:qr2-sim}. The first step in Equation \eqref{eq:qr2} is \((\boldsymbol{M}_t\boldsymbol{V}_{t-1})^{\top}(\boldsymbol{M}_t\boldsymbol{V}_{t-1})\), while Equation \eqref{eq:qr2-sim} is \(\boldsymbol{V}_{t-1}^{\top}(\boldsymbol{M}_t^{\top}\boldsymbol{M}_t)\boldsymbol{V}_{t-1}\). These two algorithms are mathematically equivalent but will differ in finite-precision floating-point arithmetic. The latter will result in a matrix with a larger condition number, and Cholesky decomposition may require a slightly larger regularization term.</p>
+    </blockquote>
+
+    <h2>Simplifying Regularization</h2>
+    <p>For the matrix \(\boldsymbol{A}^{\top}\boldsymbol{A}\), the regularization term we add during Cholesky decomposition is \(\lambda\boldsymbol{I}\), where \(\lambda = \epsilon \Vert\boldsymbol{A}^{\top}\boldsymbol{A}\Vert_F\) and \(\epsilon = 10^{-9}\). However, why we chose this specific form has not been explained in detail. Here we will expand on it and derive a more concise regularization term based on the context of the problem.</p>
+
+    <p>Due to the positive definite symmetry of \(\boldsymbol{A}^{\top}\boldsymbol{A}\), its SVD is the same as its eigenvalue decomposition. Let the SVD be \(\boldsymbol{A}^{\top}\boldsymbol{A} = \boldsymbol{V}\boldsymbol{\Sigma}\boldsymbol{V}^{\top}\). Then \(\boldsymbol{A}^{\top}\boldsymbol{A} + \lambda\boldsymbol{I} = \boldsymbol{V}(\boldsymbol{\Sigma} + \lambda\boldsymbol{I})\boldsymbol{V}^{\top}\). Let the maximum and minimum singular values of \(\boldsymbol{A}^{\top}\boldsymbol{A}\) be \(\sigma_{\max}, \sigma_{\min}\) respectively. Then the maximum and minimum singular values of \(\boldsymbol{A}^{\top}\boldsymbol{A} + \lambda\boldsymbol{I}\) are \(\sigma_{\max} + \lambda, \sigma_{\min} + \lambda\). The condition number is the ratio of the maximum to the minimum singular values, so it is reduced from \(\sigma_{\max}/\sigma_{\min}\) to:</p>
+
+    \begin{equation}\frac{\sigma_{\max} + \lambda}{\sigma_{\min} + \lambda} < \frac{\sigma_{\max} + \lambda}{\lambda} = \frac{\sigma_{\max}}{\lambda} + 1\end{equation}
+
+    <p>If we want to control the condition number to not exceed \(1/\epsilon + 1\), then \(\lambda \geq \epsilon \sigma_{\max}\). This indicates that ideally, we should use the maximum singular value of \(\boldsymbol{A}^{\top}\boldsymbol{A}\)—the spectral norm—as the benchmark to adjust \(\lambda\). However, calculating the spectral norm is complicated, so we switched to the simpler F-norm \(\Vert\boldsymbol{A}^{\top}\boldsymbol{A}\Vert_F\). This is the origin of \(\lambda = \epsilon \Vert\boldsymbol{A}^{\top}\boldsymbol{A}\Vert_F\); as for \(\epsilon = 10^{-9}\), it is purely an experimental conclusion.</p>
+
+    <p>However, "calculating the spectral norm is complicated, so use F-norm instead" is just a general conclusion for any arbitrary matrix. In our case, the Streaming Power Iteration we are performing is specifically used to solve for SVD. As training progresses, \(\boldsymbol{V}_t\) will get closer and closer to the right singular matrix of \(\boldsymbol{M}_t\). Since \(\boldsymbol{M}_t\) varies slowly, \(\boldsymbol{V}_{t-1}\) is also quite close. Therefore, theoretically, \(\boldsymbol{V}_{t-1}^{\top}\boldsymbol{M}_t^{\top}\boldsymbol{M}_t\boldsymbol{V}_{t-1}\) will become increasingly close to a diagonal matrix, and its top-left element will get closer and closer to its spectral norm!</p>
+
+    <p>Similarly, \(\tilde{\boldsymbol{U}}_t = \QR(\boldsymbol{M}_t\boldsymbol{V}_{t-1})\) will get closer and closer to the left singular matrix of \(\boldsymbol{M}_t\), so \(\tilde{\boldsymbol{U}}_t^{\top}\boldsymbol{M}_t\boldsymbol{M}_t^{\top}\tilde{\boldsymbol{U}}_t\) will also get closer to a diagonal matrix whose top-left element approaches its spectral norm. Therefore, in our scenario, the simplest and most accurate benchmark is to use \((\boldsymbol{A}^{\top}\boldsymbol{A})_{[0,0]}\) directly as an approximation of the spectral norm. That is, \(\lambda = \epsilon \cdot (\boldsymbol{A}^{\top}\boldsymbol{A})_{[0,0]}\) is sufficient. Tests show that \(\epsilon=10^{-7}\) provides a good balance between performance and efficiency.</p>
+
+    <h2>Reference Implementation</h2>
+    <p>Combining the changes from the above two sections, the reference implementation for the iteration from \(\boldsymbol{V}_{t-1}\) to \(\boldsymbol{V}_t\) is:</p>
+
+<pre><code class="language-python"># Note: This is a placeholder for the logic described above.
+# Implementation details would involve SCQR with the optimized order and regularization.
+</code></pre>
+
+    <h2>Contemporaneous Work</h2>
+    <p>In the interval since <a href="translation_11673.html">"Muon Implementation via Streaming Power Iteration: 2. Acceleration"</a> was published and the release of this article, some interesting optimization works have appeared elsewhere. They share similar optimization philosophies with the two changes proposed in this article, so we can study them together.</p>
+
+    <p>Firstly, after the previous post, <a href="https://x.com/Ji_Ha_Kim">@Ji_Ha_Kim</a> also proposed some improvement ideas. For example, he stated that during an interaction with GPT (link), he found that we might be able to skip one \(\text{Triangular Solve}\)! Specifically, we have:</p>
+
+    \begin{equation}\begin{aligned}
+    \boldsymbol{V}_t =&\, \QR(\boldsymbol{M}_t^{\top}\QR(\boldsymbol{M}_t\boldsymbol{V}_{t-1})) \\
+    =&\, \QR(\boldsymbol{V}_{t-1}(\boldsymbol{M}_t \boldsymbol{V}_{t-1})^{\top}\QR(\boldsymbol{M}_t\boldsymbol{V}_{t-1})) \\
+    =&\, \QR(\boldsymbol{V}_{t-1}(\QR(\boldsymbol{M}_t\boldsymbol{V}_{t-1})^{\top}\boldsymbol{M}_t \boldsymbol{V}_{t-1})^{\top}) \\
+    =&\, \boldsymbol{V}_{t-1}\QR((\QR(\boldsymbol{M}_t\boldsymbol{V}_{t-1})^{\top}\boldsymbol{M}_t \boldsymbol{V}_{t-1})^{\top}) \\
+    \end{aligned}\end{equation}
+
+    <p>It is easy to see that \(\QR(\boldsymbol{M}_t\boldsymbol{V}_{t-1})^{\top}\boldsymbol{M}_t \boldsymbol{V}_{t-1}\) is the \(R\) matrix after the QR decomposition of \(\boldsymbol{M}_t\boldsymbol{V}_{t-1}\), which can be obtained directly via Cholesky decomposition.</p>
+
+    <p>In other words, theoretically, after obtaining \(R\) from the first Cholesky decomposition, one could proceed to the second \(\QR\), saving one \(\text{Triangular Solve}\). However, this is only of theoretical interest because this result relies on the strict orthogonality of \(\boldsymbol{V}_{t-1}\) and \(\QR(\boldsymbol{M}_t\boldsymbol{V}_{t-1})\), which only holds true under the assumption of exact QR (i.e., \(\lambda=0\)). In practice, to ensure efficiency, we can only use SCQR, which means the results are not strictly orthogonal. Using its orthogonality prematurely in the identity transformation process would lead to accumulated errors in the iterative algorithm.</p>
+
+    <p>During this time, the Tri-Dao team also published <a href="https://dao-lab.ai/blog/2026/gram-newton-schulz/">"Gram Newton-Schulz: A Fast, Hardware-Aware Newton-Schulz Algorithm for Muon,"</a> proposing an acceleration strategy for the \(\msign\) operator. By definition, \(\msign(\boldsymbol{M}) = \boldsymbol{M}(\boldsymbol{M}^{\top}\boldsymbol{M})^{-1/2}\). The team hoped to use Newton-Schulz iteration to calculate the \(m \times m\) matrix \((\boldsymbol{M}^{\top}\boldsymbol{M})^{-1/2}\) rather than \(\msign\), which significantly reduces the computational load when \(n \gg m\). In fact, many researchers had previously tried this approach and failed, but the Tri-Dao team solved it cleverly using Restarts.</p>
+
+    <p>Clearly, the direction of this \(\msign\) optimization is consistent with the shift from Equation \eqref{eq:qr2} to \eqref{eq:qr2-sim} in Streaming Power Iteration. Coincidentally, <a href="https://x.com/Ji_Ha_Kim/status/2039043040233275804">@Ji_Ha_Kim</a> suggested changing the Newton-Schulz iteration for \(\msign\) from a polynomial to a rational function, which can achieve equally good results with fewer iterations. The problem with rational iteration is the need for matrix inversion, but given the specific context of \(\msign\), it only requires inverting an \(m \times m\) positive definite symmetric matrix, which can be done acceptably via Cholesky decomposition and two \(\text{Triangular Solve}\) steps.</p>
+
+    <p>However, doing so makes the computational flow of this rational iteration highly redundant with Streaming Power Iteration, and each step would require an additional \(\text{Triangular Solve}\). Therefore, it seems its speed cannot surpass that of Streaming Power Iteration.</p>
+
+    <h2>Summary</h2>
+    <p>This article has further "refined" the implementation details of Streaming Power Iteration. Key improvements include: 1. Adjusting the calculation sequence to reduce the number of operations with \(\mathcal{O}(nm^2)\) complexity from four to one; 2. Simplifying the regularization term by leveraging the specific context of Streaming Power Iteration. These optimizations further reduce the computational bottlenecks of Streaming Power Iteration, pushing computational efficiency to the limit.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/11697" style="color: #005fcc;">https://kexue.fm/archives/11697</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

@@ -1,6 +1,8 @@
 # kexue-en
 English translation of kexue.fm
 
+Live index: https://rohin-garg.github.io/kexue-en/index.html
+
 ## Adding a New Post
 
 ```bash

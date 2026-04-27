@@ -65,6 +65,7 @@ MODEL = "google/gemini-3-flash-preview"
 
 CSS_STYLES = \
     """
+    <meta charset="utf-8">
     <style type="text/css">
 
     body {

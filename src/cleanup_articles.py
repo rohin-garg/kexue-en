@@ -220,6 +220,13 @@ def cleanup_article(content: str) -> str:
         content
     )
 
+    # 14b. Remove duplicate translated author/date lines after the canonical one.
+    content = re.sub(
+        r'(<p>By 苏剑林 \| [^<]+</p>)\s*(?:<p>By (?:Jianlin Su|Su Jianlin) \| [^<]+</p>\s*)+',
+        r'\1\n\n',
+        content
+    )
+
     # 15. Remove excessive blank lines (more than 2 consecutive)
     content = re.sub(r'\n{4,}', '\n\n\n', content)
 
