@@ -1,0 +1,308 @@
+
+    <meta charset="utf-8">
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+    <h1><a href="https://kexue.fm/archives/11736">How to Estimate the Spectral Norm of a Matrix More Scientifically?</a></h1>
+    <p>By 苏剑林 | May 04, 2026</p>
+
+    <p>The spectral norm is a core concept in matrix analysis and plays an important role in the field of deep learning—from the Lipschitz constraints required in the WGAN era to the training stability of modern LLMs, and to the emerging Muon optimizer, all are closely related to the spectral norm of matrix parameters. Therefore, how to efficiently and accurately estimate the spectral norm is becoming increasingly important and worthy of our in-depth study.</p>
+
+    <p>As is well known, Power Iteration is the standard scheme for estimating the spectral norm, but it still has significant room for improvement. This article will briefly organize some ideas for estimating the spectral norm, including improving the convergence speed of power iteration and how to estimate a strict upper bound of the spectral norm, among others.</p>
+
+    <h2>Spectral Norm</h2>
+    <p>The spectral norm is defined as</p>
+    \begin{equation}\Vert\boldsymbol{W}\Vert_2 = \max_{\Vert\boldsymbol{x}\Vert_2=1} \Vert \boldsymbol{W}\boldsymbol{x}\Vert_2\end{equation}
+    <p>where $\boldsymbol{W}\in\mathbb{R}^{n\times m}, \boldsymbol{x}\in\mathbb{R}^m$, and without loss of generality, let $n\geq m$. From the definition, the spectral norm represents the "expansion rate" of a linear layer—after an input vector passes through the linear layer, the length of the output vector is expanded by at most $\Vert\boldsymbol{W}\Vert_2$ times. The spectral norm is also equal to the largest singular value of the matrix (for proof, refer to <a href="translation_10407.html">"The Path to Low-Rank Approximation (II): SVD"</a>); we will not expand further on these basic contents.</p>
+
+    <p>The author first encountered the spectral norm when GANs were popular and <a href="translation_6280.html">WGAN</a> "emerged," emphasizing the necessity for the discriminator to satisfy the Lipschitz constraint. The Lipschitz constant of a linear layer $\boldsymbol{W}\boldsymbol{x}$ is exactly the spectral norm of the matrix $\boldsymbol{W}$, leading to techniques such as spectral normalization and spectral regularization. Interested readers can refer to <a href="translation_6051.html">"Lipschitz Constraint in Deep Learning: Generalization and Generative Models"</a>.</p>
+
+    <p>In recent years, the increasingly popular <a href="https://kexue.fm/tag/muon/">Muon</a> optimizer is also closely related to the spectral norm, as it is often viewed as the steepest descent under the spectral norm. Meanwhile, in <a href="translation_11729.html">"Beyond MuP: 4. Defending Parameter Stability,"</a> we also proposed constraining the spectral norm of parameters to ensure training stability. These contents all raise requirements for the accurate calculation of the spectral norm.</p>
+
+    <h2>Power Iteration</h2>
+    <p>Calculating the spectral norm through SVD is the most direct method, but it is clearly too expensive. We usually use Power Iteration:</p>
+    \begin{equation}\boldsymbol{v}^{(t)} = \frac{\boldsymbol{W}^{\top}\boldsymbol{W}\boldsymbol{v}^{(t-1)}}{\Vert\boldsymbol{W}^{\top}\boldsymbol{W}\boldsymbol{v}^{(t-1)}\Vert_2}\end{equation}
+    <p>It converges to the dominant right singular vector $\boldsymbol{v}_1$ at a rate of $(\sigma_2/\sigma_1)^{2t}$. After $T$ steps of iteration, we have</p>
+    \begin{equation}\sigma_1 \approx \Vert\boldsymbol{W}\boldsymbol{v}^{(t)}\Vert_2\end{equation}
+    <p>Proof can be found in <a href="translation_10648.html">"Thoughts from Spectral Norm Gradient to a New Type of Weight Decay."</a> In practice, if we only care about the spectral norm and not the singular vectors, the convergence speed is often more optimistic than $(\sigma_2/\sigma_1)^{2t}$. Furthermore, the result of power iteration is easily influenced by the initial value $\boldsymbol{v}^{(0)}$, causing fluctuations; we can consider calculating $k$ paths in parallel and then taking the maximum value.</p>
+
+    <p>If we calculate $k$ paths simultaneously and replace the L2 Normalize with orthogonalization of these $k$ vectors at each iteration, i.e.,</p>
+    \begin{equation}\newcommand{QR}{\mathop{\text{QR}}}\boldsymbol{V}^{(t)} = \QR(\boldsymbol{W}^{\top}\boldsymbol{W}\boldsymbol{V}^{(t-1)})\end{equation}
+    <p>then the result will converge to the first $k$ right singular vectors, from which the first $k$ singular values can be obtained. The principle can be found in <a href="translation_11710.html">"Muon Implementation Based on Streaming Power Iteration: 4. Principles."</a> However, this extension will not be expanded upon in this article, focusing instead on the estimation of the spectral norm—the largest singular value.</p>
+
+    <h2>Computing the Gradient</h2>
+    <p>First, here is a reference implementation of power iteration based on Jax:</p>
+<pre><code># (Original code placeholder)
+</code></pre>
+    <p>Obviously, the complexity of power iteration is $\mathcal{O}(mnTk)$, which is quite ideal in terms of complexity alone. If it is only for monitoring purposes, the above writing style is sufficient. However, if it is for spectral normalization or regularization purposes, we need the gradient of the spectral norm. According to the above implementation, it would require backpropagation step-by-step through the power iteration loop, which has high computational complexity.</p>
+
+    <p>In fact, in <a href="translation_10648.html">"Thoughts from Spectral Norm Gradient to a New Type of Weight Decay,"</a> we already derived the gradient of the spectral norm $\nabla_{\boldsymbol{W}}\sigma_1 = \boldsymbol{u}_1 \boldsymbol{v}_1^{\top}$. Therefore, we can directly define its gradient as $\nabla_{\boldsymbol{W}}\sigma_1 = \boldsymbol{u}_1 \boldsymbol{v}_1^{\top}$ to reduce the backpropagation complexity. Besides, we can use $\sigma_1 = \boldsymbol{u}_1^{\top}\boldsymbol{W}\boldsymbol{v}_1$ and directly output during the forward pass:</p>
+    \begin{equation}\sigma_1 = \color{skyblue}{\mathop{\text{sg}}[}\boldsymbol{u}_1^{\top}\color{skyblue}{]}\boldsymbol{W}\color{skyblue}{\mathop{\text{sg}}[}\boldsymbol{v}_1\color{skyblue}{]}\end{equation}
+    <p>where $\color{skyblue}{\mathop{\text{sg}}[\,]}$ is the stop gradient operator. In this way, automatic differentiation will only apply to $\boldsymbol{W}$, and the result will be $\boldsymbol{u}_1 \boldsymbol{v}_1^{\top}$, avoiding backpropagation into the power iterations of $\boldsymbol{u}_1, \boldsymbol{v}_1$.</p>
+
+    <h2>"Waste Not"</h2>
+    <p>Through $T$ steps of power iteration, we obtain a sequence of vectors $\boldsymbol{v}^{(1)}, \boldsymbol{v}^{(2)}, \cdots, \boldsymbol{v}^{(T)}$, but ultimately we only use $\boldsymbol{v}^{(T)}$ to estimate $\sigma_1$. This seems somewhat "wasteful," so some have thought about utilizing all of them to form a better estimate of the spectral norm.</p>
+
+    <p>Usually, $\boldsymbol{v}^{(1)}, \boldsymbol{v}^{(2)}, \cdots, \boldsymbol{v}^{(T)}$ are distinct but get closer to $\boldsymbol{v}_1$. We can imagine them as "$\boldsymbol{v}_1$ plus some noise." If we perform "noise reduction" together, it is indeed possible to obtain more accurate results. Specifically, we consider using a linear combination of $\boldsymbol{v}^{(1)}, \boldsymbol{v}^{(2)}, \cdots, \boldsymbol{v}^{(T)}$ to construct a better approximation of $\boldsymbol{v}_1$. The subspace spanned by this group of vectors is called the "Krylov subspace."</p>
+
+    <p>For simplicity, we first perform orthogonalization to obtain an equivalent orthonormal basis $\boldsymbol{Q} = [\boldsymbol{q}_1, \boldsymbol{q}_2, \cdots, \boldsymbol{q}_T] \in \mathbb{R}^{m \times T}$. Next, we want to find coefficients $\boldsymbol{x} = [x_1, x_2, \cdots, x_T]^{\top} \in \mathbb{R}^T$ such that the vector $\sum_{i=1}^T x_i \boldsymbol{q}_i = \boldsymbol{Q}\boldsymbol{x}$ satisfies as much as possible:</p>
+    \begin{equation}\boldsymbol{W}^{\top}\boldsymbol{W}\boldsymbol{Q}\boldsymbol{x} \approx \sigma_1^2\boldsymbol{Q}\boldsymbol{x}\end{equation}
+    <p>Multiplying both sides by $\boldsymbol{Q}^{\top}$ gives $\boldsymbol{Q}^{\top}\boldsymbol{W}^{\top}\boldsymbol{W}\boldsymbol{Q}\boldsymbol{x} \approx \sigma_1^2\boldsymbol{x}$. This indicates that $\sigma_1^2, \boldsymbol{x}$ are the eigenvalue and eigenvector of $(\boldsymbol{W}\boldsymbol{Q})^{\top}\boldsymbol{W}\boldsymbol{Q}$, respectively. This means we only need to perform eigenvalue decomposition on it, find its largest eigenvalue, and take the square root to get a better estimate. Since this is only a $T \times T$ matrix, when $T$ is small, performing eigenvalue decomposition is not costly, so we can just call an existing function.</p>
+
+    <p>This idea is essentially a simplified version of the "Lanczos algorithm" used in modern SVD solvers; real SVD implementations involve more sophisticated treatments. Additionally, this acceleration strategy shares similarities with Randomized SVD, which typically uses a Gaussian random matrix for projection, whereas here we use the orthonormal basis within the Krylov subspace for projection.</p>
+
+    <h2>Acceleration Techniques</h2>
+    <p>Reference code for power iteration incorporating Krylov subspace acceleration is as follows:</p>
+<pre><code># (Original code placeholder)
+</code></pre>
+    <p>Empirical tests show that the effect of subspace acceleration is very significant. At $T=5$, its accuracy already exceeds that of the original power iteration at $T=10$, and it is faster. At $T=10$, the function takes roughly 2/3 of its time for power iteration and 1/3 for QR decomposition, while the eigenvalue decomposition takes very little time.</p>
+
+    <p>Readers of the "Streaming Power Iteration" series might think of using Cholesky QR as introduced there to speed up the QR decomposition. Unfortunately, since the results of power iteration become increasingly collinear, the condition number of the matrix to be QR-decomposed will continue to deteriorate. This is exactly the range where Cholesky QR is "powerless," with a very high failure rate, so it basicallly cannot be used for acceleration.</p>
+
+    <p>A more effective acceleration method is to use only the results of the last few steps of power iteration, such as the last three steps $\boldsymbol{v}^{(T-2)}, \boldsymbol{v}^{(T-1)}, \boldsymbol{v}^{(T)}$, to construct the Krylov subspace acceleration. This captures most of the performance benefits and reduces the computation of QR decomposition and eigenvalue decomposition, thereby achieving acceleration.</p>
+
+    <h2>Estimating the Upper Bound</h2>
+    <p>Strictly speaking, power iteration and its accelerated versions only provide a lower bound for the spectral norm, which is often sufficient. But if we must obtain an upper bound in certain scenarios—for example, to ensure through spectral normalization that the norm of a matrix is strictly less than 1—we need other methods.</p>
+
+    <p>A basic solution here is to calculate the <a href="https://en.wikipedia.org/wiki/Schatten_norm">Schatten norm</a>, which is an upper bound on the spectral norm. Let the SVD of matrix $\boldsymbol{W}$ be $\boldsymbol{U}\boldsymbol{\Sigma}\boldsymbol{V}^{\top}$, with singular values $\sigma_1 \geq \sigma_2 \geq \cdots \geq \sigma_m$. Then its Schatten-$p$ norm is defined as</p>
+    \begin{equation}\Vert\boldsymbol{W}\Vert_{S,p} = \sqrt[p]{\sum_{i=1}^m \sigma_i^p} \quad\geq\quad \sigma_1\end{equation}
+    <p>The larger $p$ is, the closer it is to the accurate value. When $p$ is an even number, calculating the Schatten-$p$ norm is relatively feasible, primarily utilizing the following identities:</p>
+    \begin{gather}\newcommand{tr}{\mathop{\text{tr}}}\Vert\boldsymbol{W}\Vert_{S,2k} = \sqrt[2k]{\sum_{i=1}^m \sigma_i^{2k}} = \sqrt[2k]{\tr(\boldsymbol{V}\boldsymbol{\Sigma}^{2k}\boldsymbol{V}^{\top})} = \sqrt[2k]{\tr((\boldsymbol{W}^{\top}\boldsymbol{W})^k)} \\
+    \Vert\boldsymbol{W}\Vert_{S,4k} = \sqrt[4k]{\sum_{i=1}^m \sigma_i^{4k}} = \sqrt[2k]{\Vert\boldsymbol{V}\boldsymbol{\Sigma}^{2k}\boldsymbol{V}^{\top}\Vert_{S,2}} = \sqrt[2k]{\Vert(\boldsymbol{W}^{\top}\boldsymbol{W})^k\Vert_{S,2}}\label{eq:S-4k}\end{gather}
+    <p>It is not hard to see that the Schatten-2 norm is actually the Frobenius norm, which can be calculated by the square root of the sum of squares of each element. Thus, the two identities above show that as long as we calculate $(\boldsymbol{W}^{\top}\boldsymbol{W})^k$, we can find $\Vert\boldsymbol{W}\Vert_{S,2k}$ and $\Vert\boldsymbol{W}\Vert_{S,4k}$ at a lower cost.</p>
+
+    <p>The first step $\boldsymbol{W}^{\top}\boldsymbol{W}$ has a complexity of $\mathcal{O}(nm^2)$, and subsequent repeated self-multiplications have a complexity of $\mathcal{O}(m^3)$ per step. Thus, $(\boldsymbol{W}^{\top}\boldsymbol{W})^{2^T}$ can be calculated with a complexity of $\mathcal{O}(nm^2 + Tm^3)$. Theoretically, this complexity far exceeds that of power iteration; even when $n, m$ are relatively large, the first step $\boldsymbol{W}^{\top}\boldsymbol{W}$ already far exceeds power iteration. Therefore, if one only wants to estimate the spectral norm without requiring an upper bound, power iteration should be prioritized.</p>
+
+    <p>However, matrix multiplication can usually be fully parallelized, so when $n, m$ are not large or $n \gg m$, the Schatten-$p$ norm does not become a computational bottleneck, and we can consider it. Or, when a strict upper bound is mandatory, this seems to be the most direct approach.</p>
+
+    <h2>Numerical Stability</h2>
+    <p>To calculate $\Vert\boldsymbol{W}\Vert_{S,2^{T+2}}$, a naive implementation starting from $\boldsymbol{M} = \boldsymbol{W}^{\top}\boldsymbol{W}$ and repeatedly executing $\boldsymbol{M} \leftarrow \boldsymbol{M}^2$ for $T$ times to get $(\boldsymbol{W}^{\top}\boldsymbol{W})^{2^T}$ and then substituting into formula \eqref{eq:S-4k} would quickly explode to NaN or collapse to zero due to the super-exponential operations.</p>
+
+    <p>Generally, $\Vert\boldsymbol{W}\Vert_{S,2^{T+2}}$ itself will not numerically explode; the problem lies in the explicit calculation of $(\boldsymbol{W}^{\top}\boldsymbol{W})^{2^T}$. The solution is to re-normalize after each squaring step [$\boldsymbol{M} \leftarrow \boldsymbol{M}^2 / \tr(\boldsymbol{M}^2)$], which prevents numerical explosion and ensures the scaling is compact enough not to collapse to zero; at the same time, we accumulate the normalization factor of each step in the log domain for the final calculation of $\Vert\boldsymbol{W}\Vert_{S,2^{T+2}}$.</p>
+
+    <p>The calculation process is summarized as follows:</p>
+<table style="width:100%; border:1px solid black; border-collapse: collapse;">
+    <tr>
+        <td style="padding:10px;">
+            Calculate $\Vert\boldsymbol{W}\Vert_{S,2^{T+2}}$ as the upper bound of the spectral norm<br><br>
+            1: Initialize $\log S = \log\tr(\boldsymbol{W}^{\top}\boldsymbol{W}), \boldsymbol{M} = \frac{\boldsymbol{W}^{\top}\boldsymbol{W}}{\tr(\boldsymbol{W}^{\top}\boldsymbol{W})}$<br>
+            2: <b>For</b> $t=1, 2, \cdots, T$ <b>do</b><br>
+            3: $\quad \log S \leftarrow 2\log S + \log \tr(\boldsymbol{M}^2)$<br>
+            4: $\quad \boldsymbol{M} \leftarrow \frac{\boldsymbol{M}^2}{\tr(\boldsymbol{M}^2)}$<br>
+            5: Output $\exp\left(\frac{\log S + \log\Vert\boldsymbol{M}\Vert_F}{2^{T+1}}\right)$
+        </td>
+    </tr>
+</table>
+
+    <p>A simple reference implementation:</p>
+<pre><code># (Original code placeholder)
+</code></pre>
+
+    <h2>Multiple Moments</h2>
+    <p>To calculate $\Vert\boldsymbol{W}\Vert_{S,2^{T+2}}$, we calculated $\boldsymbol{W}^{\top}\boldsymbol{W}, \cdots, (\boldsymbol{W}^{\top}\boldsymbol{W})^{2^{T-1}}, (\boldsymbol{W}^{\top}\boldsymbol{W})^{2^T}$ in some way, meaning we can simultaneously obtain $\Vert\boldsymbol{W}\Vert_{S,2}, \cdots, \Vert\boldsymbol{W}\Vert_{S,2^{T+1}}, \Vert\boldsymbol{W}\Vert_{S,2^{T+2}}$, but in the end we only used $\Vert\boldsymbol{W}\Vert_{S,2^{T+2}}$, which again seems a bit "wasteful."</p>
+
+    <p>Is there a way, similar to the Krylov subspace method for power iteration, to utilize all these results to improve estimation accuracy? Yes, there is! <a href="https://jiha-kim.github.io/posts/fast-spectral-norm-bounds-from-scaled-gram-moments/">"Fast Tight Spectral-Norm Bounds"</a> provides an idea to improve the estimation result through nonlinear programming. Let's look at a simple case: suppose we have obtained the 2nd and 4th moments of the singular values:</p>
+    \begin{equation}\sum_{i=1}^m \sigma_i^2 = S_2, \qquad \sum_{i=1}^m \sigma_i^4 = S_4\end{equation}
+    <p>Then according to the results of the previous two sections, $S_4^{1/4}$ is closer to the spectral norm than $S_2^{1/2}$, so we return $S_4^{1/4}$ as the upper bound and discard $S_2$. But is $S_2$ really useless? Imagine if $m=2$, then there are exactly two equations and two unknowns, and theoretically we can solve for $\sigma_1, \sigma_2$! When $m > 2$, although an exact solution is not possible, we can still narrow the range of $\sigma_1$. Specifically, we have:</p>
+    \begin{equation}\frac{S_2 - \sigma_1^2}{m-1} = \frac{1}{m-1}\sum_{i=2}^m \sigma_i^2 \leq \sqrt{\frac{1}{m-1}\sum_{i=2}^m \sigma_i^4} = \sqrt{\frac{S_4 - \sigma_1^4}{m-1}}\end{equation}
+    <p>That is, $(S_2 - \sigma_1^2)^2 \leq (m-1)(S_4 - \sigma_1^4)$, which is essentially a univariate quadratic inequality, easily solved as:</p>
+    \begin{equation}\sigma_1 \leq \sqrt{\frac{S_2+\sqrt{(m-1)(mS_4-S_2^2)}}{m}}\label{eq:s2-s4}\end{equation}
+    <p>This gives an upper bound for $\sigma_1$ expressed in terms of $S_2$ and $S_4$, which is a better estimate than $S_4^{1/4}$. <a href="https://jiha-kim.github.io/posts/fast-spectral-norm-bounds-from-scaled-gram-moments/">"Fast Tight Spectral-Norm Bounds"</a> also generalizes this to a form that uses $S_2, S_4, S_6, S_8$ simultaneously, which is more compact but also more cumbersome. Interested readers can study the original paper. Using more moments to improve the estimation is theoretically possible, but in practice, it often requires solving complex nonlinear equations, which has limited practical value.</p>
+
+    <h2>Limitations</h2>
+    <p>Theoretically, the result \eqref{eq:s2-s4} can be generalized to obtain more accurate upper bounds using any $S_{2k}$ and $S_{4k}$:</p>
+    \begin{equation}\sigma_1 \leq \sqrt[2k]{\frac{S_{2k}+\sqrt{(m-1)(mS_{4k}-S_{2k}^2)}}{m}}\end{equation}
+    <p>However, when $k$ is large, the practical significance of this result is very limited because it requires explicitly calculating $S_{2k}$ and $S_{4k}$, which will explode or collapse when $k$ is large, making it unrealistic. One possible improvement is to factor out $S_{4k}^{1/4k}$:</p>
+    \begin{equation}\sqrt[2k]{\frac{S_{2k}+\sqrt{(m-1)(mS_{4k}-S_{2k}^2)}}{m}} = S_{4k}^{1/4k}\cdot\sqrt[2k]{\frac{S_{2k}/S_{4k}^{1/2}+\sqrt{(m-1)(m-S_{2k}^2/S_{4k})}}{m}}\end{equation}
+    <p>Then let $S_{2k}/S_{4k}^{1/2} = e^{\epsilon}$ and perform an approximate expansion in the log domain:</p>
+    \begin{equation}\sqrt[2k]{\frac{S_{2k}/S_{4k}^{1/2}+\sqrt{(m-1)(m-S_{2k}^2/S_4)}}{m}} \approx 1 - \frac{\epsilon^2}{4k(m-1)}\end{equation}
+    <p>However, our goal is to find an upper bound for the spectral norm; how to ensure the upper bound property while performing an approximate expansion seems complicated. On the other hand, if we have already calculated for a large $k$, the accuracy of $S_{4k}^{1/4k}$ itself is already quite high, and the significance of using programming ideas to further improve accuracy is not great.</p>
+
+    <h2>Conclusion</h2>
+    <p>This article briefly summarized several ideas for estimating the spectral norm. In practical applications, if only an approximate monitoring of the spectral norm is needed, power iteration and its subspace-accelerated version are usually sufficient; if a strict upper bound must be guaranteed, calculating the Schatten norm can be considered. The "waste not" ideas derived from both routes—utilizing iteration history in the Krylov subspace and multi-moment information in nonlinear programming—also provide good algorithmic design inspiration for us.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/11736" style="color: #005fcc;">https://kexue.fm/archives/11736</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>
