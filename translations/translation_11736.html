@@ -202,7 +202,20 @@ window.MathJax = {
 
     <h2>Computing the Gradient</h2>
     <p>First, here is a reference implementation of power iteration based on Jax:</p>
-<pre><code># (Original code placeholder)
+<pre><code>import jax, jax.lax as lax
+import jax.numpy as jnp
+
+@jax.jit(static_argnums=(1,))
+def l2_normalize(x, axis=-2):
+    return x / jnp.linalg.vector_norm(x, axis=axis, keepdims=True)
+
+@jax.jit(static_argnums=(1, 2, 3))
+def spec_norm_v1(w, T=10, k=1, key=42):
+    v_shape = w.shape[:-2] + w.shape[-1:] + (k,)
+    v_init = jax.random.normal(jax.random.PRNGKey(key), v_shape)
+    v_step = lambda i, v: l2_normalize(w.mT @ (w @ v))
+    v = lax.fori_loop(0, T, v_step, v_init)
+    return jnp.linalg.vector_norm(w @ v, axis=-2).max(axis=-1)
 </code></pre>
     <p>Obviously, the complexity of power iteration is $\mathcal{O}(mnTk)$, which is quite ideal in terms of complexity alone. If it is only for monitoring purposes, the above writing style is sufficient. However, if it is for spectral normalization or regularization purposes, we need the gradient of the spectral norm. According to the above implementation, it would require backpropagation step-by-step through the power iteration loop, which has high computational complexity.</p>
 
@@ -223,7 +236,14 @@ window.MathJax = {
 
     <h2>Acceleration Techniques</h2>
     <p>Reference code for power iteration incorporating Krylov subspace acceleration is as follows:</p>
-<pre><code># (Original code placeholder)
+<pre><code>@jax.jit(static_argnums=(1, 2))
+def spec_norm_v2(w, T=10, key=42):
+    v_shape = w.shape[:-2] + w.shape[-1:] + (1,)
+    v_init = jax.random.normal(jax.random.PRNGKey(key), v_shape)
+    v_step = lambda v, _: (l2_normalize(w.mT @ (w @ v)),) * 2
+    v = lax.scan(v_step, v_init, length=T)[1].swapaxes(0, -1)[0]
+    v = jnp.linalg.qr(v)[0]
+    return jnp.linalg.eigvalsh((u := w @ v).mT @ u)[..., -1]**0.5
 </code></pre>
     <p>Empirical tests show that the effect of subspace acceleration is very significant. At $T=5$, its accuracy already exceeds that of the original power iteration at $T=10$, and it is faster. At $T=10$, the function takes roughly 2/3 of its time for power iteration and 1/3 for QR decomposition, while the eigenvalue decomposition takes very little time.</p>
 
@@ -265,7 +285,17 @@ window.MathJax = {
 </table>
 
     <p>A simple reference implementation:</p>
-<pre><code># (Original code placeholder)
+<pre><code>@jax.jit
+def tr(w):
+    return w.trace(axis1=-1, axis2=-2)[..., None, None]
+
+@jax.jit(static_argnums=(1,))
+def spec_norm_v3(w, T=5):
+    m = (m := w.mT @ w) / (s := tr(m))
+    ms_step = lambda i, ms: ((m := ms[0] @ ms[0]) / (s := tr(m)), 2 * ms[1] + jnp.log(s))
+    m, logs = lax.fori_loop(0, T, ms_step, (m, jnp.log(s)))
+    logf = 0.5 * jnp.log((m**2).sum(axis=[-1, -2], keepdims=True))
+    return jnp.exp((logs + logf) / 2**(T + 1))
 </code></pre>
 
     <h2>Multiple Moments</h2>
