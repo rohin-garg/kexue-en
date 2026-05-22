@@ -1,0 +1,275 @@
+
+    <meta charset="utf-8">
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+    <h1><a href="https://kexue.fm/archives/11760">MoE Grand Tour: 8. Enforcing Sequence-Level Balance</a></h1>
+    <p>By 苏剑林 | May 22, 2026</p>
+
+<div class="PostContent" id="PostContent">
+    <p>So far, the "MoE Grand Tour" series has seen 7 articles, 5 of which revolve around MoE routing and load balancing. From the perspective of routing forms, they can be divided into static calculation and dynamic calculation; from the perspective of load balancing implementation, they can be divided into Aux-Loss and Loss-Free categories. Within Loss-Free, there is the SignSGD scheme proposed by DeepSeek and the QB scheme proposed by this author.</p>
+    <p>One detail remains: the Loss-Free schemes we discussed previously all achieve balance in the sense of a global batch. However, many times a sequence-level Aux Loss is added to avoid extreme imbalances within a sequence. If we believe that every Aux-Loss scheme has a corresponding Loss-Free version, how should sequence-level Loss-Free balance be implemented? This is the theme of this article.</p>
+    <h2>Previous Review</h2>
+    <p>First, let's review our previous exploration of load balancing. In the article <a href="translation_10735.html" target="_blank">"MoE Grand Tour: 2. Not Worried about Scarcity but about Inequality"</a>, we first discussed the MoE load balancing problem. The solution proposed was Aux Loss, adding an extra loss function to promote balance. The problem with Aux Loss is that there are extra weight coefficients to tune, but the advantage is that the granularity of balance can be adjusted at will, enabling sequence-level, group-level, or global-level balance (though more global balance entails higher communication costs).</p>
+    <p>Starting from <a href="translation_10757.html" target="_blank">"MoE Grand Tour: 3. A Different Way to Allocate"</a>, we discussed load balancing strategies in a Loss-Free form. This approach introduces an extra bias term to adjust the degree of balance and manually designs SignSGD-style rules to update the bias term. This mode is more flexible and infrastructure-friendly than Aux Loss. In <a href="translation_10815.html" target="_blank">"MoE Grand Tour: 4. More Investment for Difficulties"</a>, we generalized this to MoE with dynamic activation counts.</p>
+    <p>In <a href="translation_11619.html" target="_blank">"MoE Grand Tour: 6. Optimal Allocation Promotes Balance"</a>, we viewed the load balancing problem from the perspective of optimal allocation. By alternately solving the dual objective, we obtained a new load balancing strategy called Quantile Balancing (QB). From the results alone, it can be seen as a new, more accurate solution for the bias terms in Loss-Free schemes. Subsequently, in <a href="translation_11626.html" target="_blank">"MoE Grand Tour: 7. A Minimalist Solution for Dynamic Activation"</a>, we also generalized QB to dynamic MoE.</p>
+    <p>The detail here is that the bias terms introduced by Loss-Free are globally shared, so currently all Loss-Free schemes, without exception, can only achieve global load balancing. As mentioned, if needed, Aux Loss can be used to promote sequence-level balance. Does Loss-Free also have a corresponding sequence-level balance scheme?</p>
+    <h2>Local Center</h2>
+    <p>Coincidentally, <a href="https://x.com/ChangJonathanC/status/2033942835951767612" target="_blank">@ChangJonathanC</a> also explored this in the article <a href="https://jonathanc.net/blog/causal-routing-bias" target="_blank">"Causal Routing Bias for Aux-Loss-Free MoE Training"</a>. The author proposed two ideas; let's briefly learn about them first to facilitate a comparison with our subsequent ideas. Let $\boldsymbol{s}\in\mathbb{R}^{l\times n}$ denote the Router output for a sequence of length $l$, and $\boldsymbol{s}_i\in\mathbb{R}^n$ denote the Router output for the $i$-th token. The first idea proposed in the article is to subtract the exponential moving average (EMA) from $\boldsymbol{s}$:</p>
+    \begin{equation}\hat{\boldsymbol{s}}_i = \boldsymbol{s}_i - \bar{\boldsymbol{s}}_i, \qquad \bar{\boldsymbol{s}}_i = \gamma\bar{\boldsymbol{s}}_{i-1} + (1 - \gamma)\boldsymbol{s}_i\end{equation}
+    <p>Then use $\hat{\boldsymbol{s}}$ to decide which Experts to activate (e.g., top-$k$, or in combination with methods like QB). The underlying thought is simple: intuitively, if Expert $j$ is activated frequently when using $\boldsymbol{s}$ for decisions, it means its scores $\boldsymbol{s}_{:,j}$ are on average too large. Therefore, for balance, it should be penalized accordingly, with the penalty amount being the local average estimated by EMA.</p>
+    <p>In this way, in the new $\hat{\boldsymbol{s}}$, each Expert's score roughly has a zero mean locally, preventing any Expert from becoming too "prominent" and thus achieving sequence-level balance. However, this is only an empirical practice and there is no theoretical guarantee that it will be more balanced. The author did a simple test, and in extreme imbalance scenarios like the first layer of MoE, it did not provide substantial help. Perhaps the author realized this limitation, as he proposed a second scheme.</p>
+    <h2>Test-Time Training</h2>
+    <p>The second scheme is also quite intuitive. In <a href="translation_10757.html" target="_blank">"MoE Grand Tour: 3. A Different Way to Allocate"</a>, didn't we introduce a bias term to control global balance? This bias term is updated with SignSGD. Since this is the case, we can imitate the "Test-Time Training" idea of <a href="translation_11033.html" target="_blank">TTT</a>: activate Experts token-by-token along the sequence dimension and update the bias term based on the distribution of Experts already activated.</p>
+    <p>Taking $\boldsymbol{s}\in\mathbb{R}^{l\times n}$ and top-$k$ MoE as an example, the original Loss-Free scheme introduces a global bias vector $\boldsymbol{\beta}\in\mathbb{R}^n$ and changes the activation mechanism to selecting top-$k$ based on $\boldsymbol{s}_i - \boldsymbol{\beta}$. The idea here is to assign a $\boldsymbol{\beta}_i\in\mathbb{R}^n$ to each $\boldsymbol{s}_i$, and change the activation mechanism to selecting top-$k$ based on $\boldsymbol{s}_i - \boldsymbol{\beta}_i$. The update rule for $\boldsymbol{\beta}_i$ can be sign gradient ascent:</p>
+    \begin{equation}\boldsymbol{\beta}_i = \boldsymbol{\beta}_{i-1} + \eta\mathop{\text{sign}}(\boldsymbol{f}_{\leq i-1} - 1/n)\end{equation}
+    <p>Here $\boldsymbol{f}_{\leq i-1}$ is the activated Expert distribution up to the $(i-1)$-th token. The author's final version made some adjustments: removing the sign function and changing $\boldsymbol{f}_{\leq i-1}$ to $\boldsymbol{f}_{i-1}$ (the activation distribution of the $(i-1)$-th token) to better achieve local balance:</p>
+    \begin{equation}\boldsymbol{\beta}_i = \boldsymbol{\beta}_{i-1} + \eta(\boldsymbol{f}_{i-1} - 1/n)\end{equation}
+    <p>This approach maintains sequence causality and ensures nearly absolute sequence-level balance. However, because each step requires selecting top-$k$ and updating the bias $\boldsymbol{\beta}$ based on the result $\boldsymbol{f}$, this essentially introduces a non-linear RNN. Non-linear RNNs cannot be parallelized, so it is foreseeable that sequence length will become a bottleneck. We could consider updating by chunks (Mini-batch TTT) to improve efficiency, but that feels slightly less elegant.</p>
+    <h2>The Optimal Solution</h2>
+    <p>Next, the idea proposed in this article is called "Moving Quantile Balancing (MQB)". As the name suggests, this is evolved from "Quantile Balancing (QB)". For this, let's briefly review QB.</p>
+    <p>Following the writing order, <a href="translation_11619.html" target="_blank">"MoE Grand Tour: 6. Optimal Allocation Promotes Balance"</a> came before <a href="translation_11626.html" target="_blank">"MoE Grand Tour: 7. A Minimalist Solution for Dynamic Activation"</a>, but in fact, the latter is much simpler in concept and method, so we will start from there. Given $\boldsymbol{s}\in\mathbb{R}^{l\times n}$, we introduce a bias term $\boldsymbol{\beta}\in\mathbb{R}^n$. In the static version of MoE, each token activates the $k$ experts with the largest $\boldsymbol{s}_i - \boldsymbol{\beta}$. Dynamic activation means that any Expert where $\boldsymbol{s}_i - \boldsymbol{\beta} > 0$ is activated, with a variable number.</p>
+    <p>To simultaneously guarantee load balance and control the average activation number to $k$, it is necessary to choose an appropriate $\boldsymbol{\beta}$. Remarkably, in this scenario, the optimal solution for $\boldsymbol{\beta}$ can be expressed exactly:</p>
+    \begin{equation}\boldsymbol{\beta} = \mathop{\text{desc_sort}}(\boldsymbol{s}, \text{axis=0})_{[lk/n:lk/n+1]} = \mathop{\text{quantile}}(\boldsymbol{s}, 1-k/n, \text{axis=0})\end{equation}
+    <p>That is to say, by sorting $\boldsymbol{s}$ from largest to smallest along the sequence dimension (currently $\text{axis=0}$) and taking the $(lk/n)$-th element, we get the optimal solution for $\boldsymbol{\beta}$, which also corresponds to the "$1-k/n$ quantile".</p>
+    <p>In fact, this is just another representation of Expert Choice. We know that the problem with Expert Choice is that it breaks causality (non-causal), which can be seen from the fact that it seeks $\boldsymbol{\beta}$ along the sequence dimension. If we were in an Encoder scenario, this non-causal scheme would naturally not be a problem, but for a unidirectional autoregressive model, it is not advisable.</p>
+    <h2>Moving Quantile</h2>
+    <p>The "test-time training" scheme from <a href="https://x.com/ChangJonathanC/status/2033942835951767612" target="_blank">@ChangJonathanC</a> mentioned earlier gave the author some inspiration. We can compute the bias term based on QB token-by-token along the sequence dimension. Since QB can represent the optimal solution for the bias term directly based on $\boldsymbol{s}$ without knowing the Expert activation status, this brings some possibilities for parallelization.</p>
+    <p>The author's initial idea was $\boldsymbol{\beta}_i = \mathop{\text{quantile}}(\boldsymbol{s}_{[:i]}, 1-k/n, \text{axis=0})$, calculating the bias term for all tokens not exceeding the current position. Thus, each position has its own bias term, and the optimality of QB ensures balance up to the current position. Since it computes the quantile progressively along the sequence dimension, we might call this operation "Cumulative Quantile", and the corresponding scheme "Cumulative Quantile Balancing (CQB)".</p>
+    <p>CQB is theoretically feasible, but because Quantiles cannot be updated incrementally, CQB must read all previous data for the Quantile calculation at each step. The computational complexity increases linearly per step, and the total complexity is quadratic. To alleviate this problem and better reflect local balance, the author's idea is to set a window $w$ and compute the optimal bias only within a window not exceeding $w$:</p>
+    \begin{equation}\boldsymbol{\beta}_i = \mathop{\text{quantile}}(\boldsymbol{s}_{[i-w:i]}, 1-k/n, \text{axis=0})\end{equation}
+    <p>Thus, the operation changes from "Cumulative Quantile" to "Moving Quantile", and the corresponding scheme becomes the prototype of "Moving Quantile Balancing (MQB)". It is very similar to SWA (Sliding Window Attention); the complexity is linear, and it can theoretically be parallelized. The reason it is still a "prototype" is that Quantiles cannot be updated incrementally, meaning the single-step complexity is still relatively high and needs further improvement.</p>
+    <h2>Binning Estimation</h2>
+    <p>The various obstacles described in the previous section are essentially limited by the fact that "Quantile is non-linear and cannot be updated incrementally." Is it possible to linearize it? Even if it's just an approximation? Fortunately, it can be done here!</p>
+    <p><div class="pic-container"><div class="typecho-caption aligncenter" style="max-width: 500px"><div style="margin: 5px"><img src="https://kexue.fm/usr/uploads/2026/05/2013347987.png" style="max-width: 100%" alt="Schematic diagram of histogram approximation estimation for quantile" /></div><p class="typecho-caption-text">Schematic diagram of histogram approximation estimation for quantile</p></div></div></p>
+    <p>A key fact is: <font color="red">As long as the distribution of a variable is known, the quantile can be obtained via cumulative probability, and the distribution can be updated incrementally!</font> Therefore, the key here is to transform the estimation of quantiles into the estimation of distribution. For this, we use binning counting, also known as "histogram approximation." First, assume the Router scores $\boldsymbol{s}$ are all within $[0, 1]$, which can be guaranteed by adding activation functions like Sigmoid. Next, divide $[0, 1]$ into $b$ equal bins, discretize each value of $\boldsymbol{s}$ into an integer, and then convert it into the corresponding one-hot vector.</p>
+    <p>In this way, we get a $l \times n \times b$ 0/1 array. If we average this along the sequence dimension $l$, we can obtain the score distribution of each Expert (represented by a $b$-dimensional vector), from which we can find the quantile for each Expert. However, to ensure causality, we cannot average over the entire sequence directly; we can only perform something like a "Cumulative Average." To avoid the hassle of strict boundaries in "Moving Quantile" and to make the process more "smooth," we choose to perform EMA.</p>
+    <p>That is, after one-hot binning of $\boldsymbol{s}$, we perform EMA along the sequence dimension. Each token can obtain a local distribution, from which the corresponding $1-k/n$ quantile can be determined. This is the key variable $\boldsymbol{\beta}_i$ for MQB. Since the EMA operation is linear and parallelizable, we have implemented sequence-level balance in a relatively efficient, Loss-Free manner. This is the final version of MQB.</p>
+    <p>$$\begin{array}{|l|}
+    \hline
+    \text{Moving Quantile Balancing (MQB)} \\[4pt]
+    \hline
+    \text{Input: Scoring matrix } \boldsymbol{s}\in [0,1]^{l\times n} \\
+    \text{Output: Corrected scoring matrix } \hat{\boldsymbol{s}}\in \mathbb{R}^{l\times n} \\[4pt]
+    \hline
+    \begin{array}{ll}
+    1: & \boldsymbol{h}_{i,j} = \mathop{\text{one_hot}}(\lfloor s_{i,j} \times b\rfloor)\in\{0,1\}^b \\
+    2: & \bar{\boldsymbol{h}}_{i,j} = \gamma\bar{\boldsymbol{h}}_{i-1,j} + (1-\gamma)\boldsymbol{h}_{i,j} \\
+    3: & m_{i,j}^* = \min\{m \,|\, \sum_{t=0}^m \bar{h}_{i,j,t} \geq 1 - \frac{k}{n}\} \\
+    4: & \beta_{i,j} =(m_{i,j}^* + 1/2) / b \\
+    5: & \hat{\boldsymbol{s}}_i = \boldsymbol{s}_i - \boldsymbol{\beta}_i,
+    \end{array} \\
+    \hline
+    \end{array}$$</p>
+    <h2>General Case</h2>
+    <p>So far, our discussion has been based on the dynamic activation version of MoE, i.e., activating Experts where $\boldsymbol{s}_i - \boldsymbol{\beta}_i > 0$. From <a href="translation_11619.html" target="_blank">"MoE Grand Tour: 6. Optimal Allocation Promotes Balance"</a>, we know that for top-$k$ MoE, its $\boldsymbol{\beta}$ does not have a simple analytical solution and requires alternating iterations.</p>
+    <p>So how can top-$k$ MoE implement sequence-level load balancing in a Loss-Free way? In fact, the fact that MQB can achieve sequence-level balance under dynamic activation indicates that it has already "flattened" the local abnormal peaks of the Router. If we then take top-$k$ based on the $\boldsymbol{s}_i - \boldsymbol{\beta}_i$ sequence, it might not be perfectly balanced, but this imbalance is at most at the global level. In that case, we only need to add a global QB step to restore balance.</p>
+    <p>That is to say, for the top-$k$ MoE version, our mandatory sequence-level balance scheme is MQB+QB: perform another QB (or SignSGD) on the basis of the $\boldsymbol{s}_i - \boldsymbol{\beta}_i$ sequence to achieve sequence-level load balancing. However, it should be noted that perfect sequence-level load balancing often significantly damages performance. Generally, global balance is sufficient, and sequence-level balance is only used to prevent extreme cases, so the degree of intervention should not be too heavy.</p>
+    <p>To reduce the impact on the main task, the Aux Loss scheme can choose to lower the loss coefficient, while MQB can consider a weighted average of the scores before and after:</p>
+    \begin{equation}\lambda(\boldsymbol{s}_i - \boldsymbol{\beta}_i) + (1-\lambda)\boldsymbol{s}_i = \boldsymbol{s}_i - \lambda \boldsymbol{\beta}_i,\qquad \lambda\in[0, 1]\end{equation}
+    <p>In other words, by introducing $\lambda < 1$, the degree of sequence balance is weakened, and then QB is overlaid on top of this to ensure global balance (since $\lambda < 1$ cannot guarantee perfect balance, QB needs to be added for both dynamic and top-$k$ versions).</p>
+    <h2>Other Details</h2>
+    <p>After binning, the core operation of MQB also becomes EMA. So, after circling back, we return to EMA, in a form similar to the first scheme proposed by <a href="https://x.com/ChangJonathanC/status/2033942835951767612" target="_blank">@ChangJonathanC</a>, with the difference being the object of the EMA. <a href="https://x.com/ChangJonathanC/status/2033942835951767612" target="_blank">@ChangJonathanC</a>'s scheme performs EMA directly on the original $l \times n$ scores, whereas MQB expands it to $l \times n \times b$ before performing EMA.</p>
+    <p>This change is somewhat similar to how linear attention expands capacity through outer products; it can remember more information, and the optimality of QB also ensures that it can achieve sequence-level balance, moving beyond the stage of empirical practices. Another similarity to linear attention is that EMA is essentially an RNN, so during the inference stage, a State vector of size $n \times b$ must be stored. Practice has shown that $b=100$ already achieves good results, so this State size should be acceptable.</p>
+    <p>It should also be pointed out that whether for QB or MQB, they are only used for the Expert activation decision. The final gate function multiplied by the Expert is still calculated based on the original Router scores before subtracting the bias term. This is a common feature of all Loss-Free schemes, ensuring that the balancing interference term does not directly change the MoE form, in order to minimize the impact on the main model.</p>
+    <p>Finally, regarding the binning method, the author's current experiments use Sigmoid activation followed by $[0,1]$ uniform discretization for binning. How to perform more precise binning may have some experimental room, which is left for interested readers to complete.</p>
+    <h2>Experimental Results</h2>
+    <p>Regarding MQB, the author performed some simple experiments. The configuration is an MoE model with a total parameter count of about 3B, picking 4 out of 128. The EMA coefficient for MQB is 0.99, and the number of bins is 100 by default. MaxVio was used as the load balancing indicator. Since the first layer of MoE is the most imbalanced, we only demonstrate the effect of the first layer below.</p>
+    <p>First is the "full-body" MQB with $\lambda=1$:</p>
+    <p><div class="pic-container"><div class="typecho-caption aligncenter" style="max-width: 500px"><div style="margin: 5px"><img src="https://kexue.fm/usr/uploads/2026/05/1933030662.png" style="max-width: 100%" alt="Effect comparison of MQB (λ=1) with QB and SignSGD" /></div><p class="typecho-caption-text">Effect comparison of MQB (λ=1) with QB and SignSGD</p></div></div></p>
+    <p>It can be seen that $\lambda=1$ can achieve perfect load balancing, but the cost is a Loss penalty of 0.06. This is a significant drop, indicating that excessive sequence balancing is detrimental to performance. However, if $\lambda$ is adjusted to about 0.3, it can still promote a certain degree of load balancing while essentially not dropping in Loss, as shown in the figure below:</p>
+    <p><div class="pic-container"><div class="typecho-caption aligncenter" style="max-width: 500px"><div style="margin: 5px"><img src="https://kexue.fm/usr/uploads/2026/05/4173650477.png" style="max-width: 100%" alt="Load balancing conditions corresponding to different λ" /></div><p class="typecho-caption-text">Load balancing conditions corresponding to different λ</p></div></div></p>
+    <h2>Extended Thinking</h2>
+    <p>From the above experiments, we can further confirm that perfect sequence-level balance ($\lambda=1$) severely damages effectiveness. If $\lambda=0.3$ is taken, the effectiveness can be roughly guaranteed while improving the balance of each layer.</p>
+    <p>Overall, this article only answers "how to implement sequence-level load balancing in a Loss-Free way." Whether sequence-level load balancing is necessary, why it is necessary, and at what level it is required remain open questions. A preliminary understanding is that extreme sequence-level imbalance might affect the performance of the sequence itself (collapsing into a small model), hence the desire to encourage a certain degree of sequence-level balance.</p>
+    <p>In addition to MQB, there are actually other schemes that can achieve sequence-level balance in a Loss-Free way, such as the <a href="https://papers.cool/arxiv/2106.04426" target="_blank">Hash Routing</a> introduced in <a href="translation_11750.html" target="_blank">"Where did DeepSeek V4's tid2eid come from?"</a>, which is also a simple scheme for mandatory sequence balance. However, Hash Routing has redefined the routing form and is no longer the existing MoE form.</p>
+    <p>The value of a scheme like MQB lies in its better compatibility with regular MoE forms and its transformation of "tuning the Aux Loss coefficient" into "tuning an interpretable local bias term," allowing us to control intervention intensity more intuitively. Its parallelizability also ensures efficiency. Since it only affects Router decisions without injecting gradients, the impact on the main task's effectiveness is minimized as much as possible.</p>
+    <h2>Article Summary</h2>
+    <p>This article focused on "how to implement sequence-level load balancing in a Loss-Free way." Starting from the original Quantile Balancing (QB), a method called Moving Quantile Balancing (MQB) was step-by-step derived, successfully achieving this goal. However, whether sequence-level balance is truly necessary and to what extent still remains an open question.</p>
+</div>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/11760" style="color: #005fcc;">https://kexue.fm/archives/11760</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>
