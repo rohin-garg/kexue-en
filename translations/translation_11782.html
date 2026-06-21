@@ -1,0 +1,230 @@
+
+    <meta charset="utf-8">
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+
+<h1><a href="https://kexue.fm/archives/11782">MoE Travel Notes: 9. The Dispute Over Gating Normalization</a></h1>
+<p>By 苏剑林 | June 17, 2026</p>
+<div class="PostContent" id="PostContent">
+<p>Tracing back the history of MoE, we can find that in the early years, when the MoE Router acted as a Gate to multiply with Experts, it basically always used Softmax activation. To this day, it remains one of the standard forms of MoE. However, to coordinate with <a href="translation_10757.html" target="_blank">Loss-Free</a> load balancing, DeepSeek changed the activation function to Sigmoid and proved that this is also a very competitive solution. This has triggered deeper reflection and experimentation regarding the form of the Router.</p><p>Even within the discussion of Softmax, there are two slightly different approaches: apply Softmax first and then select Top-$k$, or select Top-$k$ first and then apply Softmax? The latter can also be understood as performing another normalization after selecting Top-$k$, known as Re-Norm. So, should the Gate's activation function be normalized? If so, should it be Top-$k$ after normalization or Re-Norm? This is the theme to be discussed in this article.</p><h2>Problem Description<a href="#problem-description"> #</a></h2><p>We know that the general form of MoE is<br />
+\begin{equation}\boldsymbol{y} = \sum_{i\in \mathop{\text{argtop}}_k \boldsymbol{\rho}} \rho_i \boldsymbol{e}_i \label{eq:moe-1}\end{equation}<br />
+Here, $\boldsymbol{\rho}$ actually plays two roles: when it is used to select the Top-$k$ Experts, its role is the Router; when it is multiplied with the Experts, its role is the Gate. From the perspective of MoE design, the core role of $\boldsymbol{\rho}$ is clearly the Router, and the Gate's purpose is to provide gradients for it during training.</p><p>The problem we want to discuss can also be understood as how to more scientifically construct $\boldsymbol{\rho}=(\rho_1, \rho_2, \cdots, \rho_n)$, so that the Router can obtain better gradients. For a long time, the standard answer has always been Softmax, namely<br />
+\begin{equation}\rho_i = \frac{e^{s_i}}{\sum_{j=1}^n e^{s_j}} \end{equation}<br />
+where $\boldsymbol{s}=(s_1, s_2, \cdots, s_n)$ are the Logits directly projected by a linear layer. However, although this answer is "standard," I haven't found much explanation for it; it seems everyone just accepted it and carried it on, which once made me very confused about the training mechanism of MoE.</p><h2>Other Choices<a href="#other-choices"> #</a></h2><p>As mentioned at the beginning, DeepSeek tried Sigmoid activation in Loss-Free load balancing, which was later used in <a href="https://papers.cool/arxiv/2412.19437" target="_blank">DeepSeek-V3</a>. Its success indicates that non-Softmax activations can also achieve good results. This inspired everyone to try more general approaches; for example, <a href="https://papers.cool/arxiv/2412.14711" target="_blank">ReMoE</a> uses ReLU activation, while our geometric perspective in <a href="translation_10699.html" target="_blank">"MoE Travel Notes: 1. Starting from Geometric Meaning"</a> allows for any non-negative activation function.</p><p>Furthermore, in the form of MoE, there is the choice of Re-Norm, which changes $\eqref{eq:moe-1}$ to<br />
+\begin{equation}\boldsymbol{y} = \frac{\sum\limits_{i\in \mathop{\text{argtop}}_k \boldsymbol{\rho}} \rho_i \boldsymbol{e}_i}{\sum\limits_{i\in \mathop{\text{argtop}}_k \boldsymbol{\rho}} \rho_i} \label{eq:moe-2}\end{equation}<br />
+which means performing a re-normalization on the selected Top-$k$ $\rho_i$. For Softmax, this is equivalent to using $\boldsymbol{s}$ to select the Top-$k$, setting the unselected ones to $-\infty$, and then applying Softmax. The benefit of Re-Norm is to make the forward calculation numerically more stable, but it should be noted that when using Re-Norm, $k$ must be at least greater than 1, otherwise $\boldsymbol{\rho}$ will have no gradient at all, making it impossible to train.</p><p>Looking at current practices from various parties, these MoE variants perform more or less the same, with none significantly outperforming the others. Since practice cannot distinguish a winner, let's explore theoretically which form is more scientific.</p><h2>Design Principles<a href="#design-principles"> #</a></h2><p>Our goal is to find a first-principles approach that is closer to the essence and use it to derive the current MoE gating mechanism.</p><p>So, the first question is naturally: what is this "principle"? For simplicity, consider $k=1$ first. We know that the most important feature of MoE is Sparsity. A Router is used to determine which Expert to activate, and then only those Experts are calculated, thereby achieving an increase in parameter count while controlling the computational cost. Based purely on this idea, a naive model should be<br />
+\begin{equation}\newcommand{argmax}{\mathop{\text{argmax}}}\boldsymbol{f}\left(\boldsymbol{e}_{\argmax\boldsymbol{\rho}}\right)\end{equation}<br />
+where the Expert corresponding to the highest score in Router $\boldsymbol{\rho}$ is selected and activated. This form is perfectly fine for inference, but during training, the Router will not receive any gradients and thus cannot be updated. Therefore, we must find a way to design gradients for the Router. How do we design gradients for the Router? To answer this, we first need to think clearly: what kind of Router do we need?</p><p>Since only one Expert can be activated, we naturally hope that this Expert is the one with the best performance. If we use $\ell$ to represent the loss function, our expectation can be written as<br />
+\begin{equation}\newcommand{argmin}{\mathop{\text{argmin}}}\argmax \boldsymbol{\rho} = \argmin\, [\ell(\boldsymbol{e}_1),\ell(\boldsymbol{e}_2),\cdots,\ell(\boldsymbol{e}_n)]\label{eq:target}\end{equation}<br />
+This is the design principle we are looking for.</p><h2>Target Transformation<a href="#target-transformation"> #</a></h2><p>However, the target $\eqref{eq:target}$ is not yet a loss function that can be used directly for training. It needs to be further transformed. To this end, we construct two distributions. The first is a target distribution $\boldsymbol{q}=(q_1,q_2,\cdots,q_n)$ based on the loss function, defined as<br />
+\begin{equation}q_i = \frac{e^{-\ell(\boldsymbol{e}_i)/\tau}}{\sum_{j=1}^n e^{-\ell(\boldsymbol{e}_j)/\tau}}\end{equation}<br />
+This distribution is independent of the Router and serves as a "target distribution" for the learning of the Router. The second distribution is a predicted distribution $\boldsymbol{p}$ constructed based on $\boldsymbol{\rho}$. There are many possibilities here: for example, $\boldsymbol{\rho}$ itself could be the distribution $\boldsymbol{p}$ (if $\boldsymbol{\rho}$ is already normalized), or $\boldsymbol{p}$ could be the Softmax of $\boldsymbol{\rho}$ (in which case $\boldsymbol{\rho}$ are Logits), or some other normalization method besides Softmax. In short, $\boldsymbol{p}$ is some probability distribution representation of the Router, and let its parameters be $\boldsymbol{\theta}$.</p><p>We transform the target $\eqref{eq:target}$ into narrowing the distance between $\boldsymbol{p}$ and $\boldsymbol{q}$, thereby providing gradients for $\boldsymbol{\theta}$. For this, we consider minimizing the KL divergence<br />
+\begin{equation}KL(\boldsymbol{p}\Vert \boldsymbol{q}) = \sum_{i=1}^n p_i \log \frac{p_i}{q_i}\end{equation}<br />
+With a little manipulation, we get<br />
+\begin{equation}KL(\boldsymbol{p}\Vert \boldsymbol{q}) = - \mathcal{H}(\boldsymbol{p}) + \frac{1}{\tau}\sum_{i=1}^n p_i \ell(\boldsymbol{e}_i) - \log \sum_{i=1}^n e^{-\ell(\boldsymbol{e}_i)/\tau}\end{equation}<br />
+As can be seen, this objective consists of three terms. The first term is the negative entropy $-\mathcal{H}(\boldsymbol{p})$; minimizing it means maximizing entropy, which actually encourages the model to try sufficiently, and it can be considered that load balancing already plays a similar role, so we ignore it for now. The third term is independent of $\boldsymbol{p}$ and thus independent of $\boldsymbol{\theta}$. Therefore, the equivalent loss function is $\mathcal{L} = \sum_{i=1}^n p_i \ell(\boldsymbol{e}_i)$.</p><h2>Straight-Through Estimation<a href="#straight-through-estimation"> #</a></h2><p>Taking the gradient of the equivalent loss, we get<br />
+\begin{equation}\nabla_{\boldsymbol{\theta}}\mathcal{L} = \sum_{i=1}^n \nabla_{\boldsymbol{\theta}} p_i \cdot \ell(\boldsymbol{e}_i) = \sum_{i=1}^n p_i \nabla_{\boldsymbol{\theta}} \log p_i \cdot \ell(\boldsymbol{e}_i) = \mathbb{E}_{i\sim \boldsymbol{p}} [\nabla_{\boldsymbol{\theta}}\log p_i \cdot \ell(\boldsymbol{e}_i)]\end{equation}<br />
+The key here is using $\nabla_{\boldsymbol{\theta}} p_i = p_i \nabla_{\boldsymbol{\theta}} \log p_i$ to isolate a $p_i$ term, so that the sum can be converted into an expectation, which in turn allows for sparse computation in MoE through sampling. Some readers might have recognized it: this is exactly REINFORCE in policy gradients! (Refer to <a href="translation_7521.html" target="_blank">"Optimization from Sampling: A Unified Perspective on Differentiable and Non-Differentiable Optimization"</a> and <a href="translation_7737.html" target="_blank">"Policy Gradients and Zero-Order Optimization: Different Paths to the Same Destination"</a>).</p><p>The problem with REINFORCE is high noise. Intuitively, this is because it places $p_i$ outside the loss function $\ell$. If possible, we would prefer to use a "reparameterized" form where $p_i$ is inside $\ell$. To derive such a form, we use the invariance of REINFORCE to baseline subtraction:<br />
+\begin{equation}\begin{aligned}
+\mathbb{E}_{i\sim \boldsymbol{p}} [\nabla_{\boldsymbol{\theta}}\log p_i \cdot \ell(\boldsymbol{e}_i)] =&\, \mathbb{E}_{i\sim \boldsymbol{p}} [\nabla_{\boldsymbol{\theta}}\log p_i \cdot (\ell(\boldsymbol{e}_i) - \ell(\boldsymbol{0}))] \\[4pt]
+\approx&\, \mathbb{E}_{i\sim \boldsymbol{p}} [\nabla_{\boldsymbol{\theta}}\log p_i \cdot \langle\nabla_{\boldsymbol{e}_i} \ell(\boldsymbol{e}_i), \boldsymbol{e}_i - \boldsymbol{0}\rangle] \\[4pt]
+= &\, \mathbb{E}_{i\sim \boldsymbol{p}} [\nabla_{\boldsymbol{\theta}} \langle\nabla_{\boldsymbol{e}_i} \ell(\boldsymbol{e}_i), \log p_i \cdot \boldsymbol{e}_i\rangle] \\[4pt]
+= &\, \mathbb{E}_{i\sim \boldsymbol{p}} [\nabla_{\boldsymbol{\theta}} \ell((\log p_i + \color{skyblue}{[}1 - \log p_i \color{skyblue}{]_{\text{sg}}}) \cdot\boldsymbol{e}_i)] \\[4pt]
+= &\, \nabla_{\boldsymbol{\theta}} \mathbb{E}_{i\sim \boldsymbol{p}} [\ell((\log p_i + \color{skyblue}{[}1 - \log p_i \color{skyblue}{]_{\text{sg}}}) \cdot\boldsymbol{e}_i)] \\
+\end{aligned}\end{equation}<br />
+where the approximation $\approx$ is a first-order Taylor expansion at $\boldsymbol{e}_i$, and $\color{skyblue}{[}\cdot\color{skyblue}{]_{\text{sg}}}$ represents Stop Gradient. Ultimately, we obtain a Straight-Through Estimator (STE) that "uses $1$ for forward propagation and $\log p_i$ for backpropagation" to provide gradients for the Router.</p><h2>Final Form<a href="#final-form"> #</a></h2><p>Although STE can provide a feasible training scheme, it often results in suboptimal performance due to the inconsistency between forward and backward propagation. At this point, a very magical improvement is to change each Expert to $p_i\boldsymbol{e}_i$! Repeating the above derivation, we have<br />
+\begin{equation}\begin{aligned}
+\mathbb{E}_{i\sim \boldsymbol{p}} [\nabla_{\boldsymbol{\theta}}\log p_i \cdot \ell(p_i\boldsymbol{e}_i)] =&\, \mathbb{E}_{i\sim \boldsymbol{p}} [\nabla_{\boldsymbol{\theta}}\log p_i \cdot (\ell(p_i\boldsymbol{e}_i) - \ell(\boldsymbol{0}))] \\[4pt]
+\approx&\, \mathbb{E}_{i\sim \boldsymbol{p}} [\nabla_{\boldsymbol{\theta}}\log p_i \cdot \langle\nabla_{p_i\boldsymbol{e}_i} \ell(p_i\boldsymbol{e}_i), p_i\boldsymbol{e}_i - \boldsymbol{0}\rangle] \\[4pt]
+= &\, \mathbb{E}_{i\sim \boldsymbol{p}} [\nabla_{\boldsymbol{\theta}} \langle\nabla_{p_i \boldsymbol{e}_i} \ell(p_i \boldsymbol{e}_i),  p_i \boldsymbol{e}_i\rangle] \\[4pt]
+= &\, \mathbb{E}_{i\sim \boldsymbol{p}} [\nabla_{\boldsymbol{\theta}} \ell(p_i \boldsymbol{e}_i)] \\[4pt]
+= &\, \nabla_{\boldsymbol{\theta}} \mathbb{E}_{i\sim \boldsymbol{p}} [\ell(p_i \boldsymbol{e}_i)] \\[4pt]
+\end{aligned}\end{equation}<br />
+This transformation process is very ingenious and worth pondering. By changing the Expert from $\boldsymbol{e}_i$ to $p_i \boldsymbol{e}_i$, we eliminate the Stop Gradient, achieving consistency between the forward and backward passes, and theoretically raising the ceiling for model performance.</p><p>Now we can answer the question from the beginning:</p><blockquote class="cite"><div>If we require a top-down probabilistic derivation, then when the Router acts as the Gate, it should be normalized, but it should not undergo Re-Norm.</div></blockquote><h2>To Sample or Not to Sample<a href="#sampling-or-not"> #</a></h2><p>A detail worth noting is: $\mathbb{E}_{i\sim \boldsymbol{p}}$ implies that we should sample from $\boldsymbol{p}$, but in practice, we usually just pick the Top-$k$. How do we understand this difference?</p><p>This is actually a trade-off between diversity and stability. Random sampling encourages the model to explore more thoroughly, but sampling increases gradient variance and introduces additional instability. Picking Top-$k$ is more stable, but there is a concern that the model might fall into a local optimum or even collapse. Fortunately, various load balancing strategies are now very mature and have encouraged the model to explore in all aspects to a certain extent, so Top-$k$ remains the mainstream.</p><p>If you want to sample while maintaining stability, you can slightly expand beyond the Top-$k$ instead of opening it to full sampling. For example, first select Top-$k+c$ and then randomly pick $k$ Experts from those $k+c$, or add slight noise to the Logits of $\boldsymbol{p}$ and then select the Top-$k$. This way, while increasing randomness, it doesn't stray too far from the original Top-$k$, balancing exploration and stability.</p><h2>Related Work<a href="#related-work"> #</a></h2><p>It needs to be clarified that the derivation in this article is not new. I extracted and modified it from Professor Liyuan Liu's article <a href="https://papers.cool/arxiv/2310.00811" target="_blank">"Sparse Backpropagation for MoE Training"</a>. That article also has a precursor, <a href="https://papers.cool/arxiv/2304.08612" target="_blank">"Bridging Discrete and Backpropagation: Straight-Through and Beyond"</a>, and a successor, <a href="https://papers.cool/arxiv/2409.12136" target="_blank">"GRIN: GRadient-INformed MoE"</a>.</p><p>Although these are articles from around 2023 and 2024, if you want to deepen your understanding of the MoE Router, I highly recommend reading this trilogy. They provide a unified probabilistic framework for designing gradients for various discrete operations. Of course, the probabilistic framework has its limitations, as it can be quite formal and somewhat "restrictive" in operation.</p><p>For instance, when $k=2$, if we generalize the previous results in parallel, it should be<br />
+\begin{equation}\mathbb{E}_{i,j\sim \boldsymbol{p}} [\nabla_{\boldsymbol{\theta}}\log p_i p_j \cdot \ell(p_i p_j (\boldsymbol{e}_i + \boldsymbol{e}_j))] \approx \nabla_{\boldsymbol{\theta}} \mathbb{E}_{i,j\sim \boldsymbol{p}} [\ell(p_i p_j (\boldsymbol{e}_i + \boldsymbol{e}_j))]\end{equation}<br />
+This means using the joint distribution $p_i p_j$ and the sum of Expert pairs $\boldsymbol{e}_i + \boldsymbol{e}_j$ as the basic unit, transforming Top-2 into Top-1. However, the MoE we consistently use is actually in the form of $\ell(p_i \boldsymbol{e}_i + p_j\boldsymbol{e}_j)$, which is not easy to find an exact probabilistic derivation for.</p><p>At this point, a more "relaxed" way of understanding might be to treat it as something similar to MaxPooling and not force a probabilistic explanation. Alternatively, one could choose to understand it according to the geometric meaning in <a href="translation_10699.html" target="_blank">"MoE Travel Notes: 1. Starting from Geometric Meaning"</a>. Overall, the probabilistic framework only proves the feasibility of a certain scheme, but in principle, it doesn't deny the feasibility of others.</p><h2>Article Summary<a href="#article-summary"> #</a></h2><p>This article attempts to start from first principles to explore the design issues of the Router and Gate in MoE, providing a probabilistic explanation for gating normalization.</p>
+</div>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/11782" style="color: #005fcc;">https://kexue.fm/archives/11782</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

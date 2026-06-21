@@ -1,0 +1,235 @@
+
+    <meta charset="utf-8">
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+
+<h1><a href="https://kexue.fm/archives/11738">Directly Using FID as a Loss: From Gradient Calculation to Streaming Training</a></h1>
+<p>By 苏剑林 | May 08, 2026</p>
+<div class="PostContent" id="PostContent">
+<p>Readers who follow visual generative models know that FID has always been one of the key evaluation metrics; a smaller FID often means the generated results are more realistic. A natural question then arises: why not simply use FID directly as a loss function to train generative models? Is it because FID is non-differentiable? Not at all. FID is actually differentiable, and using it as a loss is theoretically sound, but in practice, one encounters computational difficulties.</p><p>Recently, the paper <a href="https://papers.cool/arxiv/2604.28190" target="_blank">"Representation Fréchet Loss for Visual Generation"</a> attempted to overcome these difficulties, successfully applying FID to fine-tune generative models and significantly improving the performance of single-step generation. This article will briefly explore the mathematical principles and implementation techniques involved.</p><h2>Generation Metrics<a href="#Generation Metrics"> #</a></h2><p>FID, which stands for "Fréchet Inception Distance," can be understood in two parts: "Fréchet Distance (FD)" and "Inception (I)."</p><p>Suppose there are two distributions $p$ and $q$, representing the real samples and generated samples respectively. We encode their samples $\boldsymbol{x}$ through a pre-trained encoder $\phi$ into feature vectors $\boldsymbol{z}=\phi(\boldsymbol{x})\in\mathbb{R}^d$, and estimate their respective mean vectors $\boldsymbol{\mu}_p,\boldsymbol{\mu}_q$ and covariance matrices $\boldsymbol{\Sigma}_p,\boldsymbol{\Sigma}_q$. Then, assuming the encoding results follow a multivariate normal distribution, we can use the discrepancy function for normal distributions to measure their gap. The Fréchet Distance (FD) selects the $W_2$ distance:</p>
+\begin{equation}\newcommand{tr}{\mathop{\text{tr}}}\begin{aligned}
+\mathcal{F}\triangleq\mathcal{W}_2^2[p,q]=&\,\Vert \boldsymbol{\mu}_p - \boldsymbol{\mu}_q\Vert^2 + \tr(\boldsymbol{\Sigma}_p + \boldsymbol{\Sigma}_q - 2(\boldsymbol{\Sigma}_p\boldsymbol{\Sigma}_q)^{1/2})\\[4pt]
+=&\,\Vert \boldsymbol{\mu}_p - \boldsymbol{\mu}_q\Vert^2 + \tr(\boldsymbol{\Sigma}_p + \boldsymbol{\Sigma}_q - 2(\boldsymbol{\Sigma}_p^{1/2}\boldsymbol{\Sigma}_q\boldsymbol{\Sigma}_p^{1/2})^{1/2})
+\end{aligned}\label{eq:w-p-q}\end{equation}
+<p>By substituting the mean vectors and covariance matrices of the respective encoding results into the above formula, the result is called the "Fréchet Distance (FD)." For the derivation of this formula, interested readers can refer to <a href="translation_8512.html" target="_blank">"KL Divergence, Bhattacharyya Distance, and W-Distance between Two Multivariate Normal Distributions"</a>.</p><p>If the encoder $\phi$ is chosen as <a href="https://papers.cool/arxiv/1512.00567" target="_blank">InceptionV3</a> (I), the corresponding result is called the "Fréchet Inception Distance," or FID. This evaluation metric was first proposed in the 2017 paper <a href="https://papers.cool/arxiv/1706.08500" target="_blank">"GANs Trained by a Two Time-Scale Update Rule Converge to a Local Nash Equilibrium"</a>, which in some sense belongs to the "ancient era."</p><p>Of course, for both training and evaluation, it is no longer necessary to use InceptionV3; other more advanced feature models can be used, such as <a href="https://papers.cool/arxiv/2303.15343" target="_blank">SigLIP</a>, or one can calculate the Fréchet Distance using multiple different encoders and sum them up. We collectively refer to these practices as "FD Loss."</p><h2>Related Literature<a href="#Related Literature"> #</a></h2><p>Although FID appears complex, it does not involve any non-differentiable operations, so using it as a Loss is a very natural idea. Early attempts in this direction were made several years ago, such as <a href="https://papers.cool/arxiv/2003.11774" target="_blank">"Image Generation Via Minimizing Fréchet Distance in Discriminator Feature Space"</a> and <a href="https://papers.cool/arxiv/2009.14075" target="_blank">"Backpropagating through Fréchet Inception Distance"</a>.</p><p>However, early attempts did not yield impressive results. The fundamental reason was the Batch Size. General loss functions calculate a single loss for a single sample and then average over all samples, whereas FID first calculates the mean and covariance of all samples and then substitutes them into Equation $\eqref{eq:w-p-q}$ for non-linear calculation. This leads to biased estimates of FID when using small Batch Sizes, and this bias cannot be eliminated through continued training; it can only be mitigated by increasing the Batch Size, which makes training costs difficult to manage.</p><p>Does "requiring non-linear operations across samples" and "requiring large Batch Sizes" sound familiar? In fact, "Contrastive Learning" in vision usually shares these two characteristics. Due to non-linear operations between samples, we cannot achieve the effect of increasing the Batch Size through gradient accumulation, but this is not entirely unsolvable—for example, <a href="translation_8471.html" target="_blank">"Can Contrastive Learning Use Gradient Accumulation?"</a>. As we will see later, the method for solving the Batch Size problem in FID is quite similar.</p><p>Additionally, from the perspective of "using pre-trained models to extract features to construct a loss function," another related work is <a href="https://papers.cool/arxiv/1603.08155" target="_blank">Perceptual Loss</a>, but this is used as a reconstruction loss for individual samples, typically for training models like VAEs, and does not involve statistical operations across samples, thus presenting no computational difficulty.</p><h2>Gradient Calculation<a href="#Gradient Calculation"> #</a></h2><p>Now let's derive step-by-step to see what difficulties are encountered when using FD as a Loss. The first task is the calculation of gradients. Since $p$ represents the real distribution, its $\boldsymbol{\mu}_p, \boldsymbol{\Sigma}_p$ are fixed, so we only need to find the gradients with respect to $\boldsymbol{\mu}_q, \boldsymbol{\Sigma}_q$. The gradient of $\boldsymbol{\mu}_q$ is relatively simple:</p>
+\begin{equation}\nabla_{\boldsymbol{\mu}_q}\mathcal{F} = \nabla_{\boldsymbol{\mu}_q}\Vert \boldsymbol{\mu}_p - \boldsymbol{\mu}_q\Vert^2  = 2(\boldsymbol{\mu}_q - \boldsymbol{\mu}_p) \end{equation}
+<p>While the gradient of $\boldsymbol{\Sigma}_q$ is</p>
+\begin{equation}\nabla_{\boldsymbol{\Sigma}_q}\mathcal{F} = \nabla_{\boldsymbol{\Sigma}_q}\tr(\boldsymbol{\Sigma}_p + \boldsymbol{\Sigma}_q - 2(\boldsymbol{\Sigma}_p^{1/2}\boldsymbol{\Sigma}_q\boldsymbol{\Sigma}_p^{1/2})^{1/2}) = \boldsymbol{I} - 2\nabla_{\boldsymbol{\Sigma}_q}\tr((\boldsymbol{\Sigma}_p^{1/2}\boldsymbol{\Sigma}_q\boldsymbol{\Sigma}_p^{1/2})^{1/2})\end{equation}
+<p>Here we use the second line of Equation $\eqref{eq:w-p-q}$. It looks more complex, but it has one advantage: the matrix $\boldsymbol{S} = \boldsymbol{\Sigma}_p^{1/2}\boldsymbol{\Sigma}_q\boldsymbol{\Sigma}_p^{1/2}$ is positive definite and symmetric, which can be used to simplify the calculation. Let the singular value decomposition (which is also the eigenvalue decomposition) of $\boldsymbol{S}$ be $\boldsymbol{U}\boldsymbol{\Lambda}\boldsymbol{U}^{\top}$. Then $\boldsymbol{S}^{1/2}=\boldsymbol{U}\boldsymbol{\Lambda}^{1/2}\boldsymbol{U}^{\top}$, thus</p>
+\begin{align}\tr(\boldsymbol{S}^{1/2})=&\,\tr(\boldsymbol{\Lambda}^{1/2})=\sqrt{\lambda_1}+\sqrt{\lambda_2}+\cdots+\sqrt{\lambda_d} \\[4pt]
+\nabla_{\boldsymbol{S}}\tr(\boldsymbol{S}^{1/2}) =&\, \frac{1}{2}\sum_{i=1}^d\frac{\nabla_{\boldsymbol{S}} \lambda_i}{\sqrt{\lambda_i}} =  \frac{1}{2}\sum_{i=1}^d\frac{\boldsymbol{u}_i\boldsymbol{u}_i^{\top}}{\sqrt{\lambda_i}} = \frac{1}{2}\boldsymbol{U}\boldsymbol{\Lambda}^{-1/2}\boldsymbol{U}^{\top} = \frac{1}{2}\boldsymbol{S}^{-1/2}\end{align}
+<p>For the derivation of gradients of eigenvalues, one can refer to <a href="translation_10878.html" target="_blank">"Derivatives of SVD"</a>. The final result is similar to the derivative of $\sqrt{x}$ being $\frac{1}{2\sqrt{x}}$, which looks intuitive, but it is not trivial; if $\boldsymbol{S}$ were not a positive definite symmetric matrix, this would generally not hold. Finally, by the chain rule, we have</p>
+\begin{equation}\nabla_{\boldsymbol{\Sigma}_q} \tr(\boldsymbol{S}^{1/2}) = \boldsymbol{\Sigma}_p^{1/2}[\nabla_{\boldsymbol{S}}\tr(\boldsymbol{S}^{1/2})] \boldsymbol{\Sigma}_p^{1/2} = \frac{1}{2}\boldsymbol{\Sigma}_p^{1/2}\boldsymbol{S}^{-1/2}\boldsymbol{\Sigma}_p^{1/2} \end{equation}
+<p>Combining them, we get</p>
+\begin{equation}\nabla_{\boldsymbol{\Sigma}_q}\mathcal{W}_2^2[p,q] = \boldsymbol{I} - \boldsymbol{\Sigma}_p^{1/2}(\boldsymbol{\Sigma}_p^{1/2}\boldsymbol{\Sigma}_q\boldsymbol{\Sigma}_p^{1/2})^{-1/2}\boldsymbol{\Sigma}_p^{1/2}\label{eq:Sigma-grad}\end{equation}
+<p>This form seems complex, but $\boldsymbol{\Sigma}_p^{1/2}$ can be pre-calculated. We only need to compute the square root and inverse square root of the positive definite symmetric matrix $\boldsymbol{S} = \boldsymbol{\Sigma}_p^{1/2}\boldsymbol{\Sigma}_q\boldsymbol{\Sigma}_p^{1/2}$ to compute FID and its gradient. This can be done via the <code class="language-python">eigh</code> function, or by using the Newton-Schulz iteration schemes introduced in <a href="translation_11158.html" target="_blank">"Efficient Calculation of Matrix Square Root and Inverse Square Root"</a> and <a href="translation_11175.html" target="_blank">"Efficient Calculation of Matrix r-th Root and Inverse r-th Root"</a>.</p><h2>Ultra-Large Batch<a href="#Ultra-Large Batch"> #</a></h2><p>Introduce the notation</p>
+\begin{equation}\begin{gathered}
+\boldsymbol{\mu}_p = \mathbb{E}[\boldsymbol{z}_p], \qquad \boldsymbol{V}_p = \mathbb{E}[\boldsymbol{z}_p \boldsymbol{z}_p^{\top}], \qquad \boldsymbol{z}_p = \phi(\boldsymbol{x}_p),\qquad \boldsymbol{x}_p\sim p \\[4pt]
+\boldsymbol{\mu}_q = \mathbb{E}[\boldsymbol{z}_q], \qquad \boldsymbol{V}_q = \mathbb{E}[\boldsymbol{z}_q \boldsymbol{z}_q^{\top}], \qquad \boldsymbol{z}_q = \phi(\boldsymbol{x}_q),\qquad \boldsymbol{x}_q\sim q
+\end{gathered}\end{equation}
+<p>Then</p>
+\begin{equation}\boldsymbol{\Sigma}_p = \boldsymbol{V}_p - \boldsymbol{\mu}_p \boldsymbol{\mu}_p^{\top},\qquad\boldsymbol{\Sigma}_q = \boldsymbol{V}_q - \boldsymbol{\mu}_q \boldsymbol{\mu}_q^{\top}\end{equation}
+<p>Note that $\boldsymbol{z}=\phi(\boldsymbol{x})$ usually has thousands of dimensions (InceptionV3 is 2048), so to ensure accurate estimation, tens of thousands of samples are usually needed. The real distribution is fixed, and its $\boldsymbol{\mu}_p, \boldsymbol{\Sigma}_p$ can be pre-calculated without issue. However, the generative distribution changes in real-time. If tens of thousands of samples are used at every step, it means the Batch Size must reach tens of thousands, which is quite expensive in many cases.</p><p>On the other hand, we can also see the necessity of a large Batch from the gradient formula $\eqref{eq:Sigma-grad}$. If the Batch Size is small, the estimated $\boldsymbol{V}_q$ will not even be full rank, and thus $\boldsymbol{\Sigma}_q$ will not be full rank either. In this case, the inversion in $(\boldsymbol{\Sigma}_p^{1/2}\boldsymbol{\Sigma}_q\boldsymbol{\Sigma}_p^{1/2})^{-1/2}$ becomes impossible (confronting $0^{-1/2}$). Therefore, FD as a Loss imposes requirements on the training Batch Size, which should be the core difficulty in practice.</p><p>Limited by computational power, we must find a way to simulate the effect of a large Batch Size with a small Batch Size. This is similar to the requirement for "contrastive learning + gradient accumulation."</p><h2>Equivalent Loss<a href="#Equivalent Loss"> #</a></h2><p>Suppose that when the Batch Size is $B$, the corresponding $\boldsymbol{\mu}_q,\boldsymbol{V}_q$ are sufficiently accurate, but we can only run a small Batch Size $b$ each time. Thus, a total of $k=B/b$ runs are needed to simulate the effect of a large Batch Size. The results produced each time are $\tilde{\boldsymbol{\mu}}_q^{(1)},\tilde{\boldsymbol{V}}_q^{(1)}$, $\tilde{\boldsymbol{\mu}}_q^{(2)},\tilde{\boldsymbol{V}}_q^{(2)}$, ..., $\tilde{\boldsymbol{\mu}}_q^{(k)},\tilde{\boldsymbol{V}}_q^{(k)}$, and we have the relationship</p>
+\begin{equation}\boldsymbol{\mu}_q = \frac{1}{k}\sum_{i=1}^k\tilde{\boldsymbol{\mu}}_q^{(i)},\qquad \boldsymbol{V}_q = \frac{1}{k}\sum_{i=1}^k\tilde{\boldsymbol{V}}_q^{(i)}\end{equation}
+<p>We want to find an ideal equivalent loss such that the total gradient is equivalent to the sum of the gradients of each small Batch, thereby achieving an unbiased estimation. To this end, differentiating both sides of Equation $\eqref{eq:w-p-q}$ gives</p>
+\begin{equation}\begin{aligned}
+d\mathcal{F}(\boldsymbol{\mu}_q,\boldsymbol{V}_q) =&\, \langle\nabla_{\boldsymbol{\mu}_q}\mathcal{F}, d\boldsymbol{\mu}_q \rangle + \langle\nabla_{\boldsymbol{V}_q}\mathcal{F}, d\boldsymbol{V}_q \rangle_F \\
+=&\, \sum_{i=1}^k \left[\langle\nabla_{\boldsymbol{\mu}_q}\mathcal{F}, d\tilde{\boldsymbol{\mu}}_q^{(i)}/k \rangle + \langle\nabla_{\boldsymbol{V}_q}\mathcal{F}, d\tilde{\boldsymbol{V}}_q^{(i)}/k \rangle_F\right] \\
+=&\, d\sum_{i=1}^k \mathcal{F}(\color{skyblue}{[}\boldsymbol{\mu}_q - \tilde{\boldsymbol{\mu}}_q^{(i)}/k\color{skyblue}{]_{sg}} + \tilde{\boldsymbol{\mu}}_q^{(i)}/k,\color{skyblue}{[}\boldsymbol{V}_q - \tilde{\boldsymbol{V}}_q^{(i)}/k\color{skyblue}{]_{sg}} + \tilde{\boldsymbol{V}}_q^{(i)}/k) \\
+\end{aligned}\end{equation}
+<p>The meaning of this equality is that we can sequentially perform small-batch forward passes to compute $\tilde{\boldsymbol{\mu}}_q^{(i)},\tilde{\boldsymbol{V}}_q^{(i)}$, average them to get a sufficiently accurate $\boldsymbol{\mu}_q,\boldsymbol{V}_q$, and then compute the gradient for each batch according to the loss</p>
+\begin{equation}\mathcal{F}_i = \mathcal{F}(\color{skyblue}{[}\boldsymbol{\mu}_q - \tilde{\boldsymbol{\mu}}_q^{(i)}/k\color{skyblue}{]_{sg}} + \tilde{\boldsymbol{\mu}}_q^{(i)}/k,\color{skyblue}{[}\boldsymbol{V}_q - \tilde{\boldsymbol{V}}_q^{(i)}/k\color{skyblue}{]_{sg}} + \tilde{\boldsymbol{V}}_q^{(i)}/k)\label{eq:Fi}\end{equation}
+<p>And accumulate their gradients. This gradient is equivalent to the gradient of Batch Size $B$, where $\color{skyblue}{[\cdot]_{sg}}$ is the stop gradient operator. Of course, we could also consider not accumulating the gradients but performing an update every step and proportionally decreasing the learning rate, in which case the effect is similar.</p><h2>Using History<a href="#Using History"> #</a></h2><p>Although the above scheme is theoretically feasible, because it requires $k$ forward steps to compute an accurate $\boldsymbol{\mu}_q, \boldsymbol{V}_q$ before calculating the gradient for each step, the whole process is not very "smooth." The bottleneck here is that we must know the global $\boldsymbol{\mu}_q, \boldsymbol{V}_q$ to calculate an unbiased local gradient.</p><p>A natural thought is whether $\boldsymbol{\mu}_q, \boldsymbol{V}_q$ can be approximated. Considering the learning rate is small and parameter updates are slow, the changes in $\boldsymbol{\mu}_q, \boldsymbol{V}_q$ should also be slow. After introducing the data of the current batch, the new $\boldsymbol{\mu}_q, \boldsymbol{V}_q$ should just be a fine-tuning of the old ones. We consider using an Exponential Moving Average (EMA) to approximate this operation:</p>
+\begin{equation}\boldsymbol{\mu}_q^{(t)} = \beta \boldsymbol{\mu}_q^{(t-1)} + (1-\beta) \tilde{\boldsymbol{\mu}}_q^{(t)},\qquad \boldsymbol{V}_q^{(t)} = \beta \boldsymbol{V}_q^{(t-1)} + (1-\beta) \tilde{\boldsymbol{V}}_q^{(t)}\end{equation}
+<p>This roughly maintains an average window of size $\mathcal{O}(1/(1-\beta))$, which is approximately equivalent to expanding the statistical Batch Size of $\boldsymbol{\mu}_q, \boldsymbol{V}_q$ by $\mathcal{O}(1/(1-\beta))$ times. In this way, at each step, we can compute the gradient to update based on the following loss</p>
+\begin{equation}\mathcal{F}_t = \mathcal{F}(\underbrace{\beta \color{skyblue}{[}\boldsymbol{\mu}_q^{(t-1)}\color{skyblue}{]_{sg}} + (1-\beta) \tilde{\boldsymbol{\mu}}_q^{(t)}}_{\boldsymbol{\mu}_q^{(t)}},\underbrace{\beta \color{skyblue}{[}\boldsymbol{V}_q^{(t-1)}\color{skyblue}{]_{sg}} + (1-\beta) \tilde{\boldsymbol{V}}_q^{(t)}}_{\boldsymbol{V}_q^{(t)}})\end{equation}
+<p>The extra cost is caching $\boldsymbol{\mu}_q, \boldsymbol{V}_q$, which is very small. This operation of "compensating for insufficient Batch Size with history" is also an embodiment of the "streaming" idea in "<a href="https://kexue.fm/search/streaming power iteration/" target="_blank">Streaming Power Iteration</a>." Additionally, the paper discusses a queue approach, which maintains a queue of $k$ historical batches and integrates them with the current batch to compute the gradient according to Equation $\eqref{eq:Fi}$, while discarding the oldest batch. This approach is more rudimentary, consumes significantly more memory than EMA, and its experimental results were not as good as EMA.</p><h2>Experimental Analysis<a href="#Experimental Analysis"> #</a></h2><p>The experiments in the paper mainly focus on the post-training of generative models, aiming to improve original single-step generation models or fine-tune original multi-step models into single-step models through FD Loss training. When using multiple different encoders to calculate FD Loss, the paper uses a loss normalization technique to balance losses of different magnitudes:</p>
+\begin{equation}\mathcal{L} = \sum_i \frac{\mathcal{F}[\phi_i]}{\color{skyblue}{[}\mathcal{F}[\phi_i]\color{skyblue}{]_{sg}} + \epsilon}\end{equation}
+<p>This technique was also discussed in <a href="translation_8870.html" target="_blank">"Discussion on Multi-Task Learning (I): In the Name of Loss"</a>.</p><p>The core achievement of the paper is pushing the performance (FID) of single-step generation to a new height, surpassing all other single-step and multi-step generative models. It appears this result has reached a ceiling. Some charts are as follows:</p>
+<div class="pic-container"><div class="typecho-caption aligncenter" style="max-width: 500px"><div style="margin: 5px"><a href="https://kexue.fm/usr/uploads/2026/05/3014248186.png" title="Click to view original image" target="_blank"><img src="https://kexue.fm/usr/uploads/2026/05/3014248186.png" style="max-width: 100%" alt="FD loss improves single-step generation" /></a></div><p class="typecho-caption-text">FD loss improves single-step generation</p></div><div class="typecho-caption aligncenter" style="max-width: 500px"><div style="margin: 5px"><a href="https://kexue.fm/usr/uploads/2026/05/3462357209.png" title="Click to view original image" target="_blank"><img src="https://kexue.fm/usr/uploads/2026/05/3462357209.png" style="max-width: 100%" alt="Comprehensive comparison of FD loss" /></a></div><p class="typecho-caption-text">Comprehensive comparison of FD loss</p></div></div><h2>Summary<a href="#Summary"> #</a></h2><p>This article primarily analyzed the difficulties faced in using FID as a loss function for generative models from a theoretical perspective and how to derive corresponding techniques to overcome these difficulties from the derivation process.</p>
+</div>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/11738" style="color: #005fcc;">https://kexue.fm/archives/11738</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

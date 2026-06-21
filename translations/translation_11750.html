@@ -1,0 +1,251 @@
+
+    <meta charset="utf-8">
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+
+
+<script type="text/javascript">
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script type="text/javascript" id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+
+<h1><a href="https://kexue.fm/archives/11750">How was DeepSeek V4's tid2eid generated?</a></h1>
+<p>By 苏剑林 | May 15, 2026</p>
+
+<div class="PostContent" id="PostContent">
+<p>Anyone who has trained an MoE (Mixture-of-Experts) model knows that if the MLP parts of the entire model are replaced with MoE, the MoE layers closer to the Embedding (the first few layers) often struggle to achieve load balancing. In response to this, <a href="https://papers.cool/arxiv/2412.19437" target="_blank">DeepSeek V3</a>, as well as our <a href="https://papers.cool/arxiv/2507.20534" target="_blank">Kimi K2</a>, adopted a strategy called "first_k_dense"—which, as the name implies, means using conventional Dense GLUs instead of MoE for the first $k$ layers. In <a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/DeepSeek_V4.pdf" target="_blank">DeepSeek V4</a>, this strategy was changed to "first_k_hash."</p>
+
+<p>The "hash" here refers to "Hash Routing," proposed in <a href="https://papers.cool/arxiv/2106.04426" target="_blank">"Hash Layers For Large Sparse Models."</a> It assigns an Expert to each Token through a pre-determined mapping table called tid2eid. This article explores how to generate this tid2eid table.</p>
+
+<h2>Problem Background<a href="#background"> #</a></h2>
+<p>First, it should be noted that for the initial MoE layers, using Quantile Balancing (as proposed by the author in <a href="translation_11619.html" target="_blank">"MoE Odyssey 6: Optimal Allocation for Balance"</a> and <a href="translation_11626.html" target="_blank">"MoE Odyssey 7: Minimalist Solution for Dynamic Activation"</a>) can already significantly alleviate their imbalance issues.</p>
+
+<p>As for the Hash Routing adopted by V4, it can be seen as an exploration of the same problem from a different direction. The idea is that for the first few MoE layers, there is not much contextual information. Therefore, selecting an Expert based on the input vector may not be significantly different from selecting one directly based on the Token Id, which carries no contextual information. Since this is the case, one might as well pre-define the Experts to be activated for each Token in the first few layers based on the Token Id; this is the origin of "tid2eid (Token Id to Expert Id)."</p>
+
+<p>So, how do we generate this tid2eid table? Is complete randomness acceptable? It seems not, because the frequency of each Token is different, and complete randomness would actually lead to imbalance. DeepSeek has not released the generation details of this table, so we can only speculate based on our own reasoning.</p>
+
+<h2>Mathematical Description<a href="#mathematical-description"> #</a></h2>
+<p>Assume there are $m$ different Tokens, and the frequency of the $i$-th Token is $p_i$. Without loss of generality, assume they are sorted in descending order, i.e., $p_i \geq p_{i+1}$. We use $x_{i,j} \in \{0, 1\}$ to indicate whether Token $i$ should activate Expert $j$ ($0$ for no, $1$ for yes). There are $n$ Experts in total, and each Token selects $k$ Experts. We actually need to solve the following system of equations:</p>
+
+\begin{equation}x_{i,j}\in\{0, 1\},\qquad\sum_{j=1}^n x_{i,j} = k,\qquad \sum_{i=1}^m p_i x_{i,j}\approx \frac{k}{n}\end{equation}
+
+<p>Note that we used the approximation symbol $\approx$ in the last equation because, strictly speaking, the system might not have a solution if it were an exact equality $=$. Thus, we keep the $\approx$ notation to mean the two sides should be as close as possible. It can also be formulated as an optimization problem:</p>
+
+\begin{equation}\min_{x_{i,j}\in\{0, 1\}} \sum_{j=1}^n \left(\sum_{i=1}^m p_i x_{i,j} - \frac{k}{n}\right)^2 \qquad\text{s.t.}\qquad\sum_{j=1}^n x_{i,j} = k\end{equation}
+
+<p>A relatively simple solution to this problem is a greedy algorithm:</p>
+
+<blockquote class="cite"><div>Process tokens one by one in order of frequency from high to low. First, count the current allocated load of each Expert, then select the $k$ Experts with the lightest load as the activated Experts for the current Token, and subsequently update the load distribution of the Experts.</div></blockquote>
+
+<h2>Reference Implementation<a href="#reference-implementation"> #</a></h2>
+<p>Although the greedy algorithm is greedy in principle, it yields a near-optimal solution in most cases. A reference implementation is as follows:</p>
+
+<pre><code class="language-python">import numpy as np
+
+# Simulate distribution
+m, n, k = 80000, 128, 4
+p = 1 / (10 + np.arange(m))
+p /= p.sum()
+
+# Greedy processing
+x, f = np.zeros((m, k), dtype='int32'), np.zeros(n)
+for i in range(m):
+    j = f.argsort()[:k]  # Select the k lightest loads
+    f[j] += p[i] / k  # Update load distribution
+    x[i] = j  # Record into tid2eid
+
+# Evaluate balance
+max_vio, min_vio = f.max() * n - 1, f.min() * n - 1</code></pre>
+
+<p>Note that there is nothing random about this code; in principle, it is a deterministic algorithm. What if we want different tid2eid tables for the first few layers? We can consider adding some randomness, such as changing <code>range(m)</code> to <code>np.random.permutation(m)</code>—that is, not executing in order of frequency. This will still produce a usable solution, although the balance might be slightly worse. We can run it multiple times and choose the solutions with the lowest <code>max_vio</code>.</p>
+
+<h2>Extreme Cases<a href="#extreme-cases"> #</a></h2>
+<p>Now let's consider an extreme scenario: $p_1 \gg k / n$, meaning the frequency of a certain Token already far exceeds the equilibrium level. In this case, no matter how the tid2eid is arranged, it is impossible to achieve load balancing. In other words, making decisions based purely on a single Token Id simply won't balance. How should we handle this?</p>
+
+<p>The answer is simple: switch to a Hash method that relies on more input information. Previously, we made decisions based only on the current Token Id. In reality, every Token exists within a sequence and has context. If the previous approach was "1-gram to expert," we can now consider combining it with the preceding Tokens to form "2-gram to expert," "3-gram to expert," and so on.</p>
+
+<p>Taking a 2-gram $(a, b)$ as an example, a naive hashing method is: pick a prime number $q$ larger than $m$, and calculate $(aq + b) \mod n$ as the activated Expert. Repeat this $k$ times with different prime numbers to get $k$ Experts. By increasing the number of grams, the number of input combinations increases significantly. When these are mapped to a finite $n$, each bucket is highly likely to be "filled," so as long as the Hash function is not particularly terrible, the result will be almost balanced.</p>
+
+<p>Therefore, its advantage is that there is no need to consider frequency, nor is there a need to pre-memorize a tid2eid table. As for the disadvantages, the calculation of the Hash function is slightly more complex, and the same Token might select duplicate Experts, but these are not particularly serious issues.</p>
+
+<h2>Summary<a href="#summary"> #</a></h2>
+<p>This article briefly summarized the basic idea of Hash Routing in DeepSeek V4 and focused on exploring the construction principles of its tid2eid mapping table.</p>
+</div>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/11750" style="color: #005fcc;">https://kexue.fm/archives/11750</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>
