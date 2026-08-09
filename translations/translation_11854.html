@@ -1,0 +1,357 @@
+
+    <meta charset="utf-8">
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+    
+
+<script>
+MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+
+<h1><a href="https://kexue.fm/archives/11854">Besides Cross Entropy, What Other Choices Are There for LM Loss?</a></h1>
+
+<p>By 苏剑林 | August 09, 2026</p>
+
+<p>For a long time, Cross Entropy has been the standard loss function for LLM pre-training and fine-tuning. Can this "standard" be changed? If we want to change it, what options do we have? And what impact will changing it bring?</p>
+
+<p>Perhaps many readers have never carefully questioned these issues. On the one hand, cross entropy is concise and effective, backed by an information-theoretic interpretation, making us feel it is very "self-evident" so that we gladly accept it; on the other hand, changing the loss function affects the entire system—changing it means all loss-based comparisons are no longer valid, and we can only compare downstream task results, which requires too much engineering work.</p>
+
+<p>However, "self-evident" does not mean "there is no other choice." Thinking through the underlying principles clearly not only helps us better understand the model's optimization process, but may also bring new perspectives for improving model performance.</p>
+
+<h2>Analysis</h2>
+
+<p>More precisely, cross entropy is the standard loss function for classification problems, and LLM training looks like token-by-token classification, so cross entropy loss was adopted. From this perspective, does it mean we just need to replace it with other classification loss functions?</p>
+
+<p>Unfortunately, that is not correct. Unlike conventional classification problems, the patterns of natural language are one-to-many. For example, after "White Cut" (白切), it can not only be followed by "Chicken" (鸡), but also "Duck" (鸭), "Dog" (狗), "Goat" (羊), etc. Therefore, what we need to model is the complete distribution, rather than just predicting a single label. In other words, we need to estimate the probabilities of "Chicken", "Duck", "Dog", "Goat", etc. following "White Cut", rather than just giving a single correct answer—the correct answer is not unique.</p>
+
+<p>The core difficulty here is that training data is fed into the model in a "fragmented" manner. This time "White-Cut Chicken" comes in, next time "White-Cut Duck" might come in, and later "White-Cut Chicken" might come in again. We cannot compute the complete frequency distribution in advance, which requires the loss function to have the ability to be converted into a sampling form. In mathematical terms, this requires the loss function to be linear with respect to the target distribution $p$, i.e.,</p>
+
+\begin{equation}
+L(p,q)=\sum_{i=1}^n p_i S(q,i)=\mathbb{E}_{i\sim p}[S(q,i)] \quad \text{s.t.} \quad p=\arg\min_{q\in\Delta^{n-1}} L(p,q)
+\end{equation}
+
+<p>where $p=(p_1,p_2,\dots,p_n)$ and $q=(q_1,q_2,\dots,q_n)$ represent the target distribution and predicted distribution respectively. The condition after $\text{s.t.}$ indicates that when $p$ is fixed, the minimum point of $L(p,q)$ is $q^*=p$, which is a basic requirement for a loss function. The linearity constraint excludes many common probability metrics, such as <a href="https://en.wikipedia.org/wiki/F-divergence#Common_examples_of_f-divergences">Total Variation</a>:</p>
+
+\begin{equation}
+TV(p,q)=\sum_{i=1}^n |p_i - q_i| = \sum_{i=1}^n p_i \left|1 - \frac{q_i}{p_i}\right| = \mathbb{E}_{i\sim p}\left[\left|1 - \frac{q_i}{p_i}\right|\right]
+\end{equation}
+
+<p>To estimate it via sampling, we would need to compute $|1 - q_i / p_i|$. However, we cannot know $p_i$ in advance, so Total Variation cannot be transformed into a form suitable for LLM training.</p>
+
+<h2>Derivation</h2>
+
+<p>Now let us solve target (1). According to the basic requirements of loss functions, when $p$ is fixed, the minimum value of $L(p,q)$ is $H(p)\triangleq L(p,p)$, so we can write</p>
+
+\begin{equation}
+L(p,q) \ge H(p)
+\end{equation}
+
+<p>Now let us focus our attention on the variable $p$. Clearly, $L(p,q)$ is linear with respect to $p$, so when we fix $q$, the left-hand side describes a hyperplane, while the right-hand side describes a hypersurface, and they intersect at $p=q$. If we further assume or require that the minimum point is unique, then intersection actually means tangency, i.e., $L(p,q)$ is the tangent plane of $H(p)$ at $p=q$!</p>
+
+<p>Since the above inequality holds universally, this is equivalent to saying that $H(p)$ always lies below its tangent plane, which is precisely the definition of a concave function! Thus we can confirm that $H(p)$ is a concave function. Conversely, choosing any concave function $H(p)$ with respect to $p$, its tangent plane at $p=q$ is</p>
+
+\begin{equation}
+H(q) + (p - q) \cdot \nabla_q H(q) = p \cdot [H(q) + \nabla_q H(q) - q \cdot \nabla_q H(q)]
+\end{equation}
+
+<p>where the equality makes use of the constraint $p,q \in \Delta^{n-1}$ (the sum of components is 1), "$\cdot$" denotes the inner product, and vector plus scalar is processed element-wise. According to our previous derivation, the above equation is precisely the desired $L(p,q)$, so we can directly read off:</p>
+
+\begin{equation}
+S(q,i) = H(q) + \partial_i H(q) - q \cdot \nabla_q H(q) = H(q) + (e_i - q) \cdot \nabla_q H(q)
+\end{equation}
+
+<p>This is the general form of $S(q,i)$ (allowing addition/subtraction of a constant as well as multiplication by a positive constant), where $\partial_i H(q)$ represents the $i$-th component of $\nabla_q H(q)$, and $e_i$ is the one-hot vector with 1 at the $i$-th position. It is easy to see that $S(q,i)$ is linear with respect to $H(q)$, and the linear interpolation of two concave functions is still a concave function, so the linear interpolation of two scoring functions is also still a scoring function.</p>
+
+<h2>Scoring</h2>
+
+<p>The above result actually has a dedicated name called <a href="https://en.wikipedia.org/wiki/Scoring_rule">Proper Scoring Rules</a>. We won't trace back where this name came from, but below are several classic examples:</p>
+
+<table border="1" cellspacing="0" cellpadding="6">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>$H(p)$</th>
+      <th>$S(q,i)$</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Logarithmic Score (Cross Entropy)</td>
+      <td>$-\sum_i p_i \log p_i$</td>
+      <td>$-\log q_i$</td>
+    </tr>
+    <tr>
+      <td>Brier Score (Squared Loss)</td>
+      <td>$1 - \sum_i p_i^2$</td>
+      <td>$\|q - e_i\|^2$</td>
+    </tr>
+    <tr>
+      <td>Tsallis Score ($\alpha > 0$)</td>
+      <td>$\frac{1 - \sum_i p_i^\alpha}{\alpha - 1}$</td>
+      <td>$\frac{\sum_j q_j^\alpha - \alpha q_i^{\alpha-1} + 1}{\alpha - 1}$</td>
+    </tr>
+    <tr>
+      <td>Spherical Score ($\alpha > 0$)</td>
+      <td>$\frac{1 - \|p\|_\alpha}{\alpha - 1}$</td>
+      <td>$\frac{1}{\alpha - 1}\left(1 - \frac{q_i^{\alpha-1}}{\|q\|_\alpha^{\alpha-1}}\right)$</td>
+    </tr>
+    <tr>
+      <td>Rényi Score ($0 < \alpha < 1$)</td>
+      <td>$\frac{1}{1 - \alpha} \log \sum_i p_i^\alpha$</td>
+      <td>$\frac{1}{1-\alpha}\left(\log \sum_j q_j^\alpha + \frac{\alpha q_i^{\alpha-1}}{\sum_j q_j^\alpha} - \alpha\right)$</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>It is worth pointing out that the last three scoring functions all degenerate into the logarithmic score as $\alpha \to 1$, which means they are all generalizations of cross entropy. In particular, if we further require that $S(q,i)$ depends only on $q_i$, i.e., $S(q,i)=S(q_i)$, then cross entropy $-\log q_i$ is the unique choice. This is not hard to prove: in this case $H(q) = \sum_i q_i S(q_i)$, substituting this into Eq. (5) gives</p>
+
+\begin{equation}
+S(q_i) = S(q_i) + q_i S'(q_i) - \sum_j q_j^2 S'(q_j)
+\end{equation}
+
+<p>where the term $\sum_j q_j^2 S'(q_j)$ is equivalent to a constant for an individual $q_i$, so this equation is equivalent to $q_i S'(q_i) = -c$, which easily solves to $S(q_i) = -c \log q_i$, yielding the logarithmic score.</p>
+
+<p>These examples can all be extended to continuous distributions, simply replacing the discrete variable $i$ with a continuous variable $x$, and replacing summations with integrals. However, the difficulty with continuous distributions often lies in the inability to calculate the normalization factor. These scoring functions all require explicit probability density, so they are usually not as "easy to use". In such scenarios, scoring functions that do not rely on normalization factors (usually requiring gradients, which is also unique to continuous distributions) are needed, but we will not expand on that here.</p>
+
+<h2>Gradients</h2>
+
+<p>Just mentioned that the latter three scoring functions are generalizations of cross entropy, so intuitively, if we fine-tune $\alpha$, do we have a chance to gain improvements in downstream tasks? However, things are not that simple.</p>
+
+<p>In general, the model can only predict an unbounded logits vector $z \in \mathbb{R}^n$, and we need to add an activation function to project it into a probability distribution $q$, with Softmax usually being the activation function of choice. Since we can only use gradient-based optimizers, the convexity and gradient properties of the loss function with respect to $z$ become particularly important. Taking logarithmic score and Brier score as examples, under the Softmax activation function, the gradients of the loss with respect to $z$ are respectively:</p>
+
+<p>$$\text{Logarithmic Score (Cross Entropy)} : \nabla_z S(q,i) = q - e_i$$</p>
+<p>$$\text{Brier Score (Squared Loss)} : \nabla_z S(q,i) = 2(\text{diag}(q) - q q^\top)(q - e_i)$$</p>
+
+<p>Clearly, the gradient of cross entropy looks much "cleaner". The gradient is zero if and only if $q = e_i$, which means that as long as the target has not been reached, it can provide an effective gradient, and the further away from the target, the larger the gradient; squared loss has an additional transformation term $\text{diag}(q) - q q^\top$, and when $q = e_j \neq e_i$, this term will also be zero, indicating that when the model is "confidently wrong", it will also suffer from vanishing gradients.</p>
+
+<p>This property is two-sided: in the early and middle stages, most of the model's predictions are inaccurate, which means using squared loss yields extremely low learning efficiency; but in the later stage, the model is basically stable, and those samples that are still "confidently wrong" at this point may be extremely difficult or noisy/erroneous samples—skipping them might actually benefit overall performance. Therefore, cross entropy has higher learning efficiency and should serve as the main loss, but squared loss has better noise resistance, which can be attempted in later stages.</p>
+
+<p>These can also be understood through the convexity of $S(q,i)$ with respect to $z$. It can be proven that under Softmax activation: cross entropy is convex with respect to $z$, which means the optimal point is unique, and the gradient anywhere points toward the target point $e_i$; but squared loss is non-convex with respect to $z$, so these favorable properties are no longer guaranteed to exist, and the model might enter a saturation dilemma of being "both wrong and unable to get out".</p>
+
+<p>Of course, even if it is convex with respect to $z$, $z$ still depends on parameters, and in deep models, the loss function is generally non-convex with respect to parameters. Requiring convexity of the loss function with respect to $z$ is mostly out of consideration for not adding extra "trouble" to the model—optimization in deep learning is already hard enough, so there is no need to add another obstacle at the final layer.</p>
+
+<h2>Reverse Deduction</h2>
+
+<p>The results of the previous section all had a prerequisite—Softmax activation. But what if it's not Softmax activation? Or conversely, for a given scoring function, can we derive the "optimal" activation function tailored for that scoring function?</p>
+
+<p>The first question to ponder is: how should "optimal" be defined? Referring to the "Softmax + Cross Entropy" combination, it has two advantages: one is convexity with respect to $z$, and the second is that the gradient $\nabla_z S(q,i) = q - e_i$ is relatively "clean". In fact, the second point is stronger and more practical, so we start from the second point. That is, we hope to find a transformation $q = \sigma(z) \in \Delta^{n-1}$ such that for a given $S(q,i)$, it holds that:</p>
+
+\begin{equation}
+\nabla_z S(q,i) = q - e_i
+\end{equation}
+
+<p>Note that $e_i = \nabla_z z_i$, so the above equation can also be written as $\nabla_z(S(q,i) + z_i) = q$, which indicates that there exists a scalar function $\Phi(z)$ independent of $i$ such that:</p>
+
+\begin{equation}
+\Phi(z) = S(q,i) + z_i, \quad q = \nabla_z \Phi(z)
+\end{equation}
+
+<p>Rearranging terms gives $\Phi(z) - z_i = S(q,i)$. Multiplying both sides by $p_i$ and summing over $i$ yields:</p>
+
+\begin{equation}
+\Phi(z) - p \cdot z = L(p,q) \ge H(p)
+\end{equation}
+
+<p>Rearranging terms further gives $\Phi(z) \ge p \cdot z + H(p)$. This holds for any $p$, so $\Phi(z)$ is an upper bound for all $p \cdot z + H(p)$. Then substituting $p = q$ into the above equation gives $\Phi(z) - q \cdot z = L(q,q) = H(q)$, i.e., equality can be achieved when $p = q$. Thus $\Phi(z)$ is the "supremum" of all $p \cdot z + H(p)$, i.e.,</p>
+
+\begin{equation}
+\Phi(z) = \max_{p \in \Delta^{n-1}} p \cdot z + H(p), \quad q = \arg\max_{p \in \Delta^{n-1}} p \cdot z + H(p)
+\end{equation}
+
+<p>This is precisely the <a href="https://en.wikipedia.org/wiki/Convex_conjugate">convex conjugate</a> of the convex function $-H(p)$, and putting the content of these sections together, this is precisely the classic <a href="https://papers.cool/arxiv/1901.02324">Fenchel-Young Losses</a> framework.</p>
+
+<h2>Activation</h2>
+
+<p>In this section, we also derive the optimal activation functions corresponding to the several scoring functions mentioned earlier. It is not hard to see that their corresponding $H(q)$ all share the same structure $g(\sum_i q_i^\alpha)$, so we can solve them in a unified manner. Let $t = \sum_i q_i^\alpha$, then $H(q) = g(t)$, where:</p>
+
+\begin{equation}
+g(t) = \frac{1 - t}{\alpha - 1} \quad (\text{Tsallis/Brier}), \quad g(t) = \frac{1 - t^{1/\alpha}}{\alpha - 1} \quad (\text{Spherical}), \quad g(t) = \frac{\log t}{1 - \alpha} \quad (\text{Rényi})
+\end{equation}
+
+<p>Introduce the Lagrangian function $q \cdot z + H(q) - \lambda(\sum_i q_i - 1)$. Taking the derivative with respect to $q_i$ and setting it to 0 gives:</p>
+
+\begin{equation}
+z_i + \alpha g'(t) q_i^{\alpha-1} = \lambda \implies q_i^{\alpha-1} = \frac{\lambda - z_i}{\alpha g'(t)}
+\end{equation}
+
+<p>For an individual component, $\lambda$ and $\alpha g'(t)$ are shared "constants". Our goal is to adjust these two constants so that $q$ becomes a valid probability distribution. Note that $q_i$ only has two possibilities: $q_i > 0$ and $q_i = 0$. The latter is trivial, so we only need to analyze the former. Also note that when $\alpha > 1$, $g'(t) < 0$, and when $\alpha < 1$, $g'(t) > 0$. Therefore we can write:</p>
+
+\begin{equation}
+q_i = \begin{cases} e^{z_i - \lambda}, & \alpha \to 1 \\ [z_i - \lambda - \alpha g'(t)]_+^{\frac{1}{\alpha-1}}, & \alpha \neq 1 \end{cases}
+\end{equation}
+
+<p>where $[x]_+ = \max(x,0)$. Note, however, that when $\alpha < 1$, this truncation is redundant because the exponent is less than 0, and a zero to a negative power is undefined, so the truncation never takes effect. This also shows that $\alpha > 1$ corresponds to sparse distributions, while $\alpha < 1$ corresponds to dense distributions. As for $\lambda$, it is determined by the condition $\sum_i q_i = 1$. Clearly, as $\alpha \to 1$, it is precisely the classic Softmax. When $\alpha \neq 1$, for Tsallis score we have $g'(t) = 1/(1-\alpha)$, hence:</p>
+
+\begin{equation}
+q_i = \left[ \frac{\alpha - 1}{\alpha} (z_i - \lambda) \right]_+^{\frac{1}{\alpha-1}}
+\end{equation}
+
+<p>$\lambda$ can be solved via binary search using the condition $\sum_i q_i = 1$. When $\alpha = 2$, the result is precisely <a href="https://papers.cool/arxiv/1602.02068">Sparsemax</a>, while other cases are called <a href="https://papers.cool/arxiv/1905.05702">Entmax-$\alpha$</a>. When $\alpha = 2$ and $\alpha = 1.5$, $\lambda$ has exact solutions that are more efficient than binary search, which we also introduced in <a href="translation_10145.html">"Path to Probability Distributions: A Survey of Softmax and Its Alternatives"</a>. The results for other scoring functions are slightly more complex, so we leave them for readers to try.</p>
+
+<h2>Summary</h2>
+
+<p>Starting from the two perspectives of "learning distributions" and "allowing sampling", this article derived the general construction method for LM Loss. Subsequently, combined with the activation function used for predicted distributions, we calculated the gradients and convexity of these losses to judge their pros and cons. Finally, starting from a given loss, we attempted to reverse-deduce its matching optimal activation function, and the optimal activation function for cross entropy turned out to be Softmax—explaining why these two almost always appear together.</p>
+
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/11854" style="color: #005fcc;">https://kexue.fm/archives/11854</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>
