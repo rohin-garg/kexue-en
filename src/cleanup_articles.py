@@ -2,6 +2,7 @@
 """Clean up quirks in translated articles."""
 
 import re
+import sys
 from pathlib import Path
 
 
@@ -33,7 +34,24 @@ def cleanup_article(content: str) -> str:
 
     # ========== HEADING CLEANUP ==========
 
-    # 1. Remove hashtag anchor links from headings (multiple formats)
+    # 1. Move anchor IDs onto headings before removing visible hashtag links.
+    def preserve_heading_anchor(match):
+        tag, heading_attrs, heading_text, anchor_attrs = match.groups()
+        if re.search(r'\s(?:id|name)="', heading_attrs, flags=re.IGNORECASE):
+            heading_id = ''
+        else:
+            anchor_id = re.search(r'\s(?:id|name)="([^"]+)"', anchor_attrs, flags=re.IGNORECASE)
+            heading_id = f' id="{anchor_id.group(1)}"' if anchor_id else ''
+        return f'<{tag}{heading_attrs}{heading_id}>{heading_text}</{tag}>'
+
+    content = re.sub(
+        r'<(h[1-6])([^>]*)>(.*?)\s*<a\b([^>]*)>\s*#\s*</a>\s*</\1>',
+        preserve_heading_anchor,
+        content,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    # Remove remaining hashtag anchor links (multiple formats)
     # Format: <a href="...#...">#</a>
     content = re.sub(r'\s*<a\s+href="[^"]*#[^"]*">#</a>', '', content)
     # Format: <a id="..." href="#...">#</a>
@@ -42,10 +60,8 @@ def cleanup_article(content: str) -> str:
     content = re.sub(r'\s*<a\s+name="[^"]*"\s+href="#[^"]*">#</a>', '', content)
     # Format: <a href="https://kexue.fm/archives/XXXX#...">#</a>
     content = re.sub(r'\s*<a\s+href="https?://kexue\.fm/archives/\d+#[^"]*">#</a>', '', content)
-
-    # 2. Remove Chinese IDs from heading tags but keep the heading
-    # Pattern: <h2 id="本文小结"> -> <h2>
-    content = re.sub(r'(<h[1-6])\s+id="[^"]*">', r'\1>', content)
+    # Catch remaining attribute orders and name-only anchors.
+    content = re.sub(r'\s*<a\b[^>]*>\s*#\s*</a>', '', content, flags=re.IGNORECASE)
 
     # ========== REPRINT/REPOST NOTICES ==========
 
@@ -222,7 +238,7 @@ def cleanup_article(content: str) -> str:
 
     # 14b. Remove duplicate translated author/date lines after the canonical one.
     content = re.sub(
-        r'(<p>By 苏剑林 \| [^<]+</p>)\s*(?:<p>By (?:Jianlin Su|Su Jianlin) \| [^<]+</p>\s*)+',
+        r'(<p>By 苏剑林 \| [^<]+</p>)\s*(?:<p>\s*By (?:Jianlin Su|Su Jianlin) \| [^<]+\s*</p>\s*)+',
         r'\1\n\n',
         content
     )
@@ -258,12 +274,13 @@ def cleanup_article(content: str) -> str:
     return content
 
 
-def main():
+def main(paths=None):
     root_dir = Path(__file__).parent.parent
     translations_dir = root_dir / 'translations'
+    html_files = [Path(path) for path in paths] if paths else sorted(translations_dir.glob('translation_*.html'))
 
     fixed_count = 0
-    for html_file in sorted(translations_dir.glob('translation_*.html')):
+    for html_file in html_files:
         content = html_file.read_text(encoding='utf-8')
         new_content = add_back_button(content)
         new_content = cleanup_article(new_content)
@@ -277,4 +294,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv[1:])

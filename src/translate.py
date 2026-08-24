@@ -197,6 +197,15 @@ CSS_STYLES = \
     margin: 1em 0;
     }
 
+    mjx-container[display="true"] {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0 !important;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    }
+
     ::selection {
     background: #cce2ff;
     }
@@ -1100,7 +1109,10 @@ def add_new_post(url_or_id: str, force: bool = False):
     # Step 4: Clean up articles (remove quirks like hashtag links, etc.)
     print("Step 3/5: Cleaning up articles...")
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    subprocess.run([sys.executable, os.path.join(script_dir, "cleanup_articles.py")], check=True)
+    subprocess.run(
+        [sys.executable, os.path.join(script_dir, "cleanup_articles.py"), str(translation_path)],
+        check=True,
+    )
     print("  Cleaned up translations")
 
     # Step 5: Regenerate index

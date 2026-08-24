@@ -1,0 +1,323 @@
+
+    <meta charset="utf-8">
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    mjx-container[display="true"] {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0 !important;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    tags: 'ams'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+    <h1><a href="https://kexue.fm/archives/11823">Linearizing Softmax Attention into Gated DeltaNet</a></h1>
+
+    <p>By 苏剑林 | July 21, 2026</p>
+
+    <p>In the article <a href="translation_11814.html">"Taylor Expansion of LogSumExp and Softmax"</a>, we introduced the approximate expansions of LogSumExp and Softmax, and derived a simple scheme for linearizing Softmax Attention. However, in that article, the resulting linear attention was merely in the form of Vanilla Linear Attention.</p>
+
+    <p>In this article, we go a step further and attempt to linearize Softmax Attention into a linear attention variant with the Delta Rule. Surprisingly, the final result is not the basic DeltaNet, but directly leads to Gated DeltaNet (GDN).</p>
+
+    <h2>Problem Background</h2>
+
+    <p>Consider the patterns of Attention output change with respect to Key and Value, given a Query $\boldsymbol{q}$. We introduce the notation:</p>
+
+    \begin{equation}\boldsymbol{o}_t = \sum_{i=1}^t \alpha_{t, i} \boldsymbol{v}_i, \qquad \alpha_{t,i} = \frac{e^{\boldsymbol{q}\cdot \boldsymbol{k}_i}}{Z_t},\qquad Z_t = \sum_{i=1}^t e^{\boldsymbol{q}\cdot \boldsymbol{k}_i}\end{equation}
+
+    <p>Using the Softmax expansion derived in <a href="translation_11814.html">"Taylor Expansion of LogSumExp and Softmax"</a>, we get $\alpha_{t,i} \approx \frac{1}{t}(1 + \boldsymbol{q}\cdot(\boldsymbol{k}_i - \bar{\boldsymbol{k}}_t))$. Substituting this into the above equation yields:</p>
+
+    \begin{equation}\boldsymbol{o}_t \approx \frac{1}{t}\sum_{i=1}^t (1 + \boldsymbol{q}\cdot(\boldsymbol{k}_i - \bar{\boldsymbol{k}}_t))\boldsymbol{v}_i = \bar{\boldsymbol{v}}_t + \left(\frac{1}{t}\sum_{i=1}^t \boldsymbol{v}_i \boldsymbol{k}_i^{\top} - \bar{\boldsymbol{v}}_t\bar{\boldsymbol{k}}_t^{\top}\right)\boldsymbol{q}\label{eq:va-la}\end{equation}
+
+    <p>where $\bar{\boldsymbol{k}}_t$ and $\bar{\boldsymbol{v}}_t$ are the mean vectors of the first $t$ Keys and Values, respectively. It can be seen that the final expression is a form of linear attention, specifically a variant of the earliest Vanilla Linear Attention (hereinafter referred to as "VaLA").</p>
+
+    <p>From <a href="translation_11033.html">"A Brief History of Linear Attention: From Imitation, Innovation to Feedback"</a>, we know that after VaLA came the Delta Rule and the corresponding DeltaNet, as well as subsequent extensions like <a href="https://papers.cool/arxiv/2412.06464">GDN</a> and <a href="https://papers.cool/arxiv/2510.26692">KDA</a>. Theoretically, these are all stronger linear attention mechanisms than VaLA. Therefore, can we directly linearize Softmax Attention into DeltaNet or GDN to obtain a better approximation?</p>
+
+    <h2>Recursive Form</h2>
+
+    <p>In fact, Softmax Attention itself can be written in the form of an RNN, which we discussed in <a href="translation_10017.html">"Spacetime Chapter: Viewing Attention as an RNN with Squared Complexity"</a>. This transformation is not difficult to understand:</p>
+
+    \begin{equation}\boldsymbol{o}_t = \sum_{i=1}^t \alpha_{t, i} \boldsymbol{v}_i = \frac{\sum_{i=1}^t e^{\boldsymbol{q}\cdot \boldsymbol{k}_i} \boldsymbol{v}_i}{Z_t} = \frac{(\sum_{i=1}^{t-1} e^{\boldsymbol{q}\cdot \boldsymbol{k}_i} \boldsymbol{v}_i) + e^{\boldsymbol{q}\cdot \boldsymbol{k}_t} \boldsymbol{v}_t}{Z_t} = \frac{Z_{t-1} \boldsymbol{o}_{t-1} + e^{\boldsymbol{q}\cdot \boldsymbol{k}_t} \boldsymbol{v}_t}{Z_t}\end{equation}
+
+    <p>Rearranging gives:</p>
+
+    \begin{equation}\boldsymbol{o}_t = \boldsymbol{o}_{t-1} + \alpha_{t,t}(\boldsymbol{v}_t - \boldsymbol{o}_{t-1})\label{eq:attn-rnn}\end{equation}
+
+    <p>Sharp-eyed readers might notice that the increment on the right side is in the form of $\boldsymbol{v}_t - \boldsymbol{o}_{t-1}$, which is "the difference between the new observation and the old prediction." This already hints at the Delta Rule. Note that so far we have not made any approximations; this formula is exact, suggesting that Softmax Attention has a natural connection with the Delta Rule.</p>
+
+    <p>It should also be pointed out that Equation \eqref{eq:attn-rnn} represents the RNN for a fixed $\boldsymbol{q}$. In reality, each position has different $\boldsymbol{q}_1, \boldsymbol{q}_2, \dots, \boldsymbol{q}_t$. These $t$ different $\boldsymbol{q}$'s must be substituted individually, running $1, 2, \dots, t$ steps respectively to get their outputs. The total complexity is $1+2+\dots+t=\mathcal{O}(t^2)$, which is the meaning of "squared complexity RNN."</p>
+
+    <p>The reason is that for different $\boldsymbol{q}$, the iteration process is independent; thus, each $\boldsymbol{q}$ must run a complete cycle, resulting in quadratic complexity. To achieve linearization, we must find a way to separate the calculation of $\boldsymbol{q}$, allowing the iteration to proceed solely within $\boldsymbol{k}$ and $\boldsymbol{v}$, and then use the state variables from the iteration process as output in conjunction with the $\boldsymbol{q}$ operation. In this way, the iteration process does not depend on $\boldsymbol{q}$, requiring only one pass, and the complexity is reduced to linear.</p>
+
+    <h2>Linear Approximation</h2>
+
+    <p>Next, we apply a first-order approximation to the Softmax for $\alpha_{t,t}$, obtaining:</p>
+
+    \begin{equation}\begin{aligned}
+    \boldsymbol{o}_t \approx&\, \boldsymbol{o}_{t-1} + \frac{1}{t}(1 + \boldsymbol{q}\cdot(\boldsymbol{k}_t - \bar{\boldsymbol{k}}_t))(\boldsymbol{v}_t - \boldsymbol{o}_{t-1}) \\
+    =&\, \left(1 - \frac{1}{t}\right)\boldsymbol{o}_{t-1} + \frac{1}{t}\boldsymbol{v}_t + \frac{1}{t}(\boldsymbol{v}_t - \boldsymbol{o}_{t-1})(\boldsymbol{k}_t - \bar{\boldsymbol{k}}_t)^{\top}\boldsymbol{q}
+    \end{aligned}\end{equation}
+
+    <p>Some readers might wonder: didn't we just express dissatisfaction with the accuracy of VaLA derived from the first-order approximation? Why use it again? The difference lies in the fact that previously we needed to approximate $\alpha_{t,i}$ for all pairs of $(t,i)$. Now, we only need to approximate $\alpha_{t,t}$—essentially only the diagonal part. The approximation burden is significantly reduced, and the accuracy increases accordingly.</p>
+
+    <p>Another perspective helps us understand this better. First rewrite $\alpha_{t,i}$ as:</p>
+
+    \begin{equation}\alpha_{t,i} = \frac{e^{\boldsymbol{q}\cdot \boldsymbol{k}_i}}{Z_t} = \frac{e^{\boldsymbol{q}\cdot \boldsymbol{k}_i}}{Z_i} \frac{Z_i}{Z_{i+1}}\cdots\frac{Z_{t-1}}{Z_t} = \alpha_{i,i}(1-\alpha_{i+1,i+1})\cdots (1-\alpha_{t,t})\end{equation}
+
+    <p>This identity tells us that for $t > i$, $\alpha_{t,i}$ can be decomposed into the product of $\alpha_{i,i}$ and a series of $(1-\alpha_{j,j})$. Directly performing a first-order approximation on $\alpha_{t,i}$ versus approximating $\alpha_{i,i}$ and $\alpha_{j,j}$ separately is like the difference between $e^{a+b}\approx 1 + a + b$ and $e^a e^b \approx (1+a)(1+b)=1+a+b+ab$. The latter introduces cross-terms, achieving higher precision.</p>
+
+    <h2>Separating Iteration</h2>
+
+    <p>However, even with the approximation, the recursion remains quadratic. We haven't yet reached the goal of separating $\boldsymbol{q}$. To move closer, we seek a solution of the following form:</p>
+
+    \begin{equation}\boldsymbol{o}_t \approx \boldsymbol{A}_t \boldsymbol{q} + \boldsymbol{b}_t\end{equation}
+
+    <p>where $\boldsymbol{A}_t$ and $\boldsymbol{b}_t$ are independent of $\boldsymbol{q}$, with the convention $\boldsymbol{A}_0=\boldsymbol{0}, \boldsymbol{b}_0=\boldsymbol{0}$. Of course, the exact solution doesn't look like this; we are purposefully seeking a solution in this form to serve as an approximation. Substituting this into the previous recursive form gives:</p>
+
+    \begin{equation}\begin{aligned}
+    \boldsymbol{A}_t \boldsymbol{q} + \boldsymbol{b}_t \approx&\, \left(1-\frac{1}{t}\right)(\boldsymbol{A}_{t-1} \boldsymbol{q} + \boldsymbol{b}_{t-1}) + \frac{1}{t}\boldsymbol{v}_t + \frac{1}{t}(\boldsymbol{v}_t - \boldsymbol{b}_{t-1} - \boldsymbol{A}_{t-1} \boldsymbol{q})(\boldsymbol{k}_t - \bar{\boldsymbol{k}}_t)^{\top}\boldsymbol{q}
+    \end{aligned}\end{equation}
+
+    <p>An intuitive idea is to separate the iterations of $\boldsymbol{A}_t$ and $\boldsymbol{b}_t$ according to the order of $\boldsymbol{q}$, thus obtaining recursive formulas for $\boldsymbol{A}_t$ and $\boldsymbol{b}_t$. However, while the left side has at most a first-order term of $\boldsymbol{q}$, the right side contains a second-order term $\boldsymbol{A}_{t-1} \boldsymbol{q}(\boldsymbol{k}_t - \bar{\boldsymbol{k}}_t)^{\top}\boldsymbol{q}$. Complete separation is not possible. For now, we can only get:</p>
+
+    \begin{align}
+    \boldsymbol{b}_t =&\, \left(1-\frac{1}{t}\right)\boldsymbol{b}_{t-1} + \frac{1}{t}\boldsymbol{v}_t \\
+    \boldsymbol{A}_t =&\, \left(1-\frac{1}{t}\right)\boldsymbol{A}_{t-1} + \frac{1}{t}(\boldsymbol{v}_t - \boldsymbol{b}_{t-1} - \boldsymbol{A}_{t-1} \boldsymbol{q})(\boldsymbol{k}_t - \bar{\boldsymbol{k}}_t)^{\top} \label{eq:A-t}
+    \end{align}
+
+    <p>Clearly, the iteration of $\boldsymbol{b}_t$ is essentially calculating the cumulative mean of $\boldsymbol{v}_t$, so we can directly write $\boldsymbol{b}_t = \bar{\boldsymbol{v}}_t$. The problem is that $\boldsymbol{q}$ appears on the right side of Equation \eqref{eq:A-t}, so the assumption that $\boldsymbol{A}_t$ is independent of $\boldsymbol{q}$ does not hold.</p>
+
+    <h2>Simple Omission</h2>
+
+    <p>One simple approach is to treat $\boldsymbol{q}$ as a small quantity and omit it directly, leading to:</p>
+
+    \begin{equation}\boldsymbol{A}_t = \left(1-\frac{1}{t}\right)\boldsymbol{A}_{t-1} + \frac{1}{t}(\boldsymbol{v}_t - \bar{\boldsymbol{v}}_{t-1})(\boldsymbol{k}_t - \bar{\boldsymbol{k}}_t)^{\top}\end{equation}
+
+    <p>This also takes the form of a cumulative mean, which solves to:</p>
+
+    \begin{equation}\boldsymbol{A}_t = \frac{1}{t}\sum_{i=1}^t (\boldsymbol{v}_i - \bar{\boldsymbol{v}}_{i-1})(\boldsymbol{k}_i - \bar{\boldsymbol{k}}_i)^{\top}\quad\Rightarrow\quad\boldsymbol{o}_t \approx \bar{\boldsymbol{v}}_t + \left(\frac{1}{t}\sum_{i=1}^t (\boldsymbol{v}_i - \bar{\boldsymbol{v}}_{i-1})(\boldsymbol{k}_i - \bar{\boldsymbol{k}}_i)^{\top}\right)\boldsymbol{q}\label{eq:va-la-2}\end{equation}
+
+    <p>This looks like a new variant of VaLA, but it is actually mathematically equivalent to Equation \eqref{eq:va-la}! To prove this, one only needs to verify:</p>
+
+    \begin{equation}\begin{aligned}
+    t \bar{\boldsymbol{v}}_t \bar{\boldsymbol{k}}_t^{\top} - (t-1) \bar{\boldsymbol{v}}_{t-1} \bar{\boldsymbol{k}}_{t-1}^{\top} =&\, \underbrace{((t-1)\bar{\boldsymbol{v}}_{t-1} + \boldsymbol{v}_t)}_{t \bar{\boldsymbol{v}}_t}\bar{\boldsymbol{k}}_t^{\top} - \bar{\boldsymbol{v}}_{t-1} \underbrace{(t \bar{\boldsymbol{k}}_t - \boldsymbol{k}_t)}_{(t-1)\bar{\boldsymbol{k}}_{t-1}}{}^{\top} = -\bar{\boldsymbol{v}}_{t-1}\bar{\boldsymbol{k}}_t^{\top} + \boldsymbol{v}_t\bar{\boldsymbol{k}}_t^{\top} + \bar{\boldsymbol{v}}_{t-1}\boldsymbol{k}_t^{\top}
+    \end{aligned}\end{equation}
+
+    <p>Thus:</p>
+
+    \begin{equation}\sum_{i=1}^t \boldsymbol{v}_i \boldsymbol{k}_i^{\top} - t\bar{\boldsymbol{v}}_t\bar{\boldsymbol{k}}_t^{\top} = \sum_{i=1}^t \boldsymbol{v}_i \boldsymbol{k}_i^{\top} - \sum_{i=1}^t (-\bar{\boldsymbol{v}}_{i-1}\bar{\boldsymbol{k}}_i^{\top} + \boldsymbol{v}_i\bar{\boldsymbol{k}}_i^{\top} + \bar{\boldsymbol{v}}_{i-1}\boldsymbol{k}_t^{\top}) = \sum_{i=1}^t (\boldsymbol{v}_i - \bar{\boldsymbol{v}}_{i-1})(\boldsymbol{k}_i - \bar{\boldsymbol{k}}_i)^{\top}\end{equation}
+
+    <p>This proves that Equation \eqref{eq:va-la} can be transformed identically into Equation \eqref{eq:va-la-2}.</p>
+
+    <h2>Error Principle</h2>
+
+    <p>A more precise approach is to replace $\boldsymbol{q}$ with a suitable quantity $\boldsymbol{c}$. Intuitively, replacing $\boldsymbol{q}$ with $\boldsymbol{q}_t$ might seem like a natural and better choice, but that is not the case. Let's return to Equation \eqref{eq:attn-rnn}, writing $\boldsymbol{q}$ explicitly:</p>
+
+    \begin{equation}\boldsymbol{o}_t(\boldsymbol{q}) = \boldsymbol{o}_{t-1}(\boldsymbol{q}) + \alpha_{t,t}(\boldsymbol{q})\cdot(\boldsymbol{v}_t - \boldsymbol{o}_{t-1}(\boldsymbol{q}))\end{equation}
+
+    <p>Our goal is to replace the last $\boldsymbol{o}_{t-1}(\boldsymbol{q})$ with some $\boldsymbol{o}_{t-1}(\boldsymbol{c})$, so that the second-order term of $\boldsymbol{q}$ does not appear during the approximation expansion. The error resulting from this is:</p>
+
+    \begin{equation}\alpha_{t,t}(\boldsymbol{q})\cdot(\boldsymbol{o}_{t-1}(\boldsymbol{q}) - \boldsymbol{o}_{t-1}(\boldsymbol{c}))\end{equation}
+
+    <p>Why is $\boldsymbol{c}=\boldsymbol{q}_t$ not necessarily good? Because it only ensures the error is minimized for the single position $\boldsymbol{q}=\boldsymbol{q}_t$. However, the state variable at this moment must also serve subsequent $\boldsymbol{q}_{t+1}, \boldsymbol{q}_{t+2}, \dots$. Therefore, the ideal goal is to "make the error as small as possible for any possible $\boldsymbol{q}$," which is the "Minimum Error Principle" we use to find $\boldsymbol{c}$.</p>
+
+    <p>This error term has a multiplicative form: if $\alpha_{t,t}(\boldsymbol{q})$ is already small, the product will not be large; conversely, if $\alpha_{t,t}(\boldsymbol{q})$ is very large, then $\boldsymbol{o}_{t-1}(\boldsymbol{q}) - \boldsymbol{o}_{t-1}(\boldsymbol{c})$ must be small to reduce the error. From this, we obtain a "Maximin Strategy": first find the $\boldsymbol{q}^*$ that maximizes $\alpha_{t,t}(\boldsymbol{q})$, and then set $\boldsymbol{c}=\boldsymbol{q}^*$ to make the error zero at that point (i.e., $\boldsymbol{o}_{t-1}(\boldsymbol{q}) - \boldsymbol{o}_{t-1}(\boldsymbol{c})=\boldsymbol{0}$). This balances the errors on both sides of large and small $\alpha_{t,t}(\boldsymbol{q})$.</p>
+
+    <h2>The Grand Finale</h2>
+
+    <p>According to the linear approximation $\alpha_{t,t} \approx \frac{1}{t}(1 + \boldsymbol{q}\cdot(\boldsymbol{k}_t - \bar{\boldsymbol{k}}_t))$, the direction of $\boldsymbol{q}$ that maximizes it is $\frac{\boldsymbol{k}_t - \bar{\boldsymbol{k}}_t}{\Vert\boldsymbol{k}_t - \bar{\boldsymbol{k}}_t\Vert}$. However, since the magnitude can be arbitrarily large, $\alpha_{t,t}$ technically has no maximum. To get a finite result, we need to constrain the magnitude of $\boldsymbol{q}$. For simplicity, assuming the magnitudes of $\boldsymbol{q}$ and $\boldsymbol{k}$ are comparable, we can directly take:</p>
+
+    \begin{equation}\boldsymbol{q}^* = \boldsymbol{k}_t - \bar{\boldsymbol{k}}_t\end{equation}
+
+    <p>Substituting this minimalist form into Equation \eqref{eq:A-t} yields:</p>
+
+    \begin{equation}\begin{aligned}
+    \boldsymbol{A}_t =&\, \left(1-\frac{1}{t}\right)\boldsymbol{A}_{t-1} + \frac{1}{t}\big(\boldsymbol{v}_t - \bar{\boldsymbol{v}}_{t-1} - \boldsymbol{A}_{t-1} (\boldsymbol{k}_t - \bar{\boldsymbol{k}}_t)\big)(\boldsymbol{k}_t - \bar{\boldsymbol{k}}_t)^{\top} \\
+    =&\, \boldsymbol{A}_{t-1}\left(\left(1-\frac{1}{t}\right)\boldsymbol{I} - \frac{1}{t} (email_t - \bar{\boldsymbol{k}}_t)(\boldsymbol{k}_t - \bar{\boldsymbol{k}}_t)^{\top}\right) + \frac{1}{t}(\boldsymbol{v}_t - \bar{\boldsymbol{v}}_{t-1})(\boldsymbol{k}_t - \bar{\boldsymbol{k}}_t)^{\top}
+    \end{aligned}\end{equation}
+
+    <p>This is exactly the form of Gated DeltaNet (GDN)! The standard form of GDN is:</p>
+
+    \begin{equation}\boldsymbol{S}_t = \boldsymbol{S}_{t-1} (\alpha_t (\boldsymbol{I} - \beta_t\boldsymbol{k}_t\boldsymbol{k}_t^{\top})) + \beta_t\boldsymbol{v}_t\boldsymbol{k}_t^{\top}\end{equation}
+
+    <p>The difference is whether $\alpha_t$ is multiplied by $(\boldsymbol{I} - \beta_t\boldsymbol{k}_t\boldsymbol{k}_t^{\top})$ or just by $\boldsymbol{I}$, but this difference is not essential, and the two can be converted into each other. Thus, we have completed the approximate transformation of Softmax Attention into Delta Rule-based attention, with the final output being:</p>
+
+    \begin{equation}\boldsymbol{o}_t = \boldsymbol{A}_t \boldsymbol{q}_t + \bar{\boldsymbol{v}}_t\end{equation}
+
+    <h2>Summary</h2>
+
+    <p>Starting from the premise that "Softmax Attention is an RNN with squared complexity," this article first discovered that its recursive increment naturally takes a Delta Rule form. By applying a first-order approximation to the Softmax diagonal elements and then using the "Minimum Error Principle" to find a substitute for the residual $\boldsymbol{q}$, we successfully linearized Softmax Attention into the form of Gated DeltaNet.</p>
+
+    <p>(Note: This article was completed under the guidance of <a href="https://www.kimi.com/blog/kimi-k3">Kimi K3</a>.)</p>
+
+    </article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/11823" style="color: #005fcc;">https://kexue.fm/archives/11823</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

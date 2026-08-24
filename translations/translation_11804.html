@@ -1,0 +1,327 @@
+
+    <meta charset="utf-8">
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    mjx-container[display="true"] {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0 !important;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['base', 'ams', 'amsmath', 'nonstandard', 'newcommand', 'configmacros']}
+  },
+  options: {
+    enableMenu: false
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+    <h1><a href="https://kexue.fm/archives/11804">Making "Alchemy" More Scientific (Part 7): Step Size Scheduling and Weight Averaging</a></h1>
+
+    <p>By 苏剑林 | July 06, 2026</p>
+
+<p>Students proficient in "alchemy" (model training) know that step size scheduling, or Learning Rate (LR) Scheduling, is crucial for the final performance of a model. In previous articles, we derived that even considering only SGD, the optimal learning rate function for convergence to the endpoint takes the commonly used form of Warmup-Decay. However, recent works, such as <a href="https://papers.cool/arxiv/2405.15682">Schedule-Free</a>, have attempted to replace learning rate scheduling with some form of model weight averaging, achieving significant progress.</p>
+
+    <p>How can we theoretically analyze the connection between learning rate scheduling and weight averaging? To what extent can they replace each other? This article attempts to answer these questions.</p>
+
+    <h2>Weight Averaging</h2>
+
+    <p>Regarding weight averaging, we actually provided a basic result in <a href="translation_11480.html">"Making 'Alchemy' More Scientific (Part 3): Endpoint Loss Convergence of SGD"</a>:</p>
+
+    \begin{equation}\mathbb{E}[L(\bar{\boldsymbol{\theta}}_T) - L(\boldsymbol{\theta}^*)] \leq \frac{\Vert\boldsymbol{\theta}_1 - \boldsymbol{\theta}^*\Vert^2}{2T\eta_T} + \frac{G^2}{2T}\sum_{t=1}^T \frac{\eta_t^2}{\eta_T}\end{equation}
+
+    <p>where $\bar{\boldsymbol{\theta}}_T = \frac{1}{T}\sum_{t=1}^T \boldsymbol{\theta}_t$. This result implies that as long as we choose a constant learning rate $\eta \propto 1/\sqrt{T}$, the right-hand side can reach the ideal convergence rate of $\mathcal{O}(1/\sqrt{T})$, and the left-hand side implies that $\bar{\boldsymbol{\theta}}_T$ converges to $\boldsymbol{\theta}^*$. Thus, we design the following optimizer:</p>
+
+    \begin{equation}\begin{aligned}
+    \boldsymbol{\theta}_{t+1} =&\, \boldsymbol{\theta}_t - \eta\, \boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_t) \\[4pt]
+    \boldsymbol{\mu}_{t+1} =&\, (1 - c_{t+1}) \boldsymbol{\mu}_t + c_{t+1} \boldsymbol{\theta}_{t+1}
+    \end{aligned}\label{eq:pr}\end{equation}
+
+    <p>where $c_t = 1/t$. That is, an additional iteration step is added that does not interfere with the training trajectory at all, averaging the training trajectory equally. The model weights used for final prediction are not the endpoint values $\boldsymbol{\theta}_T$, but the average values $\boldsymbol{\mu}_T$. However, this practice often performs poorly in reality, which is a classic example of theory not matching practice.</p>
+
+    <p>However, if we change $c_t$ to an appropriate constant independent of $t$, such as $10^{-3}$, it often shows impressive performance in practice—this is exactly the Exponential Moving Average (EMA) technique I frequently used in past competitions. Compared to $c_t = 1/t$, the sliding average approach tends to average more recent optimization trajectories rather than the entire historical trajectory. Its superior performance indicates that we do not need to focus on results from the distant past.</p>
+
+    <p>The core task now is how to theoretically explain this sliding average technique, or more generally, explain the feasibility of any weight averaging.</p>
+
+    <h2>Further Generalization</h2>
+
+    <p>In the article <a href="translation_11494.html">"Making 'Alchemy' More Scientific (Part 4): New Identity, New Learning Rate"</a>, to generalize the average loss results to endpoint loss, we introduced the identity:</p>
+
+    \begin{equation}q_T = \frac{1}{w_{1:T}}\sum_{t=1}^T w_t q_t + \sum_{k=1}^{T-1}\left(\frac{1}{w_{k+1:T}} - \frac{1}{w_{k:T}}\right)\sum_{t=k+1}^T w_t (q_t - q_k)\end{equation}
+
+    <p>where $w_{k:T} \triangleq \sum_{t=k}^T w_t$. In this section, we further generalize it to:</p>
+
+    \begin{equation}\frac{1}{v_{1:T}}\sum_{t=1}^T v_t q_t = \frac{1}{w_{1:T}}\sum_{t=1}^T w_t q_t + \frac{1}{v_{1:T}}\sum_{k=1}^{T-1}\left(\frac{v_{k+1:T}}{w_{k+1:T}} - \frac{v_{k:T}}{w_{k:T}}\right)\sum_{t=k+1}^T w_t (q_t - q_k)\label{eq:qt-gg}\end{equation}
+
+    <p>Intuitively, it provides a way to convert one weighted sum into another weighted sum. When $v_T=1$ and the remaining $v_t=0$, it reduces to the endpoint form. The proof is actually a generalization of the previous proof. Let $S_k = \frac{1}{w_{k:T}}\sum_{t=k}^{T}w_t q_t$, we can write:</p>
+
+    \begin{equation}\begin{aligned}
+    v_{k:T} S_k - v_{k+1:T} S_{k+1} =&\, v_{k:T} \left(\frac{w_{k+1:T}S_{k+1} + w_k q_k}{w_{k:T}}\right) - v_{k+1:T} S_{k+1} \\
+    =&\, v_k q_k + \left(\frac{v_{k:T}}{w_{k:T}} w_k - v_k\right) q_k + \left(\frac{v_{k:T}}{w_{k:T}}w_{k+1:T} - v_{k+1:T}\right) S_{k+1} \\
+    =&\, v_k q_k + \left(\frac{v_{k:T}}{w_{k:T}}w_{k+1:T} - v_{k+1:T}\right) (S_{k+1} - q_k) \\
+    =&\, v_k q_k + \left(\frac{v_{k:T}}{w_{k:T}} - \frac{v_{k+1:T}}{w_{k+1:T}}\right) (w_{k+1:T} S_{k+1} - w_{k+1:T} q_k) \\
+    =&\, v_k q_k + \left(\frac{v_{k:T}}{w_{k:T}} - \frac{v_{k+1:T}}{w_{k+1:T}}\right) \sum_{t=k+1}^T w_t (q_t - q_k)
+    \end{aligned}\end{equation}
+
+    <p>The third equality holds because the sum of the two parentheses in the second equality is zero, so they are opposites. Now summing both sides for $k=1 \sim T-1$, the left side equals $v_{1:T} S_1 - v_T q_T$. Moving $v_T q_T$ to the right side, dividing both sides by $v_{1:T}$ and slightly rearranging gives the identity \eqref{eq:qt-gg}.</p>
+
+    <h2>Scaling Transformation</h2>
+
+    <p>Next, we follow the logic of the previous article <a href="translation_11540.html">"Making 'Alchemy' More Scientific (Part 6): Exquisite Top-Down Construction"</a> to derive a more general convergence conclusion. Let $q_t = \mathbb{E}[L(\boldsymbol{\theta}_t) - L(\boldsymbol{\theta}^*)]$, substituting this into Eq. \eqref{eq:qt-gg} gives:</p>
+
+    \begin{equation}\frac{1}{v_{1:T}}\sum_{t=1}^T v_t \mathbb{E}[L(\boldsymbol{\theta}_t) - L(\boldsymbol{\theta}^*)] = \frac{1}{w_{1:T}}\sum_{t=1}^T w_t \mathbb{E}[L(\boldsymbol{\theta}_t) - L(\boldsymbol{\theta}^*)] + \frac{1}{v_{1:T}}\sum_{k=1}^{T-1}\left(\frac{v_{k+1:T}}{w_{k+1:T}} - \frac{v_{k:T}}{w_{k:T}}\right)\sum_{t=k+1}^T w_t \mathbb{E}[L(\boldsymbol{\theta}_t) - L(\boldsymbol{\theta}_k)]\end{equation}
+
+    <p>Using the convexity of $L$, we scale $\mathbb{E}[L(\boldsymbol{\theta}_t) - L(\boldsymbol{\theta}^*)]$ and $\mathbb{E}[L(\boldsymbol{\theta}_t) - L(\boldsymbol{\theta}_k)]$, then carefully organize it as done in the "Identity Transformation" section of the previous article, to obtain:</p>
+
+    \begin{equation}\frac{1}{v_{1:T}}\sum_{t=1}^T v_t\,\mathbb{E}[L(\boldsymbol{\theta}_t)-L(\boldsymbol{\theta}^*)]\leq \frac{1}{w_{1:T}}\sum_{t=1}^T w_t\,\mathbb{E}[\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)\cdot(\boldsymbol{\psi}_t-\boldsymbol{\theta}^*)] \label{leq:mid}\end{equation}
+
+    <p>where</p>
+
+    \begin{equation}\boldsymbol{\psi}_t=\frac{w_{1:T}}{v_{1:T}}\left[\frac{v_{t:T}}{w_{t:T}}\boldsymbol{\theta}_t-\sum_{k=1}^{t-1}\left(\frac{v_{k+1:T}}{w_{k+1:T}}-\frac{v_{k:T}}{w_{k:T}}\right)\boldsymbol{\theta}_k\right]\end{equation}
+
+    <p>And by direct verification, we have:</p>
+
+    \begin{equation}\boldsymbol{\psi}_{t+1}-\boldsymbol{\psi}_t=\frac{v_{t+1:T}}{v_{1:T}}\frac{w_{1:T}}{w_{t+1:T}}(\boldsymbol{\theta}_{t+1}-\boldsymbol{\theta}_t)\end{equation}
+
+    <p>Therefore, if we let $\boldsymbol{\psi}_t$ update according to $\boldsymbol{\psi}_{t+1} = \boldsymbol{\psi}_t - w_t \boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_t)$, the corresponding update rule for $\boldsymbol{\theta}_t$ is:</p>
+
+    \begin{equation}\boldsymbol{\theta}_{t+1}=\boldsymbol{\theta}_t-\underbrace{\frac{v_{1:T}}{v_{t+1:T}}\frac{w_t w_{t+1:T}}{w_{1:T}}}_{\eta_t}\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)\end{equation}
+
+    <h2>General Conclusion</h2>
+
+    <p>The next steps are relatively simple. Applying the conclusions from <a href="translation_11530.html">"Making 'Alchemy' More Scientific (Part 5): Fine-tuning Learning Rates Based on Gradients"</a> to the right side of Eq. \eqref{leq:mid} yields:</p>
+
+    \begin{equation}\frac{1}{w_{1:T}}\sum_{t=1}^T w_t\,\mathbb{E}[\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)\cdot(\boldsymbol{\psi}_t-\boldsymbol{\theta}^*)] \leq \frac{1}{2 w_{1:T}}\left(R^2 + \sum_{t=1}^T w_t^2 G_t^2\right) \end{equation}
+
+    <p>where $R = \|\boldsymbol{\theta}_1 - \boldsymbol{\theta}^*\|$, $G_t^2 = \mathbb{E}[\|\boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_t)\|^2]$, and we define $\boldsymbol{\psi}_1 = \boldsymbol{\theta}_1$. For the left side, we apply convexity:</p>
+
+    \begin{equation}\mathbb{E}\left[L\left(\frac{1}{v_{1:T}}\sum_{t=1}^T v_t \boldsymbol{\theta}_t \right) - L(\boldsymbol{\theta}^*)\right] \leq \frac{1}{v_{1:T}}\sum_{t=1}^T v_t\,\mathbb{E}[L(\boldsymbol{\theta}_t)-L(\boldsymbol{\theta}^*)]\end{equation}
+
+    <p>Combining these gives:</p>
+
+    \begin{equation}\mathbb{E}\left[L\left(\frac{1}{v_{1:T}}\sum_{t=1}^T v_t \boldsymbol{\theta}_t \right) - L(\boldsymbol{\theta}^*)\right] \leq \frac{1}{2 w_{1:T}}\left(R^2 + \sum_{t=1}^T w_t^2 G_t^2\right)\label{eq:avg-final}\end{equation}
+
+    <p>The minimum of the right-hand side is reached at:</p>
+
+    \begin{equation}w_t = \frac{R G_t^{-2}}{\sqrt{Q_T}},\qquad Q_T=\sum_{k=1}^T G_k^{-2}\end{equation}
+
+    <p>This means the optimal learning rate has the form:</p>
+
+    \begin{equation}\eta_t = \frac{v_{1:T}}{v_{t+1:T}}\frac{w_t w_{t+1:T}}{w_{1:T}} = \frac{v_{1:T}}{v_{t+1:T}}\frac{R G_t^{-2}}{\sqrt{Q_T}} \left(1 - \frac{Q_t}{Q_T}\right) \label{eq:opt-lr}\end{equation}
+
+    <h2>Interpreting Results</h2>
+
+    <p>The endpoint convergence result given in the previous article <a href="translation_11540.html">"Making 'Alchemy' More Scientific (Part 6): Exquisite Top-Down Construction"</a> was:</p>
+
+    \begin{equation}\mathbb{E}\left[L(\boldsymbol{\theta}_T) - L(\boldsymbol{\theta}^*)\right] \leq \frac{1}{2 w_{1:T}}\left(R^2 + \sum_{t=1}^T w_t^2 G_t^2\right)\end{equation}
+
+    <p>The right side is identical to Eq. \eqref{eq:avg-final}, but the learning rate is $\eta_t = \frac{w_t w_{t+1:T}}{w_{1:T}}$. Thus, for weight averaging to achieve results similar to the endpoint weight, the learning rate needs to be multiplied by an additional $\frac{v_{1:T}}{v_{t+1:T}}$. Conversely, with the same learning rate, the effect of weight averaging is equivalent to the endpoint effect when the learning rate is multiplied by $\frac{v_{t+1:T}}{v_{1:T}}$. Clearly, $\frac{v_{t+1:T}}{v_{1:T}}$ is less than or equal to 1 and monotonically decreasing, so multiplying by this term acts similarly to LR Decay.</p>
+
+    <p>Let's consider some specific examples. First, the simplest case $v_t \equiv 1$, corresponding to Eq. \eqref{eq:pr} at the beginning. In this case, $\frac{v_{t+1:T}}{v_{1:T}} = 1 - t/T$, which is exactly linear decay. This implies that "constant learning rate + equal weight averaging" is theoretically similar in effect to a linearly decaying learning rate. However, actual results often show that linear decay of the learning rate produces good endpoint results, while the equal weight averaging in Eq. \eqref{eq:pr} is less effective.</p>
+
+    <p>Reviewing the entire derivation process, one might guess the problem lies in the "convex function" assumption. This series of articles relies on the assumption that "the objective function is convex," but in practice, it is often non-convex, and convex optimization conclusions cannot be precisely replicated. A compromise is to assume local convexity, allowing equal weight averaging within a finite interval, or considering its smoothed version—Exponential Moving Average (EMA). In this case, $v_t = \gamma^{-t}$ (where $0 < \gamma < 1$), so:</p>
+
+    \begin{equation}\frac{v_{t+1:T}}{v_{1:T}} = \frac{1 - \gamma^{T-t}}{1 - \gamma^T}\end{equation}
+
+    <p>It maintains an averaging window of $\mathcal{O}((1-\gamma)^{-1})$. Due to the memoryless property of exponential functions, if we run EMA concurrently with constant learning rate training, it's equivalent to obtaining the weight after $\mathcal{O}((1-\gamma)^{-1})$ steps of linear decay at each step, allowing a preview of the effects after linear decay.</p>
+
+    <h2>Related Work</h2>
+
+    <p>Regarding the poor performance of Eq. \eqref{eq:pr}, the paper <a href="https://papers.cool/arxiv/2405.15682">"The Road Less Scheduled"</a> proposed "Schedule-Free." It changes the point where the gradient is calculated to an interpolation between $\boldsymbol{\theta}_t$ and $\boldsymbol{\mu}_t$:</p>
+
+    \begin{equation}\begin{aligned}
+    \hat{\boldsymbol{\theta}}_t =&\, (1-\beta)\boldsymbol{\theta}_t + \beta \boldsymbol{\mu}_t \\[4pt]
+    \boldsymbol{\theta}_{t+1} =&\, \boldsymbol{\theta}_t - \eta\, \boldsymbol{g}(\boldsymbol{x}_t, \hat{\boldsymbol{\theta}}_t) \\[4pt]
+    \boldsymbol{\mu}_{t+1} =&\, (1 - c_{t+1}) \boldsymbol{\mu}_t + c_{t+1} \boldsymbol{\theta}_{t+1}
+    \end{aligned}\end{equation}
+
+    <p>Intuitively, while the original averaging operation was completely independent of the training process (the model never perceived whether $\boldsymbol{\mu}_t$ was good or not), by changing the gradient calculation point to the interpolation of $\boldsymbol{\theta}_t$ and $\boldsymbol{\mu}_t$, the model can perceive the quality of $\boldsymbol{\mu}_t$ and adjust accordingly. This modification is theoretically grounded and significantly improves the effectiveness of the average weights $\boldsymbol{\mu}_T$.</p>
+
+    <p>However, as training scales increased, Schedule-Free began to show weaknesses. The authors recently proposed <a href="https://papers.cool/arxiv/2605.19095">ScheduleFree+</a>, adding many "patches" to the original Schedule-Free to make it SOTA again. However, the Plus version adds quite a few operations, making the entire algorithm quite complex and harder to understand, so we won't expand on it here; we will discuss it later.</p>
+
+    <p>It is worth mentioning that the authors of Schedule-Free and its Plus version are the same authors of the classic paper <a href="https://papers.cool/arxiv/2310.07831">"Optimal Linear Decay Learning Rate Schedules and Further Refinements"</a> we introduced in previous articles. These works successfully applied classic convex optimization theory to practical training, rather than remaining purely theoretical on toy models. This deserves our respect!</p>
+
+    <h2>Further Reflections</h2>
+
+    <p>What is truly worth considering is: can the vision of Schedule-Free actually hold true? Schedule-Free has two goals: first, to train from beginning to end with a constant learning rate, and second, to have hyperparameters that do not depend on the total training steps $T$. If these two conditions are met, the training process can be stopped or resumed at any time, and stopping at any step would yield the optimal solution up to that point—which is indeed ideal.</p>
+
+    <p>However, these two goals are debatable. First, for actual training, there is no essential difference between a constant learning rate and dynamic schedules like Cosine Decay or Linear Decay; it's all about hyperparameter tuning to find the best. Thus, pursuing a constant learning rate has little practical significance; moreover, even Schedule-Free and its Plus version have not escaped the dependency on Warmup. So, in reality, they still rely on human-designed LR Schedules to some extent.</p>
+
+    <p>Secondly, the goal of having hyperparameters independent of $T$ is indeed good, but theoretically, it is hard to achieve. Taking Eq. \eqref{eq:pr} again, even if Eq. \eqref{eq:pr} performs well under all assumptions, its optimal learning rate $\eta$ still depends on $T$. Similarly, Schedule-Free cannot escape this fact; it obtains the result of $\eta$ being independent of $T$ by introducing new assumptions.</p>
+
+    <p>We can also observe from Eq. \eqref{eq:opt-lr} that for equal weight averaging, we have $\frac{v_{1:T}}{v_{t+1:T}}=1/(1-t/T)$. Further assuming $G_t$ is a constant $G$, then $1 - Q_t/Q_T = 1-t/T$, which cancels out. Therefore, the optimal learning rate is $\frac{R G^{-2}}{\sqrt{Q_T}}$, where $Q_T$ depends on $T$. On the other hand, $G_t$ is usually large at first and small later. According to the inverse square relationship of the optimal learning rate to $G_t^2$ in Eq. \eqref{eq:opt-lr}, the learning rate should be smaller in the early stages, which explains why Schedule-Free still cannot completely escape schedules and still requires Warmup.</p>
+
+    <p>To this end, ScheduleFree+ and some contemporaneous works have gradually moved from "Schedule-Free" toward "LR-Free," but overall, this area is still in its infancy and awaits more fundamental exploration.</p>
+
+    <h2>Summary</h2>
+
+    <p>This article introduced new identities to continue generalizing the results of the previous article, allowing us to theoretically and quantitatively reveal the link between weight averaging and learning rate decay. We also discussed why equal weight averaging is less effective than sliding averages and why Schedule-Free still cannot completely eliminate schedules.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/11804" style="color: #005fcc;">https://kexue.fm/archives/11804</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

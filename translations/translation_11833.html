@@ -1,0 +1,414 @@
+
+    <meta charset="utf-8">
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    mjx-container[display="true"] {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0 !important;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+<article>
+    <nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+    <h1><a href="https://kexue.fm/archives/11833">Deconstructing Scaling Law: A Trio of Optimization, Architecture, and Data</a></h1>
+    <p>By 苏剑林 | July 29, 2026</p>
+
+    <p>Training a large neural network is influenced by many factors; changing an optimizer, a model architecture, or a training set can lead to drastically different results. In engineering practice, we jokingly refer to the experience of tuning these factors as "alchemy." But how can we elevate experience into laws to describe these relationships more accurately and quantitatively? If we can clarify this issue, our alchemy will be more grounded.</p>
+
+    <p>"Scaling Law" attempts to answer this question in a relatively quantitative way. Since OpenAI's foundational work in 2020 (<a href="https://papers.cool/arxiv/2001.08361">Kaplan Law</a>), Scaling Law has become one of the most reliable empirical laws in deep learning. It can be used to estimate model performance, guide hyperparameter selection, and judge the effectiveness of specific changes. Consequently, much work has attempted to provide a deeper, more essential interpretation of Scaling Law.</p>
+
+    <p>This article shares the author's understanding of Scaling Law.</p>
+
+    <h2>Preparation</h2>
+    <p>In the following sections, we will repeatedly encounter the problem of "finding the minimum value of a power-law combination under a certain constraint." Therefore, we first prepare two basic conclusions.</p>
+
+    <h3>Hetero-power Inequality</h3>
+    <p>First is the most frequently used inequality. Let $a, b, p, q, x > 0$, then</p>
+    \begin{equation}a x^p + b x^{-q} \geq (p+q)\left(\frac{a^{q}b^{p}}{p^{p}q^{q}}\right)^{\frac{1}{p+q}}\end{equation}
+    <p>The condition for equality is</p>
+    \begin{equation}x=\left(\frac{bq}{ap}\right)^{\frac{1}{p+q}}\end{equation}
+    <p>This is a generalization of the simple inequality $x + x^{-1} \geq 2$, which can be proved by differentiation or the <a href="https://en.wikipedia.org/wiki/AM%E2%80%93GM_inequality#Weighted_AM%E2%80%93GM_inequality">Weighted AM-GM Inequality</a>. Demonstrating the latter, the Weighted AM-GM inequality is $w_1 x_1 + w_2 x_2 \geq (w_1 + w_2)(x_1^{w_1} x_2^{w_2})^{\frac{1}{w_1+w_2}}$, thus we have</p>
+    \begin{equation}a x^p + b x^{-q} = q \cdot \frac{a x^p}{q} + p \cdot \frac{b x^{-q}}{p} \geq (q+p)\left[\left(\frac{a x^p}{q}\right)^q \left(\frac{b x^{-q}}{p}\right)^p\right]^{\frac{1}{p+q}} = (p+q)\left(\frac{a^{q}b^{p}}{p^{p}q^{q}}\right)^{\frac{1}{p+q}}\end{equation}
+    <p>The condition for equality is $\frac{a x^p}{q} = \frac{b x^{-q}}{p}$, i.e., $x=\left(\frac{bq}{ap}\right)^{\frac{1}{p+q}}$. For convenience, we call this the "hetero-power inequality." Its main feature is having two power function terms with exponents of opposite signs. More interestingly, the minimum point and the minimum value itself are still power laws, which is one of the cornerstones for subsequent derivations.</p>
+
+    <h3 id="Optimal_Ratio">Optimal Ratio</h3>
+    <p>The hetero-power inequality finds the minimum of the sum of two power laws after fixing the product ($ (x^p)^q(x^{-q})^p=1 $). In some scenarios (such as finding the optimal ratio of parameter counts), we need to fix their "sum" to find the minimum. Specifically, let $a, b, p, q, x, y > 0$, we want to find</p>
+    \begin{equation}\min_{x,y} a x^{-p} + b y^{-q}\qquad\text{s.t.}\qquad x+y=1\end{equation}
+    <p>Unfortunately, this problem has no elementary analytical solution, but numerical solutions are fine. It is easy to see that a minimum must exist. Substituting $y=1-x$ and differentiating yields $bq(1-x)^{-q-1}-apx^{-p-1}$. Setting it to zero gives</p>
+    \begin{equation}\frac{x^{p+1}}{(1-x)^{q+1}} = \frac{ap}{bq}\end{equation}
+    <p>The left side is clearly monotonically increasing with respect to $x$ in $(0, 1)$, and as $x \to 1$, the left side tends to $\infty$; as $x \to 0$, it tends to 0. By the intermediate value theorem, a unique solution exists in $(0, 1)$, which can be found using the bisection method.</p>
+
+    <h2>Thought Process</h2>
+    <p>The training process of a model can be formalized as:</p>
+    <blockquote>Given data $\mathcal{D}$, architecture $\mathcal{A}$, and optimizer $\mathcal{O}$, minimize the loss function $L(\mathcal{E}|\mathcal{D},\mathcal{A},\mathcal{O})$.</blockquote>
+    <p>Here $\mathcal{E}$ represents an ideal distribution, which can be imagined as an infinitely large test set. Any training set $\mathcal{D}$ we construct is a subset or a sampling result of it; $L(\mathcal{E}|\mathcal{D},\mathcal{A},\mathcal{O})$ represents the loss the model can achieve on the ideal distribution $\mathcal{E}$ under these conditions.</p>
+
+    <h3>Triple Decomposition</h3>
+    <p>We consider the following decomposition:</p>
+    \begin{equation}\begin{aligned}
+    L(\mathcal{E}|\mathcal{D},\mathcal{A},\mathcal{O}) &\,= \underbrace{L(\mathcal{E}|\mathcal{D},\mathcal{A},\mathcal{O}) - L(\mathcal{D}|\mathcal{A},\mathcal{O})}_{\text{Data}} \\
+    &\,\qquad + \underbrace{L(\mathcal{D}|\mathcal{A},\mathcal{O}) - L(\mathcal{D}|\mathcal{A},\infty)}_{\text{Optimization}} \\
+    &\,\qquad\qquad + \underbrace{L(\mathcal{D}|\mathcal{A},\infty) - L(\mathcal{D}|\infty,\infty)}_{\text{Architecture}} \\
+    &\,\qquad\qquad\qquad + L(\mathcal{D}|\infty,\infty) \\
+    \end{aligned}\end{equation}
+    <p>This decomposition seems to complicate the problem, but it actually breaks down the distance from the current training state to the ideal goal into three progressive steps. Under the common "more is better" assumption, each bracketed term is non-negative. Therefore, it is equivalent to writing the total gap as the sum of three interpretable distances, decoupling the influence of each variable on the loss function as much as possible, allowing us to more reasonably speculate on their dependencies.</p>
+    <p>Now we explain the meaning of each term one by one.</p>
+
+    <h3>Data Error</h3>
+    <p>The first layer of decomposition is</p>
+    \begin{equation}L(\mathcal{E}|\mathcal{D},\mathcal{A},\mathcal{O}) = \Big[L(\mathcal{E}|\mathcal{D},\mathcal{A},\mathcal{O}) - L(\mathcal{D}|\mathcal{A},\mathcal{O})\Big] + L(\mathcal{D}|\mathcal{A},\mathcal{O})\end{equation}
+    <p>Where $L(\mathcal{D}|\mathcal{A},\mathcal{O})$ represents the loss value achieved by the model on the training set $\mathcal{D}$ given architecture $\mathcal{A}$ and optimizer $\mathcal{O}$.</p>
+    <p>Note that by definition, $L(\mathcal{E}|\mathcal{D},\mathcal{A},\mathcal{O})$ represents the loss on the ideal distribution $\mathcal{E}$, which is our ultimate goal. However, $\mathcal{E}$ is unreachable during training; we can only deal with the training set $\mathcal{D}$, so we only get the training loss $L(\mathcal{D}|\mathcal{A},\mathcal{O})$, and then try to describe the gap between them via $L(\mathcal{E}|\mathcal{D},\mathcal{A},\mathcal{O}) - L(\mathcal{D}|\mathcal{A},\mathcal{O})$.</p>
+    <p>This term is also commonly called "generalization error," and its key influence factor is data—such as the quantity, quality, and diversity of data. Additionally, architecture $\mathcal{A}$ and optimizer $\mathcal{O}$ may also change the generalization error; which variables to consider depends on our analysis goal.</p>
+
+    <h3>Optimization Error</h3>
+    <p>The second layer of decomposition is</p>
+    \begin{equation}L(\mathcal{D}|\mathcal{A},\mathcal{O}) = \Big[L(\mathcal{D}|\mathcal{A},\mathcal{O}) - L(\mathcal{D}|\mathcal{A},\infty)\Big] + L(\mathcal{D}|\mathcal{A},\infty)\end{equation}
+    <p>Where $L(\mathcal{D}|\mathcal{A},\infty)$ represents the ideal loss achievable on the training set when optimization is pushed to the limit—for example, with a perfect super-optimizer or infinite training steps and tuning attempts.</p>
+    <p>Thus, $L(\mathcal{D}|\mathcal{A},\infty)$ represents the ceiling of the optimizer, while $L(\mathcal{D}|\mathcal{A},\mathcal{O}) - L(\mathcal{D}|\mathcal{A},\infty)$ represents the distance of the practical optimizer from this ceiling. It measures whether the optimizer is good enough—e.g., whether the learning rate is appropriate, steps are sufficient, batch size is stable for gradients, etc.</p>
+
+    <h3>Architecture Error</h3>
+    <p>The third layer of decomposition is</p>
+    \begin{equation}L(\mathcal{D}|\mathcal{A},\infty) = \Big[L(\mathcal{D}|\mathcal{A},\infty) - L(\mathcal{D}|\infty,\infty)\Big] + L(\mathcal{D}|\infty,\infty)\end{equation}
+    <p>Where $L(\mathcal{D}|\infty,\infty)$ represents the most ideal loss on the training set when both optimization and architecture are pushed to the limit—any excellent optimizer, any powerful model.</p>
+    <p>Therefore, $L(\mathcal{D}|\infty,\infty)$ is the theoretical limit determined by the data itself, while $L(\mathcal{D}|\mathcal{A},\infty) - L(\mathcal{D}|\infty,\infty)$ represents the performance gap between the practical model and its theoretical limit. It measures whether the architecture is good enough—parameters, depth, width, residual improvements, etc.</p>
+
+    <h2>Optimization Section</h2>
+    <p>In this section, we first explore the optimization gap $F_{\text{opt}} = L(\mathcal{D}|\mathcal{A},\mathcal{O}) - L(\mathcal{D}|\mathcal{A},\infty)$. Given an optimizer (like Adam or Muon), we primarily care about the influence of three core parameters: learning rate $\eta$, batch size $B$, and training steps $T$. Theoretically, other parameters like momentum could be considered, but we focus on these three.</p>
+
+    <h3>Relationship Analysis</h3>
+    <p>First, a reasonable assumption is "the more training, the better." Here, "more" includes both "more steps" and "larger learning rate." Intuitively, $T\eta$ is the "distance" the model has traveled; the longer the distance, the better the effect. So we can guess a contribution is $\alpha_1 (T\eta)^{-\gamma_1}$.</p>
+    <p>On the other hand, training effect is also affected by noise. A reasonable assumption is that larger noise leads to worse effects. Noise comes from two sources: one is batch size $B$ (smaller $B$ means larger noise), and the other is the learning rate (it represents the unsmoothness of training; larger $\eta$ means larger noise). So we guess another term is $\alpha_2 B^{-\gamma_2} + \alpha_3\eta^{\gamma_3}$.</p>
+    <p>Adding these parts gives</p>
+    \begin{equation}F_{\text{opt}} \sim \alpha_1 (T\eta)^{-\gamma_1} + \alpha_2 B^{-\gamma_2} + \alpha_3\eta^{\gamma_3}\label{eq:optimizer-law}\end{equation}
+    <p>We can also understand the above formula by dividing the training process into two stages: in the early stage, noise is secondary, and the term $\alpha_1 (T\eta)^{-\gamma_1}$ allows the loss function to drop quickly; subsequently, noise gradually plays a role, and the model begins to oscillate around the target point, similar to a spiral downward trajectory.</p>
+    <p>This form is consistent with those used in <a href="https://papers.cool/arxiv/2503.12645">2503.12645</a> and <a href="https://papers.cool/arxiv/2603.15958">2603.15958</a>. It is worth noting that these works are not empirical fits but derived from theoretical analysis of convergence for optimizers like SignSGD and Muon, concluding $\gamma_1=\gamma_3=1, \gamma_2=1/2$. In later derivations, we can plug in these values for verification.</p>
+
+    <h3>Optimal Learning Rate</h3>
+    <p>Equation \eqref{eq:optimizer-law} contains 6 parameters. Fitting it directly requires a vast number of data points, which is very costly and prone to overfitting. We can simplify the form using the optimal parameter hypothesis.</p>
+    <p>First, according to the hetero-power inequality, the optimal learning rate that minimizes the right side is</p>
+    \begin{equation}\eta^* = \left(\frac{\gamma_1\alpha_1 T^{-\gamma_1}}{\gamma_3\alpha_3}\right)^{\frac{1}{\gamma_1+\gamma_3}} \sim T^{-\frac{\gamma_1}{\gamma_1+\gamma_3}}\end{equation}
+    <p>The corresponding minimum value is</p>
+    \begin{equation}F_{\text{opt}}^* = \underbrace{(\gamma_1+\gamma_3)\left(\frac{(\alpha_1 T^{-\gamma_1})^{\gamma_3} \alpha_3^{\gamma_1}}{\gamma_1^{\gamma_1} \gamma_3^{\gamma_3}}\right)^{\frac{1}{\gamma_1+\gamma_3}}}_{\sim T^{-\frac{\gamma_1\gamma_3}{\gamma_1+\gamma_3}}} + \alpha_2 B^{-\gamma_2}\end{equation}
+    <p>This tells us two things: 1. There exists some $0 < c < 1$ such that the optimal learning rate is inversely proportional to $T^c$; 2. Assuming we can always find the optimal learning rate for every configuration, the asymptotic law for optimization error can be simplified to $\tilde{\alpha}_1 T^{-\tilde{\gamma}_1} + \alpha_2 B^{-\gamma_2}$, reducing parameters to 4. This is precisely the decoupled form suggested in <a href="https://papers.cool/arxiv/2607.01487">2607.01487</a>, and <a href="https://papers.cool/arxiv/2605.09154">2605.09154</a> reached similar conclusions about modeling $B$ and $T$ separately from a noisy quadratic perspective.</p>
+
+    <h3>Optimal Batch Size</h3>
+    <p>Starting from the optimal learning rate hypothesis, let the optimization error be</p>
+    \begin{equation}F_{\text{opt}} \sim \tilde{\alpha}_1 T^{-\tilde{\gamma}_1} + \alpha_2 B^{-\gamma_2}\end{equation}
+    <p>Let $K = B T$, which represents the number of samples processed during training. Note that we do not limit Multi-Epoch, so samples might be repeated. If $K$ is fixed, the right side becomes $\tilde{\alpha}_1 (B / K)^{\tilde{\gamma}_1} + \alpha_2 B^{-\gamma_2}$. Using the hetero-power inequality again, the minimum is</p>
+    \begin{equation}F_{\text{opt}}^* = (\tilde{\gamma}_1 + \gamma_2) \left(\frac{(\tilde{\alpha}_1 K^{-\tilde{\gamma}_1})^{\gamma_2} \alpha_2^{\tilde{\gamma}_1}}{\tilde{\gamma}_1^{\tilde{\gamma}_1} \gamma_2^{\gamma_2}}\right)^{\frac{1}{\tilde{\gamma}_1+\gamma_2}} \;\sim\; K^{-\frac{\tilde{\gamma}_1 \gamma_2}{\tilde{\gamma}_1+\gamma_2}}\end{equation}
+    <p>Equality holds at</p>
+    \begin{equation}B^* = \left(\frac{\alpha_2 \gamma_2 K^{\tilde{\gamma}_1}}{\tilde{\alpha}_1 \tilde{\gamma}_1}\right)^{\frac{1}{\tilde{\gamma}_1 + \gamma_2}} \sim K^{\frac{\tilde{\gamma}_1}{\tilde{\gamma}_1+\gamma_2}}\end{equation}
+    <p>This also has two conclusions: Given a total number of samples $K$, the optimal batch size $B^*$ is proportional to $K^c$ where $c \in (0, 1)$; and under the optimal batch size, the Scaling Law simplifies to $\hat{\alpha}_1 K^{-\hat{\gamma}_1}$, which is the classic Scaling Law form.</p>
+
+    <h3>Summary</h3>
+    <p>We can now summarize: the general Scaling Law for an optimizer is $\alpha_1 (T\eta)^{-\gamma_1} + \alpha_2 B^{-\gamma_2} + \alpha_3\eta^{\gamma_3}$. If we assume training always occurs at the optimal learning rate, it simplifies to $\tilde{\alpha}_1 T^{-\tilde{\gamma}_1} + \alpha_2 B^{-\gamma_2}$. If we further fix the sample count $K$ and assume an optimal batch size is found, it simplifies to $\hat{\alpha}_1 K^{-\hat{\gamma}_1}$.</p>
+    <p>Regarding optimal parameters, the optimal batch size is proportional to some power of $K$ (less than or equal to 1), consistent with <a href="https://papers.cool/arxiv/2503.04715">Step Law</a>. The optimal learning rate is inversely proportional to some power of $T$; converted by $T^*=K/B^*$, the optimal learning rate is also inversely proportional to some power of $K$, consistent with <a href="https://papers.cool/arxiv/2409.19913">Microsoft Law</a>, but opposite to <a href="https://papers.cool/arxiv/2503.04715">Step Law</a>.</p>
+    <p>If we plug in the theoretical values $\gamma_1=\gamma_3=1, \gamma_2=1/2$, then $\tilde{\gamma}_1 = 1/2$, which leads to $B^* \sim K^{1/2}$ (close to Step Law's $B^* \sim K^{0.571}$). Additionally, $\eta^* \sim T^{-1/2}$, converted to $\eta^* \sim K^{-1/4}$ (close to Microsoft Law's $\eta^* \sim K^{-0.32}$). Finally, $F_{\text{opt}}^* \sim K^{-1/4}$ (close to Chinchilla Law's $\sim K^{-0.28}$).</p>
+
+    <h2>Architecture Section</h2>
+    <p>Next, we turn to the model gap $F_{\text{arch}} = L(\mathcal{D}|\mathcal{A},\infty) - L(\mathcal{D}|\infty,\infty)$. This discusses the contribution of architecture $\mathcal{A}$ to the loss function. Classic variables include parameter count $N$, width $W$, depth $H$, etc. Architecture variables also influence the laws governing the optimization gap. We will try to organize these contents.</p>
+
+    <h3>Model Parameters</h3>
+    <p>Fixing the overall architecture, the main variable is parameter count $N$. Assuming larger $N$ is better, we reasonably assume:</p>
+    \begin{equation}F_{\text{arch}} \sim \alpha_4 N^{-\gamma_4} \label{eq:arch-law-N}\end{equation}
+    <p>This is the most basic assumption of Scaling Law for parameters, consistent with <a href="https://papers.cool/arxiv/2001.08361">Kaplan Law</a> and <a href="https://papers.cool/arxiv/2203.15556">Chinchilla Law</a>. Kaplan Law gives $\gamma_4=0.076$, while Chinchilla Law gives $\gamma_4 = 0.34$. It is generally believed that Chinchilla Law is more accurate as training scale increases.</p>
+    <p>Controversially, should $N$ include Embeddings? The mainstream approach is to exclude them, but this may cause bias at small scales, which might explain the difference between Kaplan and Chinchilla (Kaplan's era had smaller training scales). <a href="https://papers.cool/arxiv/2406.12907">2406.12907</a> provides a detailed analysis of this. For a more accurate consideration of Embeddings, see the "<a href="#Memory_Layer">Memory Layer</a>" section later.</p>
+    <p>Instead of compressing the entire structure into one $N$, we can distinguish width $W$ and depth $H$ (tall/thin vs. short/fat):</p>
+    \begin{equation}F_{\text{arch}}\sim \alpha_W W^{-\gamma_W} + \alpha_H H^{-\gamma_H}\end{equation}
+    <p>Since parameters are roughly $N \sim W^2 H$, we can find the optimal width and height given $N$:</p>
+    \begin{equation}W^* \sim N^{\frac{\gamma_H}{\gamma_W+2\gamma_H}},\qquad H^* \sim N^{\frac{\gamma_W}{\gamma_W+2\gamma_H}},\qquad F_{\text{arch}}^* \sim N^{-\frac{\gamma_W\gamma_H}{\gamma_W+2\gamma_H}}\end{equation}
+    <p><a href="https://papers.cool/arxiv/2606.25008">2606.25008</a>, starting from theory (<a href="https://papers.cool/arxiv/2505.10465">2505.10465</a>, <a href="https://papers.cool/arxiv/2602.05970">2602.05970</a>), proposes $\gamma_W=\gamma_H=1$, yielding:</p>
+    \begin{equation}W^* \sim N^{1/3},\qquad H^* \sim N^{1/3},\qquad F_{\text{arch}}^* \sim N^{-1/3}\end{equation}
+    <p>$F_{\text{arch}}^* \sim N^{-1/3}$ is very close to Chinchilla Law.</p>
+
+    <h3>Optimization Laws</h3>
+    <p>Changes in parameter count also affect optimization. In equation \eqref{eq:optimizer-law}, $\alpha_1, \alpha_2, \alpha_3$ were considered constants for a given architecture. Introducing $N$, they become functions of $N$.</p>
+    <p>We understand this in two ways: On one hand, larger $N$ means higher capacity and faster loss drop, so we replace $\alpha_1$ with $\alpha_1 N^{-\gamma_5}$. On the other hand, larger $N$ means more complexity and noise, so $\alpha_2, \alpha_3$ are replaced with $\alpha_2 N^{\gamma_6}$ and $\alpha_3 N^{\gamma_7}$:</p>
+    \begin{equation}F_{\text{opt}} \sim \alpha_1 N^{-\gamma_5}(T\eta)^{-\gamma_1} + \alpha_2 N^{\gamma_6} B^{-\gamma_2} + \alpha_3 N^{\gamma_7}\eta^{\gamma_3}\end{equation}
+    <p>Why only consider coefficients varying with $N$ and not exponents $\gamma_1, \gamma_2, \gamma_3$? We discuss this in the "<a href="#Power_Laws">Power Laws</a>" section. Repeating the "Optimization" derivation, we get:</p>
+    \begin{gather}\eta^* \sim T^{-\frac{\gamma_1}{\gamma_1+\gamma_3}} \cdot N^{-\frac{\gamma_5+\gamma_7}{\gamma_1+\gamma_3}} \sim K^{-\frac{\gamma_1\gamma_2}{\gamma_1\gamma_3+\gamma_2(\gamma_1+\gamma_3)}} \cdot N^{\frac{\gamma_1\gamma_6-\gamma_7(\gamma_1+\gamma_2)-\gamma_5\gamma_2}{\gamma_1\gamma_3+\gamma_2(\gamma_1+\gamma_3)}} \\
+    B^* \sim K^{\frac{\gamma_1\gamma_3}{\gamma_1\gamma_3+\gamma_2(\gamma_1+\gamma_3)}} \cdot N^{\frac{\gamma_6(\gamma_1+\gamma_3)+\gamma_5\gamma_3-\gamma_7\gamma_1}{\gamma_1\gamma_3+\gamma_2(\gamma_1+\gamma_3)}} \\
+    F_{\text{opt}}^* \sim K^{-\frac{\gamma_1\gamma_2\gamma_3}{\gamma_1\gamma_3+\gamma_2(\gamma_1+\gamma_3)}} \cdot N^{\frac{\gamma_1\gamma_2\gamma_7+\gamma_1\gamma_3\gamma_6-\gamma_2\gamma_3\gamma_5}{\gamma_1\gamma_3+\gamma_2(\gamma_1+\gamma_3)}}
+    \end{gather}
+    <p>If we agree with the results of Kaplan Law, Chinchilla Law, and Step Law, then $B^*$ and $F_{\text{opt}}^*$ should be independent of $N$. Setting the exponents of $N$ to 0 yields:</p>
+    \begin{equation}\gamma_3\gamma_5 = \gamma_1\gamma_7, \qquad \gamma_6 = 0\end{equation}
+    <p>Substituting back, only one new parameter $\gamma_7$ remains:</p>
+    \begin{gather}F_{\text{opt}}\sim \alpha_1 N^{-\frac{\gamma_1\gamma_7}{\gamma_3}}(T\eta)^{-\gamma_1} + \alpha_2 B^{-\gamma_2} + \alpha_3 N^{\gamma_7}\eta^{\gamma_3} \\
+    \eta^* \sim T^{-\frac{\gamma_1}{\gamma_1+\gamma_3}} \cdot N^{-\frac{\gamma_7}{\gamma_3}} \sim K^{-\frac{\gamma_1\gamma_2}{\gamma_1\gamma_3+\gamma_2(\gamma_1+\gamma_3)}} \cdot N^{-\frac{\gamma_7}{\gamma_3}} \\
+    B^* \sim K^{\frac{\gamma_1\gamma_3}{\gamma_1\gamma_3+\gamma_2(\gamma_1+\gamma_3)}} \\
+    F_{\text{opt}}^* \sim K^{-\frac{\gamma_1\gamma_2\gamma_3}{\gamma_1\gamma_3+\gamma_2(\gamma_1+\gamma_3)}}
+    \end{gather}
+    <p>Interestingly, the form of $\eta^*$ is exactly consistent with Microsoft Law (negatively correlated with $K$ and $N$). This is non-trivial because we only assumed $B^*$ and $F_{\text{opt}}^*$ were independent of $N$. Plugging in $\gamma_1=\gamma_3=1, \gamma_2=1/2$:</p>
+    \begin{equation} \eta^* \sim K^{-1/4} N^{-\gamma_7},\qquad B^* \sim K^{1/2},\qquad F_{\text{opt}}^* \sim K^{-1/4} \end{equation}
+    <p>As for $\gamma_7$, Microsoft Law gives 0.23, while Step Law gives 0.713. Given their opposite dependence on $K$, it's normal to see differences here. Theory generally favors Microsoft Law; from convex optimization results, $N^{\gamma_7}$ relates to the standard deviation of gradients, suggesting a value between $0 \sim 0.5$. Combined with Microsoft Law, we might guess $1/4$.</p>
+
+    <h3>Given Compute</h3>
+    <p>Combining $F_{\text{opt}}^*$ and $F_{\text{arch}}$, we have:</p>
+    \begin{equation}F_{\text{opt}}^* + F_{\text{arch}} \sim \hat{\alpha}_1 K^{-\hat{\gamma}_1} + \alpha_4 N^{-\gamma_4}\end{equation}
+    <p>For dense models, per-step computation is proportional to $N$. $K$ is the number of samples, also proportional to compute. Total training compute $C \sim NK$ (roughly $6NK$, with $2NK$ for forward and $4NK$ for backward).</p>
+    <p>With finite budget $C$, we minimize loss under $NK \sim C$. Substituting $K \sim C/N$:</p>
+    \begin{equation}F_{\text{opt}}^* + F_{\text{arch}} \sim \hat{\alpha}_1 C^{-\hat{\gamma}_1} N^{\hat{\gamma}_1} + \alpha_4 N^{-\gamma_4}\end{equation}
+    <p>Again, using the hetero-power inequality:</p>
+    \begin{equation}N^* \sim C^{\frac{\hat{\gamma}_1}{\hat{\gamma}_1+\gamma_4}}, \qquad K^* \sim C^{\frac{\gamma_4}{\hat{\gamma}_1+\gamma_4}}, \qquad F^* \sim C^{-\frac{\hat{\gamma}_1\gamma_4}{\hat{\gamma}_1+\gamma_4}}\end{equation}
+    <p>Plugging in $\hat{\gamma}_1=1/4$ and $\gamma_4=1/3$:</p>
+    \begin{equation}N^* \sim C^{3/7}, \qquad K^* \sim C^{4/7}, \qquad F^* \sim C^{-1/7}\end{equation}
+    <p>This is very close to Chinchilla Law's core conclusion: optimal model scale and data volume should scale roughly proportionally (their fit was $N^* \sim C^{0.46}, K^* \sim C^{0.54}$). Finally, substituting $N^*$ and $K^*$ into $\eta^* \sim K^{-1/4} N^{-\gamma_7}$ and $B^* \sim K^{1/2}$:</p>
+    \begin{equation}\eta^*\sim C^{-(1+3\gamma_7)/7}, \qquad B^*\sim C^{2/7}\end{equation}
+    <p>$B^* \sim C^{2/7}$ is similar to DeepSeek Law's $B^* \sim C^{0.3271}$. However, DeepSeek Law gives $\eta^* \sim C^{-0.1250}$, while here even with $\gamma_7=1/4$ we get $\eta^* \sim C^{-1/4}$, which is quite different. It seems consensus exists on optimal batch size, but learning rate varies significantly, likely due to optimization settings and schedules.</p>
+
+    <h3>Sparse Architecture</h3>
+    <p>"Compute proportional to $N$" applies to dense models. Linear layers ($a \times b$ input, $b \times c$ parameters) have $\mathcal{O}(abc)$ compute and $bc$ parameters. But architectures like MoE decouple compute from total parameter count.</p>
+    <p>MoE is a mainstream architecture where a key parameter is sparsity $S$, defined as total parameters over active parameters. MoE theoretical compute mainly depends on active parameters. Increasing $S$ doesn't theoretically increase compute but can lower loss.</p>
+    <p>Incorporating sparsity into Scaling Law:</p>
+    \begin{equation}F_{\text{arch}} \sim \alpha_4 N_{act}^{-\gamma_{act}} N_{total}^{-\gamma_{total}} = \alpha_4 N_{act}^{-(\gamma_{act}+\gamma_{total})} S^{-\gamma_{total}}\label{eq:arch-law-N-act-total}\end{equation}
+    <p>Where $N_{act}, N_{total}$ are active and total parameters, $S = N_{total}/N_{act}$. Similar forms appear in <a href="https://papers.cool/arxiv/2501.12370">2501.12370</a>. This assumes $S$ affects only the coefficient $\alpha_4$ and not the exponent $\gamma_4$. We can derive "effective parameters":</p>
+    \begin{equation}N_{eff} = N_{act}^{\frac{\gamma_{act}}{\gamma_{act}+\gamma_{total}}} N_{total}^{\frac{\gamma_{total}}{\gamma_{act}+\gamma_{total}}},\qquad F_{\text{arch}} \sim \alpha_4 N_{act}^{-\gamma_{act}} N_{total}^{-\gamma_{total}} = \alpha_4 N_{eff}^{-(\gamma_{act}+\gamma_{total})}\end{equation}
+    <p>An MoE model is equivalent to a dense model with $N_{eff}$ parameters. This originated from "Effective Parameter Count" (<a href="https://papers.cool/arxiv/2202.01169">2202.01169</a>) and was expanded into the "Efficiency Lever" by <a href="https://papers.cool/arxiv/2507.17702">Ling Law</a>.</p>
+    <p>However, compute only proportional to $N_{act}$ implies we could let $N_{act} \to 0$ while keeping $N_{eff}$ constant, reducing compute to near zero, which is unrealistic. Thus, $F_{\text{arch}}$ should have a penalty term for $N_{act}$ to ensure some active parameters:</p>
+    \begin{equation}F_{\text{arch}} \sim \alpha_4 N_{act}^{-\gamma_{act}} N_{total}^{-\gamma_{total}} + \alpha_8 N_{act}^{-\gamma_8}\label{eq:arch-law-moe}\end{equation}
+    <p>Sparsity modeling work includes <a href="https://papers.cool/arxiv/2309.08520">2309.08520</a>, <a href="https://papers.cool/arxiv/2501.12370">2501.12370</a>, and <a href="https://papers.cool/arxiv/2502.05172">2502.05172</a>. Besides sparsity, expert granularity and shared experts also matter (<a href="https://papers.cool/arxiv/2402.07871">2402.07871</a>, <a href="https://papers.cool/arxiv/2509.23678">2509.23678</a>).</p>
+    <p>Of course, "increasing sparsity is always profitable" is theoretical. In practice, routing overhead and inference efficiency must be considered.</p>
+
+    <h3 id="Memory_Layer">Memory Layer</h3>
+    <p>Other ways to decouple parameters and compute include sparse memory layers like <a href="https://papers.cool/arxiv/1907.05242">PKM</a>, <a href="https://papers.cool/arxiv/2411.12364">UltraMem</a>, <a href="https://papers.cool/arxiv/2501.16975">Over-Encoding</a>, and <a href="https://papers.cool/arxiv/2601.07372">Engram</a>.</p>
+    <p>These "experts" are trainable vectors without computation, selected via a router or N-gram Hash. Their Scaling Law should be similar to MoE; e.g., a dense model with memory layers should follow equation \eqref{eq:arch-law-moe}.</p>
+    <p>If MoE and Memory are used together, what does the Scaling Law look like? Define $N_{act}, N_{moe}, N_{mem}, N_{total}$ as active compute parameters, total params excluding memory, total params excluding inactive experts, and total params. They satisfy:</p>
+    \begin{equation}N_{moe} + N_{mem} = N_{total} + N_{act}\label{eq:N-id}\end{equation}
+    <p>Assuming they are complementary, the Scaling Law might be additive:</p>
+    \begin{equation}F_{\text{arch}} \sim \alpha_{4a} N_{act}^{-\gamma_{act}} N_{moe}^{-\gamma_{moe}} + \alpha_{4b} N_{act}^{-\gamma_{act}} N_{mem}^{-\gamma_{mem}} + \alpha_8 N_{act}^{-\gamma_8}\end{equation}
+    <p>If we fix $N_{act}$ (compute bottleneck) and $N_{total}$ (memory bottleneck), $N_{moe} + N_{mem}$ is constant. This is the "<a href="#Optimal_Ratio">Optimal Ratio</a>" problem, suggesting an optimal distribution of parameters between MoE and Memory, as found in <a href="https://papers.cool/arxiv/2601.07372">Engram</a>.</p>
+
+    <h3>Summary</h3>
+    <p>Similar to the optimization section, we made power-law assumptions based on experience and used the hetero-power inequality. We considered parameter count $N$, width $W$, and depth $H$. We also touched on how architecture affects optimization errors and compute budget $C$. Sparse structures like MoE and Memory layers add further complexity and optimization opportunities.</p>
+
+    <h2>Data Section</h2>
+    <p>Finally, we turn to the data gap $F_{\text{data}} = L(\mathcal{E}|\mathcal{D},\mathcal{A},\mathcal{O}) - L(\mathcal{D}|\mathcal{A},\mathcal{O})$. Since the ideal distribution $\mathcal{E}$ is unreachable, how do we measure this?</p>
+    <p>We use a representative test set that was not used in training as an approximation for $L(\mathcal{E}|\mathcal{D},\mathcal{A},\mathcal{O})$. Thus, test set construction is vital for describing the ideal target.</p>
+
+    <h3>Data Size</h3>
+    <p>The core hyperparameter is training set size $D$. Larger $D$ usually improves generalization, contributing $\alpha_9 D^{-\gamma_9}$.</p>
+    <p>Samples are uniformly sampled from the training set, so $K/D$ is the average number of times each sample is seen (Epochs). Multi-Epoch training can hurt generalization, contributing $\alpha_{10} (K/D)^{\gamma_{10}}$:</p>
+    \begin{equation}F_{\text{data}} \sim \alpha_9 D^{-\gamma_9} + \alpha_{10} (K/D)^{\gamma_{10}}\end{equation}
+    <p>While most Scaling Laws assume Single-Epoch ($K=D$), we distinguish them to consider Multi-Epoch effects.</p>
+    <p>The recent paper <a href="https://papers.cool/arxiv/2605.01640">"Prescriptive Scaling Laws for Data Constrained Training"</a> uses a similar power law but replaces $K/D$ with $K/D-1$ and considers model parameters (larger $N$ is more prone to overfitting). Other works like <a href="https://papers.cool/arxiv/2305.16264">"Scaling Data-Constrained Language Models"</a> use "value decay" to calculate "effective data size." By distinguishing $K$ and $D$, we directly penalize the overfitting risk.</p>
+
+    <h3>Optimal Epochs</h3>
+    <p>Combining optimization and data error (fixed $D, N$, optimal hyperparameters):</p>
+    \begin{equation}F_{\text{opt}}^* + F_{\text{data}} \sim \hat{\alpha}_1 K^{-\hat{\gamma}_1} + \alpha_{10} (K/D)^{\gamma_{10}} \end{equation}
+    <p>More training decreases optimization error but increases generalization error due to repetition. The optimal $K$ is:</p>
+    \begin{equation}K^* = \left(\frac{\hat{\alpha}_1 \hat{\gamma}_1}{\alpha_{10} \gamma_{10}} D^{\gamma_{10}}\right)^{\frac{1}{\hat{\gamma}_1+\gamma_{10}}} \sim D^{\frac{\gamma_{10}}{\hat{\gamma}_1+\gamma_{10}}} \qquad \frac{K^*}{D} \sim D^{-\frac{\hat{\gamma}_1}{\hat{\gamma}_1+\gamma_{10}}}\end{equation}
+    <p>This suggests that less data warrants more epochs, while more data warrants fewer epochs—contrary to <a href="https://papers.cool/arxiv/2511.13421">2511.13421</a>. Generalizing the term to $\alpha_{10} K^{\gamma_{10}} D^{-\gamma_{11}}$ allows for either case:</p>
+    \begin{equation}K^* = \left(\frac{\hat{\alpha}_1 \hat{\gamma}_1}{\alpha_{10} \gamma_{10}} D^{\gamma_{11}}\right)^{\frac{1}{\hat{\gamma}_1+\gamma_{10}}} \sim D^{\frac{\gamma_{11}}{\hat{\gamma}_1+\gamma_{10}}} \qquad \frac{K^*}{D} \sim D^{\frac{\gamma_{11}-\hat{\gamma}_1-\gamma_{10}}{\hat{\gamma}_1+\gamma_{10}}}\end{equation}
+    <p>However, this still has flaws (e.g., loss tending to infinity as $K \to \infty$). But for small Multi-Epoch counts, the power-law hypothesis might still be useful.</p>
+
+    <h3>Extended Thoughts</h3>
+    <p>Beyond size $D$, many works distinguish domain mixing (<a href="https://papers.cool/arxiv/2403.16952">2403.16952</a>, <a href="https://papers.cool/arxiv/2606.08167">2606.08167</a>), quality (<a href="https://papers.cool/arxiv/2510.03313">2510.03313</a>), and modality mixing (<a href="https://papers.cool/arxiv/2607.22043">2607.22043</a>). These are too diverse for a unified form here.</p>
+    <p>Data Scaling Law feels more "blurry" than optimization or architecture. Variables like $N, W, H, S, \eta, B, T$ are clear numbers. Data characteristics like quality or domain are harder to quantify. Furthermore, variables interact, making it hard to study data in a "clean" setting.</p>
+    <p>The very premise of Data Scaling Law is slightly paradoxical: we build a test set to measure the unknown, then "pretend" we don't know it to study how training data affects it. This process is inherently messy.</p>
+
+    <h3>Summary</h3>
+    <p>We introduced data size $D$, considered the benefits of more data and the risks of Multi-Epoch training, and derived optimal epochs. However, Data Scaling Law remains a field with many confusing aspects awaiting deeper thought.</p>
+
+    <h2 id="Power_Laws">Power Laws Section</h2>
+    <p>We have assumed all relationships are sums or products of power laws. Why? And why only let coefficients change and not exponents?</p>
+
+    <h3>Why Power Laws?</h3>
+    <p>Many try to find "essential" explanations, such as <a href="translation_9607.html">"Deriving Scaling Laws Based on Quantization Hypotheses."</a> I believe the simplest explanation is: when a dependency is monotonic and we only care about asymptotic behavior, there aren't many choices besides power and exponential functions. Exponential functions decay too quickly ("short-tailed"), implying benefits cap out rapidly—which doesn't fit our experience. Power functions are "long-tailed" and better describe "continuous investment, continuous improvement."</p>
+    <p>Philosophically, if the world were dominated by exponential functions, it would be boring: everything would hit a ceiling quickly. Scale-up stories are vivid because of power laws. Another perspective is "scale invariance": $f(\lambda x) = \lambda^{-\gamma} f(x)$. Scaling, by definition, implies cross-scale laws—only power laws fit this role. Practically, they are straight lines in log-log space, making them easy to fit and visualize.</p>
+
+    <h3>Why Coefficients?</h3>
+    <p>We assumed changes in conditions affect only coefficients, keeping exponents constant. First, this is practical: if exponents changed, the power-law form would break, and the hetero-power inequality would no longer apply. This is the simplest possible extension.</p>
+    <p>Second, a physics analogy: in statistical physics, critical exponents of phase transitions are universal within a class. Material details only change the non-universal pre-factors. Similarly, Scaling Law exponents represent the "difficulty" of the problem (data and task), while coefficients represent "engineering level" (optimizer and architecture). Engineering improvements should make us better at the same problem (coefficient change), not change the nature of the problem (exponent change). If a finite improvement changed the exponent, its relative advantage would grow infinitely with scale, which is usually unrealistic.</p>
+
+    <h2>Final Summary</h2>
+    <p>Readers might feel we "said everything yet said nothing." We didn't prove theorems; we just wrote down a triple decomposition and a bunch of power-law hypotheses, then did basic optimization analysis. We tried to find commonalities among various Scaling Law results and clarify their interaction mechanisms. Fortunately, we obtained some heuristic results.</p>
+    <p>The whole derivation feels like "dimensional analysis" in physics: it's not a rigorous first-principles derivation, but rather guessing forms based on intuition and monotonicity, deriving optimal laws, and correcting them against classic results.</p>
+    <p>I hope this perspective helps you understand and use Scaling Laws.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/11833" style="color: #005fcc;">https://kexue.fm/archives/11833</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

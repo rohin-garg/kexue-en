@@ -1,0 +1,317 @@
+
+    <meta charset="utf-8">
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    mjx-container[display="true"] {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0 !important;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+    <h1><a href="https://kexue.fm/archives/11848">A Brief Talk on K3's MoE and Attention</a></h1>
+
+    <p>By 苏剑林 | August 04, 2026</p>
+
+<p>Last month, we released our largest open-source model to date, <a href="https://www.kimi.com/blog/kimi-k3">K3</a>.</p>
+
+    <p>As the successor to K2, K3 is not a redesign from scratch, but rather a natural evolution of our past series of work, integrating our latest understanding and improvements in effectiveness, efficiency, and stability. It can be said that it is a continuous, "culminating" research result, rather than a desperate gamble.</p>
+
+    <p>In this article, let's discuss some of the architectural design ideas behind K3.</p>
+
+    <h2>Preface</h2>
+    <p>Briefly, in terms of architecture, K3 = KDA + MLA + Stable LatentMoE + AttnRes. The training optimizer remains the Moonlight version of Muon, but the weights in the Attention part have been changed to a Per-Head format for optimization.</p>
+
+    <p>Among these components, we have previously introduced AttnRes in detail in <a href="translation_11664.html">"Memoirs of Attention Residuals"</a>, and we have already shared a detailed technical report for KDA in <a href="https://papers.cool/arxiv/2510.26692">"Kimi Linear: An Expressive, Efficient Attention Architecture"</a>. As for Per-Head Muon, it doesn't actually offer an advantage in effectiveness (nor a disadvantage); switching to it was more out of consideration for correctness (each Head is relatively independent and should not be coupled together).</p>
+
+    <p>So next, we will focus our discussion on the MoE and MLA parts: the former discusses how we "tamed" LatentMoE, and the latter discusses our trade-offs in Attention.</p>
+
+    <h2>Mixture of Experts</h2>
+    <p>The MoE used in K3 is what we call "Stable LatentMoE." As the name suggests, it is a "Stable" version of "LatentMoE." LatentMoE itself is not new; it originates from <a href="https://papers.cool/arxiv/2601.18089">"LatentMoE: Toward Optimal Accuracy per FLOP and Parameter in Mixture of Experts"</a>. The benefit is that it can achieve better results with roughly the same training and inference costs. However, its inclusion also triggered stability issues, so we proposed some improvements.</p>
+
+    <h3>SiTU</h3>
+    <p>In current mainstream MoE architectures, a single Expert usually adopts the SwiGLU form:</p>
+
+    \begin{equation}\newcommand{SiLU}{\mathop{\text{SiLU}}}\boldsymbol{W}_3(\SiLU(\boldsymbol{W}_1 \boldsymbol{x}) \odot \boldsymbol{W}_2 \boldsymbol{x})\end{equation}
+
+    <p>where $\SiLU(x) = x\sigma(x)$ (Sigmoid Linear Unit, also known as <a href="https://papers.cool/arxiv/1710.05941">Swish</a>), and $\sigma$ is the Sigmoid function. As a major source of non-linearity, a frequent problem with SwiGLU is that a certain row $\boldsymbol{w}$ of $\boldsymbol{W}_1$ aligns with a certain input $\boldsymbol{x}$, resulting in a very large output $\boldsymbol{w}\cdot\boldsymbol{x}$. Even more extreme is when this phenomenon also occurs in $\boldsymbol{W}_2 \boldsymbol{x}$ at the same position, leading to outliers of the order $\mathcal{O}(\Vert\boldsymbol{x}\Vert^4)$ in the middle section.</p>
+
+    <p>To address this, we first replaced SiLU with SiTU (Sigmoid Tanh Unit):</p>
+
+    \begin{equation}\newcommand{SiTU}{\mathop{\text{SiTU}}}\newcommand{softcap}{\mathop{\text{softcap}}}\SiTU(x;\beta) = \underbrace{\beta \tanh\left(\frac{x}{\beta}\right)}_{\softcap(x;\beta)}\cdot\sigma(x)\end{equation}
+
+    <p>This controls the gating part within $(-\beta, \beta)$, where $\beta=4$. Further stress testing revealed that this alone could not completely eliminate the expansion, so we simply added the $\softcap$ operation to the linear part as well, forming the current SiTU-GLU:</p>
+
+    \begin{equation}\boldsymbol{W}_3\Big(\SiTU(\boldsymbol{W}_1 \boldsymbol{x};\beta_1) \odot \softcap(\boldsymbol{W}_2 \boldsymbol{x};\beta_2)\Big)\end{equation}
+
+    <p>where $\beta_1=4, \beta_2=25$. Introducing Clip operations to SwiGLU is not new—<a href="https://papers.cool/arxiv/2508.10925">GPT-OSS</a> and <a href="https://papers.cool/arxiv/2606.19348">DSV4</a> have already introduced Hard Clip operations. However, we found that under the same boundaries, $\softcap$ often yields better results, so we chose $\softcap$.</p>
+
+    <h3>Norm</h3>
+    <p>The difference between LatentMoE and standard MoE is:</p>
+
+    \begin{align}\text{MoE:}&\qquad\qquad\underbrace{d \to D \to d}_{n \text{ choose } k} \\[5pt]
+    \text{LatentMoE:}&\qquad d\to\underbrace{d/2 \to D \to d/2}_{2n \text{ choose } 2k}\to d \\
+    \end{align}
+
+    <p>That is, LatentMoE first reduces dimensionality, then performs a $2n$ choose $2k$ MoE, and finally increases dimensionality. This keeps training and inference costs roughly the same while achieving slightly better results. Since both the down-projection and up-projection are linear projections, the original LatentMoE included no additional operations here. Thus, combined with the MoE in the middle, it presented a pattern of four matrices multiplied consecutively, which is extremely unstable.</p>
+
+    <p>To stabilize training, a simple idea is to add an RMS Norm at two positions: after the dimension reduction (i.e., the output of $d\to d/2$) and before the dimension increase (i.e., the input of $d/2 \to d$). However, further ablation studies showed that the RMS Norm at the latter position is the most essential. Therefore, following the "principle of minimum modification," we only kept the last RMS Norm, forming the current Stable LatentMoE structure.</p>
+
+    <p>Ex post facto, we conducted more careful comparative experiments and found that this extra RMS Norm not only stabilizes training but also has a magical effect on performance. Specifically, in cases where all models converge normally, adding or not adding this RMS Norm has little impact on the Valid Loss, but for certain benchmarks, not adding this RMS Norm results in a consistent decline in performance.</p>
+
+    <p>The reason might be that this Norm better balances the ratio between Routed Experts and Shared Experts (in practice, after adding this Norm, there is no need to add an extra Scaling Factor). It might also be because Norm is a non-linear operation (though the non-linearity is extremely weak), and its addition invisibly increases the equivalent depth of LatentMoE.</p>
+
+    <h3>QB</h3>
+    <p>K3's MoE was originally intended to be 8 out of 448. After introducing LatentMoE, it became 16 out of 896. Although the sparsity remains the same, the increase in the total number of experts still exacerbates load imbalance issues.</p>
+
+    <p>Like the previous generation model K2, K3 also adopts the <a href="translation_10757.html">Loss-Free</a> load balancing scheme. However, the SignSGD-style update rule used previously became unstable with K3's large total number of experts. Therefore, we introduced QB (Quantile Balancing), which has the advantages of being mathematically more sound and having no additional hyperparameters. We introduced its details in <a href="translation_11619.html">"MoE Odyssey: 6. Optimal Allocation Promotes Balance"</a>.</p>
+
+    <p>The core operation of QB is calculating global quantiles. However, quantiles are non-linear operations; if calculated naively, the communication overhead is very large. Previously, the author suggested calculating local quantiles and then averaging them globally, but it was later found that this method became inaccurate as the scale further expanded. Thus, K3 eventually used a bin-based approximation (histogram estimation): after compressing the scores to be quantiled into the range 0~1, the distribution of scores is estimated using bins, and the quantiles are then read from the distribution.</p>
+
+    <p style="text-align:center;"><img src="https://kexue.fm/usr/uploads/2026/05/2013347987.png" alt="Schematic of histogram approximation for estimating quantiles" title="Schematic of histogram approximation for estimating quantiles"><br>Schematic of histogram approximation for estimating quantiles</p>
+
+    <p>Regarding the number of bins, we found that 10,000 bins provided no better gain for load balancing compared to 1,000 bins, so we recommend using 1,000 bins. Due to the additivity of distributions, we can aggregate distribution information across machines and across gradient accumulations with extremely low communication volume, thereby obtaining global approximate quantiles.</p>
+
+    <h2>Attention Mechanism</h2>
+    <p>K3's attention is a hybrid of "KDA + MLA." Here we mainly discuss MLA. Of course, MLA is no longer a novelty, but some details are worth discussing. Some readers might scoff: "<a href="https://papers.cool/arxiv/2606.19348">DSV4</a> has already abandoned MLA, yet you are still using it; are you out of ideas?" Certainly not. K3's use of MLA is still the result of careful consideration.</p>
+
+    <h3>MLA</h3>
+    <p>A year ago, the author wrote <a href="translation_10907.html">"Transformer Upgrade Road: 20. Why is MLA Good? (Part 1)"</a> and <a href="translation_11111.html">"Transformer Upgrade Road: 21. Why is MLA Good? (Part 2)"</a>, exploring the benefits of MLA through experiments and theory. At that time, the judgment I gave was: "<b>Under the same training and inference costs, MLA may be the best-performing Full Attention variant.</b>"</p>
+
+    <p>Is this judgment still correct today? Basically yes, but with some small changes. When training costs and KV Cache size are fixed, MLA remains a nearly optimal Attention. However, besides the KV Cache, Decoding now has a new variable—MTP, or speculative decoding—where the idea is to trade computation for speed. Yet, MLA during decoding behaves as MQA with head_dims=512+, which has already pre-consumed most of the computing power, so "MLA + MTP" easily loses out.</p>
+
+    <p>However, the choice of Attention requires comprehensive consideration of many aspects. MTP is only one part. Switching to another design might be friendlier to MTP, but not necessarily better in other aspects.</p>
+
+    <p>During the training phase, MLA is MHA with 192+128 (qk_dims and v_dims). If it is made smaller, such as GQA8 with 128+128, it is difficult to beat MLA in terms of performance. Even if it could tie, the KV Cache of GQA8 is more than three times that of MLA, which is unrealistic. Note that the addition of MTP just means that decoding speed no longer depends solely on KV Cache size; it doesn't mean KV Cache can be arbitrarily large. In long-context scenarios, KV Cache is still the smaller the better.</p>
+
+    <p>If it is made larger, such as switching to 256+256 <a href="https://papers.cool/arxiv/2412.19255">MFA</a> (essentially an MQA), then the performance can indeed be recovered, and the KV Cache is no larger than MLA's. However, the training cost goes up, making it likely to lose out on Scaling Laws. Furthermore, the Prefill cost also increases, which cannot be ignored—because in current mainstream Agent/Coding scenarios, the Prefill length for each round is not short.</p>
+
+    <p>Therefore, an ideal Attention design that is better than MLA must satisfy at least the following conditions:</p>
+
+    <blockquote>
+    1. Performance must not be worse than MLA (Guaranteeing effect);<br>
+    2. Training and Prefill costs must at least not exceed MLA (Computational efficiency);<br>
+    3. KV Cache must be smaller than MLA (Ultra-long text);<br>
+    4. Decoding computation must be smaller than MLA (MTP friendly).
+    </blockquote>
+
+    <p>At least as the author sees it now, there is currently no simple and elegant Attention design that can simultaneously satisfy the above characteristics. Thus, we must make trade-offs. In the context of being mixed with KDA, some of MLA's issues are alleviated, so we still chose MLA.</p>
+
+    <h3>DSV4</h3>
+    <p>Let's add an interlude here to briefly discuss the Attention in <a href="https://papers.cool/arxiv/2606.19348">DSV4</a>. DSV4 appears to have abandoned MLA and redesigned a completely different Attention. But if we examine it closely, we find that it still has shadows of MLA and aligns with the four directions mentioned in the two MLA blog posts above.</p>
+
+    <p>In <a href="translation_10907.html">"Transformer Upgrade Road: 20. Why is MLA Good? (Part 1)"</a>, our experiments found that the invisibly increased head_dims is key to MLA's performance. Then in <a href="translation_11111.html">"Transformer Upgrade Road: 21. Why is MLA Good? (Part 2)"</a>, we pointed out that given a fixed KV Cache size, the best Attention is "an MQA where head_dims equals the KV Cache size and K/V are shared."</p>
+
+    <p>Thus, DSV4 directly replaced Attention with MQA where head_dims=512 and K=V (the position encoding is <a href="translation_10862.html">QKVO-RoPE</a>) to ensure performance, which is exactly MLA's decoding form. However, this causes training and Prefill computation to explode, and DSV4 lacks linear attention. Having KV Cache in every layer is unsustainable even with only 512 dimensions per token. To this end, DSV4 introduced Sparse and Compress: Sparse saves computation, and Compress further compresses the KV Cache to save computation as well.</p>
+
+    <p>So, rather than saying DSV4 abandoned MLA, it is better to say it pushed MLA to another extreme according to the directions mentioned in the previous section. However, this generalization is not without cost. First is the complexity of the infra, and second is that the optimality of such aggressive Sparing and Compressing still feels like it needs careful verification. But in summary, the transition from MLA to DSV4 is more like a heritage and upgrade rather than abandonment and reconstruction.</p>
+
+    <p>Of course, the "Linear + Full" route also has its shortcomings. So compared with the Sparse route, it remains to be seen who can go further.</p>
+
+    <h3>NoPE</h3>
+    <p>K3's MLA has another detail: while maintaining the standard MLA structure, it directly removed RoPE, becoming NoPE. This change already appeared in <a href="https://papers.cool/arxiv/2510.26692">Kimi Linear</a>, but it sparked some discussions after K3's release.</p>
+
+    <p>First of all, RoPE could have been added back to K3, but after adding RoPE, the performance didn't seem to change much. So, according to the principle of maximum simplicity, it was simply left out. However, note that for an all-MLA model like K2, RoPE is critical; removing RoPE would make it significantly worse. K3 can use NoPE because it is a hybrid "KDA + MLA" model.</p>
+
+    <p>Why can "KDA + MLA" use NoPE? We derived in <a href="translation_9403.html">"Transformer Upgrade Road: 6. Completeness Analysis of Rotary Position Encoding"</a> that the power of any orthogonal matrix can be used to construct a generalized RoPE. Standard RoPE chooses a simple rotation matrix, while <a href="https://papers.cool/arxiv/2505.16381">PaTH</a> tried another choice—the Householder matrix—and it performed well too.</p>
+
+    <p>We derived in <a href="translation_11033.html">"A Brief History of Linear Attention: From Imitation, Innovation to Feedback"</a> that in the orthogonal case, PaTH can be equivalently written as:</p>
+
+    \begin{equation}\mathop{\text{SoftmaxAttention}}(\underbrace{\boldsymbol{Q}-\mathop{\text{DeltaNet}}(\boldsymbol{Q},\boldsymbol{W},\boldsymbol{W})}_{\tilde{\boldsymbol{Q}}},\underbrace{\boldsymbol{K}-\mathop{\text{DeltaNet}}(\boldsymbol{K},\boldsymbol{W},\boldsymbol{W})}_{\tilde{\boldsymbol{K}}},\boldsymbol{V})\end{equation}
+
+    <p>This equivalent form shows that adding DeltaNet to $\boldsymbol{Q}$ and $\boldsymbol{K}$ can also provide a position encoding effect similar to RoPE. We know that KDA is a more general DeltaNet, so a hybrid KDA + MLA model inherently comes with a position encoding effect similar to RoPE and PaTH. We can even say that K3 hasn't lacked RoPE, but rather that KDA implicitly provides a generalized form of RoPE.</p>
+
+    <p>Additionally, there is an aesthetic question: since MLA no longer includes RoPE, why retain the practice of concatenating another 64 dimensions?</p>
+
+    <p>There are many reasons for this, such as better compatibility with existing MLA infrastructure without rewriting a set of code. More importantly, if a 576-dimensional Latent were projected directly, followed by projecting 192+128 dimensional K and V, it would indeed be elegant, but computation would increase without any performance gain; overall, it would be a loss. Finally, K3 already introduced new variables like KDA and AttnRes, so we didn't want to introduce too many variables into MLA. After all, one must take things one step at a time.</p>
+
+    <h2>Summary</h2>
+    <p>This article briefly discussed the design and trade-offs of K3 in the areas of MoE and Attention. Overall, every change in K3 is neither aggressive nor flashy; they are all backed by clear motivations and experimental support. The coordination between effectiveness, efficiency, and stability remains the main theme of architectural design.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/11848" style="color: #005fcc;">https://kexue.fm/archives/11848</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>
