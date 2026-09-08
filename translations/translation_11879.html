@@ -1,0 +1,322 @@
+
+    <meta charset="utf-8">
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    mjx-container[display="true"] {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0 !important;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        document.querySelectorAll('script[type^="math/tex"]').forEach(function(node) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        });
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+    <h1><a href="https://kexue.fm/archives/11879">Making Model Training More Scientific (VIII): Learning Rates for Multi-Stage Training</a></h1>
+
+    <p>By 苏剑林 | August 31, 2026</p>
+
+    <p>In the previous article <a href="translation_11804.html">"Making Model Training More Scientific (VII): Step Size Scheduling and Weight Averaging"</a>, we briefly introduced the work on Schedule-Free learning rates. It attempts to replace learning rate scheduling with a form of weight averaging to achieve the effect of training an optimal model using only a constant learning rate. However, as mentioned previously, without introducing additional assumptions, this optimal constant learning rate also depends on the total number of training steps, so it is not truly "schedule-free."</p>
+
+    <p>In this article, we rethink this problem from the perspective of multi-stage training. The main idea is to compromise the scheduling goal to "being close to optimal at the end of each stage," making it more simplified and feasible in practice.</p>
+
+    <h2>Classic Conclusion</h2>
+    <p>Let's start with a classic convergence conclusion to understand why the optimal learning rate depends on the number of training steps. This conclusion was first introduced in <a href="translation_11469.html">"Making Model Training More Scientific (II): Extending Conclusions to Unbounded Domains"</a>:</p>
+
+    \begin{equation}\frac{\sum_{t=1}^T \eta_t \mathbb{E}[L(\boldsymbol{\theta}_t) - L(\boldsymbol{\theta}^*)]}{\sum_{t=1}^T \eta_t}\leq \frac{R^2}{2\sum_{t=1}^T \eta_t} + \frac{G^2}{2}\frac{\sum_{t=1}^T \eta_t^2}{\sum_{t=1}^T \eta_t}\triangleq f_T(\eta)\end{equation}
+
+    <p>We won't repeat the specific meanings of the notations. This convergence result is representative because subsequent works in <a href="translation_11540.html">"Making Model Training More Scientific (VI): Exquisite Top-Down Construction"</a> and the aforementioned <a href="translation_11804.html">Part VII</a> are all based on it.</p>
+
+    <p>Now, our task is: given $R, G, T > 0$, find $\eta_1, \dots, \eta_T$ that minimize $f_T(\eta)$. This can be solved with a simple inequality. First, it is easy to prove that $\sum_{t=1}^T \eta_t^2 \geq (\sum_{t=1}^T \eta_t)^2/T$, so:</p>
+
+    \begin{equation}f_T(\eta)\geq \frac{R^2}{2\sum_{t=1}^T \eta_t} + \frac{G^2}{2T}\sum_{t=1}^T \eta_t \geq \frac{RG}{\sqrt{T}}\triangleq f^*_T\end{equation}
+
+    <p>The condition for both equalities to hold is $\eta_1 = \dots = \eta_T = \frac{R}{G\sqrt{T}}$, which depends on $T$. If we use a learning rate schedule that is truly independent of $T$, such as $\eta_t \propto 1/\sqrt{t}$, we can at most achieve $f_T(\eta) = \mathcal{O}(\log T / \sqrt{T})$. Furthermore, it can be proven that no matter how we improve it, a learning rate independent of $T$ cannot achieve a better $f$ than $\mathcal{\Theta}(\sqrt{\log T / T})$.</p>
+
+    <h2>Shifting Mindset</h2>
+    <p>Now let's rethink the motivation behind Schedule-Free. Ideally, Schedule-Free aims to continue training without knowing the total steps $T$ in advance, such that no matter when we stop, we obtain a model weight that is nearly optimal for the steps taken so far.</p>
+
+    <p>However, this perfect goal seems nearly impossible. Even under the convex optimization assumptions of Schedule-Free—where we can equate LR decay with weight averaging to achieve training with a constant learning rate—as analyzed in the previous section, the optimal value of this constant learning rate still depends on $T$. We cannot obtain the optimal solution for any arbitrary stop time unless we introduce further assumptions.</p>
+
+    <p>Given this, let's reflect on what we truly want from Schedule-Free. First, a constant learning rate is not a strict requirement; if a time-varying learning rate produces good results, we can accept it. Second, the property of "optimal at any stop time" is certainly nice, but not a absolute necessity. We primarily hope that in multi-stage training, the end of each stage can get as close to optimal as possible.</p>
+
+    <p>In other words, when our training is divided into multiple stages, we want to obtain a model as close to optimal as possible at the end of each stage. The number of stages won't be too many, so for simplicity, let's consider two-stage training: the first stage trains for $T_1$ steps, and the second stage trains for $T_2 - T_1$ steps, for a total of $T_2$ steps.</p>
+
+    <p>Here, we can distinguish between "unexpected" and "planned" scenarios: "Unexpected" refers to when there was no plan to continue training, so the first stage is tuned to be as optimal as possible. After deciding to continue, the second stage tries to reach optimality based on the current foundation. This results in a greedy solution, where the second stage result is relatively sub-optimal. The "Planned" scenario is when multi-stage training is planned in advance, allowing us to better balance the performance across both stages.</p>
+
+    <h2>Greedy Decision</h2>
+    <p>Let's look at the greedy version first. To achieve optimality in the first stage, we naturally take the constant learning rate $\eta_{(1)}^* = \frac{R}{G\sqrt{T_1}}$, so the $f$ of the first stage reaches the theoretical optimum $f^*_{T_1}$. In the second stage, we need to find $\eta_{T_1+1}, \dots, \eta_{T_2}$ to minimize:</p>
+
+    \begin{equation}f_{T_2}(\eta) = \frac{R^2 + G^2(T_1 (\eta_{(1)}^*)^2 + \sum_{t=T_1+1}^{T_2} \eta_t^2)}{2(T_1 \eta_{(1)}^* + \sum_{t=T_1+1}^{T_2} \eta_t)}\end{equation}
+
+    <p>Based on the same inequality $\sum_{t=T_1+1}^{T_2} \eta_t^2 \geq (\sum_{t=T_1+1}^{T_2} \eta_t)^2/(T_2-T_1)$, the minimum is still achieved with a constant learning rate, simplifying to:</p>
+
+    \begin{equation}f_{T_2}(\eta) = \frac{R^2 + G^2(T_1 (\eta_{(1)}^*)^2 + (T_2 - T_1) (\eta_{(2)})^2)}{2(T_1 \eta_{(1)}^* + (T_2 - T_1) \eta_{(2)})}\end{equation}
+
+    <p>This can be solved by completing the square or direct differentiation. The minimum point is:</p>
+
+    \begin{equation}\eta_{(2)}^* = \frac{R/G}{\sqrt{T_2^{\#}}}, \qquad f(\eta_{(2)}^*) = \frac{RG}{\sqrt{T_2^{\#}}}\end{equation}
+
+    <p>Where</p>
+
+    \begin{equation}T_2^{\#} = \frac{1}{2}T_2 + \frac{1}{2}\sqrt{T_1(2T_2 - T_1)}\end{equation}
+
+    <h2>Equivalent Steps</h2>
+    <p>We have introduced the notation $T_2^{\#}$, which represents the "equivalent steps."</p>
+
+    <p>If there were no first-stage constraint, we could use a constant learning rate $\frac{R}{G\sqrt{T_2}}$ from the beginning, and the minimum value at the end of training would reach $\frac{RG}{\sqrt{T_2}}$. But now, we can only achieve $\frac{RG}{\sqrt{T_2^{\#}}}$. The second-stage learning rate is also in the form of $\frac{R}{G\sqrt{T_2^{\#}}}$. This means the effective steps changed from $T_2$ to $T_2^{\#}$. It is easy to verify that:</p>
+
+    \begin{equation}T_2^{\#} \leq T_2\end{equation}
+
+    <p>In other words, two-stage greedy training is equivalent to losing some steps in terms of effect. Taking $T_2 = 2T_1$ as an example, $T_2^{\#} \approx 1.866T_1$. Compared to $2T_1$, this is a loss of roughly $6.7\%$ in steps. Note that if $T_2 \to \infty$, then $T_2^{\#}/T_2 \to 1/2$. That is, if training continues indefinitely, the ratio of lost steps increases, capping at a $50\%$ loss.</p>
+
+    <p>Why abstract this concept? Because the concept of "steps" is universal, making the conclusion easier to transfer. The above conclusion is derived based on SGD, but actual training often uses non-SGD optimizers like Adam or Muon, and hyperparameters are not usually set directly using these formulas but are determined via Scaling Laws. </p>
+
+    <p>Therefore, the conclusions from SGD cannot be applied directly. However, if we can extract the relative change through the concept of "equivalent steps," the step input in the Scaling Laws used in practice can be similarly replaced with equivalent steps to obtain a heuristic correction. This is the key idea for bridging SGD conclusions to practice.</p>
+
+    <h2>Planned Scenario</h2>
+    <p>Next, let's look at the "Planned" scenario. In this case, $T_1$ and $T_2$ are known in advance, and the learning rates for both stages can be optimized jointly. The core problem here is that we have two delivery targets—the model at the end of the first stage and the final model—and we need to balance the effects of both stages. For this, we introduce the minimax optimization target:</p>
+
+    \begin{equation}\min_{\eta \geq 0} \max_{T \in \{T_1, T_2\}} \frac{f_T(\eta)}{f_T^*}\end{equation}
+
+    <p>It aims to make the ratio of the actual effect to the ideal value for each stage as small as possible. The benefit of this optimization goal is that it introduces no extra hyperparameters and is easily generalized to multi-stage training. By introducing a new variable $m$, we can convert it into a nonlinear programming problem:</p>
+
+    \begin{equation}\min\Big\{ m \,\, \Big| \,\, f_{T_1}(\eta)/f_{T_1}^* \leq m , \,\, f_{T_2}(\eta)/f_{T_2}^* \leq m , \,\, m \geq 1, \,\, \eta \geq 0\Big\}\end{equation}
+
+    <p>Dimensionless transformation: Let $x_t = G\eta_t/R$. Then for any $T$, we can complete the square to get:</p>
+
+    \begin{equation}\frac{f_T(\eta)}{f_T^*} = \frac{\sqrt{T}(1 + \sum_{t=1}^T x_t^2)}{2\sum_{t=1}^T x_t}\leq m \iff \sum_{t=1}^T\left(x_t - \frac{m}{\sqrt{T}}\right)^2 \leq m^2 - 1\end{equation}
+
+    <p>The feasible set of $x_t$ forms a hypersphere centered at $\frac{m}{\sqrt{T}}\boldsymbol{1}$ with radius $\sqrt{m^2-1}$. Thus, the original problem is equivalent to a quadratic programming problem with $m$ as the target.</p>
+
+    <h2>Solution Process</h2>
+    <p>For the two-stage case, this problem can be solved analytically. Note that the first constraint only involves $x_1, \dots, x_{T_1}$, while the second involves all $T_2$ variables. For $x_t$ where $t > T_1$, they only appear in the second constraint, so we can simply set $x_t = m/\sqrt{T_2}$ to minimize their contribution. The problem reduces to: the first $T_1$ values of $x_t$ must fall within two spheres simultaneously:</p>
+
+    \begin{equation}\sum_{t=1}^{T_1}\left(x_t - \frac{m}{\sqrt{T_1}}\right)^2 \leq m^2 - 1, \qquad \sum_{t=1}^{T_1}\left(x_t - \frac{m}{\sqrt{T_2}}\right)^2 \leq m^2 - 1\end{equation}
+
+    <p>Both spheres have a radius of $\sqrt{m^2-1}$, and their centers are on the all-ones vector. The square of the distance between the centers is:</p>
+
+    \begin{equation}T_1\left(\frac{m}{\sqrt{T_1}} - \frac{m}{\sqrt{T_2}}\right)^2 = m^2 (1 - \sqrt{\tau} )^2, \qquad \tau = T_1/T_2\end{equation}
+
+    <p>The two spheres have an intersection if and only if the distance between centers does not exceed twice the radius, i.e., $m^2 (1 - \sqrt{\tau} )^2 \leq 4(m^2 - 1)$. Solving for the optimal $m$:</p>
+
+    \begin{equation}m^* = \frac{2}{\sqrt{4 - (1 - \sqrt{\tau})^2}}\end{equation}
+
+    <p>The corresponding solution can be taken as the midpoint of the line segment connecting the two centers:</p>
+
+    \begin{equation}x_t = \left\{\begin{aligned} &\frac{m^*}{2}\left(\frac{1}{\sqrt{T_1}} + \frac{1}{\sqrt{T_2}}\right), & t \leq T_1 \\ &\frac{m^*}{\sqrt{T_2}}, & t > T_1 \end{aligned}\right.\end{equation}
+
+    <h2>Analysis of Results</h2>
+    <p>Restoring $\eta_t = Rx_t/G$ gives:</p>
+
+    \begin{equation}\eta_{(1)}^* = \frac{m^* R}{2G}\left(\frac{1}{\sqrt{T_1}} + \frac{1}{\sqrt{T_2}}\right), \qquad \eta_{(2)}^* = \frac{m^* R}{G\sqrt{T_2}}\end{equation}
+
+    <p>Interestingly, $\eta_{(1)}^*$ is exactly the average of the two single-stage optimal constant learning rates (for $T_1$ steps and $T_2$ steps), multiplied by $m^*$. From the perspective of equivalent steps, $\eta_{(1)}^*$ corresponds to a larger preset training step count, while $\eta_{(2)}^*$ corresponds to a smaller preset training step count:</p>
+
+    \begin{equation}T_1^{\#} = \left(\frac{R}{G\eta_{(1)}^*}\right)^2 = T_1\left(\frac{3-\sqrt{\tau}}{1 + \sqrt{\tau}}\right), \qquad T_2^{\#} = \left(\frac{R}{G\eta_{(2)}^*}\right)^2 = T_2\left(1-\frac{(1-\sqrt{\tau})^2}{4}\right)\end{equation}
+
+    <p>That is to say, even though the first stage only trains for $T_1$ steps, the learning rate should be set as if it were training for $T_1^{\#}$ steps. For the total of $T_2$ steps across two stages, the second-stage learning rate is set as if it were training for $T_2^{\#}$ steps. As for the effect, here $f_{T_1}/f_{T_1}^* = f_{T_2}/f_{T_2}^* = m^*$, meaning the relative losses of the two stages are exactly equal—this is the balanced characteristic of the minimax objective: it does not favor any single delivery point.</p>
+
+    <p>Using $T_2 = 2T_1$ again, where $\tau = 1/2$. Substituting gives $T_2^{\#} \approx 0.979 T_2$. So in terms of effect, both stages suffer a step loss of about $2.1\%$ compared to the optimal solution. Looking at the average effect of the two stages, this is better than the greedy solution. For the learning rate settings, the first stage should follow the equivalent steps $T_1^{\#} \approx 1.343 T_1$, and the second stage should follow $T_2^{\#} \approx 0.979 T_2$.</p>
+
+    <p>Another limit is $\tau \to 0$, where $T_2^{\#} \to 0.75 T_2$. This means when the steps in the $T_2$ stage are sufficiently large, the minimax solution loses at most $25\%$ of steps at the final point, which is better than the $50\%$ loss in the greedy solution.</p>
+
+    <h2>Multi-Stage Extension</h2>
+    <p>Whether it is the greedy solution for the "unexpected" scenario or the minimax solution for the "planned" scenario, both can be easily generalized to multi-stage training. The greedy solution is straightforward; let's briefly expand on the minimax solution. With $K$ delivery points $T_1 < T_2 < \dots < T_K$, the minimax target becomes:</p>
+
+    \begin{equation}\min_{\eta\geq 0}\ \max_{T\in\{T_1,\cdots,T_K\}} \frac{f_T(\eta)}{f_T^*}\end{equation}
+
+    <p>The same dimensionless transformation yields $K$ sphere constraints:</p>
+
+    \begin{equation}\sum_{t=1}^{T_k}\left(x_t - \frac{m}{\sqrt{T_k}}\right)^2 \leq m^2 - 1, \qquad k = 1, 2, \cdots, K\end{equation}
+
+    <p>Although there are theoretically $T_K$ variables, it can still be proven that the optimal solution always takes a "piecewise constant" form. Thus, the problem reduces to a small-scale programming problem with only $K+1$ variables. While there is generally no simple closed-form solution for $K \geq 3$, numerical solving is not difficult.</p>
+
+    <h2>Summary</h2>
+    <p>This article re-examines "Schedule-Free learning rates" from the perspective of multi-stage training. By changing the scheduling goal to "being close to optimal at the end of each stage," it becomes simpler and more practical. Furthermore, we extract the concept of "equivalent steps," allowing these conclusions to potentially be transferred to the optimizers and Scaling Laws used in actual practice.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/11879" style="color: #005fcc;">https://kexue.fm/archives/11879</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>
