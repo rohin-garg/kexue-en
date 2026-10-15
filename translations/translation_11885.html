@@ -1,0 +1,361 @@
+
+    <meta charset="utf-8">
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    mjx-container[display="true"] {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0 !important;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+    <h1><a href="https://kexue.fm/archives/11885">Making "Alchemy" More Scientific (Part 10): Breaking and Repairing the Monotonicity Assumption</a></h1>
+
+    <p>By 苏剑林 | September 14, 2026</p>
+
+    <p>In the previous article <a href="translation_11882.html">"Making 'Alchemy' More Scientific (Part 9): Classical Adaptive Gradient Algorithms"</a>, we established a convergence framework for general update rules of the form $\boldsymbol{\theta}_{t+1} = \boldsymbol{\theta}_t - \eta_t \boldsymbol{H}_t^{-1}\boldsymbol{g}_t$. We used this as a starting point to re-understand classical adaptive gradient algorithms like AdaGrad. However, the complete conclusions at that time relied on two premises: first, the learning rate $\eta_t$ is a constant; second, the preconditioner matrix $\boldsymbol{H}_t$ is monotonically non-decreasing with respect to $t$ (in the sense of positive semi-definiteness).</p>
+
+    <p>The former restricts the flexibility of the learning rate strategy, while the latter excludes moving-average type algorithms like RMSProp and Adam from the theory. This article attempts to remove these "scaffoldings" one by one and generalize the convergence theory to more general scenarios.</p>
+
+    <h2 id="remaining-problems">Remaining Problems</h2>
+
+    <p>Let's first review the core conclusion of the previous article. For the general update rule</p>
+
+    \begin{equation}\boldsymbol{\theta}_{t+1} = \boldsymbol{\theta}_t - \eta_t \boldsymbol{H}_t^{-1}\boldsymbol{g}_t\end{equation}
+
+    <p>where $\boldsymbol{g}_t = \boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_t)$ is the stochastic gradient calculated at sample $\boldsymbol{x}_t$, and $\boldsymbol{H}_t$ is a positive definite preconditioner matrix (which may depend on the data). The convergence conclusion obtained previously was</p>
+
+    \begin{equation}\newcommand{tr}{\mathop{\text{tr}}}2\sum_{t=1}^T \eta_t [L(\boldsymbol{x}_t,\boldsymbol{\theta}_t) - L(\boldsymbol{x}_t,\boldsymbol{\theta}^*)] \leq R^2 \tr(\boldsymbol{H}_T) + \sum_{t=1}^T \eta_t^2 \Vert\boldsymbol{g}_t\Vert_{\boldsymbol{H}_t^{-1}}^2 \label{leq:base}\end{equation}
+
+    <p>Here $\boldsymbol{\theta}^*$ is the optimal point of the loss function, and $R = \max(\Vert\boldsymbol{\theta}_1 - \boldsymbol{\theta}^*\Vert,\cdots,\Vert\boldsymbol{\theta}_T - \boldsymbol{\theta}^*\Vert)$ is the maximum distance of the optimization trajectory to the optimal point; a more practical interpretation is to assume the optimization process always takes place within a hypersphere with a diameter not exceeding $R$, which can be guaranteed through projection operations if necessary.</p>
+
+    <p>A key premise for the validity of Eq. \eqref{leq:base} is: for any $t$, $\boldsymbol{H}_t - \boldsymbol{H}_{t-1}$ is positive semi-definite, denoted as $\boldsymbol{H}_t \succeq \boldsymbol{H}_{t-1}$, meaning $\boldsymbol{H}_t$ is monotonically non-decreasing under the positive semi-definite order. In the previous post, under this premise, we further assumed $\eta_t$ to be a constant $\eta$, leading to</p>
+
+    \begin{equation}\frac{1}{T}\sum_{t=1}^T L(\boldsymbol{x}_t,\boldsymbol{\theta}_t) - \frac{1}{T}\sum_{t=1}^T L(\boldsymbol{x}_t,\boldsymbol{\theta}^*) \leq \frac{R^2}{2T\eta}\tr(\boldsymbol{H}_T) + \frac{\eta}{2T} \sum_{t=1}^T \Vert\boldsymbol{g}_t\Vert_{\boldsymbol{H}_t^{-1}}^2\end{equation}
+
+    <p>Then, by minimizing the right-hand side with respect to $\boldsymbol{H}$, we gained an understanding of the optimal preconditioner matrix—AdaGrad is precisely a product of this optimization. If we replace the summation with a moving average, we can derive optimizers like RMSProp and Adam, but they cannot guarantee $\boldsymbol{H}_t \succeq \boldsymbol{H}_{t-1}$, so the above convergence theory no longer automatically holds.</p>
+
+    <p>Consequently, two questions naturally arise: 1. If $\eta_t$ is not a constant, what should the conclusion become? 2. If the monotonicity $\boldsymbol{H}_t \succeq \boldsymbol{H}_{t-1}$ does not always hold, what should we do?</p>
+
+    <h2 id="average-convergence">Average Convergence</h2>
+
+    <p>Let's first consider a general dynamic learning rate $\eta_t$. Fortunately, dynamic learning rates do not introduce any difficulties in proof; we can reuse almost all techniques from previous posts. First, following the idea in <a href="translation_11469.html">"Making 'Alchemy' More Scientific (Part 2): Generalizing Conclusions to Unbounded Domains"</a>, we first take the expectation $\mathbb{E}\triangleq \mathbb{E}_{\boldsymbol{x}_1,\boldsymbol{x}_2,\cdots,\boldsymbol{x}_T}$ on both sides of Eq. \eqref{leq:base}:</p>
+
+    \begin{equation}2\sum_{t=1}^T \eta_t \mathbb{E}[L(\boldsymbol{\theta}_t) - L(\boldsymbol{\theta}^*)] \leq \mathbb{E}\left[R^2 \tr(\boldsymbol{H}_T) + \sum_{t=1}^T \eta_t^2 \Vert\boldsymbol{g}_t\Vert_{\boldsymbol{H}_t^{-1}}^2\right]\end{equation}
+
+    <p>A few notes here: 1. We assume $\eta_t$ is independent of the data $\boldsymbol{x}_1,\boldsymbol{x}_2,\cdots,\boldsymbol{x}_t$; 2. Aside from that, almost all variables are data-dependent, for example, $\boldsymbol{\theta}_t$ depends on $\boldsymbol{x}_1,\boldsymbol{x}_2,\cdots,\boldsymbol{x}_{t-1}$, and $\boldsymbol{H}_t$ may also depend on data (e.g., AdaGrad); 3. $\boldsymbol{g}_t$ is shorthand for $\boldsymbol{g}(\boldsymbol{x}_t,\boldsymbol{\theta}_t)$, which is naturally no exception; 4. If $R$ is defined by $\max$, it is data-dependent, but if interpreted as a bounded sphere, it is independent—we usually prefer the latter.</p>
+
+    <p>Now, dividing both sides by $2\sum_{t=1}^T \eta_t$, we get</p>
+
+    \begin{equation}\frac{\sum_{t=1}^T \eta_t \mathbb{E}[L(\boldsymbol{\theta}_t) - L(\boldsymbol{\theta}^*)]}{\sum_{t=1}^T \eta_t} \leq \mathbb{E}\left[\frac{R^2 \tr(\boldsymbol{H}_T)}{2\sum_{t=1}^T \eta_t} + \frac{\sum_{t=1}^T \eta_t^2 \Vert\boldsymbol{g}_t\Vert_{\boldsymbol{H}_t^{-1}}^2}{2\sum_{t=1}^T \eta_t}\right]\end{equation}
+
+    <p>This yields a weighted-average version of the convergence conclusion for dynamic learning rates. On the other hand, inequality \eqref{leq:base} has a more fundamental prototype:</p>
+
+    \begin{equation}2\sum_{t=1}^T \eta_t \boldsymbol{g}_t \cdot (\boldsymbol{\theta}_t -\boldsymbol{\varphi}) \leq R^2 \tr(\boldsymbol{H}_T) + \sum_{t=1}^T \eta_t^2 \Vert\boldsymbol{g}_t\Vert_{\boldsymbol{H}_t^{-1}}^2 \label{leq:base-base}\end{equation}
+
+    <p>That is, we actually obtain the above expression first, then assume the convexity of $L$ and set $\boldsymbol{\varphi}=\boldsymbol{\theta}^*$ to obtain Eq. \eqref{leq:base}. Repeating the proof of this section based on \eqref{leq:base-base} gives</p>
+
+    \begin{equation}\frac{\sum_{t=1}^T \eta_t \mathbb{E}[\boldsymbol{g}_t \cdot (\boldsymbol{\theta}_t -\boldsymbol{\varphi})]}{\sum_{t=1}^T \eta_t} \leq \mathbb{E}\left[\frac{R^2 \tr(\boldsymbol{H}_T)}{2\sum_{t=1}^T \eta_t} + \frac{\sum_{t=1}^T \eta_t^2 \Vert\boldsymbol{g}_t\Vert_{\boldsymbol{H}_t^{-1}}^2}{2\sum_{t=1}^T \eta_t}\right]\label{leq:avg-g}\end{equation}
+
+    <p>This is the inequality to be used in the next section. Note that $\boldsymbol{g}_t$ here can actually be replaced by any vector, because the only role of $\boldsymbol{g}_t$ as the current point's gradient is to link it to the loss function through convexity. Since we are not involving the loss function here, for this inequality alone, $\boldsymbol{g}_t$ can be arbitrary.</p>
+
+    <h2 id="last-point-convergence">Last-Point Convergence</h2>
+
+    <p>In practice, last-point convergence is often more relevant than average convergence. To obtain the conclusion for last-point convergence, we directly introduce an inequality proved in <a href="translation_11540.html">"Making 'Alchemy' More Scientific (Part 6): Exquisite Top-Down Construction"</a>:</p>
+
+    \begin{equation}\mathbb{E}[L(\boldsymbol{\theta}_T) - L(\boldsymbol{\theta}^*)] \leq \frac{1}{w_{1:T}}\sum_{t=1}^T w_t \mathbb{E}[\boldsymbol{g}(\boldsymbol{x}_t, \boldsymbol{\theta}_t)\cdot(\boldsymbol{\psi}_t - \boldsymbol{\theta}^*)]\label{leq:last-core}\end{equation}
+
+    <p>where $\boldsymbol{\psi}_{t+1} - \boldsymbol{\psi}_t = \frac{w_{1:T}}{w_{t+1:T}}(\boldsymbol{\theta}_{t+1} - \boldsymbol{\theta}_t)$. We assume the reader has been following this series post by post, so most notations will not be reintroduced. The only condition for inequality \eqref{leq:last-core} is the convexity of $L$; as long as $L$ is convex and the relationship between $\boldsymbol{\psi}$ and $\boldsymbol{\theta}$ holds, inequality \eqref{leq:last-core} is valid, regardless of the specific optimizer.</p>
+
+    <p>The role of inequality \eqref{leq:last-core} is intuitive: it converts last-point convergence into average convergence, allowing it to interface with the conclusions of the previous section. Now we set $\boldsymbol{\psi}_{t+1} = \boldsymbol{\psi}_t - w_t \boldsymbol{H}_t^{-1} \boldsymbol{g}_t$ and take $\boldsymbol{\psi}_1 = \boldsymbol{\theta}_1$. From their relationship, we can derive</p>
+
+    \begin{equation}\boldsymbol{\theta}_{t+1} = \boldsymbol{\theta}_t - \frac{w_t w_{t+1:T}}{w_{1:T}}\boldsymbol{H}_t^{-1} \boldsymbol{g}_t\end{equation}
+
+    <p>Applying Eq. \eqref{leq:avg-g} to the right-hand side of inequality \eqref{leq:last-core}, we get</p>
+
+    \begin{equation}\mathbb{E}[L(\boldsymbol{\theta}_T) - L(\boldsymbol{\theta}^*)] \leq \mathbb{E}\left[\frac{R^2 \tr(\boldsymbol{H}_T)}{2\sum_{t=1}^T w_t} + \frac{\sum_{t=1}^T w_t^2 \Vert\boldsymbol{g}_t\Vert_{\boldsymbol{H}_t^{-1}}^2}{2\sum_{t=1}^T w_t}\right]\end{equation}
+
+    <p>Strictly speaking, $R$ here should be the upper bound of the distance from the $\boldsymbol{\psi}$ trajectory to $\boldsymbol{\theta}^*$. Under the "bounded sphere" understanding, as long as both trajectories are within the same sphere (ensured by projection if necessary), they can be represented by the same $R$. Thus, as long as the $\eta_t$ in $\boldsymbol{\theta}_{t+1} = \boldsymbol{\theta}_t - \eta_t \boldsymbol{H}_t^{-1}\boldsymbol{g}_t$ can be expressed as $\frac{w_t w_{t+1:T}}{w_{1:T}}$, then the above convergence conclusion holds. This generalizes the previous scalar learning rate's last-point convergence conclusion to matrix-based learning rates.</p>
+
+    <p>We can immediately derive a practical corollary: based on the experience in <a href="translation_11530.html">"Making 'Alchemy' More Scientific (Part 5): Fine-tuning Learning Rates Based on Gradients"</a>, if we assume $\Vert\boldsymbol{g}_t\Vert_{\boldsymbol{H}_t^{-1}}^2$ is close to a constant (or bounded by one, allowing further relaxation of the right side), then the minimum of the right-hand side is achieved when $w_t$ is a constant. Constant $w_t$ corresponds to a linear decay of $\eta_t$, which confirms the general utility of linear LR decay schedules for adaptive learning rate optimizers.</p>
+
+    <p>In addition to the implicit conclusion above, according to the logic in the "<a href="https://kexue.fm/archives/11540#%E6%98%BE%E5%BC%8F%E7%89%88%E6%9C%AC">Explicit Version</a>" section, we can also obtain an explicit conclusion:</p>
+
+    \begin{equation}\mathbb{E}[L(\boldsymbol{\theta}_T) - L(\boldsymbol{\theta}^*)] \leq \mathbb{E}\left[\frac{R^2\tr(\boldsymbol{H}_T)}{4\eta_{1:T}} + \sum_{t=1}^{T-2} \frac{\eta_t^2}{4\eta_{t+1:T}} \Vert\boldsymbol{g}_t\Vert_{\boldsymbol{H}_t^{-1}}^2 + \frac{\eta_{T-1}}{2}\Big(\Vert\boldsymbol{g}_{T-1}\Vert_{\boldsymbol{H}_{T-1}^{-1}}^2 + \Vert\boldsymbol{g}_T\Vert_{\boldsymbol{H}_T^{-1}}^2\Big)\right]\label{leq:last-xianshi}\end{equation}
+
+    <h2 id="guaranteeing-monotonicity">Guaranteeing Monotonicity</h2>
+
+    <p>Now let's look at the second question: how to "fix" it when the monotonicity $\boldsymbol{H}_t \succeq \boldsymbol{H}_{t-1}$ does not hold. A naive idea is to make the smallest possible modification to the original optimizer to satisfy the desired monotonicity. Specifically, given a sequence of positive semi-definite matrices $\boldsymbol{H}_1, \boldsymbol{H}_2, \dots$, we want to find a new sequence $\hat{\boldsymbol{H}}_1, \hat{\boldsymbol{H}}_2, \dots$ that is closest to it, and always satisfies $\hat{\boldsymbol{H}}_t \succeq \hat{\boldsymbol{H}}_{t-1}$. The new sequence is constructed as follows:</p>
+
+    \begin{equation}\hat{\boldsymbol{H}}_1 = \boldsymbol{H}_1,\qquad \hat{\boldsymbol{H}}_t = \hat{\boldsymbol{H}}_{t-1} + [\boldsymbol{H}_t - \hat{\boldsymbol{H}}_{t-1}]_+\end{equation}
+
+    <p>where $[\boldsymbol{S}]_+$ refers to the new matrix obtained by taking $\max(\cdot,0)$ for all eigenvalues of the real symmetric matrix $\boldsymbol{S}$. This construction is intuitive; the inevitability of $\hat{\boldsymbol{H}}_t \succeq \hat{\boldsymbol{H}}_{t-1}$ is clear, and its optimality under the trace metric can be proven.</p>
+
+    <blockquote>
+        <p><strong>Proposition:</strong> Among all positive semi-definite matrices $\boldsymbol{S}$ satisfying both $\boldsymbol{S} \succeq \hat{\boldsymbol{H}}_{t-1}$ and $\boldsymbol{S} \succeq \boldsymbol{H}_t$, the trace of $\hat{\boldsymbol{H}}_t$ defined above is minimized.</p>
+        <p><strong>Proof:</strong> Let the eigenvalue decomposition of $\boldsymbol{H}_t - \hat{\boldsymbol{H}}_{t-1}$ be $\boldsymbol{V}\boldsymbol{\Lambda}\boldsymbol{V}^{\top}$, and let $\boldsymbol{N}=\boldsymbol{V}^{\top}(\boldsymbol{S} - \hat{\boldsymbol{H}}_{t-1})\boldsymbol{V}$. The two conditions yield $\boldsymbol{N}\succeq\boldsymbol{0}$ and $\boldsymbol{N}\succeq\boldsymbol{\Lambda}$, which imply $N_{i,i}\geq 0$ and $N_{i,i}\geq \Lambda_{i,i}$, or equivalently $N_{i,i}\geq \max(\Lambda_{i,i},0)$. Thus</p>
+        \begin{equation}\tr(\boldsymbol{S}) - \tr(\hat{\boldsymbol{H}}_{t-1}) = \tr(\boldsymbol{S} - \hat{\boldsymbol{H}}_{t-1}) = \tr(\boldsymbol{N}) \geq \tr([\boldsymbol{H}_t - \hat{\boldsymbol{H}}_{t-1}]_+)\end{equation}
+        <p>Taking $\boldsymbol{S} = \hat{\boldsymbol{H}}_t = \hat{\boldsymbol{H}}_{t-1} + [\boldsymbol{H}_t - \hat{\boldsymbol{H}}_{t-1}]_+$ makes the equality hold. End of proof.</p>
+        <p><strong>Corollary:</strong> If $\boldsymbol{H}_t \succeq \boldsymbol{H}_{t-1}$ already holds, then $\hat{\boldsymbol{H}}_t = \boldsymbol{H}_t$.</p>
+    </blockquote>
+
+    <p>With $\hat{\boldsymbol{H}}_t$, we replace the original $\boldsymbol{H}_t$, changing the update rule to</p>
+
+    \begin{equation}\boldsymbol{\theta}_{t+1} = \boldsymbol{\theta}_t - \eta_t \hat{\boldsymbol{H}}_t^{-1}\boldsymbol{g}_t\end{equation}
+
+    <p>This guarantees monotonicity, allowing us to use the previous convergence conclusions by simply replacing $\boldsymbol{H}$ with $\hat{\boldsymbol{H}}$, while minimizing modifications to the original optimizer. In particular, when $\boldsymbol{H}_t$ is a diagonal matrix, the update rule for $\hat{\boldsymbol{H}}_t$ simplifies to the more intuitive</p>
+
+    \begin{equation}\hat{\boldsymbol{H}}_t = \max(\hat{\boldsymbol{H}}_{t-1}, \boldsymbol{H}_t)\end{equation}
+
+    <p>where $\max$ denotes element-wise maximum. If we use this to replace the second moment in Adam, we get the classic <a href="https://papers.cool/arxiv/1904.09237">AMSGrad</a> optimizer, which has better convergence properties at the cost of an extra set of state variables. However, like AdaGrad, optimizers that guarantee the monotonicity of $\boldsymbol{H}_t$ are often feared to be too conservative in practice, which is why AMSGrad has not become widely popular.</p>
+
+    <h2 id="returning-to-the-source">Returning to the Source</h2>
+
+    <p>If we insist on not modifying the optimizer, we can only try to address the issue from the conclusion itself. In this section, let's return to the source and re-examine the proof process from the previous article: where exactly was the monotonicity of $\boldsymbol{H}_t$ used? The answer is that we used the positive semi-definiteness of $\boldsymbol{H}_t - \boldsymbol{H}_{t-1}$ to provide the relaxation $\boldsymbol{H}_t - \boldsymbol{H}_{t-1} \preceq \tr(\boldsymbol{H}_t - \boldsymbol{H}_{t-1})\boldsymbol{I}$, and then:</p>
+
+    \begin{equation}\Vert\boldsymbol{\theta}_t-\boldsymbol{\varphi}\Vert_{\boldsymbol{H}_t-\boldsymbol{H}_{t-1}}^2 \leq \Vert\boldsymbol{\theta}_t-\boldsymbol{\varphi}\Vert^2 \tr(\boldsymbol{H}_t - \boldsymbol{H}_{t-1}) \leq R^2 \tr(\boldsymbol{H}_t - \boldsymbol{H}_{t-1})\end{equation}
+
+    <p>Subsequently:</p>
+
+    \begin{equation}\begin{aligned}\require{cancel}
+    \sum_{t=1}^T (\Vert\boldsymbol{\theta}_t - \boldsymbol{\varphi}\Vert_{\boldsymbol{H}_t}^2 - \Vert\boldsymbol{\theta}_{t+1} - \boldsymbol{\varphi}\Vert_{\boldsymbol{H}_t}^2) =&\, \Vert\boldsymbol{\theta}_1 - \boldsymbol{\varphi}\Vert_{\boldsymbol{H}_1}^2 - \Vert\boldsymbol{\theta}_{T+1} - \boldsymbol{\varphi}\Vert_{\boldsymbol{H}_T}^2 + \sum_{t=2}^T \Vert\boldsymbol{\theta}_t - \boldsymbol{\varphi}\Vert_{\boldsymbol{H}_t - \boldsymbol{H}_{t-1}}^2 \\
+    \leq&\, R^2 \tr(\boldsymbol{H}_1) \cancel{- \Vert\boldsymbol{\theta}_{T+1} - \boldsymbol{\varphi}\Vert_{\boldsymbol{H}_T}^2} + \sum_{t=2}^T R^2 \tr(\boldsymbol{H}_t - \boldsymbol{H}_{t-1}) \\
+    =&\, R^2 \tr(\boldsymbol{H}_T)
+    \end{aligned}\end{equation}
+
+    <p>However, the relaxation $\boldsymbol{H}_t - \boldsymbol{H}_{t-1} \preceq \tr(\boldsymbol{H}_t - \boldsymbol{H}_{t-1})\boldsymbol{I}$ is actually quite loose and depends on the positive semi-definiteness of $\boldsymbol{H}_t - \boldsymbol{H}_{t-1}$. We used it because the $\tr$ operator is linear, which allows the final summation to cancel out, leaving a clean $R^2 \tr(\boldsymbol{H}_T)$ for easy analysis. In fact, a tighter relaxation that does not require $\boldsymbol{H}_t \succeq \boldsymbol{H}_{t-1}$ is:</p>
+
+    \begin{equation}\Vert\boldsymbol{\theta}_t-\boldsymbol{\varphi}\Vert_{\boldsymbol{H}_t-\boldsymbol{H}_{t-1}}^2 \leq \Vert\boldsymbol{\theta}_t-\boldsymbol{\varphi}\Vert^2 \lambda_{\max}(\boldsymbol{H}_t - \boldsymbol{H}_{t-1}) \leq R^2 [\lambda_{\max}(\boldsymbol{H}_t - \boldsymbol{H}_{t-1})]_+\end{equation}
+
+    <p>where $[x]_+ = \max(x,0)$, which is equivalent to saying $\boldsymbol{H}_t - \boldsymbol{H}_{t-1} \preceq [\lambda_{\max}(\boldsymbol{H}_t - \boldsymbol{H}_{t-1})]_+ \boldsymbol{I}$, and $\lambda_{\max}$ is the maximum eigenvalue. Using this result, we get:</p>
+
+    \begin{equation}\sum_{t=1}^T (\Vert\boldsymbol{\theta}_t - \boldsymbol{\varphi}\Vert_{\boldsymbol{H}_t}^2 - \Vert\boldsymbol{\theta}_{t+1} - \boldsymbol{\varphi}\Vert_{\boldsymbol{H}_t}^2) \leq R^2 \left(\lambda_{\max}(\boldsymbol{H}_1) + \sum_{t=2}^T [\lambda_{\max}(\boldsymbol{H}_t - \boldsymbol{H}_{t-1})]_+ \right)\end{equation}
+
+    <p>Note that $\lambda_{\max}$ is not a linear function, so we cannot cancel terms further. However, although this result is not as clean as $R^2 \tr(\boldsymbol{H}_T)$, it is never worse than (and usually strictly better than) $R^2 \tr(\boldsymbol{H}_T)$ when monotonicity holds. So this is actually a stronger and more general result.</p>
+
+    <h2 id="new-conclusions">New Conclusions</h2>
+
+    <p>Reviewing the entire derivation, the only place monotonicity $\boldsymbol{H}_t \succeq \boldsymbol{H}_{t-1}$ was used was in the relaxation from the previous section. Therefore, by replacing it with the $\lambda_{\max}$ version, all previous convergence conclusions can be generalized to the general case just by replacing $R^2 \tr(\boldsymbol{H}_T)$ with $R^2 \Lambda_T$, where</p>
+
+    \begin{equation}\Lambda_T \triangleq \lambda_{\max}(\boldsymbol{H}_1) + \sum_{t=2}^T [\lambda_{\max}(\boldsymbol{H}_t - \boldsymbol{H}_{t-1})]_+\end{equation}
+
+    <p>Specifically, the general version of Eq. \eqref{leq:avg-g} is:</p>
+
+    \begin{equation}\frac{\sum_{t=1}^T \eta_t \mathbb{E}[\boldsymbol{g}_t \cdot (\boldsymbol{\theta}_t -\boldsymbol{\varphi})]}{\sum_{t=1}^T \eta_t} \leq \mathbb{E}\left[\frac{R^2 \Lambda_T}{2\sum_{t=1}^T \eta_t} + \frac{\sum_{t=1}^T \eta_t^2 \Vert\boldsymbol{g}_t\Vert_{\boldsymbol{H}_t^{-1}}^2}{2\sum_{t=1}^T \eta_t}\right]\end{equation}
+
+    <p>The general weighted-average convergence conclusion is:</p>
+
+    \begin{equation}\frac{\sum_{t=1}^T \eta_t \mathbb{E}[L(\boldsymbol{\theta}_t) - L(\boldsymbol{\theta}^*)]}{\sum_{t=1}^T \eta_t} \leq \mathbb{E}\left[\frac{R^2 \Lambda_T}{2\sum_{t=1}^T \eta_t} + \frac{\sum_{t=1}^T \eta_t^2 \Vert\boldsymbol{g}_t\Vert_{\boldsymbol{H}_t^{-1}}^2}{2\sum_{t=1}^T \eta_t}\right]\label{leq:avg-gen}\end{equation}
+
+    <p>The two last-point convergence conclusions are:</p>
+
+    \begin{align}\mathbb{E}[L(\boldsymbol{\theta}_T) - L(\boldsymbol{\theta}^*)] \leq&\, \mathbb{E}\left[\frac{R^2 \Lambda_T}{2\sum_{t=1}^T w_t} + \frac{\sum_{t=1}^T w_t^2 \Vert\boldsymbol{g}_t\Vert_{\boldsymbol{H}_t^{-1}}^2}{2\sum_{t=1}^T w_t}\right] \\
+    \mathbb{E}[L(\boldsymbol{\theta}_T) - L(\boldsymbol{\theta}^*)] \leq&\, \mathbb{E}\left[\frac{R^2 \Lambda_T}{4\eta_{1:T}} + \sum_{t=1}^{T-2} \frac{\eta_t^2}{4\eta_{t+1:T}} \Vert\boldsymbol{g}_t\Vert_{\boldsymbol{H}_t^{-1}}^2 + \frac{\eta_{T-1}}{2}\Big(\Vert\boldsymbol{g}_{T-1}\Vert_{\boldsymbol{H}_{T-1}^{-1}}^2 + \Vert\boldsymbol{g}_T\Vert_{\boldsymbol{H}_T^{-1}}^2\Big)\right]\end{align}
+
+    <p>Note two basic properties of $\Lambda_T$: first, $\Lambda_T$ is always non-negative, so the new upper bound has no risk of degenerating; second, when $\boldsymbol{H}_t$ is monotonic, $[\lambda_{\max}(\boldsymbol{H}_t - \boldsymbol{H}_{t-1})]_+ \leq \tr(\boldsymbol{H}_t - \boldsymbol{H}_{t-1})$, and thus $\Lambda_T \leq \tr(\boldsymbol{H}_T)$, meaning the new conclusion indeed covers the old one.</p>
+
+    <h2 id="extended-reflections">Extended Reflections</h2>
+
+    <p>At this point, the second scaffolding has also been removed. It seems that the non-monotonicity of $\boldsymbol{H}_t$ does not essentially hinder the convergence proof. Does this mean RMSProp, Adam, and other optimizers have no convergence issues?</p>
+
+    <p>Not necessarily. Being able to write down a convergence conclusion does not mean convergence is guaranteed. Taking Eq. \eqref{leq:avg-gen} as an example, if $R$ and $\Vert\boldsymbol{g}_t\Vert_{\boldsymbol{H}_t^{-1}}^2$ are treated as constants independent of $t$ and $T$, the minimum of the right-hand side is reached when $\eta_t$ is a constant. In this case, $\eta_{1:T}$ grows linearly with $T$. If $\Lambda_T$ also grows linearly or even super-linearly with $T$, the right-hand side will not tend to zero as $T \to \infty$, failing to guarantee convergence.</p>
+
+    <p>From this reasoning, it's clear that the issue isn't directly about whether $\boldsymbol{H}_t$ is monotonic. As long as the growth rate of $\Lambda_T$ with respect to $T$ is linear or higher, non-convergence may occur. For AdaGrad, under the assumption of bounded gradients, it can be proven that $\Lambda_T \leq \tr(\boldsymbol{H}_T) \sim \sqrt{T}$, meaning $\Lambda_T$ grows at most at a rate of $\mathcal{O}(\sqrt{T})$, which is sub-linear, thus guaranteeing convergence.</p>
+
+    <p>However, for sliding-average type preconditioners like those in RMSProp and Adam, although $\boldsymbol{H}_t$ itself is more stable, the eigenvalues of $\boldsymbol{H}_t-\boldsymbol{H}_{t-1}$ might alternate signs repeatedly. Since $\Lambda_T$ accumulates $[\lambda_{\max}]_+$ at each step, if there is a sustained, stable positive direction in the changes, $\Lambda_T$ could grow at a constant rate, resulting in a linear $\Lambda_T$ and leading to convergence failure.</p>
+
+    <p>On the other hand, this somewhat explains why RMSProp, Adam, and others are effective in practice. In general, the growth rate of $\Lambda_T$ isn't that bad; in fact, due to the stability of $\boldsymbol{H}_t$, their $\Lambda_T$ might grow even more slowly than AdaGrad's, leading to better practical performance. Most importantly, we are currently discussing the convergence of the upper bound of the loss; the fact that the upper bound doesn't converge doesn't fundamentally allow us to assert that the loss itself won't converge.</p>
+
+    <h2 id="summary">Summary</h2>
+
+    <p>This article dismantled two "scaffoldings" on top of the convergence framework from the previous post: first, allowing the learning rate $\eta_t$ to vary dynamically, deriving corresponding average and last-point convergence conclusions, providing a preliminary explanation for the general applicability of LR Decay; second, for non-monotonic $\boldsymbol{H}_t$, we discussed correction schemes based on minimal modification and derived more general convergence conclusions without the monotonicity assumption.</p>
+
+    <p>Overall, this article has a high information density, and we skipped many proof details because the key techniques were already detailed in the previous series on SGD. Therefore, this article focused more on presenting key steps and results.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/11885" style="color: #005fcc;">https://kexue.fm/archives/11885</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>

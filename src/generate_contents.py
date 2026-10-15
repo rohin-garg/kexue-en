@@ -213,6 +213,7 @@ def main():
             margin-bottom: 1.5em;
         }
         .search-box {
+            box-sizing: border-box;
             width: 100%;
             padding: 0.75em 1em;
             font-size: 1em;
