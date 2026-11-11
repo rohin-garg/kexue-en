@@ -1,0 +1,354 @@
+
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Making "Alchemy" More Scientific (XI): A New Idea for Schedule-Free Learning Rates</title>
+    <style type="text/css">
+
+    body {
+    margin: 48px auto;
+    max-width: 68ch;              /* character-based width reads better */
+    padding: 0 16px;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: #333;
+    background: #fafafa;
+    }
+
+    h1, h2, h3, h4 {
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    }
+
+    h1 {
+    font-size: 2.1em;
+    margin-top: 0;
+    }
+
+    h2 {
+    font-size: 1.6em;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 0.3em;
+    }
+
+    h3 {
+    font-size: 1.25em;
+    }
+
+    h4 {
+    font-size: 1.05em;
+    color: #555;
+    }
+
+    /* Paragraphs and lists */
+    p {
+    margin: 1em 0;
+    }
+
+    ul, ol {
+    margin: 1em 0 1em 1.5em;
+    }
+
+    li {
+    margin: 0.4em 0;
+    }
+
+    a {
+    color: #005fcc;
+    text-decoration: none;
+    }
+
+    a:hover {
+    text-decoration: underline;
+    }
+
+    code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+    background: #f2f2f2;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    }
+
+    pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: #f5f5f5;
+    padding: 1em 1.2em;
+    overflow-x: auto;
+    border-radius: 6px;
+    line-height: 1.45;
+    }
+
+    pre code {
+    background: none;
+    padding: 0;
+    }
+
+    blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 4px solid #ddd;
+    color: #555;
+    }
+
+    hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 3em 0;
+    }
+
+    table {
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    width: 100%;
+    font-size: 0.95em;
+    }
+
+    th, td {
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+    }
+
+    th {
+    font-weight: 600;
+    }
+
+    img {
+    max-width: 100%;
+    display: block;
+    margin: 1.5em auto;
+    }
+
+    small {
+    color: #666;
+    }
+
+    mjx-container {
+    margin: 1em 0;
+    }
+
+    mjx-container[display="true"] {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0 !important;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    }
+
+    ::selection {
+    background: #cce2ff;
+    }
+
+    </style>
+
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  options: {
+    renderActions: {
+      findScript: [10, function (doc) {
+        for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+          const display = !!node.type.match(/; *mode=display/);
+          const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+          const text = document.createTextNode('');
+          node.parentNode.replaceChild(text, node);
+          math.start = {node: text, delim: '', n: 0};
+          math.end = {node: text, delim: '', n: 0};
+          doc.math.push(math);
+        }
+      }, '']
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<article>
+    <nav style="margin-bottom: 1.5em;">
+    <a href="../index.html" style="display: inline-flex; align-items: center; color: #555; text-decoration: none; font-size: 0.95em;">
+        <span style="margin-right: 0.3em;">&larr;</span> Back to Index
+    </a>
+</nav>
+
+    <h1><a href="https://kexue.fm/archives/12003">Making "Alchemy" More Scientific (XI): A New Idea for Schedule-Free Learning Rates</a></h1>
+
+    <p>By 苏剑林 | November 09, 2026</p>
+
+    <p>In several previous articles, we have already demonstrated the importance of learning rate scheduling for final convergence. At the same time, "Schedule-Free learning rates" have always been an ideal pursuit for practitioners: no pre-set learning rate curves, no pre-set training steps, and the ability to terminate the training process at any time to obtain a solution nearly optimal for the current number of steps.</p>
+
+    <p>Previously, my attitude towards this direction was relatively pessimistic (refer to <a href="translation_11879.html">"Making 'Alchemy' More Scientific (VIII): Learning Rates for Multi-Stage Training"</a>). However, a recent paper <a href="https://papers.cool/arxiv/2610.39531">"Conic-Lifting for Learning-rate-free Convex Optimization"</a> has achieved this through an ingenious lifting construction! It can be proven that under the assumptions of bounded domains and convex optimization, it can truly converge to the optimal solution at an ideal speed without a schedule!</p>
+
+    <p>How exactly does it do it? Can deep learning training learn anything from it? Let's study it together in this article.</p>
+
+    <h2 id="基础回顾">Basic Review</h2>
+
+    <p>Consider the projected update rule with a constant learning rate:</p>
+
+    \begin{equation}\boldsymbol{\theta}_{t+1} = \Pi_{\boldsymbol{\Theta}}(\boldsymbol{\theta}_t - \eta \boldsymbol{g}_t)\end{equation}
+
+    <p>Where $\boldsymbol{\Theta}$ is the feasible set for $\boldsymbol{\theta}$, required to be a closed convex set, and $\Pi_{\boldsymbol{\Theta}}$ is defined as:</p>
+
+    \begin{equation}\Pi_{\boldsymbol{\Theta}} (\boldsymbol{\varphi}) = \mathop{\text{argmin}}_{\boldsymbol{\theta}\in\boldsymbol{\Theta}}\Vert\boldsymbol{\varphi}-\boldsymbol{\theta}\Vert\end{equation}
+
+    <p>Then for $\forall \boldsymbol{\varphi}\in \boldsymbol{\Theta}$, the following inequality holds:</p>
+
+    \begin{equation}\sum_{t=1}^T \boldsymbol{g}_t\cdot(\boldsymbol{\theta}_t-\boldsymbol{\varphi})\leq \frac{\Vert\boldsymbol{\theta}_1-\boldsymbol{\varphi}\Vert^2}{2\eta}+\frac{\eta}{2}\sum_{t=1}^T\Vert\boldsymbol{g}_t\Vert^2\label{eq:regret-base}\end{equation}
+
+    <p>The term on the left is called the "linearized regret." Since we only consider a constant learning rate, the proof of this inequality is particularly simple and can be completed using the method from the first article <a href="translation_9902.html">"Making 'Alchemy' More Scientific (I): Average Loss Convergence of SGD"</a>. Also, because of the constant learning rate, this conclusion does not require $\boldsymbol{\Theta}$ to be bounded, only that it is a closed convex set.</p>
+
+    <p>In the above inequality, $\boldsymbol{g}_t$ is not required to be a true gradient. However, when $\boldsymbol{g}_t$ is a gradient, combined with the assumption of convexity of the loss function, we have:</p>
+
+    \begin{equation}\frac{1}{T}\sum_{t=1}^T L(\boldsymbol{x}_t,\boldsymbol{\theta}_t) - \frac{1}{T}\sum_{t=1}^T L(\boldsymbol{x}_t,\boldsymbol{\varphi}) \leq \frac{1}{T}\sum_{t=1}^T \boldsymbol{g}_t\cdot(\boldsymbol{\theta}_t-\boldsymbol{\varphi})\end{equation}
+
+    <p>This links the previous conclusion to the loss function, which is the sole purpose of the "$\boldsymbol{g}_t$ is a gradient" and convexity assumptions. Finally, substituting $\boldsymbol{\varphi}=\boldsymbol{\theta}^*$ yields an average convergence conclusion. By minimizing the right side of Eq. $\eqref{eq:regret-base}$, we can obtain the optimal learning rate, which depends at least on the total training steps $T$.</p>
+
+    <h2 id="提升向量">Lifting Vectors</h2>
+
+    <p>Next, we stipulate that $\boldsymbol{\Theta}$ is a bounded closed convex set, and introduce a scalar sequence $\lambda_t\geq 0$, a constant $K > 0$, and define the lifted vectors:</p>
+
+    \begin{align}
+    \check{\boldsymbol{\theta}}_t \triangleq&\, (\lambda_t \boldsymbol{\theta}_t, \lambda_t K) \\
+    \check{\boldsymbol{g}}_t \triangleq&\, (\boldsymbol{g}_t, -\boldsymbol{g}_t\cdot\boldsymbol{\theta}_t/K) \\
+    \check{\boldsymbol{\varphi}} \triangleq&\, (\boldsymbol{\varphi},K) \\
+    \end{align}
+
+    <p>Why limit $\boldsymbol{\Theta}$ to be bounded? Because only when $\boldsymbol{\Theta}$ is a bounded closed convex set is the feasible region of $\check{\boldsymbol{\theta}}$:</p>
+
+    \begin{equation}\check{\boldsymbol{\Theta}} \triangleq \Big\{(\lambda \boldsymbol{\theta}, \lambda K)\,\Big|\,\forall \boldsymbol{\theta}\in\boldsymbol{\Theta},\,\forall \lambda\geq 0\Big\}\end{equation}
+
+    <p>a closed set (the shape is a cone, hence the term "conic lifting"). Next, we need to project onto $\check{\boldsymbol{\Theta}}$. If $\boldsymbol{\Theta}$ were unbounded, $\check{\boldsymbol{\Theta}}$ would not necessarily be closed, and the projection operation could not be well-defined. Similarly, the constraint $\lambda\geq 0$ is to ensure $\check{\boldsymbol{\Theta}}$ is a convex set. In fact, the subsequent derivations do not explicitly require $\lambda\geq 0$, but if $\lambda$ were allowed to be arbitrary, then $\check{\boldsymbol{\Theta}}$ would be non-convex, and the proof could not proceed.</p>
+
+    <p>We won't discuss why this lifting is done for now; everyone will realize it during the proof. Note that these three lifted vectors have the following characteristics: First, for any $\lambda_t > 0$, $\check{\boldsymbol{\theta}}_t$ can recover $\boldsymbol{\theta}_t$ by dividing the first $\dim(\boldsymbol{\theta}_t)$ dimensions by the last dimension and multiplying by $K$ (this step is called "decoding"), so $\check{\boldsymbol{\theta}}_t$ generally already contains $\boldsymbol{\theta}_t$; second, it can be verified that under this construction, $\check{\boldsymbol{g}}_t\cdot\check{\boldsymbol{\theta}}_t = 0$ holds constantly, so:</p>
+
+    \begin{equation}\sum_{t=1}^T \check{\boldsymbol{g}}_t\cdot(\check{\boldsymbol{\theta}}_t-\check{\boldsymbol{\varphi}}) = -\sum_{t=1}^T \check{\boldsymbol{g}}_t\cdot\check{\boldsymbol{\varphi}} = \sum_{t=1}^T \boldsymbol{g}_t\cdot(\boldsymbol{\theta}_t-\boldsymbol{\varphi})\label{eq:regret-id}\end{equation}
+
+    <p>That is, the regret before and after lifting is identical, but the lifted vector has an extra degree of freedom for flexible scaling. This extra degree of freedom is precisely the key to eliminating the learning rate.</p>
+
+    <h2 id="代入结论">Substituting the Conclusion</h2>
+
+    <p>Consider the update rule for the lifted vectors:</p>
+
+    \begin{equation}\check{\boldsymbol{\theta}}_{t+1} = \Pi_{\check{\boldsymbol{\Theta}}}(\check{\boldsymbol{\theta}}_t - \eta \check{\boldsymbol{g}}_t)\end{equation}
+
+    <p>Then for any $\rho > 0$, we have:</p>
+
+    \begin{equation}\begin{aligned}
+    \sum_{t=1}^T \boldsymbol{g}_t\cdot(\boldsymbol{\theta}_t-\boldsymbol{\varphi}) =&\, \frac{1}{\rho}\sum_{t=1}^T \check{\boldsymbol{g}}_t\cdot(\check{\boldsymbol{\theta}}_t-\rho\check{\boldsymbol{\varphi}}) \\
+    \leq&\, \frac{\Vert\check{\boldsymbol{\theta}}_1-\rho\check{\boldsymbol{\varphi}}\Vert^2}{2\eta\rho}+\frac{\eta}{2\rho}\sum_{t=1}^T\Vert\check{\boldsymbol{g}}_t\Vert^2 \\
+    =&\, \frac{\Vert\lambda_1\boldsymbol{\theta}_1-\rho\boldsymbol{\varphi}\Vert^2 + K^2(\lambda_1 - \rho)^2}{2\eta\rho}+\frac{\eta}{2\rho}\sum_{t=1}^T\Big(\Vert\boldsymbol{g}_t\Vert^2 + (\boldsymbol{g}_t\cdot\boldsymbol{\theta}_t/K)^2\Big)
+    \end{aligned}\end{equation}
+
+    <p>The first "$=$" is a corollary of the identity $\eqref{eq:regret-id}$, "$\leq$" is obtained by substituting the basic conclusion $\eqref{eq:regret-base}$, and the second "$=$" is obtained by substituting the definitions of $\check{\boldsymbol{\theta}}_t$ and $\check{\boldsymbol{g}}_t$. Note that according to the definition of $\check{\boldsymbol{\Theta}}$, $\rho\boldsymbol{\varphi}\in\check{\boldsymbol{\Theta}}$ holds for any $\rho > 0$, which is also key to making the above formula valid.</p>
+
+    <p>In the above formula, the left side is the fixed target, and the right side is its upper bound, with four parameters $\lambda_1, \rho, \eta, K$. For simplicity, we set $\lambda_1=0$, in which case $\check{\boldsymbol{\theta}}_1$ is the zero vector, which is also key for the subsequent derivation. Rearranging gives:</p>
+
+    \begin{equation}\sum_{t=1}^T \boldsymbol{g}_t\cdot(\boldsymbol{\theta}_t-\boldsymbol{\varphi}) \leq \frac{\rho\big(\Vert\boldsymbol{\varphi}\Vert^2 + K^2\big)}{2\eta}+\frac{\eta}{2\rho}\sum_{t=1}^T\Big(\Vert\boldsymbol{g}_t\Vert^2 + (\boldsymbol{g}_t\cdot\boldsymbol{\theta}_t/K)^2\Big)\end{equation}
+
+    <h2 id="固定步长">Fixed Step Size</h2>
+
+    <p>Now three parameters $\eta, \rho, K$ remain. A crucial observation is that the right side of the above formula is zero-homogeneous with respect to $\rho, \eta$, meaning it only depends on the ratio $\rho/\eta$. This means we can fix $\eta=1$ without changing the minimum value of the right side. Can we fix $\eta$ to a certain value? It turns out we can! It can be proven that the Euclidean projection onto the cone $\check{\boldsymbol{\Theta}}$ satisfies positive homogeneity, meaning for any $\alpha > 0$:</p>
+
+    \begin{equation}\Pi_{\check{\boldsymbol{\Theta}}}(\alpha\boldsymbol{x}) = \alpha\Pi_{\check{\boldsymbol{\Theta}}}(\boldsymbol{x})\end{equation}
+
+    <p>Based on this, we can inductively prove that for the two trajectories with learning rate $\eta$ and learning rate $1$:</p>
+
+    \begin{equation}\check{\boldsymbol{\theta}}_{t+1}^{(\eta)} = \Pi_{\check{\boldsymbol{\Theta}}}(\check{\boldsymbol{\theta}}_t^{(\eta)} - \eta \check{\boldsymbol{g}}_t)\qquad\text{and}\qquad \check{\boldsymbol{\theta}}_{t+1}^{(1)} = \Pi_{\check{\boldsymbol{\Theta}}}(\check{\boldsymbol{\theta}}_t^{(1)} - \check{\boldsymbol{g}}_t)\end{equation}
+
+    <p>it always holds that:</p>
+
+    \begin{equation}\check{\boldsymbol{\theta}}_t^{(\eta)} = \eta\check{\boldsymbol{\theta}}_t^{(1)}\end{equation}
+
+    <p>That is, the trajectory of $\check{\boldsymbol{\theta}}$ will scale proportionally by $\eta$ times. However, we are concerned with $\boldsymbol{\theta}$, which depends on the ratio of the first $\dim(\boldsymbol{\theta}_t)$ dimensions of $\check{\boldsymbol{\theta}}$ to the last dimension, which exactly cancels out this multiplier. Therefore, fixing $\eta$ to 1 does not change the actual parameter trajectory. Thus, it can be seen that conic lifting plus ratio decoding makes the learning rate an unobservable overall scale.</p>
+
+    <p>After fixing $\eta=1$, we get:</p>
+
+    \begin{equation}\sum_{t=1}^T \boldsymbol{g}_t\cdot(\boldsymbol{\theta}_t-\boldsymbol{\varphi}) \leq \frac{\rho\big(\Vert\boldsymbol{\varphi}\Vert^2 + K^2\big)}{2}+\frac{1}{2\rho}\sum_{t=1}^T\Big(\Vert\boldsymbol{g}_t\Vert^2 + (\boldsymbol{g}_t\cdot\boldsymbol{\theta}_t/K)^2\Big)\end{equation}
+
+    <h2 id="超球体内">Inside the Hypersphere</h2>
+
+    <p>Next, we choose a special but representative $\boldsymbol{\Theta}$. Since $\boldsymbol{\Theta}$ is restricted to a bounded closed convex set, we choose it to be a simple hypersphere $\Vert\boldsymbol{\theta}\Vert\leq R$. In this case, according to the agreement, $\Vert\boldsymbol{\varphi}\Vert\leq R$ also holds, and:</p>
+
+    \begin{equation}(\boldsymbol{g}_t\cdot\boldsymbol{\theta}_t)^2 \leq \Vert\boldsymbol{g}_t\Vert^2 \Vert\boldsymbol{\theta}_t\Vert^2 \leq \Vert\boldsymbol{g}_t\Vert^2 R^2\end{equation}
+
+    <p>Substituting this and setting $K=R$, we get:</p>
+
+    \begin{equation}\sum_{t=1}^T \boldsymbol{g}_t\cdot(\boldsymbol{\theta}_t-\boldsymbol{\varphi}) \leq \rho R^2 +\frac{1}{\rho}\sum_{t=1}^T\Vert\boldsymbol{g}_t\Vert^2\end{equation}
+
+    <p>Finally, taking $\rho = R^{-1}\sqrt{\sum_{t=1}^T\Vert\boldsymbol{g}_t\Vert^2}$, we get:</p>
+
+    \begin{equation}\sum_{t=1}^T \boldsymbol{g}_t\cdot(\boldsymbol{\theta}_t-\boldsymbol{\varphi}) \leq 2R\sqrt{\sum_{t=1}^T\Vert\boldsymbol{g}_t\Vert^2}\end{equation}
+
+    <p>The right side is already the most ideal convergence speed. If we further assume $\Vert\boldsymbol{g}_t\Vert$ is bounded, then the right side is $\sim\mathcal{O}(\sqrt{T})$. After dividing both sides by $T$, the convergence speed is $\sim\mathcal{O}(1/\sqrt{T})$, which is already the best speed without introducing further assumptions. Of course, the conclusion given here is for average convergence. Actual training may be more concerned with the final convergence conclusion; the two are not entirely equivalent, but regardless, this is indeed a very beautiful result.</p>
+
+    <h2 id="显式规则">Explicit Rules</h2>
+
+    <p>Most importantly, the update rule that achieves this convergence speed is:</p>
+
+    \begin{equation}\check{\boldsymbol{\theta}}_{t+1} = \Pi_{\check{\boldsymbol{\Theta}}}(\check{\boldsymbol{\theta}}_t - \check{\boldsymbol{g}}_t)\end{equation}
+
+    <p>Without any learning rate hyperparameters, achieving true "Schedule-Free" behavior! For the hypersphere $\Vert\boldsymbol{\theta}\Vert\leq R$, we can write out the update rules explicitly. First, define:</p>
+
+    \begin{equation}\begin{aligned}
+    (\lambda_{t+1}\boldsymbol{\theta}_{t+1}, \lambda_{t+1}R) =&\, \Pi_{\check{\boldsymbol{\Theta}}} (\tilde{\lambda}_{t+1}\tilde{\boldsymbol{\theta}}_{t+1}, \tilde{\lambda}_{t+1}R) \\
+    (\tilde{\lambda}_{t+1}\tilde{\boldsymbol{\theta}}_{t+1}, \tilde{\lambda}_{t+1}R) =&\, (\lambda_t \boldsymbol{\theta}_t - \boldsymbol{g}_t , \lambda_t R + \boldsymbol{g}_t\cdot\boldsymbol{\theta}_t/R)
+    \end{aligned}\end{equation}
+
+    <p>The definition of the projection operation $\Pi_{\check{\boldsymbol{\Theta}}}$ is:</p>
+
+    \begin{equation}\mathop{\text{argmin}}_{\boldsymbol{\theta}, \lambda} \Vert \lambda\boldsymbol{\theta} - \tilde{\lambda}\tilde{\boldsymbol{\theta}}\Vert^2 + (\lambda - \tilde{\lambda})^2 R^2\qquad\text{s.t}\qquad \Vert\boldsymbol{\theta}\Vert\leq R,\quad \lambda\geq 0\end{equation}
+
+    <p>Solving this yields:</p>
+
+    \begin{equation}\lambda^* = \max\left\{0, \tilde{\lambda}, \frac{\Vert\tilde{\lambda}\tilde{\boldsymbol{\theta}}\Vert + \tilde{\lambda} R}{2R}\right\},\qquad \boldsymbol{\theta}^* = \Pi_{\boldsymbol{\Theta}}\left(\frac{\tilde{\lambda}\tilde{\boldsymbol{\theta}}}{\lambda^*}\right)\end{equation}
+
+    <p>Note that when $\lambda^*=0$, the corresponding $\boldsymbol{\theta}^*$ can actually be any vector satisfying $\Vert\boldsymbol{\theta}\Vert\leq R$. The above formula gives a more natural choice (understood as $\lambda^*\to 0^+$). The original paper directly stipulates returning the initial value $\boldsymbol{\theta}_1$. These choices do not affect the proof process or conclusion. Specifically, if the projection is not triggered, the update formula can be simplified to:</p>
+
+    \begin{equation}\begin{aligned}
+    \lambda_{t+1} =&\, \lambda_t + \frac{\boldsymbol{g}_t\cdot\boldsymbol{\theta}_t}{R^2} \\
+    \boldsymbol{\theta}_{t+1} =&\, \frac{\lambda_t}{\lambda_{t+1}} \boldsymbol{\theta}_t - \frac{1}{\lambda_{t+1}}\boldsymbol{g}_t
+    \end{aligned}\end{equation}
+
+    <h2 id="延伸思考">Further Thoughts</h2>
+
+    <p>The above derivation has been adjusted by me and does not completely copy the original paper; the results of the original paper are even richer, but I will introduce them up to this point in this blog. Next, I'll share some of my thoughts on it.</p>
+
+    <p>When I first saw this result, my first reaction was disbelief. Even under the convex optimization assumption, there really is a completely Schedule-Free algorithm that can achieve the ideal convergence speed. Subsequently, I went through the derivation carefully and found no problems with the process, but I also had some doubts: to put it bluntly, this new algorithm adjusts the learning rate based on $\boldsymbol{g}_t\cdot\boldsymbol{\theta}_t$. What if it is zero?</p>
+
+    <p>Of course, if $\boldsymbol{g}_t\cdot\boldsymbol{\theta}_t$ is occasionally zero, it generally doesn't matter. But what if $\boldsymbol{g}_t\cdot\boldsymbol{\theta}_t$ is always zero? This means the iteration will not start properly. Is it possible for $\boldsymbol{g}_t\cdot\boldsymbol{\theta}_t$ to be always zero? Yes, for example, a loss function like $L(\boldsymbol{\theta}/\Vert\boldsymbol{\theta}\Vert)$ is. But the previous derivation was not wrong. Where is the problem? The answer is—the convexity assumption—a function like $L(\boldsymbol{\theta}/\Vert\boldsymbol{\theta}\Vert)$ cannot be a convex function with respect to $\boldsymbol{\theta}$!</p>
+
+    <p>This also means that this new Schedule-Free idea seems to depend heavily on the convex optimization assumption. My preliminary judgment is that its reference value for non-convex optimization in deep learning might be very limited. This is a bit different from previous articles in this series; although previous articles were also results based on convex optimization assumptions, many conclusions were still instructive for non-convex optimization.</p>
+
+    <p>For example, the AdaGrad optimizer can also be said to be a result of convex optimization, but it and its derivatives like RMSProp and Adam optimizers are also very effective for training deep learning models. Another example is the final convergence conclusion we derived earlier, which depends on something similar to Linear Decay, which is also very effective in practice. Although many conclusions are "hindsight" forced explanations, we can indeed perceive this difference in heuristic value.</p>
+
+    <h2 id="文章小结">Article Summary</h2>
+
+    <p>This article introduced a new work in the Schedule-Free direction. It adds a new dimension to the original parameter space and, through clever construction, makes the regret before and after lifting identical. Then, by applying existing convergence results in the lifted space under bounded domain and convex optimization assumptions, it arrives at the conclusion that the optimal convergence speed can be automatically achieved without explicitly setting a learning rate.</p>
+</article>
+<hr>
+<footer style="margin-top: 3em; padding: 1.5em; background: #f5f5f5; border-radius: 8px; font-size: 0.9em; color: #555;">
+    <p style="margin: 0 0 0.5em 0;"><strong>Citation</strong></p>
+    <p style="margin: 0 0 0.5em 0;">
+        This is a machine translation of the original Chinese article:<br>
+        <a href="https://kexue.fm/archives/12003" style="color: #005fcc;">https://kexue.fm/archives/12003</a>
+    </p>
+    <p style="margin: 0 0 0.5em 0;">
+        Original author: 苏剑林 (Su Jianlin)<br>
+        Original publication: <a href="https://kexue.fm" style="color: #005fcc;">科学空间 (Scientific Spaces)</a>
+    </p>
+    <p style="margin: 0; font-style: italic;">
+        Translated using Gemini 3 Flash. Please refer to the original for authoritative content.
+    </p>
+</footer>
